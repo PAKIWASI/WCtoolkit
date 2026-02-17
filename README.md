@@ -22,6 +22,7 @@ A C toolkit providing generic data structures with explicit ownership, arena all
   - [Fast Math](#fast-math)
 - [Callback Reference](#callback-reference)
 - [Building](#building)
+- [Single-Header Distribution](#single-header-distribution)
 - [Type Reference](#type-reference)
 
 ---
@@ -837,6 +838,94 @@ All source files in `src/` are compiled automatically. Test headers live in `tes
 
 ---
 
+## Single-Header Distribution
+
+Each component can be converted into a self-contained single-header file that requires no
+separate compilation step — just drop it into your project and include it.
+
+### Generating the headers
+
+The script lives in `scripts/make_single_header.py`. Run it from the `scripts/` directory:
+
+```bash
+cd scripts
+
+# Convert specific components (dependencies are pulled in automatically)
+python make_single_header.py arena gen_vector string
+
+# Convert everything
+python make_single_header.py --all
+
+# See all components and their dependency chains
+python make_single_header.py --list
+```
+
+Output goes to `../single_header/` as `<component>_single.h`.
+
+Custom paths (defaults are `../include`, `../src`, `../single_header`):
+
+```bash
+python make_single_header.py --all \
+    --include-dir path/to/include \
+    --src-dir path/to/src \
+    --out-dir path/to/output
+```
+
+### Using a generated header
+
+In **exactly one** `.c` file, define `WC_IMPLEMENTATION` before the include:
+
+```c
+// my_app.c  — only in this one file
+#define WC_IMPLEMENTATION
+#include "string_single.h"
+```
+
+In all other files, just include normally:
+
+```c
+// other.c
+#include "string_single.h"
+```
+
+Dependencies are inlined automatically. Requesting `string_single.h` also brings in
+`gen_vector` and `common` — you don't include those separately.
+
+### Using multiple single-headers together
+
+Each implementation block is guarded against being emitted more than once, so including
+several single-headers in the same project is safe:
+
+```c
+#define WC_IMPLEMENTATION
+#include "string_single.h"    // inlines common + gen_vector + string
+#include "hashmap_single.h"   // inlines common + map_setup + hashmap
+                              // common is NOT duplicated — guard prevents it
+```
+
+### Available components
+
+| Component | Depends on |
+|---|---|
+| `common` | — |
+| `fast_math` | `common` |
+| `arena` | `common` |
+| `gen_vector` | `common` |
+| `bit_vector` | `common`, `gen_vector` |
+| `String` | `common`, `gen_vector` |
+| `Stack` | `common`, `gen_vector` |
+| `Queue` | `common`, `gen_vector` |
+| `map_setup` | `common` |
+| `random` | `common`, `fast_math` |
+| `hashmap` | `common`, `map_setup` |
+| `hashset` | `common`, `map_setup` |
+| `matrix` | `common`, `arena` |
+
+> **Note:** `matrix_generic.h` is already header-only (macro-generated) and needs no
+> conversion. Copy it directly.
+
+---
+
 ## Type Reference
 
 ### Primitive types (`common.h`)
@@ -882,3 +971,4 @@ ASSERT_WARN(cond, fmt, ...)          // warn if cond is false
 ## License
 
 MIT — see `LICENSE`.
+
