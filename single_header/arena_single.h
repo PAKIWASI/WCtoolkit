@@ -1,9 +1,28 @@
+#ifndef WC_ARENA_H
+#define WC_ARENA_H
 
-#ifndef ARENA_SINGLE_H
-#define ARENA_SINGLE_H
+/*
+ * arena_single.h
+ * Auto-generated single-header library.
+ *
+ * In EXACTLY ONE .c file, before including this header:
+ *     #define WC_IMPLEMENTATION
+ *     #include "arena_single.h"
+ *
+ * All other files just:
+ *     #include "arena_single.h"
+ */
 
-#ifndef COMMON_H
-#define COMMON_H
+/* ===== common.h ===== */
+#ifndef WC_COMMON_H
+#define WC_COMMON_H
+
+/*
+ * C Data Structures Library
+ * Copyright (c) 2026 Wasi Ullah (PAKIWASI)
+ * Licensed under the MIT License. See LICENSE file for details.
+ */
+
 
 
 // LOGGING/ERRORS
@@ -11,22 +30,30 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+// ANSI Color Codes
+#define COLOR_RESET   "\033[0m"
+#define COLOR_RED     "\033[1;31m"
+#define COLOR_YELLOW  "\033[1;33m"
+#define COLOR_GREEN   "\033[1;32m"
+#define COLOR_BLUE    "\033[1;34m"
+#define COLOR_CYAN    "\033[1;36m"
+
 #define WARN(fmt, ...)                                                                       \
     do {                                                                                     \
-        printf("[WARN] %s:%d:%s(): " fmt "\n", __FILE__, __LINE__, __func__, ##__VA_ARGS__); \
+        printf(COLOR_YELLOW "[WARN]" " %s:%d:%s(): " fmt "\n" COLOR_RESET, __FILE__, __LINE__, __func__, ##__VA_ARGS__); \
     } while (0)
 
-#define FATAL(fmt, ...)                                                                \
-    do {                                                                               \
-        fprintf(stderr, "[FATAL] %s:%d:%s(): " fmt "\n", __FILE__, __LINE__, __func__, \
-                ##__VA_ARGS__);                                                        \
-        exit(EXIT_FAILURE);                                                            \
+#define FATAL(fmt, ...)                                                                                \
+    do {                                                                                               \
+        fprintf(stderr, COLOR_RED "[FATAL]" " %s:%d:%s(): " fmt "\n" COLOR_RESET, __FILE__, __LINE__, __func__, ##__VA_ARGS__); \
+        exit(EXIT_FAILURE);                                                                            \
     } while (0)
 
-
-#define ASSERT_WARN(cond, fmt, ...)                                                  \
-    do {                                                                             \
-        if (!(cond)) { WARN("Assertion failed: (%s): " fmt, #cond, ##__VA_ARGS__); } \
+#define ASSERT_WARN(cond, fmt, ...)                                     \
+    do {                                                                \
+        if (!(cond)) {                                                  \
+            WARN("Assertion failed: (%s): " fmt, #cond, ##__VA_ARGS__); \
+        }                                                               \
     } while (0)
 
 #define ASSERT_WARN_RET(cond, ret, fmt, ...)                            \
@@ -37,16 +64,19 @@
         }                                                               \
     } while (0)
 
-#define ASSERT_FATAL(cond, fmt, ...)                                                  \
-    do {                                                                              \
-        if (!(cond)) { FATAL("Assertion failed: (%s): " fmt, #cond, ##__VA_ARGS__); } \
-    } while (0)
-
-#define CHECK_WARN(cond, fmt, ...)                                       \
+#define ASSERT_FATAL(cond, fmt, ...)                                     \
     do {                                                                 \
-        if ((cond)) { WARN("Check: (%s): " fmt, #cond, ##__VA_ARGS__); } \
+        if (!(cond)) {                                                   \
+            FATAL("Assertion failed: (%s): " fmt, #cond, ##__VA_ARGS__); \
+        }                                                                \
     } while (0)
 
+#define CHECK_WARN(cond, fmt, ...)                           \
+    do {                                                     \
+        if ((cond)) {                                        \
+            WARN("Check: (%s): " fmt, #cond, ##__VA_ARGS__); \
+        }                                                    \
+    } while (0)
 
 #define CHECK_WARN_RET(cond, ret, fmt, ...)                  \
     do {                                                     \
@@ -56,11 +86,17 @@
         }                                                    \
     } while (0)
 
-#define CHECK_FATAL(cond, fmt, ...)                                     \
-    do {                                                                \
-        if (cond) { FATAL("Check: (%s): " fmt, #cond, ##__VA_ARGS__); } \
+#define CHECK_FATAL(cond, fmt, ...)                           \
+    do {                                                      \
+        if (cond) {                                           \
+            FATAL("Check: (%s): " fmt, #cond, ##__VA_ARGS__); \
+        }                                                     \
     } while (0)
 
+#define LOG(fmt, ...)                               \
+    do {                                            \
+        printf(COLOR_CYAN "[LOG]" " : %s(): " fmt "\n" COLOR_RESET, __func__, ##__VA_ARGS__); \
+    } while (0)
 
 // TYPES
 
@@ -68,12 +104,21 @@
 
 typedef uint8_t  u8;
 typedef uint8_t  b8;
-typedef uint16_t u32;
+typedef uint16_t u16;
 typedef uint32_t u32;
 typedef uint64_t u64;
 
 #define false ((b8)0)
 #define true  ((b8)1)
+
+
+// GENERIC FUNCTIONS
+typedef void (*copy_fn)(u8* dest, const u8* src);
+typedef void (*move_fn)(u8* dest, u8** src);
+typedef void (*delete_fn)(u8* key);
+typedef void (*print_fn)(const u8* elm);
+typedef int  (*compare_fn)(const u8* a, const u8* b, u64 size);
+typedef void (*for_each_fn)(u8* elm); 
 
 
 // CASTING
@@ -87,46 +132,19 @@ typedef uint64_t u64;
 #define KB (1 << 10)
 #define MB (1 << 20)
 
-#define nKB(n) ((u32)((n) * KB))
-#define nMB(n) ((u32)((n) * MB))
+#define nKB(n) ((u64)((n) * KB))
+#define nMB(n) ((u64)((n) * MB))
 
 
 // RAW BYTES TO HEX
 
-void print_hex(const u8* ptr, u64 size, u32 bytes_per_line) 
-{
-    if (ptr == NULL | size == 0 | bytes_per_line == 0) { return; }
+void print_hex(const u8* ptr, u64 size, u32 bytes_per_line);
 
-    // hex rep 0-15
-    const char* hex = "0123456789ABCDEF";
-    
-    for (u64 i = 0; i < size; i++) 
-    {
-        u8 val1 = ptr[i] >> 4;      // get upper 4 bits as num b/w 0-15
-        u8 val2 = ptr[i] & 0x0F;    // get lower 4 bits as num b/w 0-15
-        
-        printf("%c%c", hex[val1], hex[val2]);
-        
-        // Add space or newline appropriately
-        if ((i + 1) % bytes_per_line == 0) {
-            printf("\n");
-        } else if (i < size - 1) {
-            printf(" ");
-        }
-    }
+#endif /* WC_COMMON_H */
 
-    // Add final newline if we didn't just print one
-    if (size % bytes_per_line != 0) {
-        printf("\n");
-    }
-}
-
-
-
-
-#endif // COMMON_H
-
-
+/* ===== arena.h ===== */
+#ifndef WC_ARENA_H
+#define WC_ARENA_H
 
 typedef struct {
     u8* base;
@@ -165,7 +183,7 @@ Note that ARENA_DEFAULT_SIZE is not used.
 Parameters:
   Arena* arena    |   The arena object being initialized.
   u8*    data     |   The region to be arena-fyed.
-  u32    size     |   The size of the region in bytes.
+  u64    size     |   The size of the region in bytes.
 */
 void arena_create_arr_stk(Arena* arena, u8* data, u64 size);
 
@@ -247,27 +265,27 @@ Parameters:
 Return:
   The current value of idx variable
 */
-u32 arena_get_mark(Arena* arena);
+u64 arena_get_mark(Arena* arena);
 
 /*
 Clear the arena from current index back to mark
 
 Parameters:
   Arena* arena          |   The arena you want to clear using it's mark
-  u32    mark           |   The mark previosly obtained by arena_get_mark 
+  u64    mark           |   The mark previosly obtained by arena_get_mark 
 */
-void arena_clear_mark(Arena* arena, u32 mark);
+void arena_clear_mark(Arena* arena, u64 mark);
 
 
 // Get used capacity
-static inline u32 arena_used(Arena* arena)
+static inline u64 arena_used(Arena* arena)
 {
     CHECK_FATAL(!arena, "arena is null");
     return arena->idx;
 }
 
 // Get remaining capacity
-static inline u32 arena_remaining(Arena* arena)
+static inline u64 arena_remaining(Arena* arena)
 {
     CHECK_FATAL(!arena, "arena is null");
     return arena->size - arena->idx;
@@ -279,7 +297,7 @@ static inline u32 arena_remaining(Arena* arena)
 
 typedef struct {
     Arena* arena;
-    u32 saved_idx;
+    u64 saved_idx;
 } arena_scratch;
 
 
@@ -335,10 +353,59 @@ ARENA_SCRATCH(scratch, arena) {
         _dst;                                       \
     })
 
+#endif /* WC_ARENA_H */
 
+#ifdef WC_IMPLEMENTATION
+
+/* ===== common.c ===== */
+#ifndef WC_COMMON_IMPL
+#define WC_COMMON_IMPL
+
+void print_hex(const u8* ptr, u64 size, u32 bytes_per_line) 
+{
+    if (ptr == NULL | size == 0 | bytes_per_line == 0) { return; }
+
+    // hex rep 0-15
+    const char* hex = "0123456789ABCDEF";
+    
+    for (u64 i = 0; i < size; i++) 
+    {
+        u8 val1 = ptr[i] >> 4;      // get upper 4 bits as num b/w 0-15
+        u8 val2 = ptr[i] & 0x0F;    // get lower 4 bits as num b/w 0-15
+        
+        printf("%c%c", hex[val1], hex[val2]);
+        
+        // Add space or newline appropriately
+        if ((i + 1) % bytes_per_line == 0) {
+            printf("\n");
+        } else if (i < size - 1) {
+            printf(" ");
+        }
+    }
+
+    // Add final newline if we didn't just print one
+    if (size % bytes_per_line != 0) {
+        printf("\n");
+    }
+}
+
+#endif /* WC_COMMON_IMPL */
+
+/* ===== arena.c ===== */
+#ifndef WC_ARENA_IMPL
+#define WC_ARENA_IMPL
+
+/* python
+align to 8 bytes
+>>> 4 + 7 & ~(7)
+8
+align to 4 bytes
+>>> 1 + 4 & ~(4)
+1
+*/
 // Align a value to alignment boundary
 #define ALIGN_UP(val, align) \
-    (((val) + ((u32)(align) - 1)) & ~(((u32)align) - 1))
+    (((val) + ((align) - 1)) & ~((align) - 1))
 
 // align value to ARENA_DEFAULT_ALIGNMENT
 #define ALIGN_UP_DEFAULT(val) \
@@ -347,7 +414,7 @@ ARENA_SCRATCH(scratch, arena) {
 // Align a pointer to alignment boundary  
 // turn ptr to a u64 val to align, then turn to ptr again
 #define ALIGN_PTR(ptr, align) \
-    ((u8*)ALIGN_UP((u64)(ptr), (align)))
+    ((u8*)ALIGN_UP((ptr), (align)))
 
 // align a pointer to ARENA_DEFAULT_ALIGNMENT
 #define ALIGN_PTR_DEFAULT(ptr) \
@@ -411,7 +478,7 @@ u8* arena_alloc(Arena* arena, u64 size)
     CHECK_FATAL(size == 0, "can't have allocation of size = 0");
     
     // Align the current index first
-    u32 aligned_idx = ALIGN_UP_DEFAULT(arena->idx);
+    u64 aligned_idx = ALIGN_UP_DEFAULT(arena->idx);
     
     CHECK_WARN_RET(arena->size - aligned_idx < size,
                    NULL, "not enough space in arena for SIZE");
@@ -431,7 +498,7 @@ u8* arena_alloc_aligned(Arena* arena, u64 size, u32 alignment)
                 "alignment must be power of two");
 
 
-    u32 aligned_idx = ALIGN_UP(arena->idx, alignment);
+    u64 aligned_idx = ALIGN_UP(arena->idx, alignment);
 
     CHECK_WARN_RET(arena->size - aligned_idx < size,
                    NULL, "not enough space in arena for SIZE");
@@ -442,14 +509,14 @@ u8* arena_alloc_aligned(Arena* arena, u64 size, u32 alignment)
     return ptr;
 }
 
-u32 arena_get_mark(Arena* arena)
+u64 arena_get_mark(Arena* arena)
 {
     CHECK_FATAL(!arena, "arena is null");
 
     return arena->idx;
 }
 
-void arena_clear_mark(Arena* arena, u32 mark)
+void arena_clear_mark(Arena* arena, u64 mark)
 {
     CHECK_FATAL(!arena, "arena is null");
     CHECK_FATAL(mark > arena->idx, "mark is out of bounds");
@@ -459,7 +526,8 @@ void arena_clear_mark(Arena* arena, u32 mark)
     arena->idx = mark;
 }
 
+#endif /* WC_ARENA_IMPL */
 
+#endif /* WC_IMPLEMENTATION */
 
-
-#endif // ARENA_SINGLE_H
+#endif /* WC_ARENA_H */

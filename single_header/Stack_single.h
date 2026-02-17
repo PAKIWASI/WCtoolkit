@@ -1,12 +1,28 @@
-#ifndef BIT_VECTOR_SINGLE_H
-#define BIT_VECTOR_SINGLE_H
+#ifndef WC_STACK_H
+#define WC_STACK_H
 
+/*
+ * Stack_single.h
+ * Auto-generated single-header library.
+ *
+ * In EXACTLY ONE .c file, before including this header:
+ *     #define WC_IMPLEMENTATION
+ *     #include "Stack_single.h"
+ *
+ * All other files just:
+ *     #include "Stack_single.h"
+ */
 
-#ifndef GEN_VECTOR_SINGLE_H
-#define GEN_VECTOR_SINGLE_H
+/* ===== common.h ===== */
+#ifndef WC_COMMON_H
+#define WC_COMMON_H
 
-#ifndef COMMON_H
-#define COMMON_H
+/*
+ * C Data Structures Library
+ * Copyright (c) 2026 Wasi Ullah (PAKIWASI)
+ * Licensed under the MIT License. See LICENSE file for details.
+ */
+
 
 
 // LOGGING/ERRORS
@@ -14,22 +30,30 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+// ANSI Color Codes
+#define COLOR_RESET   "\033[0m"
+#define COLOR_RED     "\033[1;31m"
+#define COLOR_YELLOW  "\033[1;33m"
+#define COLOR_GREEN   "\033[1;32m"
+#define COLOR_BLUE    "\033[1;34m"
+#define COLOR_CYAN    "\033[1;36m"
+
 #define WARN(fmt, ...)                                                                       \
     do {                                                                                     \
-        printf("[WARN] %s:%d:%s(): " fmt "\n", __FILE__, __LINE__, __func__, ##__VA_ARGS__); \
+        printf(COLOR_YELLOW "[WARN]" " %s:%d:%s(): " fmt "\n" COLOR_RESET, __FILE__, __LINE__, __func__, ##__VA_ARGS__); \
     } while (0)
 
-#define FATAL(fmt, ...)                                                                \
-    do {                                                                               \
-        fprintf(stderr, "[FATAL] %s:%d:%s(): " fmt "\n", __FILE__, __LINE__, __func__, \
-                ##__VA_ARGS__);                                                        \
-        exit(EXIT_FAILURE);                                                            \
+#define FATAL(fmt, ...)                                                                                \
+    do {                                                                                               \
+        fprintf(stderr, COLOR_RED "[FATAL]" " %s:%d:%s(): " fmt "\n" COLOR_RESET, __FILE__, __LINE__, __func__, ##__VA_ARGS__); \
+        exit(EXIT_FAILURE);                                                                            \
     } while (0)
 
-
-#define ASSERT_WARN(cond, fmt, ...)                                                  \
-    do {                                                                             \
-        if (!(cond)) { WARN("Assertion failed: (%s): " fmt, #cond, ##__VA_ARGS__); } \
+#define ASSERT_WARN(cond, fmt, ...)                                     \
+    do {                                                                \
+        if (!(cond)) {                                                  \
+            WARN("Assertion failed: (%s): " fmt, #cond, ##__VA_ARGS__); \
+        }                                                               \
     } while (0)
 
 #define ASSERT_WARN_RET(cond, ret, fmt, ...)                            \
@@ -40,16 +64,19 @@
         }                                                               \
     } while (0)
 
-#define ASSERT_FATAL(cond, fmt, ...)                                                  \
-    do {                                                                              \
-        if (!(cond)) { FATAL("Assertion failed: (%s): " fmt, #cond, ##__VA_ARGS__); } \
-    } while (0)
-
-#define CHECK_WARN(cond, fmt, ...)                                       \
+#define ASSERT_FATAL(cond, fmt, ...)                                     \
     do {                                                                 \
-        if ((cond)) { WARN("Check: (%s): " fmt, #cond, ##__VA_ARGS__); } \
+        if (!(cond)) {                                                   \
+            FATAL("Assertion failed: (%s): " fmt, #cond, ##__VA_ARGS__); \
+        }                                                                \
     } while (0)
 
+#define CHECK_WARN(cond, fmt, ...)                           \
+    do {                                                     \
+        if ((cond)) {                                        \
+            WARN("Check: (%s): " fmt, #cond, ##__VA_ARGS__); \
+        }                                                    \
+    } while (0)
 
 #define CHECK_WARN_RET(cond, ret, fmt, ...)                  \
     do {                                                     \
@@ -59,11 +86,17 @@
         }                                                    \
     } while (0)
 
-#define CHECK_FATAL(cond, fmt, ...)                                     \
-    do {                                                                \
-        if (cond) { FATAL("Check: (%s): " fmt, #cond, ##__VA_ARGS__); } \
+#define CHECK_FATAL(cond, fmt, ...)                           \
+    do {                                                      \
+        if (cond) {                                           \
+            FATAL("Check: (%s): " fmt, #cond, ##__VA_ARGS__); \
+        }                                                     \
     } while (0)
 
+#define LOG(fmt, ...)                               \
+    do {                                            \
+        printf(COLOR_CYAN "[LOG]" " : %s(): " fmt "\n" COLOR_RESET, __func__, ##__VA_ARGS__); \
+    } while (0)
 
 // TYPES
 
@@ -71,12 +104,21 @@
 
 typedef uint8_t  u8;
 typedef uint8_t  b8;
-typedef uint16_t u32;
+typedef uint16_t u16;
 typedef uint32_t u32;
 typedef uint64_t u64;
 
 #define false ((b8)0)
 #define true  ((b8)1)
+
+
+// GENERIC FUNCTIONS
+typedef void (*copy_fn)(u8* dest, const u8* src);
+typedef void (*move_fn)(u8* dest, u8** src);
+typedef void (*delete_fn)(u8* key);
+typedef void (*print_fn)(const u8* elm);
+typedef int  (*compare_fn)(const u8* a, const u8* b, u64 size);
+typedef void (*for_each_fn)(u8* elm); 
 
 
 // CASTING
@@ -90,45 +132,19 @@ typedef uint64_t u64;
 #define KB (1 << 10)
 #define MB (1 << 20)
 
-#define nKB(n) ((u32)((n) * KB))
-#define nMB(n) ((u32)((n) * MB))
+#define nKB(n) ((u64)((n) * KB))
+#define nMB(n) ((u64)((n) * MB))
 
 
 // RAW BYTES TO HEX
 
-void print_hex(const u8* ptr, u64 size, u32 bytes_per_line) 
-{
-    if (ptr == NULL | size == 0 | bytes_per_line == 0) { return; }
+void print_hex(const u8* ptr, u64 size, u32 bytes_per_line);
 
-    // hex rep 0-15
-    const char* hex = "0123456789ABCDEF";
-    
-    for (u64 i = 0; i < size; i++) 
-    {
-        u8 val1 = ptr[i] >> 4;      // get upper 4 bits as num b/w 0-15
-        u8 val2 = ptr[i] & 0x0F;    // get lower 4 bits as num b/w 0-15
-        
-        printf("%c%c", hex[val1], hex[val2]);
-        
-        // Add space or newline appropriately
-        if ((i + 1) % bytes_per_line == 0) {
-            printf("\n");
-        } else if (i < size - 1) {
-            printf(" ");
-        }
-    }
+#endif /* WC_COMMON_H */
 
-    // Add final newline if we didn't just print one
-    if (size % bytes_per_line != 0) {
-        printf("\n");
-    }
-}
-
-
-
-
-#endif // COMMON_H
-
+/* ===== gen_vector.h ===== */
+#ifndef WC_GEN_VECTOR_H
+#define WC_GEN_VECTOR_H
 
 /*          TLDR
  * genVec is a value-based generic vector.
@@ -140,12 +156,7 @@ void print_hex(const u8* ptr, u64 size, u32 bytes_per_line)
 
 
 // User-provided callback functions
-typedef void (*print_fn)(const u8* elm);
-typedef b8   (*compare_fn)(const u8* a, const u8* b);
-typedef void (*delete_fn)(u8* elm);               // Cleanup owned resources
-typedef void (*copy_fn)(u8* dest, const u8* src); // Deep copy resources
-typedef void (*move_fn)(u8* dest, u8** src);      // Move src into dest, null src
-
+// moved to common.h
 
 
 // genVec growth/shrink settings (user can change)
@@ -162,18 +173,19 @@ typedef void (*move_fn)(u8* dest, u8** src);      // Move src into dest, null sr
 
 // generic vector container
 typedef struct {
-    u8* data;       // pointer to generic data
+    u8* data; // pointer to generic data
 
     u64 size;      // Number of elements currently in vector
     u64 capacity;  // Total allocated capacity
     u32 data_size; // Size of each element in bytes
 
+    // Function Pointers (Type based Memory Management)
     copy_fn   copy_fn; // Deep copy function for owned resources (or NULL)
-    move_fn   move_fn; // Get a double pointer, transfer ownership and null original
+    move_fn   move_fn; // Get a double pointer, transfer ownership and null original (or NULL)
     delete_fn del_fn;  // Cleanup function for owned resources (or NULL)
 } genVec;
 
-
+// 8 8 8 4  '4'  8 8 8  = 56
 
 
 
@@ -200,7 +212,7 @@ void genVec_init_val_stk(u64 n, const u8* val, u32 data_size, copy_fn copy_fn, m
 // you provide a stack inited array which becomes internal array of vector
 // WARNING - This crashes when size = capacity and you try to push
 void genVec_init_arr(u64 n, u8* arr, u32 data_size, copy_fn copy_fn, move_fn move_fn,
-                         delete_fn del_fn, genVec* vec);
+                     delete_fn del_fn, genVec* vec);
 
 // Destroy heap-allocated vector and clean up all elements
 void genVec_destroy(genVec* vec);
@@ -245,8 +257,12 @@ void genVec_get(const genVec* vec, u64 i, u8* out);
 // Note: Pointer invalidated by push/insert/remove operations
 const u8* genVec_get_ptr(const genVec* vec, u64 i);
 
+// Get MUTABLE pointer to element at index i
+// Note: Pointer invalidated by push/insert/remove operations
+u8* genVec_get_ptr_mut(const genVec* vec, u64 i);
+
 // apply a function on each value of the array
-void genVec_for_each(genVec* vec, void (*for_each)(u8* elm));
+void genVec_for_each(genVec* vec, for_each_fn for_each);
 
 // Replace element at index i with data (cleans up old element)
 void genVec_replace(genVec* vec, u64 i, const u8* data);
@@ -295,26 +311,108 @@ void genVec_move(genVec* dest, genVec** src);
 
 
 // Get number of elements in vector
-static inline u32 genVec_size(const genVec* vec)
+static inline u64 genVec_size(const genVec* vec)
 {
     CHECK_FATAL(!vec, "vec is null");
     return vec->size;
 }
 
 // Get total capacity of vector
-static inline u32 genVec_capacity(const genVec* vec)
+static inline u64 genVec_capacity(const genVec* vec)
 {
     CHECK_FATAL(!vec, "vec is null");
     return vec->capacity;
 }
 
 // Check if vector is empty
-static inline u8 genVec_empty(const genVec* vec)
+static inline b8 genVec_empty(const genVec* vec)
 {
     CHECK_FATAL(!vec, "vec is null");
     return vec->size == 0;
 }
 
+#endif /* WC_GEN_VECTOR_H */
+
+/* ===== Stack.h ===== */
+#ifndef WC_STACK_H
+#define WC_STACK_H
+
+// Stack is just a thin wrapper around genVec
+typedef genVec Stack;
+
+
+Stack* stack_create(u64 n, u32 data_size, copy_fn copy_fn, move_fn move_fn, delete_fn del_fn);
+Stack* stack_create_val(u64 n, const u8* val, u32 data_size, copy_fn copy_fn, move_fn move_fn,
+                        delete_fn del_fn);
+
+void stack_destroy(Stack* stk);
+void stack_clear(Stack* stk);
+void stack_reset(Stack* stk);
+
+void      stack_push(Stack* stk, const u8* x);
+void      stack_push_move(Stack* stk, u8** x);
+void      stack_pop(Stack* stk, u8* popped);
+void      stack_peek(Stack* stk, u8* peek);
+const u8* stack_peek_ptr(Stack* stk);
+
+static inline u64 stack_size(Stack* stk)
+{
+    return genVec_size(stk);
+}
+
+static inline u8 stack_empty(Stack* stk)
+{
+    return genVec_empty(stk);
+}
+
+static inline u64 stack_capacity(Stack* stk)
+{
+    return genVec_capacity(stk);
+}
+
+void stack_print(Stack* stk, print_fn print_fn);
+
+#endif /* WC_STACK_H */
+
+#ifdef WC_IMPLEMENTATION
+
+/* ===== common.c ===== */
+#ifndef WC_COMMON_IMPL
+#define WC_COMMON_IMPL
+
+void print_hex(const u8* ptr, u64 size, u32 bytes_per_line) 
+{
+    if (ptr == NULL | size == 0 | bytes_per_line == 0) { return; }
+
+    // hex rep 0-15
+    const char* hex = "0123456789ABCDEF";
+    
+    for (u64 i = 0; i < size; i++) 
+    {
+        u8 val1 = ptr[i] >> 4;      // get upper 4 bits as num b/w 0-15
+        u8 val2 = ptr[i] & 0x0F;    // get lower 4 bits as num b/w 0-15
+        
+        printf("%c%c", hex[val1], hex[val2]);
+        
+        // Add space or newline appropriately
+        if ((i + 1) % bytes_per_line == 0) {
+            printf("\n");
+        } else if (i < size - 1) {
+            printf(" ");
+        }
+    }
+
+    // Add final newline if we didn't just print one
+    if (size % bytes_per_line != 0) {
+        printf("\n");
+    }
+}
+
+#endif /* WC_COMMON_IMPL */
+
+/* ===== gen_vector.c ===== */
+#ifndef WC_GEN_VECTOR_IMPL
+#define WC_GEN_VECTOR_IMPL
 
 #include <string.h>
 
@@ -338,7 +436,7 @@ static inline u8 genVec_empty(const genVec* vec)
 
 #define MAYBE_SHRINK(vec)                                                  \
     do {                                                                   \
-        if (vec->size <= (u32)((float)vec->capacity * GENVEC_SHRINK_AT)) { \
+        if (vec->size <= (u64)((float)vec->capacity * GENVEC_SHRINK_AT)) { \
             genVec_shrink(vec);                                            \
         }                                                                  \
     } while (0)
@@ -361,7 +459,7 @@ genVec* genVec_init(u64 n, u32 data_size, copy_fn copy_fn, move_fn move_fn, dele
     CHECK_FATAL(!vec, "vec init failed");
 
     // Only allocate memory if n > 0, otherwise data can be NULL
-    vec->data = (n > 0) ? (u8*)malloc((size_t)data_size * n) : NULL;
+    vec->data = (n > 0) ? malloc(data_size * n) : NULL;
 
     // Only check for allocation failure if we actually tried to allocate
     if (n > 0 && !vec->data) {
@@ -387,7 +485,7 @@ void genVec_init_stk(u64 n, u32 data_size, copy_fn copy_fn, move_fn move_fn, del
     CHECK_FATAL(data_size == 0, "data_size can't be 0");
 
     // Only allocate memory if n > 0, otherwise data can be NULL
-    vec->data = (n > 0) ? (u8*)malloc((size_t)data_size * n) : NULL;
+    vec->data = (n > 0) ? malloc(data_size * n) : NULL;
     CHECK_FATAL(n > 0 && !vec->data, "data init failed");
 
     vec->size      = 0;
@@ -555,8 +653,8 @@ void genVec_shrink_to_fit(genVec* vec)
     CHECK_FATAL(!vec, "vec is null");
 
     // min allowd cap or size
-    u32 min_cap  = vec->size > GENVEC_MIN_CAPACITY ? vec->size : GENVEC_MIN_CAPACITY;
-    u32 curr_cap = vec->capacity;
+    u64 min_cap  = vec->size > GENVEC_MIN_CAPACITY ? vec->size : GENVEC_MIN_CAPACITY;
+    u64 curr_cap = vec->capacity;
 
     // if curr cap is already equal (or less??) than min allowed cap
     if (curr_cap <= min_cap) {
@@ -655,6 +753,14 @@ const u8* genVec_get_ptr(const genVec* vec, u64 i)
     return GET_PTR(vec, i);
 }
 
+u8* genVec_get_ptr_mut(const genVec* vec, u64 i)
+{
+    CHECK_FATAL(!vec, "vec is null");
+    CHECK_FATAL(i >= vec->size, "index out of bounds");
+
+    return GET_PTR(vec, i);
+}
+
 void genVec_for_each(genVec* vec, void (*for_each)(u8* elm))
 {
     CHECK_FATAL(!vec, "vec is null");
@@ -679,7 +785,7 @@ void genVec_insert(genVec* vec, u64 i, const u8* data)
     MAYBE_GROW(vec);
 
     // Calculate the number of elements to shift to right
-    u32 elements_to_shift = vec->size - i;
+    u64 elements_to_shift = vec->size - i;
     // the place where we want to insert
     u8* src = GET_PTR(vec, i);
 
@@ -712,7 +818,7 @@ void genVec_insert_move(genVec* vec, u64 i, u8** data)
     MAYBE_GROW(vec);
 
     // Calculate the number of elements to shift to right
-    u32 elements_to_shift = vec->size - i;
+    u64 elements_to_shift = vec->size - i;
     // the place where we want to insert
     u8* src = GET_PTR(vec, i);
 
@@ -740,7 +846,7 @@ void genVec_insert_multi(genVec* vec, u64 i, const u8* data, u64 num_data)
     CHECK_FATAL(i > vec->size, "index out of bounds");
 
     // Calculate the number of elements to shift to right
-    u32 elements_to_shift = vec->size - i;
+    u64 elements_to_shift = vec->size - i;
 
     vec->size += num_data; // no of new elements in chunk
 
@@ -757,7 +863,7 @@ void genVec_insert_multi(genVec* vec, u64 i, const u8* data, u64 num_data)
 
     //src pos is now free to insert (it's data copied to next location)
     if (vec->copy_fn) {
-        for (u32 j = 0; j < num_data; j++) {
+        for (u64 j = 0; j < num_data; j++) {
             vec->copy_fn(GET_PTR(vec, j + i), (data + (size_t)(j * vec->data_size)));
         }
     } else {
@@ -774,7 +880,7 @@ void genVec_insert_multi_move(genVec* vec, u64 i, u8** data, u64 num_data)
     CHECK_FATAL(i > vec->size, "index out of bounds");
 
     // Calculate the number of elements to shift to right
-    u32 elements_to_shift = vec->size - i;
+    u64 elements_to_shift = vec->size - i;
 
     vec->size += num_data; // no of new elements in chunk
 
@@ -812,7 +918,7 @@ void genVec_remove(genVec* vec, u64 i, u8* out)
         vec->del_fn(GET_PTR(vec, i));
     }
     // Calculate the number of elements to shift
-    u32 elements_to_shift = vec->size - i - 1;
+    u64 elements_to_shift = vec->size - i - 1;
 
     if (elements_to_shift > 0) {
         // Shift elements left to overwrite the deleted element
@@ -845,7 +951,7 @@ void genVec_remove_range(genVec* vec, u64 l, u64 r)
         }
     }
 
-    u32 elms_to_shift = vec->size - (r + 1);
+    u64 elms_to_shift = vec->size - (r + 1);
 
     // move from r + 1 to l
     u8* dest = GET_PTR(vec, l);
@@ -995,7 +1101,7 @@ void genVec_grow(genVec* vec)
     if (vec->capacity < GENVEC_MIN_CAPACITY) {
         new_cap = vec->capacity + 1;
     } else {
-        new_cap = (u32)((float)vec->capacity * GENVEC_GROWTH);
+        new_cap = (u64)((float)vec->capacity * GENVEC_GROWTH);
         if (new_cap <= vec->capacity) { // Ensure at least +1 growth
             new_cap = vec->capacity + 1;
         }
@@ -1013,7 +1119,7 @@ void genVec_shrink(genVec* vec)
 {
     CHECK_FATAL(!vec, "vec is null");
 
-    u64 reduced_cap = (u32)((float)vec->capacity * GENVEC_SHRINK_BY);
+    u64 reduced_cap = (u64)((float)vec->capacity * GENVEC_SHRINK_BY);
     if (reduced_cap < vec->size || reduced_cap == 0) {
         return;
     }
@@ -1028,187 +1134,71 @@ void genVec_shrink(genVec* vec)
     vec->capacity = reduced_cap;
 }
 
+#endif /* WC_GEN_VECTOR_IMPL */
 
+/* ===== Stack.c ===== */
+#ifndef WC_STACK_IMPL
+#define WC_STACK_IMPL
 
-#endif // GEN_VECTOR_SINGLE_H
-
-
-#include <stddef.h>
-
-
-typedef struct {
-    genVec* arr;
-    u64 size;        // no of set bits
-} bitVec;
-
-
-
-bitVec* bitVec_create(void);
-void bitVec_destroy(bitVec* bvec);
-
-
-void bitVec_set(bitVec* bvec, u64 i);
-void bitVec_clear(bitVec* bvec, u64 i);
-u8 bitVec_test(bitVec* bvec, u64 i);
-void bitVec_toggle(bitVec* bvec, u64 i);
-
-
-void bitVec_push(bitVec* bvec);
-void bitVec_pop(bitVec* bvec);
-
-
-void bitVec_print(bitVec* bvec, u32 byteI);
-
-
-// get the no of BITS in the vector
-static inline u32 bitVec_size_bits(bitVec* bvec) {
-    return bvec->size;
-}
-
-// get the no of BYTES in the vector
-static inline u32 bitVec_size_bytes(bitVec* bvec) {
-    return genVec_size(bvec->arr);
-}
-
-
-
-#include <stdio.h>
-
-
-bitVec* bitVec_create(void)
+Stack* stack_create(u64 n, u32 data_size, copy_fn copy_fn, move_fn move_fn, delete_fn del_fn)
 {
-    bitVec* bvec = malloc(sizeof(bitVec));
-    CHECK_FATAL(!bvec, "bvec init failed");
-
-    bvec->arr = genVec_init(0, sizeof(u8), NULL, NULL, NULL);
-
-    bvec->size = 0;
-
-    return bvec;
+    return genVec_init(n, data_size, copy_fn, move_fn, del_fn);
 }
 
-void bitVec_destroy(bitVec* bvec)
+Stack* stack_create_val(u64 n, const u8* val, u32 data_size, copy_fn copy_fn, move_fn move_fn,
+                        delete_fn del_fn)
 {
-    CHECK_FATAL(!bvec, "bvec is null");
-
-    genVec_destroy(bvec->arr);
-
-    free(bvec);
+    return genVec_init_val(n, val, data_size, copy_fn, move_fn, del_fn);
 }
 
-// Set bit i to 1
-void bitVec_set(bitVec* bvec, u64 i)
+
+void stack_destroy(Stack* stk)
 {
-    CHECK_FATAL(!bvec, "bvec is null");
-    
-    u32 byte_index = i / 8; // which byte (elm) 
-    u32 bit_index = i % 8; // which bit in the byte
-    
-    // Ensure byte capacity
-    while (byte_index >= bvec->arr->size) {
-        u8 zero = 0;
-        genVec_push(bvec->arr, &zero);
-    }
-
-    u8* byte = (u8*)genVec_get_ptr(bvec->arr, byte_index);
-    *byte |= (1 << bit_index);  // Set the bit
-    // we create a new 8 bit arr with left shift 
-    // it has 1 at the pos we want to set
-    // we or it with the arr so the 1 is set
-    // we set the bits till the pos where we want 1
-    // rest are 0, rhs of 1 is implicitly set, lhs of 1 is explici by <<
-
-    if (i + 1 > bvec->size) { // bits upto ith are considered allocated
-        bvec->size = i + 1;  // ith bit is 1 (set)
-    }  
+    genVec_destroy(stk);
 }
 
-// Clear bit i (set to 0)
-void bitVec_clear(bitVec* bvec, u64 i)
+void stack_clear(Stack* stk)
 {
-    CHECK_FATAL(!bvec, "bvec is null");
-
-    CHECK_FATAL(i >= bvec->size, "index out of bounds");     
-
-    u32 byte_index = i / 8;
-    u32 bit_index = i % 8;
-
-    u8* byte = (u8*)genVec_get_ptr(bvec->arr, byte_index);
-    *byte &= ~(1 << bit_index);  // Clear the bit
-    // we create a new 8 bit arr with left shift 
-    // it has 0 at the pos we want to clear (the not puts 0 there and 1 everywhere else)
-    // we and it with the arr so 0 is cleared
+    genVec_clear(stk);
 }
 
-// Test bit i (returns 1 or 0)
-u8 bitVec_test(bitVec* bvec, u64 i)
+void stack_reset(Stack* stk)
 {
-    CHECK_FATAL(!bvec, "bvec is null");
-    
-    CHECK_FATAL(i >= bvec->size, "index out of bounds");
-
-    u32 byte_index = i / 8;
-    u32 bit_index = i % 8;
-
-    //u8* byte = (u8*)genVec_get_ptr(bvec->arr, byte_index); 
-    return (*genVec_get_ptr(bvec->arr, byte_index) >> bit_index) & 1;  // copy of dereferenced byte data returned
-     // create new arr, move needed bit to LSB
-    //The `& 1` masks off everything except the LSB: // 1 = 00000001
+    genVec_reset(stk);
 }
 
-// Toggle bit i
-void bitVec_toggle(bitVec* bvec, u64 i)
+void stack_push(Stack* stk, const u8* x)
 {
-    CHECK_FATAL(!bvec, "bvec is null");
-    
-    CHECK_FATAL(i >= bvec->size, "index out of bounds");
-
-    u32 byte_index = i / 8;
-    u32 bit_index = i % 8;
-
-    u8* byte = (u8*)genVec_get_ptr(bvec->arr, byte_index);
-    *byte ^= (1 << bit_index); // lvalue so byte is modified
-    // xor with 1 toggles the bit 
-    // while with 0 it does nothing
+    genVec_push(stk, x);
 }
 
-
-void bitVec_push(bitVec* bvec)
+void stack_push_move(Stack* stk, u8** x)
 {
-    bitVec_set(bvec, bvec->size); 
+    genVec_push_move(stk, x);
 }
 
-
-void bitVec_pop(bitVec* bvec)
+void stack_pop(Stack* stk, u8* popped)
 {
-    CHECK_FATAL(!bvec, "bvec is null");
-
-    bvec->size--;
-    if (bvec->size % 8 == 0) {
-        genVec_pop(bvec->arr, NULL);
-    }
+    genVec_pop(stk, popped);
 }
 
-void bitVec_print(bitVec *bvec, u32 byteI)
+void stack_peek(Stack* stk, u8* peek)
 {
-    CHECK_FATAL(!bvec, "bvec is null");
-
-    CHECK_FATAL(byteI >= bvec->arr->size, "index out of bounds");
-    
-    u8 bits_to_print = 8;
-    // If this is the last byte, only print the valid bits
-    if (byteI == bvec->arr->size - 1) {
-        u64 remaining = bvec->size % 8;
-        bits_to_print = (remaining == 0) ? 8 : (u8)remaining;
-    }
-
-    for (u8 i = 0; i < bits_to_print; i++) {
-        // we print from 0th bit to 7th bit (there are no lsb, msb)
-        printf("%d", ((*genVec_get_ptr(bvec->arr, byteI)) >> i) & 1);// we lose data from right
-    }
-
-    printf("\n");
+    genVec_get(stk, genVec_size(stk) - 1, peek);
 }
 
+const u8* stack_peek_ptr(Stack* stk)
+{
+    return genVec_get_ptr(stk, genVec_size(stk) - 1);
+}
 
-#endif // BIT_VECTOR_SINGLE_H
+void stack_print(Stack* stk, print_fn print_fn)
+{
+    genVec_print(stk, print_fn);
+}
+
+#endif /* WC_STACK_IMPL */
+
+#endif /* WC_IMPLEMENTATION */
+
+#endif /* WC_STACK_H */

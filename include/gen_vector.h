@@ -17,16 +17,15 @@
 // moved to common.h
 
 
-
 // genVec growth/shrink settings (user can change)
 #ifndef GENVEC_GROWTH
-#define GENVEC_GROWTH 1.5F // vec capacity multiplier
+    #define GENVEC_GROWTH 1.5F // vec capacity multiplier
 #endif
 #ifndef GENVEC_SHRINK_AT
-#define GENVEC_SHRINK_AT 0.25F // % filled to shrink at (25% filled)
+    #define GENVEC_SHRINK_AT 0.25F // % filled to shrink at (25% filled)
 #endif
 #ifndef GENVEC_SHRINK_BY
-#define GENVEC_SHRINK_BY 0.5F // capacity dividor (half)
+    #define GENVEC_SHRINK_BY 0.5F // capacity dividor (half)
 #endif
 
 
@@ -38,7 +37,7 @@ typedef struct {
     u64 capacity;  // Total allocated capacity
     u32 data_size; // Size of each element in bytes
 
-        // Function Pointers (Type based Memory Management)
+    // Function Pointers (Type based Memory Management)
     copy_fn   copy_fn; // Deep copy function for owned resources (or NULL)
     move_fn   move_fn; // Get a double pointer, transfer ownership and null original (or NULL)
     delete_fn del_fn;  // Cleanup function for owned resources (or NULL)
@@ -190,28 +189,5 @@ static inline b8 genVec_empty(const genVec* vec)
     return vec->size == 0;
 }
 
-
-// TODO: genVec view?
-// TODO: iterator support ?
-// TODO: add:
-/*
-
-
-// Extend with multiple copies of val
-void genVec_extend(genVec* vec, const u8* val, u32 count);
-
-// Swap two elements
-void genVec_swap(genVec* vec, u64 i, u32 j);
-
-// Find element index (-1 if not found)
-i32 genVec_find(const genVec* vec, const u8* elm, compare_fn cmp);
-
-// Reverse the vector in-place
-void genVec_reverse(genVec* vec);
-
-// Filter in-place (remove elements where predicate returns false)
-void genVec_filter(genVec* vec, b8 (*predicate)(const u8*));
-
-*/
 
 #endif // GEN_VECTOR_H

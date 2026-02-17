@@ -186,43 +186,5 @@ static inline Matrix* matrix_arena_arr_alloc(Arena* arena, u64 m, u64 n, const f
 
 
 
-/* 
- TODO:
- 
- 1. Generic macro approach (see matrix_generic.h for implementation)
-    - Support for multiple data types (int, float, double, etc.)
-    - Compile-time type safety
-    
- 2. SIMD optimization
-    - Vectorized operations for add, sub, multiply
-    - Platform-specific optimizations (SSE, AVX, NEON)
-    
- 3. Matrix views (zero-copy slicing)
-    typedef struct {
-        int* data;
-        u64  n, m;
-        u64  stride;    // for non-contiguous access
-        u64  offset;    // starting position
-    } MatrixView;
-    
-    - Slicing without copying
-    - Transpose views without data movement
-    - SIMD-friendly kernels with custom strides
-    
- 4. Identity matrix creation
-    Matrix* matrix_iden(u64 n, u64 m);
-    
- 5. Additional operations
-    - Power operations
-    - Trace
-    - Rank calculation
-    - Eigenvalues/eigenvectors
-    
- 6. Numerical stability improvements
-    - Pivoting for LU decomposition
-    - Condition number checks
-    - Iterative refinement
-*/
-
 
 #endif // MATRIX_H

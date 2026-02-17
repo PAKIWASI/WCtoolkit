@@ -11,7 +11,7 @@ align to 4 bytes
 */
 // Align a value to alignment boundary
 #define ALIGN_UP(val, align) \
-    (((val) + ((align) - 1)) & ~((align) - 1))      // WARN: removed u32 cast
+    (((val) + ((align) - 1)) & ~((align) - 1))
 
 // align value to ARENA_DEFAULT_ALIGNMENT
 #define ALIGN_UP_DEFAULT(val) \
@@ -20,7 +20,7 @@ align to 4 bytes
 // Align a pointer to alignment boundary  
 // turn ptr to a u64 val to align, then turn to ptr again
 #define ALIGN_PTR(ptr, align) \
-    ((u8*)ALIGN_UP((ptr), (align)))             // WARN: removed u64 cast
+    ((u8*)ALIGN_UP((ptr), (align)))
 
 // align a pointer to ARENA_DEFAULT_ALIGNMENT
 #define ALIGN_PTR_DEFAULT(ptr) \
@@ -131,4 +131,5 @@ void arena_clear_mark(Arena* arena, u64 mark)
 
     arena->idx = mark;
 }
+
 

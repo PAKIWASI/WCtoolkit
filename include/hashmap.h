@@ -102,14 +102,4 @@ static inline b8 hashmap_empty(const hashmap* map)
 }
 
 
-// TODO: 
-/*
-void hashmap_clear(hashmap* map);  // Remove all, keep capacity
-void hashmap_reset(hashmap* map);  // Remove all, reset to initial capacity
-// Update value in-place if key exists, return false if key doesn't exist
-b8 hashmap_update(hashmap* map, const u8* key, const u8* val);
-genVec* hashmap_keys(const hashmap* map);
-genVec* hashmap_values(const hashmap* map);
-*/
-
 #endif // HASHMAP_H

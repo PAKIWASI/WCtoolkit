@@ -213,22 +213,5 @@ ARENA_SCRATCH(scratch, arena) {
     })
 
 
-/*
-// V. COOL:  Scratch Arena
-
-#define ARENA_SCRATCH(arena) \
-    for (u64 mark_##arena= arena_get_mark(arena); mark_##arena != (u64) - 1;\
-        arena_clear_mark(arena, mark_##arena), mark_##arena = (u64) - 1)
-
-
-USAGE:
-ARENA_SCRATCH(arena) {
-    char* tmp = ARENA_ALLOC_N(arena, char, 256);
-    // temp work
-} // auto rollback
-*/
-
-
-
 
 #endif // ARENA_H

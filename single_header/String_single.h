@@ -1,12 +1,28 @@
-#ifndef STRING_SINGLE_H
-#define STRING_SINGLE_H
+#ifndef WC_STRING_H
+#define WC_STRING_H
 
+/*
+ * String_single.h
+ * Auto-generated single-header library.
+ *
+ * In EXACTLY ONE .c file, before including this header:
+ *     #define WC_IMPLEMENTATION
+ *     #include "String_single.h"
+ *
+ * All other files just:
+ *     #include "String_single.h"
+ */
 
-#ifndef GEN_VECTOR_SINGLE_H
-#define GEN_VECTOR_SINGLE_H
+/* ===== common.h ===== */
+#ifndef WC_COMMON_H
+#define WC_COMMON_H
 
-#ifndef COMMON_H
-#define COMMON_H
+/*
+ * C Data Structures Library
+ * Copyright (c) 2026 Wasi Ullah (PAKIWASI)
+ * Licensed under the MIT License. See LICENSE file for details.
+ */
+
 
 
 // LOGGING/ERRORS
@@ -14,22 +30,30 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+// ANSI Color Codes
+#define COLOR_RESET   "\033[0m"
+#define COLOR_RED     "\033[1;31m"
+#define COLOR_YELLOW  "\033[1;33m"
+#define COLOR_GREEN   "\033[1;32m"
+#define COLOR_BLUE    "\033[1;34m"
+#define COLOR_CYAN    "\033[1;36m"
+
 #define WARN(fmt, ...)                                                                       \
     do {                                                                                     \
-        printf("[WARN] %s:%d:%s(): " fmt "\n", __FILE__, __LINE__, __func__, ##__VA_ARGS__); \
+        printf(COLOR_YELLOW "[WARN]" " %s:%d:%s(): " fmt "\n" COLOR_RESET, __FILE__, __LINE__, __func__, ##__VA_ARGS__); \
     } while (0)
 
-#define FATAL(fmt, ...)                                                                \
-    do {                                                                               \
-        fprintf(stderr, "[FATAL] %s:%d:%s(): " fmt "\n", __FILE__, __LINE__, __func__, \
-                ##__VA_ARGS__);                                                        \
-        exit(EXIT_FAILURE);                                                            \
+#define FATAL(fmt, ...)                                                                                \
+    do {                                                                                               \
+        fprintf(stderr, COLOR_RED "[FATAL]" " %s:%d:%s(): " fmt "\n" COLOR_RESET, __FILE__, __LINE__, __func__, ##__VA_ARGS__); \
+        exit(EXIT_FAILURE);                                                                            \
     } while (0)
 
-
-#define ASSERT_WARN(cond, fmt, ...)                                                  \
-    do {                                                                             \
-        if (!(cond)) { WARN("Assertion failed: (%s): " fmt, #cond, ##__VA_ARGS__); } \
+#define ASSERT_WARN(cond, fmt, ...)                                     \
+    do {                                                                \
+        if (!(cond)) {                                                  \
+            WARN("Assertion failed: (%s): " fmt, #cond, ##__VA_ARGS__); \
+        }                                                               \
     } while (0)
 
 #define ASSERT_WARN_RET(cond, ret, fmt, ...)                            \
@@ -40,16 +64,19 @@
         }                                                               \
     } while (0)
 
-#define ASSERT_FATAL(cond, fmt, ...)                                                  \
-    do {                                                                              \
-        if (!(cond)) { FATAL("Assertion failed: (%s): " fmt, #cond, ##__VA_ARGS__); } \
-    } while (0)
-
-#define CHECK_WARN(cond, fmt, ...)                                       \
+#define ASSERT_FATAL(cond, fmt, ...)                                     \
     do {                                                                 \
-        if ((cond)) { WARN("Check: (%s): " fmt, #cond, ##__VA_ARGS__); } \
+        if (!(cond)) {                                                   \
+            FATAL("Assertion failed: (%s): " fmt, #cond, ##__VA_ARGS__); \
+        }                                                                \
     } while (0)
 
+#define CHECK_WARN(cond, fmt, ...)                           \
+    do {                                                     \
+        if ((cond)) {                                        \
+            WARN("Check: (%s): " fmt, #cond, ##__VA_ARGS__); \
+        }                                                    \
+    } while (0)
 
 #define CHECK_WARN_RET(cond, ret, fmt, ...)                  \
     do {                                                     \
@@ -59,11 +86,17 @@
         }                                                    \
     } while (0)
 
-#define CHECK_FATAL(cond, fmt, ...)                                     \
-    do {                                                                \
-        if (cond) { FATAL("Check: (%s): " fmt, #cond, ##__VA_ARGS__); } \
+#define CHECK_FATAL(cond, fmt, ...)                           \
+    do {                                                      \
+        if (cond) {                                           \
+            FATAL("Check: (%s): " fmt, #cond, ##__VA_ARGS__); \
+        }                                                     \
     } while (0)
 
+#define LOG(fmt, ...)                               \
+    do {                                            \
+        printf(COLOR_CYAN "[LOG]" " : %s(): " fmt "\n" COLOR_RESET, __func__, ##__VA_ARGS__); \
+    } while (0)
 
 // TYPES
 
@@ -71,12 +104,21 @@
 
 typedef uint8_t  u8;
 typedef uint8_t  b8;
-typedef uint16_t u32;
+typedef uint16_t u16;
 typedef uint32_t u32;
 typedef uint64_t u64;
 
 #define false ((b8)0)
 #define true  ((b8)1)
+
+
+// GENERIC FUNCTIONS
+typedef void (*copy_fn)(u8* dest, const u8* src);
+typedef void (*move_fn)(u8* dest, u8** src);
+typedef void (*delete_fn)(u8* key);
+typedef void (*print_fn)(const u8* elm);
+typedef int  (*compare_fn)(const u8* a, const u8* b, u64 size);
+typedef void (*for_each_fn)(u8* elm); 
 
 
 // CASTING
@@ -90,45 +132,19 @@ typedef uint64_t u64;
 #define KB (1 << 10)
 #define MB (1 << 20)
 
-#define nKB(n) ((u32)((n) * KB))
-#define nMB(n) ((u32)((n) * MB))
+#define nKB(n) ((u64)((n) * KB))
+#define nMB(n) ((u64)((n) * MB))
 
 
 // RAW BYTES TO HEX
 
-void print_hex(const u8* ptr, u64 size, u32 bytes_per_line) 
-{
-    if (ptr == NULL | size == 0 | bytes_per_line == 0) { return; }
+void print_hex(const u8* ptr, u64 size, u32 bytes_per_line);
 
-    // hex rep 0-15
-    const char* hex = "0123456789ABCDEF";
-    
-    for (u64 i = 0; i < size; i++) 
-    {
-        u8 val1 = ptr[i] >> 4;      // get upper 4 bits as num b/w 0-15
-        u8 val2 = ptr[i] & 0x0F;    // get lower 4 bits as num b/w 0-15
-        
-        printf("%c%c", hex[val1], hex[val2]);
-        
-        // Add space or newline appropriately
-        if ((i + 1) % bytes_per_line == 0) {
-            printf("\n");
-        } else if (i < size - 1) {
-            printf(" ");
-        }
-    }
+#endif /* WC_COMMON_H */
 
-    // Add final newline if we didn't just print one
-    if (size % bytes_per_line != 0) {
-        printf("\n");
-    }
-}
-
-
-
-
-#endif // COMMON_H
-
+/* ===== gen_vector.h ===== */
+#ifndef WC_GEN_VECTOR_H
+#define WC_GEN_VECTOR_H
 
 /*          TLDR
  * genVec is a value-based generic vector.
@@ -140,12 +156,7 @@ void print_hex(const u8* ptr, u64 size, u32 bytes_per_line)
 
 
 // User-provided callback functions
-typedef void (*print_fn)(const u8* elm);
-typedef b8   (*compare_fn)(const u8* a, const u8* b);
-typedef void (*delete_fn)(u8* elm);               // Cleanup owned resources
-typedef void (*copy_fn)(u8* dest, const u8* src); // Deep copy resources
-typedef void (*move_fn)(u8* dest, u8** src);      // Move src into dest, null src
-
+// moved to common.h
 
 
 // genVec growth/shrink settings (user can change)
@@ -162,18 +173,19 @@ typedef void (*move_fn)(u8* dest, u8** src);      // Move src into dest, null sr
 
 // generic vector container
 typedef struct {
-    u8* data;       // pointer to generic data
+    u8* data; // pointer to generic data
 
     u64 size;      // Number of elements currently in vector
     u64 capacity;  // Total allocated capacity
     u32 data_size; // Size of each element in bytes
 
+    // Function Pointers (Type based Memory Management)
     copy_fn   copy_fn; // Deep copy function for owned resources (or NULL)
-    move_fn   move_fn; // Get a double pointer, transfer ownership and null original
+    move_fn   move_fn; // Get a double pointer, transfer ownership and null original (or NULL)
     delete_fn del_fn;  // Cleanup function for owned resources (or NULL)
 } genVec;
 
-
+// 8 8 8 4  '4'  8 8 8  = 56
 
 
 
@@ -200,7 +212,7 @@ void genVec_init_val_stk(u64 n, const u8* val, u32 data_size, copy_fn copy_fn, m
 // you provide a stack inited array which becomes internal array of vector
 // WARNING - This crashes when size = capacity and you try to push
 void genVec_init_arr(u64 n, u8* arr, u32 data_size, copy_fn copy_fn, move_fn move_fn,
-                         delete_fn del_fn, genVec* vec);
+                     delete_fn del_fn, genVec* vec);
 
 // Destroy heap-allocated vector and clean up all elements
 void genVec_destroy(genVec* vec);
@@ -245,8 +257,12 @@ void genVec_get(const genVec* vec, u64 i, u8* out);
 // Note: Pointer invalidated by push/insert/remove operations
 const u8* genVec_get_ptr(const genVec* vec, u64 i);
 
+// Get MUTABLE pointer to element at index i
+// Note: Pointer invalidated by push/insert/remove operations
+u8* genVec_get_ptr_mut(const genVec* vec, u64 i);
+
 // apply a function on each value of the array
-void genVec_for_each(genVec* vec, void (*for_each)(u8* elm));
+void genVec_for_each(genVec* vec, for_each_fn for_each);
 
 // Replace element at index i with data (cleans up old element)
 void genVec_replace(genVec* vec, u64 i, const u8* data);
@@ -295,26 +311,238 @@ void genVec_move(genVec* dest, genVec** src);
 
 
 // Get number of elements in vector
-static inline u32 genVec_size(const genVec* vec)
+static inline u64 genVec_size(const genVec* vec)
 {
     CHECK_FATAL(!vec, "vec is null");
     return vec->size;
 }
 
 // Get total capacity of vector
-static inline u32 genVec_capacity(const genVec* vec)
+static inline u64 genVec_capacity(const genVec* vec)
 {
     CHECK_FATAL(!vec, "vec is null");
     return vec->capacity;
 }
 
 // Check if vector is empty
-static inline u8 genVec_empty(const genVec* vec)
+static inline b8 genVec_empty(const genVec* vec)
 {
     CHECK_FATAL(!vec, "vec is null");
     return vec->size == 0;
 }
 
+#endif /* WC_GEN_VECTOR_H */
+
+/* ===== String.h ===== */
+#ifndef WC_STRING_H
+#define WC_STRING_H
+
+// ===== STRING =====
+// the string is just a genVec of char type (length based string - not cstr)
+typedef genVec String;
+// ==================
+
+
+// Construction/Destruction
+
+// create string on the heap
+String* string_create(void);
+
+// create string with struct on the stack and data on heap
+void string_create_stk(String* str, const char* cstr);
+
+// create string on heap from a cstr
+String* string_from_cstr(const char* cstr);
+
+// get copy of a string (heap allocated)
+String* string_from_string(const String* other);
+
+// reserve a capacity for a string (must be greater than current cap)
+void string_reserve(String* str, u64 capacity);
+
+// reserve a capacity with a char
+void string_reserve_char(String* str, u64 capacity, char c);
+
+// destroy the heap allocated string
+void string_destroy(String* str);
+
+// destroy only the data ptr of string struct (for stk created str)
+void string_destroy_stk(String* str);
+
+// move string contents (nulls source)
+// Note: src must be heap allocated
+void string_move(String* dest, String** src);
+
+// make deep copy
+void string_copy(String* dest, const String* src);
+
+// get cstr as COPY ('\0' present)
+// cstr is MALLOCED and must be freed by user
+char* string_to_cstr(const String* str);
+// get ptr to the cstr buffer
+// Note: NO NULL TERMINATOR
+char* string_data_ptr(const String* str);
+
+
+// TODO:
+// void string_to_cstr_buf(const String* str, char* buf, u32 buf_size);
+// void string_to_cstr_buf_move(const String* str, char* buf, u32 buf_size);
+
+
+// Modification
+
+
+// append a cstr to the end of a string
+void string_append_cstr(String* str, const char* cstr);
+
+// append a string "other" to the end of a string "str"
+void string_append_string(String* str, const String* other);
+
+// Concatenate string "other" and destroy source "str"
+void string_append_string_move(String* str, String** other);
+
+// append a char to the end of a string
+void string_append_char(String* str, char c);
+
+// insert a char at index i of string
+void string_insert_char(String* str, u64 i, char c);
+
+// insert a cstr at index i
+void string_insert_cstr(String* str, u64 i, const char* cstr);
+
+// insert a string "str" at index i
+void string_insert_string(String* str, u64 i, const String* other);
+
+// remove char from end of a string
+char string_pop_char(String* str);
+
+// remove a char from index i of string
+void string_remove_char(String* str, u64 i);
+
+// remove elements from l to r (inclusive)
+void string_remove_range(String* str, u64 l, u64 r);
+
+// remove all chars (keep memory)
+void string_clear(String* str);
+
+
+// Access
+
+// return char at index i
+char string_char_at(const String* str, u64 i);
+
+// set the value of char at index i
+void string_set_char(String* str, u64 i, char c);
+
+// Comparison
+
+
+// compare (c-style) two strings
+// 0 -> equal, 1 -> not equal
+int string_compare(const String* str1, const String* str2);
+
+// return true if string's data matches
+b8 string_equals(const String* str1, const String* str2);
+
+// return true if a string's data matches a cstr
+b8 string_equals_cstr(const String* str, const char* cstr);
+
+// Search
+
+
+// return index of char c (UINT_MAX otherwise)
+u64 string_find_char(const String* str, char c);
+
+// return index of cstr "substr" (UINT_MAX otherwise)
+u64 string_find_cstr(const String* str, const char* substr);
+
+// Set a heap allocated string of a substring starting at index "start", upto length
+String* string_substr(const String* str, u64 start, u64 length);
+
+// TODO: pass a buffer version of substr??
+
+// I/O
+
+// print the content of str
+void string_print(const String* str);
+
+// Basic properties
+
+// get the current length of the string
+static inline u64 string_len(const String* str)
+{
+    CHECK_FATAL(!str, "str is null");
+
+    return str->size;
+}
+
+// get the capacity of the genVec container of string
+static inline u64 string_capacity(const String* str)
+{
+    return str->capacity;
+}
+
+// return true if str is empty
+static inline b8 string_empty(const String* str)
+{
+    return string_len(str) == 0;
+}
+
+// TODO: test
+/*
+ macro to create a temporary cstr for read ops
+ Note: Must not break or return in the block
+ Usage:
+
+TEMP_CSTR_READ(s)
+{
+    printf("%s\n", string_data_ptr(s));
+}
+*/
+#define TEMP_CSTR_READ(str) \
+    for (u8 _once = 0; (_once == 0) && (string_append_char((str), '\0'), 1); _once++, string_pop_char((str)))
+
+#endif /* WC_STRING_H */
+
+#ifdef WC_IMPLEMENTATION
+
+/* ===== common.c ===== */
+#ifndef WC_COMMON_IMPL
+#define WC_COMMON_IMPL
+
+void print_hex(const u8* ptr, u64 size, u32 bytes_per_line) 
+{
+    if (ptr == NULL | size == 0 | bytes_per_line == 0) { return; }
+
+    // hex rep 0-15
+    const char* hex = "0123456789ABCDEF";
+    
+    for (u64 i = 0; i < size; i++) 
+    {
+        u8 val1 = ptr[i] >> 4;      // get upper 4 bits as num b/w 0-15
+        u8 val2 = ptr[i] & 0x0F;    // get lower 4 bits as num b/w 0-15
+        
+        printf("%c%c", hex[val1], hex[val2]);
+        
+        // Add space or newline appropriately
+        if ((i + 1) % bytes_per_line == 0) {
+            printf("\n");
+        } else if (i < size - 1) {
+            printf(" ");
+        }
+    }
+
+    // Add final newline if we didn't just print one
+    if (size % bytes_per_line != 0) {
+        printf("\n");
+    }
+}
+
+#endif /* WC_COMMON_IMPL */
+
+/* ===== gen_vector.c ===== */
+#ifndef WC_GEN_VECTOR_IMPL
+#define WC_GEN_VECTOR_IMPL
 
 #include <string.h>
 
@@ -338,7 +566,7 @@ static inline u8 genVec_empty(const genVec* vec)
 
 #define MAYBE_SHRINK(vec)                                                  \
     do {                                                                   \
-        if (vec->size <= (u32)((float)vec->capacity * GENVEC_SHRINK_AT)) { \
+        if (vec->size <= (u64)((float)vec->capacity * GENVEC_SHRINK_AT)) { \
             genVec_shrink(vec);                                            \
         }                                                                  \
     } while (0)
@@ -361,7 +589,7 @@ genVec* genVec_init(u64 n, u32 data_size, copy_fn copy_fn, move_fn move_fn, dele
     CHECK_FATAL(!vec, "vec init failed");
 
     // Only allocate memory if n > 0, otherwise data can be NULL
-    vec->data = (n > 0) ? (u8*)malloc((size_t)data_size * n) : NULL;
+    vec->data = (n > 0) ? malloc(data_size * n) : NULL;
 
     // Only check for allocation failure if we actually tried to allocate
     if (n > 0 && !vec->data) {
@@ -387,7 +615,7 @@ void genVec_init_stk(u64 n, u32 data_size, copy_fn copy_fn, move_fn move_fn, del
     CHECK_FATAL(data_size == 0, "data_size can't be 0");
 
     // Only allocate memory if n > 0, otherwise data can be NULL
-    vec->data = (n > 0) ? (u8*)malloc((size_t)data_size * n) : NULL;
+    vec->data = (n > 0) ? malloc(data_size * n) : NULL;
     CHECK_FATAL(n > 0 && !vec->data, "data init failed");
 
     vec->size      = 0;
@@ -555,8 +783,8 @@ void genVec_shrink_to_fit(genVec* vec)
     CHECK_FATAL(!vec, "vec is null");
 
     // min allowd cap or size
-    u32 min_cap  = vec->size > GENVEC_MIN_CAPACITY ? vec->size : GENVEC_MIN_CAPACITY;
-    u32 curr_cap = vec->capacity;
+    u64 min_cap  = vec->size > GENVEC_MIN_CAPACITY ? vec->size : GENVEC_MIN_CAPACITY;
+    u64 curr_cap = vec->capacity;
 
     // if curr cap is already equal (or less??) than min allowed cap
     if (curr_cap <= min_cap) {
@@ -655,6 +883,14 @@ const u8* genVec_get_ptr(const genVec* vec, u64 i)
     return GET_PTR(vec, i);
 }
 
+u8* genVec_get_ptr_mut(const genVec* vec, u64 i)
+{
+    CHECK_FATAL(!vec, "vec is null");
+    CHECK_FATAL(i >= vec->size, "index out of bounds");
+
+    return GET_PTR(vec, i);
+}
+
 void genVec_for_each(genVec* vec, void (*for_each)(u8* elm))
 {
     CHECK_FATAL(!vec, "vec is null");
@@ -679,7 +915,7 @@ void genVec_insert(genVec* vec, u64 i, const u8* data)
     MAYBE_GROW(vec);
 
     // Calculate the number of elements to shift to right
-    u32 elements_to_shift = vec->size - i;
+    u64 elements_to_shift = vec->size - i;
     // the place where we want to insert
     u8* src = GET_PTR(vec, i);
 
@@ -712,7 +948,7 @@ void genVec_insert_move(genVec* vec, u64 i, u8** data)
     MAYBE_GROW(vec);
 
     // Calculate the number of elements to shift to right
-    u32 elements_to_shift = vec->size - i;
+    u64 elements_to_shift = vec->size - i;
     // the place where we want to insert
     u8* src = GET_PTR(vec, i);
 
@@ -740,7 +976,7 @@ void genVec_insert_multi(genVec* vec, u64 i, const u8* data, u64 num_data)
     CHECK_FATAL(i > vec->size, "index out of bounds");
 
     // Calculate the number of elements to shift to right
-    u32 elements_to_shift = vec->size - i;
+    u64 elements_to_shift = vec->size - i;
 
     vec->size += num_data; // no of new elements in chunk
 
@@ -757,7 +993,7 @@ void genVec_insert_multi(genVec* vec, u64 i, const u8* data, u64 num_data)
 
     //src pos is now free to insert (it's data copied to next location)
     if (vec->copy_fn) {
-        for (u32 j = 0; j < num_data; j++) {
+        for (u64 j = 0; j < num_data; j++) {
             vec->copy_fn(GET_PTR(vec, j + i), (data + (size_t)(j * vec->data_size)));
         }
     } else {
@@ -774,7 +1010,7 @@ void genVec_insert_multi_move(genVec* vec, u64 i, u8** data, u64 num_data)
     CHECK_FATAL(i > vec->size, "index out of bounds");
 
     // Calculate the number of elements to shift to right
-    u32 elements_to_shift = vec->size - i;
+    u64 elements_to_shift = vec->size - i;
 
     vec->size += num_data; // no of new elements in chunk
 
@@ -812,7 +1048,7 @@ void genVec_remove(genVec* vec, u64 i, u8* out)
         vec->del_fn(GET_PTR(vec, i));
     }
     // Calculate the number of elements to shift
-    u32 elements_to_shift = vec->size - i - 1;
+    u64 elements_to_shift = vec->size - i - 1;
 
     if (elements_to_shift > 0) {
         // Shift elements left to overwrite the deleted element
@@ -845,7 +1081,7 @@ void genVec_remove_range(genVec* vec, u64 l, u64 r)
         }
     }
 
-    u32 elms_to_shift = vec->size - (r + 1);
+    u64 elms_to_shift = vec->size - (r + 1);
 
     // move from r + 1 to l
     u8* dest = GET_PTR(vec, l);
@@ -995,7 +1231,7 @@ void genVec_grow(genVec* vec)
     if (vec->capacity < GENVEC_MIN_CAPACITY) {
         new_cap = vec->capacity + 1;
     } else {
-        new_cap = (u32)((float)vec->capacity * GENVEC_GROWTH);
+        new_cap = (u64)((float)vec->capacity * GENVEC_GROWTH);
         if (new_cap <= vec->capacity) { // Ensure at least +1 growth
             new_cap = vec->capacity + 1;
         }
@@ -1013,7 +1249,7 @@ void genVec_shrink(genVec* vec)
 {
     CHECK_FATAL(!vec, "vec is null");
 
-    u64 reduced_cap = (u32)((float)vec->capacity * GENVEC_SHRINK_BY);
+    u64 reduced_cap = (u64)((float)vec->capacity * GENVEC_SHRINK_BY);
     if (reduced_cap < vec->size || reduced_cap == 0) {
         return;
     }
@@ -1028,172 +1264,25 @@ void genVec_shrink(genVec* vec)
     vec->capacity = reduced_cap;
 }
 
+#endif /* WC_GEN_VECTOR_IMPL */
 
-
-#endif // GEN_VECTOR_SINGLE_H
-
-
-
-// ===== STRING =====
-// the string is just a genVec of char type (length based string - not cstr)
-typedef genVec String;
-// ==================
-
-
-// Construction/Destruction
-
-// create string on the heap
-String* string_create(void);
-
-// create string with struct on the stack and data on heap
-void string_create_stk(String* str, const char* cstr);
-
-// create string on heap from a cstr
-String* string_from_cstr(const char* cstr);
-
-// get copy of a string (heap allocated)
-String* string_from_string(const String* other);
-
-// reserve a capacity for a string (must be greater than current cap)
-void string_reserve(String* str, u64 capacity);
-
-// reserve a capacity with a char
-void string_reserve_char(String* str, u64 capacity, char c);
-
-// destroy the heap allocated string
-void string_destroy(String* str);
-
-// destroy only the data ptr of string struct (for stk created str)
-void string_destroy_stk(String* str);
-
-// move string contents (nulls source)
-// Note: src must be heap allocated
-void string_move(String* dest, String** src);
-
-// make deep copy
-void string_copy(String* dest, const String* src);
-
-// get cstr as COPY ('\0' present)
-const char* string_to_cstr(const String* str);
-// get ptr to the cstr buffer
-// Note: NO NULL TERMINATOR
-char* string_data_ptr(const String* str);
-
-
-// TODO:
-// void string_to_cstr_buf(const String* str, char* buf, u32 buf_size);
-// void string_to_cstr_buf_move(const String* str, char* buf, u32 buf_size);
-
-
-// Modification
-
-
-// append a cstr to the end of a string
-void string_append_cstr(String* str, const char* cstr);
-
-// append a string "other" to the end of a string "str"
-void string_append_string(String* str, const String* other);
-
-// Concatenate string "other" and destroy source "str"
-void string_append_string_move(String* str, String** other);
-
-// append a char to the end of a string
-void string_append_char(String* str, char c);
-
-// insert a char at index i of string
-void string_insert_char(String* str, u64 i, char c);
-
-// insert a cstr at index i
-void string_insert_cstr(String* str, u64 i, const char* cstr);
-
-// insert a string "str" at index i
-void string_insert_string(String* str, u64 i, const String* other);
-
-// remove char from end of a string
-char string_pop_char(String* str);
-
-// remove a char from index i of string
-void string_remove_char(String* str, u64 i);
-
-// remove elements from l to r (inclusive)
-void string_remove_range(String* str, u64 l, u64 r);
-
-// remove all chars (keep memory)
-void string_clear(String* str);
-
-
-// Access
-
-// return char at index i
-char string_char_at(const String* str, u64 i);
-
-// set the value of char at index i
-void string_set_char(String* str, u64 i, char c);
-
-// Comparison
-
-
-// compare (c-style) two strings
-// 0 -> equal, 1 -> not equal
-int string_compare(const String* str1, const String* str2);
-
-// return true if string's data matches
-b8 string_equals(const String* str1, const String* str2);
-
-// return true if a string's data matches a cstr
-b8 string_equals_cstr(const String* str, const char* cstr);
-
-// Search
-
-
-// return index of char c (UINT_MAX otherwise)
-u32 string_find_char(const String* str, char c);
-
-// return index of cstr "substr" (UINT_MAX otherwise)
-u32 string_find_cstr(const String* str, const char* substr);
-
-// Set a heap allocated string of a substring starting at index "start", upto length
-String* string_substr(const String* str, u32 start, u64 length);
-
-// TODO: pass a buffer version of substr??
-
-// I/O
-
-// print the content of str
-void string_print(const String* str);
-
-// Basic properties
-
-// get the current length of the string
-static inline u32 string_len(const String* str)
-{
-    CHECK_FATAL(!str, "str is null");
-
-    return str->size;
-}
-
-// get the capacity of the genVec container of string
-static inline u32 string_capacity(const String* str)
-{
-    return str->capacity;
-}
-
-// return true if str is empty
-static inline b8 string_empty(const String* str)
-{
-    return string_len(str) == 0;
-}
-
+/* ===== String.c ===== */
+#ifndef WC_STRING_IMPL
+#define WC_STRING_IMPL
 
 #include <string.h>
 
 
+
+
 // private func
-u32 cstr_len(const char* cstr);
+u64 cstr_len(const char* cstr);
+
+
 
 String* string_create(void)
 {
-    return genVec_init(0, sizeof(char), NULL, NULL, NULL);
+    return (String*)genVec_init(0, sizeof(char), NULL, NULL, NULL);
 }
 
 
@@ -1260,7 +1349,6 @@ void string_destroy(String* str)
     free(str);
 }
 
-// cant free the stack allocated string, but buffer is. So seperate delete
 void string_destroy_stk(String* str)
 {
     genVec_destroy_stk(str);
@@ -1313,7 +1401,7 @@ void string_copy(String* dest, const String* src)
 }
 
 
-const char* string_to_cstr(const String* str)
+char* string_to_cstr(const String* str)
 {
     CHECK_FATAL(!str, "str is null");
 
@@ -1331,7 +1419,7 @@ const char* string_to_cstr(const String* str)
 
     out[str->size] = '\0'; // add null term
 
-    return (const char*)out;
+    return out;
 }
 
 
@@ -1496,7 +1584,7 @@ int string_compare(const String* str1, const String* str2)
     CHECK_FATAL(!str1, "str1 is null");
     CHECK_FATAL(!str2, "str2 is null");
 
-    u32 min_len = str1->size < str2->size ? str1->size : str2->size;
+    u64 min_len = str1->size < str2->size ? str1->size : str2->size;
 
     // Compare byte by byte
     int cmp = memcmp(str1->data, str2->data, min_len);
@@ -1543,7 +1631,7 @@ b8 string_equals_cstr(const String* str, const char* cstr)
 }
 
 
-u32 string_find_char(const String* str, char c)
+u64 string_find_char(const String* str, char c)
 {
     CHECK_FATAL(!str, "str is null");
 
@@ -1553,11 +1641,11 @@ u32 string_find_char(const String* str, char c)
         }
     }
 
-    return (u32)-1; // Not found
+    return (u64)-1; // Not found
 }
 
 
-u32 string_find_cstr(const String* str, const char* substr)
+u64 string_find_cstr(const String* str, const char* substr)
 {
     CHECK_FATAL(!str, "str is null");
     CHECK_FATAL(!substr, "substr is null");
@@ -1570,7 +1658,7 @@ u32 string_find_cstr(const String* str, const char* substr)
     }
 
     if (len > str->size) {
-        return (u32)-1;
+        return (u64)-1;
     }
 
     for (u64 i = 0; i <= str->size - len; i++) {
@@ -1579,24 +1667,24 @@ u32 string_find_cstr(const String* str, const char* substr)
         }
     }
 
-    return (u32)-1;
+    return (u64)-1;
 }
 
 
-String* string_substr(const String* str, u32 start, u64 length)
+String* string_substr(const String* str, u64 start, u64 length)
 {
     CHECK_FATAL(!str, "str is null");
     CHECK_FATAL(start >= str->size, "index out of bounds");
 
     String* result = string_create();
 
-    u32 end     = start + length;
-    u32 str_len = string_len(str);
+    u64 end     = start + length;
+    u64 str_len = string_len(str);
     if (end > str_len) {
         end = str_len;
     }
 
-    u32 actual_len = end - start;
+    u64 actual_len = end - start;
 
     if (actual_len > 0) { // Insert substring all at once
         const char* csrc = string_data_ptr(str) + start;
@@ -1619,7 +1707,7 @@ void string_print(const String* str)
 }
 
 
-u32 cstr_len(const char* cstr)
+u64 cstr_len(const char* cstr)
 {
     u64 len = 0;
     u64 i   = 0;
@@ -1631,6 +1719,8 @@ u32 cstr_len(const char* cstr)
     return len;
 }
 
+#endif /* WC_STRING_IMPL */
 
+#endif /* WC_IMPLEMENTATION */
 
-#endif // STRING_SINGLE_H
+#endif /* WC_STRING_H */
