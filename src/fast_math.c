@@ -168,3 +168,23 @@ float fast_exp(float x)
 }
 
 
+float fast_ceil(float x)
+{
+    // Cast to int truncates towards zero
+    int i = (int)x;
+    
+    // If x is already an integer, return it
+    if (x == (float)i) {
+        return x;
+    }
+    
+    // If x is positive and not an integer, add 1
+    if (x > 0.0f) {
+        return (float)(i + 1);
+    }
+    
+    // If x is negative, truncation already rounded towards zero (up)
+    return (float)i;
+}
+
+

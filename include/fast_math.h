@@ -47,6 +47,8 @@ e^x = 1 + x + x²/2! + x³/3! + x⁴/4! + ...
 */
 float fast_exp(float x);
 
+
+float fast_ceil(float x);
 /*
 
 Option 2: Range Reduction

@@ -18,6 +18,6 @@ int main(void)
     // return stack_test_1();
     // return queue_test_2();
     // return arena_test_3();
-    // matrix_test_7();
-    return random_test_5();
+    matrix_test_7();
+    // return random_test_4();
 }

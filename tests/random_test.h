@@ -32,8 +32,6 @@ int random_test_1(void)
     }
 
 
-    printf("\n High Precision Time Seed\n");
-    pcg32_rand_seed_time_hp();
 
     printf("Normal rand\n");
     for (u64 i = 0; i < 10; i++) {

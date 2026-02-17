@@ -4,7 +4,6 @@
 #include "arena.h"
 #include "common.h"
 #include "matrix.h"
-#include <stdio.h>
 
 
 int matrix_test_1(void)

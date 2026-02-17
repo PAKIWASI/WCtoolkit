@@ -2,6 +2,7 @@
 #define COMMON_H
 
 
+
 /*
  * C Data Structures Library
  * Copyright (c) 2026 Wasi Ullah (PAKIWASI)
@@ -15,17 +16,24 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+// ANSI Color Codes
+#define COLOR_RESET   "\033[0m"
+#define COLOR_RED     "\033[1;31m"
+#define COLOR_YELLOW  "\033[1;33m"
+#define COLOR_GREEN   "\033[1;32m"
+#define COLOR_BLUE    "\033[1;34m"
+#define COLOR_CYAN    "\033[1;36m"
+
 #define WARN(fmt, ...)                                                                       \
     do {                                                                                     \
-        printf("[WARN] %s:%d:%s(): " fmt "\n", __FILE__, __LINE__, __func__, ##__VA_ARGS__); \
+        printf(COLOR_YELLOW "[WARN]" " %s:%d:%s(): " fmt "\n" COLOR_RESET, __FILE__, __LINE__, __func__, ##__VA_ARGS__); \
     } while (0)
 
 #define FATAL(fmt, ...)                                                                                \
     do {                                                                                               \
-        fprintf(stderr, "[FATAL] %s:%d:%s(): " fmt "\n", __FILE__, __LINE__, __func__, ##__VA_ARGS__); \
+        fprintf(stderr, COLOR_RED "[FATAL]" " %s:%d:%s(): " fmt "\n" COLOR_RESET, __FILE__, __LINE__, __func__, ##__VA_ARGS__); \
         exit(EXIT_FAILURE);                                                                            \
     } while (0)
-
 
 #define ASSERT_WARN(cond, fmt, ...)                                     \
     do {                                                                \
@@ -56,7 +64,6 @@
         }                                                    \
     } while (0)
 
-
 #define CHECK_WARN_RET(cond, ret, fmt, ...)                  \
     do {                                                     \
         if ((cond)) {                                        \
@@ -72,12 +79,10 @@
         }                                                     \
     } while (0)
 
-
 #define LOG(fmt, ...)                               \
     do {                                            \
-        printf("[LOG] : %s(): " fmt "\n", __func__, ##__VA_ARGS__); \
+        printf(COLOR_CYAN "[LOG]" " : %s(): " fmt "\n" COLOR_RESET, __func__, ##__VA_ARGS__); \
     } while (0)
-
 
 // TYPES
 
