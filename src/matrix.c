@@ -2,11 +2,11 @@
 
 
 
-Matrix* matrix_create(u64 m, u64 n)
+Matrixf* matrix_create(u64 m, u64 n)
 {
     CHECK_FATAL(n == 0 && m == 0, "n == m == 0");
 
-    Matrix* mat = (Matrix*)malloc(sizeof(Matrix));
+    Matrixf* mat = (Matrixf*)malloc(sizeof(Matrixf));
     CHECK_FATAL(!mat, "matrix malloc failed");
 
     mat->m    = m;
@@ -17,15 +17,15 @@ Matrix* matrix_create(u64 m, u64 n)
     return mat;
 }
 
-Matrix* matrix_create_arr(u64 m, u64 n, const float* arr)
+Matrixf* matrix_create_arr(u64 m, u64 n, const float* arr)
 {
     CHECK_FATAL(!arr, "input arr is null");
-    Matrix* mat = matrix_create(m, n);
+    Matrixf* mat = matrix_create(m, n);
     memcpy(mat->data, arr, sizeof(float) * m * n);
     return mat;
 }
 
-void matrix_create_stk(Matrix* mat, u64 m, u64 n, float* data)
+void matrix_create_stk(Matrixf* mat, u64 m, u64 n, float* data)
 {
     CHECK_FATAL(!mat, "matrix is null");
     CHECK_FATAL(!data, "data is null");
@@ -36,7 +36,7 @@ void matrix_create_stk(Matrix* mat, u64 m, u64 n, float* data)
     mat->n    = n;
 }
 
-void matrix_destroy(Matrix* mat)
+void matrix_destroy(Matrixf* mat)
 {
     CHECK_FATAL(!mat, "matrix is null");
 
@@ -45,7 +45,7 @@ void matrix_destroy(Matrix* mat)
 }
 
 
-void matrix_set_val_arr(Matrix* mat, u64 count, const float* arr)
+void matrix_set_val_arr(Matrixf* mat, u64 count, const float* arr)
 {
     CHECK_FATAL(!mat, "matrix is null");
     CHECK_FATAL(!arr, "arr is null");
@@ -54,7 +54,7 @@ void matrix_set_val_arr(Matrix* mat, u64 count, const float* arr)
     memcpy(mat->data, arr, sizeof(float) * count);
 }
 
-void matrix_set_val_arr2(Matrix* mat, u64 m, u64 n, const float** arr2)
+void matrix_set_val_arr2(Matrixf* mat, u64 m, u64 n, const float** arr2)
 {
     CHECK_FATAL(!mat, "matrix is null");
     CHECK_FATAL(!arr2, "arr is null");
@@ -69,7 +69,7 @@ void matrix_set_val_arr2(Matrix* mat, u64 m, u64 n, const float** arr2)
     }
 }
 
-void matrix_set_elm(Matrix* mat, float elm, u64 i, u64 j)
+void matrix_set_elm(Matrixf* mat, float elm, u64 i, u64 j)
 {
     CHECK_FATAL(!mat, "matrix is null");
     CHECK_FATAL(i >= mat->m || j >= mat->n, "index out of bounds");
@@ -77,7 +77,7 @@ void matrix_set_elm(Matrix* mat, float elm, u64 i, u64 j)
     mat->data[IDX(mat, i, j)] = elm;
 }
 
-void matrix_add(Matrix* out, const Matrix* a, const Matrix* b)
+void matrix_add(Matrixf* out, const Matrixf* a, const Matrixf* b)
 {
     CHECK_FATAL(!out, "out matrix is null");
     CHECK_FATAL(!a, "a matrix is null");
@@ -94,7 +94,7 @@ void matrix_add(Matrix* out, const Matrix* a, const Matrix* b)
 }
 
 
-void matrix_sub(Matrix* out, const Matrix* a, const Matrix* b)
+void matrix_sub(Matrixf* out, const Matrixf* a, const Matrixf* b)
 {
     CHECK_FATAL(!out, "out matrix is null");
     CHECK_FATAL(!a, "a matrix is null");
@@ -113,7 +113,7 @@ void matrix_sub(Matrix* out, const Matrix* a, const Matrix* b)
 
 // ikj multiplication. (mxk) * (kxn) = (mxn)
 // this is good for small to medium size matrices
-void matrix_xply(Matrix* out, const Matrix* a, const Matrix* b)
+void matrix_xply(Matrixf* out, const Matrixf* a, const Matrixf* b)
 {
     CHECK_FATAL(!out, "out matrix is null");
     CHECK_FATAL(!a, "a matrix is null");
@@ -162,7 +162,7 @@ void matrix_xply(Matrix* out, const Matrix* a, const Matrix* b)
 
 // this function transposes b for cache-friendly access
 // takes more memory, good for large size matrices
-void matrix_xply_2(Matrix* out, const Matrix* a, const Matrix* b)
+void matrix_xply_2(Matrixf* out, const Matrixf* a, const Matrixf* b)
 {
     CHECK_FATAL(!out, "out matrix is null");
     CHECK_FATAL(!a, "a matrix is null");
@@ -176,7 +176,7 @@ void matrix_xply_2(Matrix* out, const Matrix* a, const Matrix* b)
     u64 n = b->n;
 
     // Transpose B for cache-friendly access
-    Matrix b_T;
+    Matrixf b_T;
     float  data[n * k]; // random vals
     matrix_create_stk(&b_T, n, k, data);
     matrix_T(&b_T, b); // transpose sets all vals
@@ -213,7 +213,7 @@ void matrix_xply_2(Matrix* out, const Matrix* a, const Matrix* b)
 Doolittle algorithm computes U's i-th row, then L's i-th column, alternating.
 For each element, you subtract the dot product of already-computed L and U values.
 */
-void matrix_LU_Decomp(Matrix* L, Matrix* U, const Matrix* mat)
+void matrix_LU_Decomp(Matrixf* L, Matrixf* U, const Matrixf* mat)
 {
     CHECK_FATAL(!L, "L mat is null");
     CHECK_FATAL(!U, "U mat is null");
@@ -272,7 +272,7 @@ void matrix_LU_Decomp(Matrix* L, Matrix* U, const Matrix* mat)
     LU Decomposition is when we make 2 triangular matrices from one,
     which when multiplied give original matrix: A = L * U
 */
-float matrix_det(const Matrix* mat)
+float matrix_det(const Matrixf* mat)
 {
     CHECK_FATAL(!mat, "mat matrix is null");
     CHECK_FATAL(mat->m != mat->n, "only square matrices have determinant");
@@ -280,7 +280,7 @@ float matrix_det(const Matrix* mat)
 
     u64 n = mat->n;
 
-    Matrix L, U;
+    Matrixf L, U;
     float  Ldata[n * n]; // random vals
     float  Udata[n * n];
     matrix_create_stk(&L, n, n, Ldata);
@@ -298,7 +298,7 @@ float matrix_det(const Matrix* mat)
 }
 
 
-void matrix_T(Matrix* out, const Matrix* mat)
+void matrix_T(Matrixf* out, const Matrixf* mat)
 {
     CHECK_FATAL(!mat, "mat matrix is null");
     CHECK_FATAL(!out, "out matrix is null");
@@ -327,7 +327,7 @@ void matrix_T(Matrix* out, const Matrix* mat)
     }
 }
 
-void matrix_scale(Matrix* mat, float val)
+void matrix_scale(Matrixf* mat, float val)
 {
     CHECK_FATAL(!mat, "matrix is null");
 
@@ -336,7 +336,7 @@ void matrix_scale(Matrix* mat, float val)
 }
 
 
-void matrix_div(Matrix* mat, float val)
+void matrix_div(Matrixf* mat, float val)
 {
     CHECK_FATAL(!mat, "mat is null");
     CHECK_FATAL(val == 0, "division by zero!");
@@ -345,7 +345,7 @@ void matrix_div(Matrix* mat, float val)
     for (u64 i = 0; i < total; i++) { mat->data[i] /= val; }
 }
 
-void matrix_copy(Matrix* dest, const Matrix* src)
+void matrix_copy(Matrixf* dest, const Matrixf* src)
 {
     CHECK_FATAL(!dest, "dest matrix is null");
     CHECK_FATAL(!src, "src matrix is null");
@@ -355,7 +355,7 @@ void matrix_copy(Matrix* dest, const Matrix* src)
     memcpy(dest->data, src->data, sizeof(float) * MATRIX_TOTAL(src));
 }
 
-void matrix_print(const Matrix* mat)
+void matrix_print(const Matrixf* mat)
 {
     CHECK_FATAL(!mat, "matrix is null");
 

@@ -1,5 +1,5 @@
-#ifndef WC_HASHMAP_H
-#define WC_HASHMAP_H
+#ifndef WC_HASHMAP_SINGLE_H
+#define WC_HASHMAP_SINGLE_H
 
 /*
  * hashmap_single.h
@@ -964,4 +964,4 @@ void hashmap_print(const hashmap* map, print_fn key_print, print_fn val_print)
 
 #endif /* WC_IMPLEMENTATION */
 
-#endif /* WC_HASHMAP_H */
+#endif /* WC_HASHMAP_SINGLE_H */

@@ -1,5 +1,5 @@
-#ifndef WC_COMMON_H
-#define WC_COMMON_H
+#ifndef WC_COMMON_SINGLE_H
+#define WC_COMMON_SINGLE_H
 
 /*
  * common_single.h
@@ -180,4 +180,4 @@ void print_hex(const u8* ptr, u64 size, u32 bytes_per_line)
 
 #endif /* WC_IMPLEMENTATION */
 
-#endif /* WC_COMMON_H */
+#endif /* WC_COMMON_SINGLE_H */

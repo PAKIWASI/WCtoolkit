@@ -1,5 +1,5 @@
-#ifndef WC_STRING_H
-#define WC_STRING_H
+#ifndef WC_STRING_SINGLE_H
+#define WC_STRING_SINGLE_H
 
 /*
  * String_single.h
@@ -1723,4 +1723,4 @@ u64 cstr_len(const char* cstr)
 
 #endif /* WC_IMPLEMENTATION */
 
-#endif /* WC_STRING_H */
+#endif /* WC_STRING_SINGLE_H */

@@ -1,8 +1,0 @@
-#ifndef SINGLE_HEADER_TESTS
-#define SINGLE_HEADER_TESTS
-
-
-
-
-
-#endif // SINGLE_HEADER_TESTS

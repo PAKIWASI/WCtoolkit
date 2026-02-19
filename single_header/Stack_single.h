@@ -1,5 +1,5 @@
-#ifndef WC_STACK_H
-#define WC_STACK_H
+#ifndef WC_STACK_SINGLE_H
+#define WC_STACK_SINGLE_H
 
 /*
  * Stack_single.h
@@ -1201,4 +1201,4 @@ void stack_print(Stack* stk, print_fn print_fn)
 
 #endif /* WC_IMPLEMENTATION */
 
-#endif /* WC_STACK_H */
+#endif /* WC_STACK_SINGLE_H */

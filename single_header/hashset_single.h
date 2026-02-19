@@ -1,5 +1,5 @@
-#ifndef WC_HASHSET_H
-#define WC_HASHSET_H
+#ifndef WC_HASHSET_SINGLE_H
+#define WC_HASHSET_SINGLE_H
 
 /*
  * hashset_single.h
@@ -730,4 +730,4 @@ void hashset_print(const hashset* set, print_fn print_fn)
 
 #endif /* WC_IMPLEMENTATION */
 
-#endif /* WC_HASHSET_H */
+#endif /* WC_HASHSET_SINGLE_H */

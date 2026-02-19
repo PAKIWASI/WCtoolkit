@@ -1,5 +1,6 @@
 #include "arena.h"
 
+#include "wc_errno.h"
 
 /* python
 align to 8 bytes
@@ -85,9 +86,7 @@ u8* arena_alloc(Arena* arena, u64 size)
     
     // Align the current index first
     u64 aligned_idx = ALIGN_UP_DEFAULT(arena->idx);
-    
-    CHECK_WARN_RET(arena->size - aligned_idx < size,
-                   NULL, "not enough space in arena for SIZE");
+    WC_SET_RET(WC_ERR_FULL, arena->size - aligned_idx < size, NULL);
     
     u8* ptr = ARENA_PTR(arena, aligned_idx);
     arena->idx = aligned_idx + size;
@@ -106,8 +105,7 @@ u8* arena_alloc_aligned(Arena* arena, u64 size, u32 alignment)
 
     u64 aligned_idx = ALIGN_UP(arena->idx, alignment);
 
-    CHECK_WARN_RET(arena->size - aligned_idx < size,
-                   NULL, "not enough space in arena for SIZE");
+    WC_SET_RET(WC_ERR_FULL, arena->size - aligned_idx < size, NULL);
 
     u8* ptr = ARENA_PTR(arena, aligned_idx);
     arena->idx = aligned_idx + size;

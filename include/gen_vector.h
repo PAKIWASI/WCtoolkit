@@ -19,13 +19,13 @@
 
 // genVec growth/shrink settings (user can change)
 #ifndef GENVEC_GROWTH
-    #define GENVEC_GROWTH 1.5F // vec capacity multiplier
+#define GENVEC_GROWTH 1.5F // vec capacity multiplier
 #endif
 #ifndef GENVEC_SHRINK_AT
-    #define GENVEC_SHRINK_AT 0.25F // % filled to shrink at (25% filled)
+#define GENVEC_SHRINK_AT 0.25F // % filled to shrink at (25% filled)
 #endif
 #ifndef GENVEC_SHRINK_BY
-    #define GENVEC_SHRINK_BY 0.5F // capacity dividor (half)
+#define GENVEC_SHRINK_BY 0.5F // capacity dividor (half)
 #endif
 
 
@@ -56,21 +56,18 @@ genVec* genVec_init(u64 n, u32 data_size, copy_fn copy_fn, move_fn move_fn, dele
 
 // Initialize vector on stack with data on heap
 // SVO works best here as it is on the stack***
-void genVec_init_stk(u64 n, u32 data_size, copy_fn copy_fn, move_fn move_fn, delete_fn del_fn,
-                     genVec* vec);
+void genVec_init_stk(u64 n, u32 data_size, copy_fn copy_fn, move_fn move_fn, delete_fn del_fn, genVec* vec);
 
 // Initialize vector of size n, all elements set to val
-genVec* genVec_init_val(u64 n, const u8* val, u32 data_size, copy_fn copy_fn, move_fn move_fn,
-                        delete_fn del_fn);
+genVec* genVec_init_val(u64 n, const u8* val, u32 data_size, copy_fn copy_fn, move_fn move_fn, delete_fn del_fn);
 
-void genVec_init_val_stk(u64 n, const u8* val, u32 data_size, copy_fn copy_fn, move_fn move_fn,
-                         delete_fn del_fn, genVec* vec);
+void genVec_init_val_stk(u64 n, const u8* val, u32 data_size, copy_fn copy_fn, move_fn move_fn, delete_fn del_fn,
+                         genVec* vec);
 
 // vector COMPLETELY on stack (can't grow in size)
 // you provide a stack inited array which becomes internal array of vector
 // WARNING - This crashes when size = capacity and you try to push
-void genVec_init_arr(u64 n, u8* arr, u32 data_size, copy_fn copy_fn, move_fn move_fn,
-                     delete_fn del_fn, genVec* vec);
+void genVec_init_arr(u64 n, u8* arr, u32 data_size, copy_fn copy_fn, move_fn move_fn, delete_fn del_fn, genVec* vec);
 
 // Destroy heap-allocated vector and clean up all elements
 void genVec_destroy(genVec* vec);
@@ -118,9 +115,6 @@ const u8* genVec_get_ptr(const genVec* vec, u64 i);
 // Get MUTABLE pointer to element at index i
 // Note: Pointer invalidated by push/insert/remove operations
 u8* genVec_get_ptr_mut(const genVec* vec, u64 i);
-
-// apply a function on each value of the array
-void genVec_for_each(genVec* vec, for_each_fn for_each);
 
 // Replace element at index i with data (cleans up old element)
 void genVec_replace(genVec* vec, u64 i, const u8* data);
@@ -188,6 +182,9 @@ static inline b8 genVec_empty(const genVec* vec)
     CHECK_FATAL(!vec, "vec is null");
     return vec->size == 0;
 }
+
+
+
 
 
 #endif // GEN_VECTOR_H

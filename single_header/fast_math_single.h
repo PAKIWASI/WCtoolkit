@@ -1,5 +1,5 @@
-#ifndef WC_FAST_MATH_H
-#define WC_FAST_MATH_H
+#ifndef WC_FAST_MATH_SINGLE_H
+#define WC_FAST_MATH_SINGLE_H
 
 /*
  * fast_math_single.h
@@ -434,4 +434,4 @@ float fast_ceil(float x)
 
 #endif /* WC_IMPLEMENTATION */
 
-#endif /* WC_FAST_MATH_H */
+#endif /* WC_FAST_MATH_SINGLE_H */

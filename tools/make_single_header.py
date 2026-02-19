@@ -168,7 +168,8 @@ def build_single_header(
     # Full dependency chain for this component (includes itself at the end)
     dep_chain = resolve_deps([component])
 
-    guard = guard_name(component)
+    guard = f"WC_{component.upper()}_SINGLE_H"   # WC_GEN_VECTOR_SINGLE_H
+
 
     lines: list[str] = []
     lines.append(f"#ifndef {guard}")

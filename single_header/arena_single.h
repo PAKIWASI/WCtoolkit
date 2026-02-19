@@ -1,5 +1,5 @@
-#ifndef WC_ARENA_H
-#define WC_ARENA_H
+#ifndef WC_ARENA_SINGLE_H
+#define WC_ARENA_SINGLE_H
 
 /*
  * arena_single.h
@@ -530,4 +530,4 @@ void arena_clear_mark(Arena* arena, u64 mark)
 
 #endif /* WC_IMPLEMENTATION */
 
-#endif /* WC_ARENA_H */
+#endif /* WC_ARENA_SINGLE_H */

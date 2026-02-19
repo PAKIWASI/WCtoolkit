@@ -13,7 +13,7 @@
 
 
 // Helper function to clean and normalize a word - removes numbers and handles contractions
-char* clean_word(const char* token, char* output, u32 output_size) {
+char* cleanword(const char* token, char* output, u32 output_size) {
     if (!token || !output || output_size == 0) { return NULL; }
     
     u64 len = strlen(token);
@@ -111,14 +111,14 @@ int parse(void)
 
     char line[512];
     char cleaned[256];
-    u32 total_words = 0;
+    u32 totalwords = 0;
     
     while (fgets(line, sizeof(line), f)) {
         char* token = strtok(line, delim);
         while (token) {
             if (strlen(token) > 0) {
                 // Clean and normalize the word
-                if (clean_word(token, cleaned, sizeof(cleaned))) 
+                if (cleanword(token, cleaned, sizeof(cleaned))) 
                 {
                     printf("%s\t", cleaned);
                     String str;
@@ -133,7 +133,7 @@ int parse(void)
                     hashmap_put(map, (u8*)&str, (u8*)&count);
                     //hashmap now owns the string buffer so don't delete
                                         
-                    total_words++;
+                    totalwords++;
                 }
             }
             token = strtok(NULL, delim);
@@ -142,7 +142,7 @@ int parse(void)
     
 
     // Print summary
-    printf("\nTotal words processed: %lu\n", total_words);
+    printf("\nTotal words processed: %lu\n", totalwords);
     printf("Unique words: %lu\n\n", map->size);
 
     String str;

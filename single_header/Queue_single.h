@@ -1,5 +1,5 @@
-#ifndef WC_QUEUE_H
-#define WC_QUEUE_H
+#ifndef WC_QUEUE_SINGLE_H
+#define WC_QUEUE_SINGLE_H
 
 /*
  * Queue_single.h
@@ -1425,4 +1425,4 @@ static void queue_compact(Queue* q, u64 new_capacity)
 
 #endif /* WC_IMPLEMENTATION */
 
-#endif /* WC_QUEUE_H */
+#endif /* WC_QUEUE_SINGLE_H */

@@ -1,10 +1,9 @@
 CompileFlags:
   CompilationDatabase: build/
   Add:
-    - -std=c99
+    - -std=gnu11           
     - -Wall
     - -Wextra
-    - -Wpedantic
     - -Wstrict-prototypes
     - -Wconversion
     - -Wshadow

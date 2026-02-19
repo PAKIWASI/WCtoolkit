@@ -1,5 +1,5 @@
-#ifndef WC_RANDOM_H
-#define WC_RANDOM_H
+#ifndef WC_RANDOM_SINGLE_H
+#define WC_RANDOM_SINGLE_H
 
 /*
  * random_single.h
@@ -882,4 +882,4 @@ float pcg32_rand_gaussian_custom(float mean, float stddev)
 
 #endif /* WC_IMPLEMENTATION */
 
-#endif /* WC_RANDOM_H */
+#endif /* WC_RANDOM_SINGLE_H */

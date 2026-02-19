@@ -1,5 +1,5 @@
-#ifndef WC_BIT_VECTOR_H
-#define WC_BIT_VECTOR_H
+#ifndef WC_BIT_VECTOR_SINGLE_H
+#define WC_BIT_VECTOR_SINGLE_H
 
 /*
  * bit_vector_single.h
@@ -1276,4 +1276,4 @@ void bitVec_print(bitVec *bvec, u64 byteI)
 
 #endif /* WC_IMPLEMENTATION */
 
-#endif /* WC_BIT_VECTOR_H */
+#endif /* WC_BIT_VECTOR_SINGLE_H */

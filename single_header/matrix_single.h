@@ -1,5 +1,5 @@
-#ifndef WC_MATRIX_H
-#define WC_MATRIX_H
+#ifndef WC_MATRIX_SINGLE_H
+#define WC_MATRIX_SINGLE_H
 
 /*
  * matrix_single.h
@@ -1100,4 +1100,4 @@ void matrix_print(const Matrix* mat)
 
 #endif /* WC_IMPLEMENTATION */
 
-#endif /* WC_MATRIX_H */
+#endif /* WC_MATRIX_SINGLE_H */

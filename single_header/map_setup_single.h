@@ -1,5 +1,5 @@
-#ifndef WC_MAP_SETUP_H
-#define WC_MAP_SETUP_H
+#ifndef WC_MAP_SETUP_SINGLE_H
+#define WC_MAP_SETUP_SINGLE_H
 
 /*
  * map_setup_single.h
@@ -269,4 +269,4 @@ void print_hex(const u8* ptr, u64 size, u32 bytes_per_line)
 
 #endif /* WC_IMPLEMENTATION */
 
-#endif /* WC_MAP_SETUP_H */
+#endif /* WC_MAP_SETUP_SINGLE_H */

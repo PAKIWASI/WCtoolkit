@@ -1,5 +1,5 @@
-#ifndef WC_GEN_VECTOR_H
-#define WC_GEN_VECTOR_H
+#ifndef WC_GEN_VECTOR_SINGLE_H
+#define WC_GEN_VECTOR_SINGLE_H
 
 /*
  * gen_vector_single.h
@@ -1097,4 +1097,4 @@ void genVec_shrink(genVec* vec)
 
 #endif /* WC_IMPLEMENTATION */
 
-#endif /* WC_GEN_VECTOR_H */
+#endif /* WC_GEN_VECTOR_SINGLE_H */

@@ -2,58 +2,45 @@
 
 ---
 
-## Error Handling
+## Immediate
 
-### Global Error Stack
-The current system uses `FATAL` (exits immediately) or `WARN` (prints and continues). There is
-no way for callers to inspect what went wrong, recover programmatically, or accumulate multiple
-errors before deciding how to handle them.
+Minimal test suite, with seperate test exe
 
-Proposed design — a thread-local error stack:
+im getting waring on using gnu extention
 
-```c
-typedef enum {
-    WC_ERR_NONE = 0,
-    WC_ERR_NULL_PTR,
-    WC_ERR_OOM,
-    WC_ERR_OUT_OF_BOUNDS,
-    WC_ERR_INVALID_ARG,
-    WC_ERR_SINGULAR_MATRIX,
-    WC_ERR_EMPTY_CONTAINER,
-    WC_ERR_OVERFLOW,
-} wc_error_code;
 
-typedef struct {
-    wc_error_code code;
-    const char*   file;
-    int           line;
-    const char*   func;
-    char          msg[128];
-} wc_error;
+---
 
-// Public API
-void       wc_error_push(wc_error_code code, const char* file, int line,
-                         const char* func, const char* fmt, ...);
-wc_error   wc_error_pop(void);
-wc_error*  wc_error_peek(void);
-int        wc_error_count(void);
-void       wc_error_clear(void);
-b8         wc_ok(void);   // true if no errors on stack
+## Testing
 
-// Macro wrappers (replaces CHECK_WARN_RET etc.)
-#define WC_ERR(code, fmt, ...) \
-    wc_error_push(code, __FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__)
+Currently I only have a single test header for each component, in which
+I have multiple functions that test the various implementations
+These functions are called by main
 
-#define WC_CHECK(cond, code, fmt, ...) \
-    do { if (cond) { WC_ERR(code, fmt, ##__VA_ARGS__); } } while(0)
+I want to explore how testing is done professionally
 
-#define WC_CHECK_RET(cond, ret, code, fmt, ...) \
-    do { if (cond) { WC_ERR(code, fmt, ##__VA_ARGS__); return ret; } } while(0)
-```
+---
 
-This would replace the `CHECK_WARN_RET` call sites where returning NULL is meaningful (e.g.
-`arena_alloc` out of space) while keeping `CHECK_FATAL` for truly unrecoverable states
-(null arena pointer, programming errors).
+## Library
+
+How to package this as a library ?
+I have sinle header version but as a whole?
+make a binary?
+
+Need to add CONTRIBUTING.md
+
+---
+
+## SIMD
+
+How much code is vectorizable using 'restrict' keyword ?
+
+---
+
+## Single Header Files
+
+The generated files look correct
+Need to test them
 
 ---
 
@@ -208,17 +195,6 @@ This would replace the `CHECK_WARN_RET` call sites where returning NULL is meani
 - `bitVec_find_first_set(bv)` — index of first 1 bit, or `(u64)-1`
 - `bitVec_find_first_clear(bv)` — index of first 0 bit
 - `bitVec_print_all(bv)` — print all bytes, not just one at a time
-
----
-
-## New Containers
-
-- **Deque** — double-ended queue; generalize Queue to support push/pop from both ends
-- **Priority Queue / Min-Heap** — needed for Dijkstra, A*, event scheduling
-- **Singly / Doubly Linked List** — for cases where O(1) insert/delete at arbitrary positions matters more than cache locality
-- **Trie** — for string prefix operations
-- **Generic tree** — n-ary tree with arena allocation support
-- **Ordered map** — balanced BST (red-black or AVX) for sorted-key iteration
 
 ---
 

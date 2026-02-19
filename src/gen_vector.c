@@ -1,4 +1,5 @@
 #include "gen_vector.h"
+#include "wc_errno.h"
 
 #include <string.h>
 
@@ -6,12 +7,15 @@
 
 #define GENVEC_MIN_CAPACITY 4
 
+
 // MACROS
 
 // get ptr to elm at index i
-#define GET_PTR(vec, i) ((vec->data) + ((u64)(i) * ((vec)->data_size)))
+#define GET_PTR(vec, i) \
+    ((vec->data) + ((u64)(i) * ((vec)->data_size)))
 // get total_size in bytes for i elements
-#define GET_SCALED(vec, i) ((u64)(i) * ((vec)->data_size))
+#define GET_SCALED(vec, i) \
+    ((u64)(i) * ((vec)->data_size))
 
 #define MAYBE_GROW(vec)                                 \
     do {                                                \
@@ -28,11 +32,10 @@
     } while (0)
 
 
-
 //private functions
 
-void genVec_grow(genVec* vec);
-void genVec_shrink(genVec* vec);
+static void genVec_grow(genVec* vec);
+static void genVec_shrink(genVec* vec);
 
 
 // API Implementation
@@ -64,8 +67,7 @@ genVec* genVec_init(u64 n, u32 data_size, copy_fn copy_fn, move_fn move_fn, dele
 }
 
 
-void genVec_init_stk(u64 n, u32 data_size, copy_fn copy_fn, move_fn move_fn, delete_fn del_fn,
-                     genVec* vec)
+void genVec_init_stk(u64 n, u32 data_size, copy_fn copy_fn, move_fn move_fn, delete_fn del_fn, genVec* vec)
 {
     CHECK_FATAL(!vec, "vec is null");
     CHECK_FATAL(data_size == 0, "data_size can't be 0");
@@ -82,8 +84,7 @@ void genVec_init_stk(u64 n, u32 data_size, copy_fn copy_fn, move_fn move_fn, del
     vec->del_fn    = del_fn;
 }
 
-genVec* genVec_init_val(u64 n, const u8* val, u32 data_size, copy_fn copy_fn, move_fn move_fn,
-                        delete_fn del_fn)
+genVec* genVec_init_val(u64 n, const u8* val, u32 data_size, copy_fn copy_fn, move_fn move_fn, delete_fn del_fn)
 {
     CHECK_FATAL(!val, "val can't be null");
     CHECK_FATAL(n == 0, "cant init with val if n = 0");
@@ -103,8 +104,8 @@ genVec* genVec_init_val(u64 n, const u8* val, u32 data_size, copy_fn copy_fn, mo
     return vec;
 }
 
-void genVec_init_val_stk(u64 n, const u8* val, u32 data_size, copy_fn copy_fn, move_fn move_fn,
-                         delete_fn del_fn, genVec* vec)
+void genVec_init_val_stk(u64 n, const u8* val, u32 data_size, copy_fn copy_fn, move_fn move_fn, delete_fn del_fn,
+                         genVec* vec)
 {
     CHECK_FATAL(!val, "val can't be null");
     CHECK_FATAL(n == 0, "cant init with val if n = 0");
@@ -122,8 +123,7 @@ void genVec_init_val_stk(u64 n, const u8* val, u32 data_size, copy_fn copy_fn, m
     }
 }
 
-void genVec_init_arr(u64 n, u8* arr, u32 data_size, copy_fn copy_fn, move_fn move_fn,
-                     delete_fn del_fn, genVec* vec)
+void genVec_init_arr(u64 n, u8* arr, u32 data_size, copy_fn copy_fn, move_fn move_fn, delete_fn del_fn, genVec* vec)
 {
     CHECK_FATAL(!arr, "arr is null");
     CHECK_FATAL(!vec, "vec is null");
@@ -248,6 +248,8 @@ void genVec_shrink_to_fit(genVec* vec)
     }
 
     u8* new_data = realloc(vec->data, GET_SCALED(vec, min_cap));
+    CHECK_FATAL(!new_data, "data realloc failed");
+
     // update data ptr
     vec->data     = new_data;
     vec->size     = min_cap;
@@ -297,7 +299,8 @@ void genVec_push_move(genVec* vec, u8** data)
 void genVec_pop(genVec* vec, u8* popped)
 {
     CHECK_FATAL(!vec, "vec is null");
-    CHECK_WARN_RET(vec->size == 0, , "vec is empty");
+
+    WC_SET_RET(WC_ERR_EMPTY, vec->size == 0, );
 
     u8* last_elm = GET_PTR(vec, vec->size - 1);
 
@@ -345,16 +348,6 @@ u8* genVec_get_ptr_mut(const genVec* vec, u64 i)
     CHECK_FATAL(i >= vec->size, "index out of bounds");
 
     return GET_PTR(vec, i);
-}
-
-void genVec_for_each(genVec* vec, void (*for_each)(u8* elm))
-{
-    CHECK_FATAL(!vec, "vec is null");
-    CHECK_FATAL(!for_each, "for_each function is null");
-
-    for (u64 i = 0; i < vec->size; i++) {
-        for_each(GET_PTR(vec, i));
-    }
 }
 
 void genVec_insert(genVec* vec, u64 i, const u8* data)
@@ -595,17 +588,14 @@ void genVec_replace_move(genVec* vec, u64 i, u8** data)
 const u8* genVec_front(const genVec* vec)
 {
     CHECK_FATAL(!vec, "vec is null");
-    CHECK_FATAL(vec->size == 0, "vec is empty");
-
-    return (const u8*)vec->data;
+    WC_SET_RET(WC_ERR_EMPTY, vec->size == 0, NULL);
+    return GET_PTR(vec, 0);
 }
-
 
 const u8* genVec_back(const genVec* vec)
 {
     CHECK_FATAL(!vec, "vec is null");
-    CHECK_FATAL(vec->size == 0, "vec is empty");
-
+    WC_SET_RET(WC_ERR_EMPTY, vec->size == 0, NULL);
     return GET_PTR(vec, vec->size - 1);
 }
 
@@ -641,6 +631,7 @@ void genVec_copy(genVec* dest, const genVec* src)
 
     // malloc data ptr
     dest->data = malloc(GET_SCALED(src, src->capacity));
+    CHECK_FATAL(!dest->data, "dest data malloc failed");
 
     // Copy elements
     if (src->copy_fn) {
@@ -679,7 +670,7 @@ void genVec_move(genVec* dest, genVec** src)
 }
 
 
-void genVec_grow(genVec* vec)
+static void genVec_grow(genVec* vec)
 {
     CHECK_FATAL(!vec, "vec is null");
 
@@ -694,14 +685,14 @@ void genVec_grow(genVec* vec)
     }
 
     u8* new_data = realloc(vec->data, GET_SCALED(vec, new_cap));
-    CHECK_FATAL(!new_data, "realloc failed");
+    CHECK_FATAL(!new_data, "data realloc failed");
 
     vec->data     = new_data;
     vec->capacity = new_cap;
 }
 
 
-void genVec_shrink(genVec* vec)
+static void genVec_shrink(genVec* vec)
 {
     CHECK_FATAL(!vec, "vec is null");
 
@@ -712,8 +703,8 @@ void genVec_shrink(genVec* vec)
 
     u8* new_data = realloc(vec->data, GET_SCALED(vec, reduced_cap));
     if (!new_data) {
-        CHECK_WARN_RET(1, , "data realloc failed");
-        return; // Keep original allocation
+        WARN("shrink realloc failed");
+        return; // keep original
     }
 
     vec->data     = new_data;
