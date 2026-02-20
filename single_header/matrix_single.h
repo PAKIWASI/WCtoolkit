@@ -602,14 +602,6 @@ void matrix_xply(Matrixf* out, const Matrixf* a, const Matrixf* b);
 void matrix_xply_2(Matrixf* out, const Matrixf* a, const Matrixf* b);
 
 
-/* TODO: 
-    vec * mat => (1 x n) * (m * n)T => (1 x n) * (n x m) => (1 x m)
-OR  vec * mat => (1 x m) * (m * n) => (1 x n)
-OR  vec * mat => (m x 1) * (1 x n) => (m x n) - this doesnot fit here ?
-*/
-u8* matrix_xply_vec(const Matrixf* a, const u8* arr, u32 data_size, u64 size);
-
-
 
 // ADVANCED OPERATIONS
 // ============================================================================

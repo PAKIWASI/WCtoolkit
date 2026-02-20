@@ -8,6 +8,7 @@
 Update Readme
 
 Add matrix_generic, wc_macros, helpers.h to single_headers
+helpers has dependency
 
 ---
 
@@ -200,34 +201,3 @@ We have to update dependency list in it
 - `bitVec_print_all(bv)` — print all bytes, not just one at a time
 
 ---
-
-## Infrastructure / DX
-
-- **Formal test framework** — replace ad-hoc `test_N()` functions with a lightweight harness
-  that tracks pass/fail counts and reports results. Something minimal:
-  ```c
-  WC_TEST(name) { ... }
-  WC_ASSERT_EQ(a, b)
-  WC_ASSERT_TRUE(cond)
-  WC_RUN_ALL()
-  ```
-- **Ergonomic macros** (candidates for `helpers.h`):
-  ```c
-  VEC_GET(vec, T, i)          // typed element access
-  VEC_BACK(vec, T)            // typed last element
-  VEC_FRONT(vec, T)           // typed first element
-  VEC_FOR_EACH(vec, T, var, body)      // typed iteration loop
-  VEC_FOR_EACH_PTR(vec, T, var, body)  // for vec-of-pointers
-  MAP_PUT(map, k, v)          // typed hashmap put
-  MAP_GET(map, T, key)        // typed hashmap get
-  MAP_HAS(map, key)
-  MAP_DEL(map, key)
-  STACK_PUSH(stk, T, val)
-  ENQUEUE(q, T, val)
-  MATRIX_ARENA(arena, m, n)
-  MATRIX_ARENA_ARR(arena, m, n, arr)
-  ```
-- **`string_printf(fmt, ...)`** — build a String using printf-style formatting
-- `hashmap_for_each` / `hashset_for_each` — typed iteration callbacks
-- Thread-safe container variants (lock-based or lock-free, opt-in)
-- CMake install target + pkg-config file for using as a system library

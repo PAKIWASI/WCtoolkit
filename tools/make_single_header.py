@@ -48,25 +48,29 @@ COMPONENTS = [
     "hashmap",
     "hashset",
     "matrix",
+    "matrix_generic",
+    "helpers",
 ]
 
 # Maps a component name to the names it depends on (other lib components only).
 # Only direct dependencies are listed; transitive ones are resolved automatically.
 DEPENDENCIES: dict[str, list[str]] = {
-    "common":      [],
-    "wc_errno":    [],
-    "fast_math":   ["common"],
-    "arena":       ["common", "wc_errno"],
-    "gen_vector":  ["common", "wc_errno"],
-    "bit_vector":  ["common", "gen_vector"],
-    "String":      ["common", "gen_vector"],
-    "Stack":       ["common", "gen_vector"],
-    "Queue":       ["common", "gen_vector"],
-    "map_setup":   ["common"],
-    "random":      ["common", "fast_math"],
-    "hashmap":     ["common", "map_setup"],
-    "hashset":     ["common", "map_setup"],
-    "matrix":      ["common", "arena"],
+    "common":           [],
+    "wc_errno":         [],
+    "fast_math":        ["common"],
+    "arena":            ["common", "wc_errno"],
+    "gen_vector":       ["common", "wc_errno"],
+    "bit_vector":       ["common", "gen_vector"],
+    "String":           ["common", "gen_vector"],
+    "Stack":            ["common", "gen_vector"],
+    "Queue":            ["common", "gen_vector"],
+    "map_setup":        ["common"],
+    "random":           ["common", "fast_math"],
+    "hashmap":          ["common", "map_setup"],
+    "hashset":          ["common", "map_setup"],
+    "matrix":           ["common", "arena"],
+    "matrix_generic":   ["common", "arena"],
+    "helpers":          ["String", "hashmap"],
 }
 
 
