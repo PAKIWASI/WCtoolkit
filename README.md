@@ -1,13 +1,26 @@
 # WCtoolkit
 
-A C toolkit providing generic data structures with explicit ownership, arena allocation, and performance-conscious design. No dependencies beyond the C standard library.
+A C data structures library built around explicit ownership, value semantics, and zero hidden costs. No dependencies beyond the C standard library. 
+
+Targets C11 with GNU extensions (Clang/GCC). But can degrade to C99 by sacrificing some ergonomics
+
+```c
+// A taste of the library
+genVec* names = VEC_OF_STR(8);
+VEC_PUSH_CSTR(names, "PAKI");
+VEC_PUSH_CSTR(names, "WASI");
+VEC_FOREACH(names, String, s) { string_print(s); }
+genVec_destroy(names);
+```
 
 ---
 
 ## Table of Contents
 
-- [Quick Start](#quick-start)
-- [The Ownership Model](#the-ownership-model)
+- [Design Philosophy](#design-philosophy)
+- [Ownership Model](#ownership-model)
+- [Error Handling](#error-handling)
+- [Macro Layer and Ergonomics](#macro-layer-and-ergonomics)
 - [Components](#components)
   - [Arena Allocator](#arena-allocator)
   - [Generic Vector](#generic-vector)
@@ -16,101 +29,282 @@ A C toolkit providing generic data structures with explicit ownership, arena all
   - [Queue](#queue)
   - [HashMap](#hashmap)
   - [HashSet](#hashset)
+  - [BitVector](#bitvector)
   - [Matrix](#matrix)
-  - [Bit Vector](#bit-vector)
-  - [Random](#random)
+  - [Random (PCG32)](#random-pcg32)
   - [Fast Math](#fast-math)
-- [Callback Reference](#callback-reference)
+- [Helpers and Callbacks](#helpers-and-callbacks)
 - [Building](#building)
+- [Testing](#testing)
 - [Single-Header Distribution](#single-header-distribution)
-- [Type Reference](#type-reference)
+- [Known Issues](#known-issues)
+- [Type and Diagnostic Reference](#type-and-diagnostic-reference)
 
 ---
 
-## Quick Start
+## Design Philosophy
+
+WCtoolkit makes one central trade-off: **you tell the library how your data behaves, and it does the rest**. This means more setup code upfront, but total control over memory, copying, and lifetimes — with no hidden allocations and no garbage collection.
+
+### Value Semantics Over Pointer Chasing
+
+Elements are stored **inline by value** inside containers. A `genVec` of `String` stores the actual `String` structs contiguous in memory, not pointers to heap-scattered objects. This keeps data cache-friendly and makes the ownership structure obvious — there is no shared ownership, no reference counting, no implicit heap allocation behind your back.
+
+```
+┌─────────────────────────────────────────────────────┐
+│  genVec (by value)                                  │
+│  ┌──────────┬──────────┬──────────┬──────────┐      │
+│  │ String   │ String   │ String   │ String   │ ...  │
+│  │ {data, …}│ {data, …}│ {data, …}│ {data, …}│      │
+│  └──────────┴──────────┴──────────┴──────────┘      │
+└─────────────────────────────────────────────────────┘
+```
+
+By-pointer storage is supported when you need stable addresses or very large elements, but by-value is the default and the preferred path.
+
+### Callbacks Over Macros
+
+Genericity is achieved through **function pointer callbacks**, not `void*`-cast macros or `_Generic`. Every container accepts optional `copy_fn`, `move_fn`, and `delete_fn` callbacks that describe how to deep-copy, transfer ownership of, and free an element. For plain-old-data types — `int`, `float`, any struct without heap pointers — all three callbacks are `NULL` and the container uses `memcpy` directly.
+
+This has a real cost: you write more setup code. The benefit is that the behavior is explicit, readable, debuggable, and correct across container operations like `push`, `insert`, `replace`, `pop`, `remove`, `copy`, and `move`.
+
+### No Magic, No Hidden Cost
+
+Every allocation is explicit. `arena_alloc` is a pointer bump. `genVec_push` sometimes calls `realloc` — you can see it in the source. There is no background thread, no lazy initialization, no defer queue. What you write is what runs.
+
+Growth and shrink thresholds for `genVec` are compile-time configurable macros you set before including the header. The hash table load factors are constants in `map_setup.h`. Nothing is hidden in a global config struct.
+
+### Stack Wherever Possible
+
+Most types offer both heap-allocated and stack-allocated variants:
 
 ```c
-#include "gen_vector.h"
-#include "helpers.h"   // str_copy, str_del, VEC_PUSH_SIMP, etc.
+// Heap: library manages memory
+Arena* arena  = arena_create(nKB(4));
+genVec* vec   = genVec_init(8, sizeof(int), NULL, NULL, NULL);
+String* str   = string_from_cstr("hello");
 
-int main(void) {
-    // --- Vector of ints (no callbacks needed for POD) ---
-    genVec vec;
-    genVec_init_stk(16, sizeof(int), NULL, NULL, NULL, &vec);
+// Stack: you provide the struct, often the data too
+Arena arena;
+ARENA_CREATE_STK_ARR(&arena, 4);   // 4KB on the stack
 
-    VEC_PUSH_SIMP(&vec, int, 10);
-    VEC_PUSH_SIMP(&vec, int, 20);
-    VEC_PUSH_SIMP(&vec, int, 30);
+genVec vec;
+genVec_init_stk(8, sizeof(int), NULL, NULL, NULL, &vec);
 
-    genVec_print(&vec, int_print);
-    genVec_destroy_stk(&vec);
-
-    // --- Vector of Strings (with copy/del callbacks) ---
-    genVec* svec = genVec_init(8, sizeof(String), str_copy, str_move, str_del);
-
-    VEC_PUSH_CSTR(svec, "hello");
-    VEC_PUSH_CSTR(svec, "world");
-
-    genVec_print(svec, str_print);
-    genVec_destroy(svec);
-
-    return 0;
-}
+String str;
+string_create_stk(&str, "hello");
 ```
+
+Stack variants reduce heap pressure and are useful in tight loops, embedded contexts, or anywhere you want lifetime tied to a scope.
+
+### Separation of Concerns
+
+The library is layered deliberately. `common.h` defines primitive types and macros. `gen_vector` is the single workhorse container. Everything else — `String`, `Stack`, `Queue`, `bitVec` — is built on top of it, reusing its growth, shrink, insert, remove, and copy logic without duplicating it. The hash containers share `map_setup.h` for hashing, prime selection, and load factor logic.
 
 ---
 
-## The Ownership Model
+## Ownership Model
 
-This is the central concept in the library. Every container that holds elements with heap resources needs three callbacks:
+This is the most important concept in the library. Get this right and everything else follows naturally.
+
+### The Three Callbacks
+
+Any type that owns heap resources needs three callbacks:
 
 ```c
-void my_copy(u8* dest, const u8* src);   // deep copy src into dest
-void my_move(u8* dest, u8** src);        // transfer ownership, null src
-void my_del(u8* elm);                    // free resources owned by elm
+typedef void (*copy_fn)(u8* dest, const u8* src);    // deep copy src into dest
+typedef void (*move_fn)(u8* dest, u8** src);          // transfer ownership, null *src
+typedef void (*delete_fn)(u8* elm);                   // free resources owned by elm
 ```
 
-Pass `NULL` for any callback you don't need. POD types (int, float, structs without pointers) work with all three as `NULL`.
+Pass `NULL` for any you don't need. For `int`, `float`, and flat structs without pointers, all three are `NULL`.
+
+The key contract:
+
+- `copy_fn`: `dest` is **uninitialized raw memory** — never free it first. Write fresh allocations into it.
+- `move_fn`: `*src` is a **heap pointer** to the source struct. Copy the struct fields into `dest`, then `free(*src)` and null it. Do **not** free the data buffer — it moves with the fields.
+- `delete_fn`: `elm` is **a slot in the container** — do not `free(elm)` itself. Only free resources the element owns (e.g. a `data` buffer).
 
 ### By Value vs By Pointer
 
-You have two storage strategies. **By value** stores the struct inline:
+**Strategy A — By Value**: The slot holds the entire struct (`sizeof(String)` bytes). Better cache locality. Pointers into the container are invalidated by any realloc.
 
 ```c
-// sizeof(String) = 40 bytes stored per element
 genVec* vec = genVec_init(8, sizeof(String), str_copy, str_move, str_del);
-
 String s;
 string_create_stk(&s, "hello");
-genVec_push(vec, cast(s));       // deep copies s into the vector
-string_destroy_stk(&s);          // safe to destroy, vector has its own copy
+genVec_push(vec, (u8*)&s);     // str_copy is called, vec owns its own copy
+string_destroy_stk(&s);        // s's buffer is freed, vec is unaffected
 ```
 
-**By pointer** stores a pointer to a heap-allocated struct:
+**Strategy B — By Pointer**: The slot holds `String*` (`8` bytes). The pointed-to struct lives elsewhere. Addresses inside the container are stable across reallocations.
 
 ```c
-// sizeof(String*) = 8 bytes stored per element
 genVec* vec = genVec_init(8, sizeof(String*), str_copy_ptr, str_move_ptr, str_del_ptr);
-
 String* s = string_from_cstr("hello");
-genVec_push_move(vec, (u8**)&s); // transfers ownership, s is now NULL
+genVec_push_move(vec, (u8**)&s);    // str_move_ptr is called, s is now NULL
+// vec now owns the String* and the String it points to
 ```
 
-By value is better for cache locality. By pointer is useful when elements are large or shared.
+The only visible difference at call sites is the type you pass (`String` vs `String*`) and which set of callbacks you register. Everything else — push, pop, iterate, destroy — works identically.
 
-### Copy vs Move
+### Copy vs Move at the Call Site
 
 ```c
 String* s = string_from_cstr("hello");
 
-// Copy: s is unaffected, vector gets its own deep copy
-genVec_push(vec, castptr(s));
-string_destroy(s);    // still need to free
+// Copy: str_copy is called, s is still valid and still owned by you
+genVec_push(vec, (u8*)s);
+string_destroy(s);    // you must still free s
 
-// Move: vector takes ownership, s is nulled
+// Move: str_move is called, s is nulled, vec owns it
 String* s2 = string_from_cstr("world");
 genVec_push_move(vec, (u8**)&s2);
-// s2 == NULL now, don't free it
+// s2 == NULL — do not free it
+```
+
+Move is preferred when the source is no longer needed. It avoids the deep copy entirely.
+
+### Destruction
+
+```c
+genVec_destroy(vec);       // calls del_fn on each element, frees data, frees struct
+genVec_destroy_stk(&vec);  // calls del_fn on each element, frees data — NOT the struct
+```
+
+The `_stk` variant is for vectors whose struct lives on your stack. The data buffer is still heap-allocated by default (unless you used `genVec_init_arr`), so it still needs to be freed.
+
+---
+
+## Error Handling
+
+WCtoolkit distinguishes between two kinds of failures:
+
+**Programmer errors** — null pointer passed to a function that requires one, index out of bounds, zero-size allocation — are caught by `CHECK_FATAL` and abort with a descriptive message. These are bugs, not conditions to handle at runtime.
+
+**Expected conditions** — popping an empty container, allocating from a full arena — are reported through `wc_errno`, a thread-local variable modeled after `errno(3)`. Functions return `NULL`, `0`, or `void` on these conditions and set `wc_errno` to a code explaining why.
+
+```c
+#include "wc_errno.h"
+
+// Check a single call
+wc_errno = WC_OK;
+u8* ptr = arena_alloc(arena, size);
+if (!ptr && wc_errno == WC_ERR_FULL) {
+    // arena is exhausted — handle it
+}
+
+// Check a batch — wc_errno stays set if any call failed
+wc_errno = WC_OK;
+float* a = (float*)arena_alloc(arena, 256);
+float* b = (float*)arena_alloc(arena, 256);
+if (wc_errno) { wc_perror("alloc"); }
+```
+
+**Rules:**
+- Successful calls do **not** clear `wc_errno` — clear it yourself before a batch you want to check.
+- Check the return value first; `wc_errno` tells you *why*, not *whether*.
+- `wc_errno` is thread-local — each thread has an independent copy.
+
+**Error codes:**
+
+| Code | Meaning | Set by |
+|---|---|---|
+| `WC_OK` | No error | — |
+| `WC_ERR_FULL` | Arena exhausted | `arena_alloc`, `arena_alloc_aligned` |
+| `WC_ERR_EMPTY` | Container is empty | `genVec_pop`, `genVec_front`, `genVec_back`, `dequeue`, `queue_peek`, `stack_pop`, `stack_peek` |
+
+---
+
+## Macro Layer and Ergonomics
+
+Raw `genVec` calls require casts and address-taking. `wc_macros.h` provides a typed macro layer using GNU statement expressions (`({ })`) and `__typeof__` that reads more naturally, requires no explicit casts, and works correctly for both storage strategies.
+
+Include `wc_macros.h` and `helpers.h` together to get the full ergonomic API.
+
+### Creating Vectors
+
+```c
+// Generic
+genVec* v = VEC(int, 16);                              // POD, no callbacks
+genVec* v = VEC_CX(String, 8, str_copy, str_move, str_del);  // with callbacks
+genVec* v = VEC_EMPTY(float);                          // capacity 0
+
+// Common shorthands
+genVec* v = VEC_OF_INT(16);
+genVec* v = VEC_OF_STR(8);          // String by value
+genVec* v = VEC_OF_STR_PTR(8);      // String* by pointer
+genVec* v = VEC_OF_VEC(4);          // genVec by value (nested vectors)
+genVec* v = VEC_OF_VEC_PTR(4);      // genVec* by pointer
+
+// From a literal array
+genVec* v = VEC_FROM_ARR(int, 4, ((int[4]){1, 2, 3, 4}));
+```
+
+### Pushing
+
+```c
+VEC_PUSH(v, 42);                    // any POD value — typeof deduces the type
+VEC_PUSH(v, 3.14f);
+VEC_PUSH(v, my_struct);
+
+VEC_PUSH_COPY(v, my_string);        // explicit deep copy
+VEC_PUSH_MOVE(v, my_string_ptr);    // transfer ownership, my_string_ptr → NULL
+VEC_PUSH_CSTR(v, "literal");        // allocate String, move into vec
+```
+
+### Accessing
+
+```c
+// By value (Strategy A):
+String  s  = VEC_AT(v, String, i);      // value copy
+String* sp = VEC_AT_MUT(v, String, i);  // pointer into slot (invalidated by realloc)
+
+// By pointer (Strategy B):
+String*  s  = VEC_AT(v, String*, i);    // the stored pointer
+String** sp = VEC_AT_MUT(v, String*, i);
+
+String front = VEC_FRONT(v, String);
+String back  = VEC_BACK(v, String);
+```
+
+### Iterating
+
+```c
+// Strategy A (by value): name is String* — pointer into the slot
+VEC_FOREACH(v, String, s) {
+    string_print(s);
+}
+
+// Strategy B (by pointer): name is String** — *name is the stored String*
+VEC_FOREACH(v, String*, sp) {
+    string_print(*sp);
+}
+```
+
+### Popping
+
+```c
+int    x = VEC_POP(v, int);      // pops and returns by value
+String s = VEC_POP(v, String);   // you own s, must destroy it
+```
+
+### Mutating
+
+```c
+VEC_SET(v, i, new_val);          // replace element at i (del_fn on old, copy_fn on new)
+```
+
+### HashMap Shorthands
+
+```c
+MAP_PUT(m, key, val);                   // copy both key and value
+MAP_PUT_MOVE(m, key_ptr, val_ptr);      // move both, both → NULL
+MAP_PUT_VAL_MOVE(m, key, val_ptr);      // copy key, move value
+MAP_PUT_KEY_MOVE(m, key_ptr, val);      // move key, copy value
+MAP_PUT_STR_STR(m, "key", "val");       // allocate two Strings and insert
+
+int result = MAP_GET(m, int, key);      // copy value out
 ```
 
 ---
@@ -119,348 +313,365 @@ genVec_push_move(vec, (u8**)&s2);
 
 ### Arena Allocator
 
-O(1) bump-pointer allocator. Allocations are free, cleanup is a single `free()`.
+A bump-pointer allocator. Allocations are O(1) pointer arithmetic. Cleanup is a single `free()`.
 
 ```c
-// Heap arena
-Arena* arena = arena_create(nKB(4));   // 0 = use ARENA_DEFAULT_SIZE (4KB)
+// Heap-backed
+Arena* arena = arena_create(nKB(4));   // pass 0 to use ARENA_DEFAULT_SIZE
+arena_release(arena);                   // frees everything at once
 
-// Stack arena (no heap)
+// Stack-backed (no heap allocation at all)
 Arena stack_arena;
-ARENA_CREATE_STK_ARR(&stack_arena, 4); // 4KB on the stack
+ARENA_CREATE_STK_ARR(&stack_arena, 4); // 4KB on the stack — no release needed
 ```
 
-**Typed allocation macros:**
+**Allocating:**
 
 ```c
-int*        nums = ARENA_ALLOC_N(arena, int, 100);
-MyStruct*   s    = ARENA_ALLOC_ZERO(arena, MyStruct);   // zeroed
-char*       buf  = ARENA_ALLOC_N(arena, char, 256);
+// Untyped
+u8* raw = arena_alloc(arena, 256);
+u8* aligned = arena_alloc_aligned(arena, 64, 16);  // align to 16 bytes
+
+// Typed macros (preferred)
+int*      nums = ARENA_ALLOC_N(arena, int, 100);
+MyStruct* s    = ARENA_ALLOC_ZERO(arena, MyStruct);    // zero-initialized
+char*     buf  = ARENA_ALLOC_N(arena, char, 256);
 ```
 
-**Scratch regions — temporary allocations that auto-rollback:**
+Default alignment is `sizeof(u64)` (8 bytes), configurable via `#define ARENA_DEFAULT_ALIGNMENT`.
+
+**Marks — partial rollback:**
 
 ```c
-// Automatic (preferred)
+u64 mark = arena_get_mark(arena);      // save current position
+// ... allocate freely ...
+arena_clear_mark(arena, mark);         // roll back to saved position
+```
+
+**Scratch arenas — scoped temporary allocations:**
+
+```c
+// Automatic cleanup using a for-loop scope trick
 ARENA_SCRATCH(temp, arena) {
     float* scratch = ARENA_ALLOC_N(arena, float, 1024);
-    // ... do work with scratch ...
-}   // scratch memory is reclaimed here
+    // ... work with scratch ...
+}   // scratch memory is reclaimed here automatically
 
-// Manual
+// Manual variant
 arena_scratch sc = arena_scratch_begin(arena);
 u8* tmp = arena_alloc(arena, nKB(1));
 // ... work ...
-arena_scratch_end(&sc);   // rolls back to before tmp was allocated
+arena_scratch_end(&sc);
 ```
 
-**Arena-allocated matrices** (great for avoiding malloc in hot loops):
-
-```c
-// From matrix_test_7 in the test suite:
-Arena* arena = arena_create(nKB(1));
-Matrix* result = matrix_arena_alloc(arena, 4, 4);
-
-ARENA_SCRATCH(temp, arena) {
-    Matrix* t1 = matrix_arena_arr_alloc(arena, 4, 4, (float*)(float[4][4]){
-        {1,2,3,4}, {1,2,3,4}, {1,2,3,4}, {1,2,3,4}
-    });
-    Matrix* t2 = matrix_arena_arr_alloc(arena, 4, 4, (float*)(float[4][4]){
-        {1,2,3,4}, {1,2,3,4}, {1,2,3,4}, {1,2,3,4}
-    });
-    matrix_xply(result, t1, t2);
-}   // t1 and t2 freed; result survives
-
-matrix_print(result);
-arena_release(arena);    // single cleanup for everything
-```
-
-**Query arena state:**
+**Querying:**
 
 ```c
 u64 used      = arena_used(arena);
 u64 remaining = arena_remaining(arena);
-arena_clear(arena);     // reset without freeing (reuse the memory)
-arena_release(arena);   // free everything
+arena_clear(arena);    // reset idx to 0, memory is reusable (no free)
+arena_release(arena);  // free everything
+```
+
+**Arena-allocated matrices** (no `malloc`/`free` in a hot loop):
+
+```c
+Arena* arena = arena_create(nKB(2));
+Matrixf* result = matrix_arena_alloc(arena, 4, 4);
+
+ARENA_SCRATCH(sc, arena) {
+    Matrixf* a = matrix_arena_arr_alloc(arena, 4, 4, data_a);
+    Matrixf* b = matrix_arena_arr_alloc(arena, 4, 4, data_b);
+    matrix_xply(result, a, b);
+}   // a and b are reclaimed; result survives outside the scratch
+
+arena_release(arena);  // single cleanup for everything
 ```
 
 ---
 
 ### Generic Vector
 
-The foundation of the library. Stack, Queue, String, and BitVec all build on top of it.
+The foundation of the library. `String`, `Stack`, `Queue`, and `bitVec` are all built on top of it.
 
-**Initialization:**
+**Creating:**
 
 ```c
-// Heap (returns pointer)
-genVec* vec = genVec_init(initial_capacity, sizeof(MyType), copy, move, del);
+// Heap-allocated vector struct, heap-allocated data
+genVec* v = genVec_init(capacity, sizeof(T), copy_fn, move_fn, del_fn);
 
-// Stack (you provide the struct, data still on heap)
-genVec vec;
-genVec_init_stk(initial_capacity, sizeof(MyType), copy, move, del, &vec);
+// Stack-allocated vector struct, heap-allocated data
+genVec v;
+genVec_init_stk(capacity, sizeof(T), copy_fn, move_fn, del_fn, &v);
 
-// Stack struct AND stack data (fixed size - will crash if you push past capacity)
-int buf[8] = {0};
-genVec vec;
-genVec_init_arr(8, (u8*)buf, sizeof(int), NULL, NULL, NULL, &vec);
+// Fully stack-allocated (data array provided by you — cannot grow)
+int buf[8];
+genVec v;
+genVec_init_arr(8, (u8*)buf, sizeof(int), NULL, NULL, NULL, &v);
 
 // Pre-filled with a value
-genVec* vec = genVec_init_val(10, cast(my_val), sizeof(MyType), copy, move, del);
+genVec* v = genVec_init_val(n, (u8*)&val, sizeof(T), copy_fn, move_fn, del_fn);
+
+// From a literal array (heap vector)
+genVec* v = VEC_FROM_ARR(int, 4, ((int[4]){1, 2, 3, 4}));
 ```
 
-**Push / Pop:**
+**Growth behavior** — configurable before the include:
 
 ```c
-// POD push using the VEC_PUSH_SIMP macro (from helpers.h)
-VEC_PUSH_SIMP(&vec, float, 3.14f);
-VEC_PUSH_SIMP(&vec, int,   42);
+#define GENVEC_GROWTH    1.5F   // capacity multiplier on grow (default)
+#define GENVEC_SHRINK_AT 0.25F  // shrink when < 25% full
+#define GENVEC_SHRINK_BY 0.5F   // halve capacity on shrink
+#include "gen_vector.h"
+```
 
-// Push by copy
-genVec_push(vec, cast(my_string));
+**Push and pop:**
 
-// Push by move (src is nulled)
-genVec_push_move(vec, (u8**)&heap_string_ptr);
+```c
+genVec_push(v, (u8*)&val);             // copy (calls copy_fn or memcpy)
+genVec_push_move(v, (u8**)&ptr);       // move (calls move_fn or memcpy + null)
 
-// Pop (pass NULL if you don't need the value)
-genVec_pop(vec, cast(out_val));
-genVec_pop(vec, NULL);
+genVec_pop(v, (u8*)&out);             // copy last element out, then remove
+genVec_pop(v, NULL);                   // just remove last element
 ```
 
 **Access:**
 
 ```c
-// Get a copy
-MyType out;
-genVec_get(vec, i, cast(out));
+genVec_get(v, i, (u8*)&out);           // copy element at i into out
+const u8* p  = genVec_get_ptr(v, i);   // const pointer into slot i
+u8*       pm = genVec_get_ptr_mut(v, i); // mutable pointer into slot i
 
-// Get a pointer (invalidated by any push/insert/remove)
-const MyType* p     = (MyType*)genVec_get_ptr(vec, i);
-MyType*       p_mut = (MyType*)genVec_get_ptr_mut(vec, i);
-
-// Front / back
-const MyType* first = (MyType*)genVec_front(vec);
-const MyType* last  = (MyType*)genVec_back(vec);
+const u8* first = genVec_front(v);
+const u8* last  = genVec_back(v);
+// Both set wc_errno = WC_ERR_EMPTY if the vector is empty
 ```
 
-**Insert / Remove:**
+**Insert and remove:**
 
 ```c
-genVec_insert(vec, i, cast(val));            // shift right, insert copy
-genVec_insert_move(vec, i, (u8**)&ptr);      // shift right, insert move
-genVec_insert_multi(vec, i, (u8*)arr, n);    // insert n elements at once
+genVec_insert(v, i, (u8*)&val);              // shift right, insert copy at i
+genVec_insert_move(v, i, (u8**)&ptr);        // shift right, insert move at i
+genVec_insert_multi(v, i, (u8*)arr, n);      // insert n elements at i
 
-genVec_remove(vec, i, cast(out));            // shift left, copy out (or NULL)
-genVec_remove_range(vec, l, r);              // remove [l, r] inclusive
+genVec_remove(v, i, (u8*)&out);             // copy element out, shift left
+genVec_remove(v, i, NULL);                   // just remove at i
+genVec_remove_range(v, l, r);               // remove [l, r] inclusive
 
-genVec_replace(vec, i, cast(val));           // overwrite element i
+genVec_replace(v, i, (u8*)&val);            // overwrite i (del_fn then copy_fn)
+genVec_replace_move(v, i, (u8**)&ptr);      // overwrite i with ownership transfer
 ```
 
-**Utilities:**
+**Capacity and state:**
 
 ```c
-u64 n   = genVec_size(vec);
-u64 cap = genVec_capacity(vec);
-b8  emp = genVec_empty(vec);
+u64 n   = genVec_size(v);
+u64 cap = genVec_capacity(v);
+b8  emp = genVec_empty(v);
 
-genVec_for_each(vec, my_fn);       // apply fn to every element
-genVec_print(vec, my_print_fn);
-
-genVec_reserve(vec, new_cap);      // pre-allocate (never shrinks)
-genVec_shrink_to_fit(vec);         // reallocate to exact size
-genVec_clear(vec);                 // call del_fn on all, keep capacity
-genVec_reset(vec);                 // call del_fn on all, free memory
-genVec_copy(dest, src);            // deep copy (cleans up dest first)
-genVec_move(dest, &src);           // transfer ownership, src nulled
-
-// Heap-allocated vector:
-genVec_destroy(vec);
-// Stack-allocated vector:
-genVec_destroy_stk(&vec);
+genVec_reserve(v, new_cap);     // ensure capacity >= new_cap (never shrinks)
+genVec_reserve_val(v, n, val);  // grow to n, fill new slots with val
+genVec_shrink_to_fit(v);        // reallocate to exact size
 ```
 
-**Configurable growth/shrink** (define before including the header):
+**Lifecycle:**
 
 ```c
-#define GENVEC_GROWTH    1.5F   // capacity multiplier on grow
-#define GENVEC_SHRINK_AT 0.25F  // shrink when < 25% full
-#define GENVEC_SHRINK_BY 0.5F   // halve capacity on shrink
+genVec_clear(v);         // call del_fn on every element, size → 0, keep capacity
+genVec_reset(v);         // call del_fn on every element, free data, capacity → 0
+genVec_copy(dest, src);  // deep copy src into dest (cleans up dest first)
+genVec_move(dest, &src); // transfer ownership from heap src to dest, src → NULL
+
+genVec_destroy(v);       // for heap-allocated vectors
+genVec_destroy_stk(&v);  // for stack-allocated vectors
+```
+
+**Print:**
+
+```c
+genVec_print(v, my_print_fn);   // applies print_fn to each element
 ```
 
 ---
 
 ### String
 
-A length-based dynamic string, not null-terminated internally. Wraps `genVec` of `char`.
+A dynamic, length-based string. No null terminator is stored internally. Implemented as `typedef genVec String`, so all `genVec` internals apply — growth, shrink, inline data, the works.
 
-**Creation:**
+**Creating:**
 
 ```c
-String* s1 = string_create();                    // empty, heap
-String* s2 = string_from_cstr("hello");          // from literal, heap
-String* s3 = string_from_string(s2);             // deep copy, heap
+String* s = string_create();                 // empty, heap
+String* s = string_from_cstr("hello");       // from C literal, heap
+String* s = string_from_string(other);       // deep copy, heap
 
-String s4;
-string_create_stk(&s4, "stack string");          // struct on stack, data on heap
+String s;
+string_create_stk(&s, "hello");              // stack struct, heap data
+string_create_stk(&s, NULL);                // empty, stack struct
+
+string_reserve(s, 64);                       // pre-allocate capacity
+string_reserve_char(s, 5, 'x');             // pre-allocate and fill with 'x'
 ```
 
-**Modification:**
+**Appending:**
 
 ```c
-string_append_cstr(s1, " world");
-string_append_string(s1, s2);
-string_append_char(s1, '!');
-string_append_string_move(s1, &s2);   // consumes and frees s2
+string_append_cstr(s, " world");
+string_append_char(s, '!');
+string_append_string(s, other);
+string_append_string_move(s, &other);   // consume and nulls other
+```
 
-string_insert_cstr(s1, 0, "prefix: ");
-string_insert_char(s1, 5, '-');
+**Inserting and removing:**
 
-char c = string_pop_char(s1);
-string_remove_char(s1, 3);
-string_remove_range(s1, 2, 5);    // removes [2, 5] inclusive
-string_clear(s1);
+```c
+string_insert_char(s, i, 'c');
+string_insert_cstr(s, i, "sub");
+string_insert_string(s, i, other);
+
+char c = string_pop_char(s);         // remove and return last char
+string_remove_char(s, i);
+string_remove_range(s, l, r);        // remove [l, r] inclusive
+string_clear(s);                     // size → 0, keep capacity
 ```
 
 **Access:**
 
 ```c
-char   c    = string_char_at(s1, 0);
-char*  data = string_data_ptr(s1);   // raw buffer, NO null terminator
-u64    len  = string_len(s1);
-b8     emp  = string_empty(s1);
+char c  = string_char_at(s, i);
+void    string_set_char(s, i, 'x');
 
-string_set_char(s1, 0, 'H');
+char* ptr = string_data_ptr(s);      // raw pointer, NO null terminator
+char* cs  = string_to_cstr(s);       // malloced, null-terminated copy — you free it
 
-// Get a null-terminated copy (caller must free)
-char* cstr = string_to_cstr(s1);
-printf("%s\n", cstr);
-free(cstr);
-
-// Temporarily null-terminate for a read-only call (no alloc)
-TEMP_CSTR_READ(s1) {
-    printf("%s\n", string_data_ptr(s1));
-}
+u64 len = string_len(s);
+u64 cap = string_capacity(s);
+b8  emp = string_empty(s);
 ```
 
-**Search and compare:**
+**Comparison and search:**
 
 ```c
-u64 pos = string_find_char(s1, 'e');     // (u64)-1 if not found
-u64 idx = string_find_cstr(s1, "llo");   // (u64)-1 if not found
+int  cmp = string_compare(a, b);          // like strcmp: negative, 0, positive
+b8   eq  = string_equals(a, b);
+b8   eq  = string_equals_cstr(s, "hi");
 
-String* sub = string_substr(s1, 2, 4);   // heap copy of chars [2..5]
+u64 idx = string_find_char(s, 'e');       // returns (u64)-1 if not found
+u64 idx = string_find_cstr(s, "sub");
 
-b8 eq  = string_equals(s1, s2);
-b8 eq2 = string_equals_cstr(s1, "hello");
-int cmp = string_compare(s1, s2);        // like memcmp
+String* sub = string_substr(s, start, length);  // heap-allocated substring
 ```
 
-**Cleanup:**
+**Temporary null-terminated access without allocation:**
 
 ```c
-string_destroy(s1);           // heap string (string_from_cstr etc.)
-string_destroy_stk(&s4);      // stack string (string_create_stk)
+// Appends '\0', runs your block, then removes it
+TEMP_CSTR_READ(s) {
+    printf("%s\n", string_data_ptr(s));   // safe to use as cstr here
+}   // '\0' removed here
 ```
 
-**Using String as a hashmap key** — include `str_setup.h` for the hash and compare functions:
+**Lifecycle:**
 
 ```c
-#include "str_setup.h"
+string_copy(dest, src);      // deep copy into dest (frees dest's old data first)
+string_move(dest, &src);     // transfer ownership, src → NULL
 
-hashmap* map = hashmap_create(
-    sizeof(String), sizeof(int),
-    murmurhash3_str, str_cmp,
-    str_copy, NULL, str_move, NULL, str_del, NULL
-);
+string_destroy(s);           // heap-allocated
+string_destroy_stk(&s);      // stack-allocated struct
 ```
 
 ---
 
 ### Stack
 
-LIFO wrapper around `genVec`. Exactly the same callback rules apply.
+A LIFO adapter over `genVec`. `typedef genVec Stack`. All callbacks and storage strategies from `genVec` apply.
 
 ```c
-Stack* stk = stack_create(16, sizeof(int), NULL, NULL, NULL);
+Stack* s = stack_create(capacity, sizeof(T), copy_fn, move_fn, del_fn);
 
-int val = 42;
-stack_push(stk, cast(val));
-stack_push_move(stk, (u8**)&ptr);    // move semantics
+stack_push(s, (u8*)&val);
+stack_push_move(s, (u8**)&ptr);
 
-int top;
-stack_peek(stk, cast(top));
-const int* top_ptr = (int*)stack_peek_ptr(stk);
+int out;
+stack_pop(s, (u8*)&out);          // WC_ERR_EMPTY if empty
+stack_pop(s, NULL);
 
-stack_pop(stk, cast(top));           // copy out then remove
-stack_pop(stk, NULL);                // just discard
+const u8* top = stack_peek_ptr(s);
+stack_peek(s, (u8*)&out);
 
-u64 n  = stack_size(stk);
-b8  ep = stack_empty(stk);
+u64 n = stack_size(s);
+b8  e = stack_empty(s);
 
-stack_clear(stk);
-stack_destroy(stk);
+stack_clear(s);
+stack_reset(s);
+stack_destroy(s);
+stack_print(s, print_fn);
 ```
 
 ---
 
 ### Queue
 
-Circular buffer FIFO with O(1) enqueue/dequeue and automatic grow/shrink.
+A circular FIFO queue backed by `genVec`. Grows and shrinks automatically. Uses head/tail pointers to avoid shifting elements on every dequeue.
 
 ```c
-Queue* q = queue_create(16, sizeof(int), NULL, NULL, NULL);
+Queue* q = queue_create(capacity, sizeof(T), copy_fn, move_fn, del_fn);
 
-int val = 5;
-enqueue(q, cast(val));
+enqueue(q, (u8*)&val);
 enqueue_move(q, (u8**)&ptr);
 
 int out;
-dequeue(q, cast(out));    // copies front to out then removes
-dequeue(q, NULL);         // just discard front
+dequeue(q, (u8*)&out);            // WC_ERR_EMPTY if empty
+dequeue(q, NULL);
 
-queue_peek(q, cast(out));
-const int* front = (int*)queue_peek_ptr(q);
+const u8* front = queue_peek_ptr(q);
+queue_peek(q, (u8*)&out);
 
-u64 n  = queue_size(q);
-b8  ep = queue_empty(q);
-u64 cp = queue_capacity(q);
+u64 n = queue_size(q);
+b8  e = queue_empty(q);
+u64 c = queue_capacity(q);
 
+queue_clear(q);
+queue_reset(q);
 queue_shrink_to_fit(q);
-queue_clear(q);     // empty queue, keep capacity
-queue_reset(q);     // empty queue, free memory
 queue_destroy(q);
+queue_print(q, print_fn);
 ```
+
+When the buffer wraps around and more space is needed, `queue_compact` rebuilds it linearly into a new buffer — the FIFO order is always preserved across resizes.
 
 ---
 
 ### HashMap
 
-Open-addressing hash table with linear probing. Grows at 70% load, shrinks at 20%.
+Open-addressing hashmap with linear probing and tombstone deletion. Keys and values are heap-allocated separately per bucket. Supports independent copy/move/delete semantics for keys and values.
 
-**Creation:**
+Load factors: grow at **0.70**, shrink at **0.20**. Capacity is always chosen from a prime number table.
+
+**Creating:**
 
 ```c
-// int -> int  (no callbacks)
-hashmap* map = hashmap_create(
-    sizeof(int), sizeof(int),
-    NULL, NULL,        // hash_fn, cmp_fn  (NULL = FNV-1a, memcmp)
-    NULL, NULL,        // key_copy, val_copy
-    NULL, NULL,        // key_move, val_move
-    NULL, NULL         // key_del, val_del
+hashmap* m = hashmap_create(
+    sizeof(key_type),   sizeof(val_type),
+    hash_fn,            cmp_fn,           // NULL = FNV-1a, memcmp
+    key_copy,           val_copy,
+    key_move,           val_move,
+    key_del,            val_del
 );
+```
 
-// int -> String  (String values need copy/move/del)
-hashmap* map = hashmap_create(
-    sizeof(int), sizeof(String),
-    NULL, NULL,
-    NULL,     str_copy,
-    NULL,     str_move,
-    NULL,     str_del
-);
+For `int` keys and `int` values with no ownership:
 
-// String -> String  (both sides need callbacks, plus custom hash/compare)
-#include "str_setup.h"
-hashmap* map = hashmap_create(
+```c
+hashmap* m = hashmap_create(sizeof(int), sizeof(int),
+                             NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+```
+
+For `String` keys and `String` values:
+
+```c
+hashmap* m = hashmap_create(
     sizeof(String), sizeof(String),
     murmurhash3_str, str_cmp,
     str_copy, str_copy,
@@ -469,480 +680,456 @@ hashmap* map = hashmap_create(
 );
 ```
 
-**Insertion:**
+**Inserting:**
 
 ```c
-int k = 42;
-String v;
-string_create_stk(&v, "hello");
+// Copy both key and value
+b8 was_update = hashmap_put(m, (u8*)&key, (u8*)&val);
 
-// Copy both
-hashmap_put(map, cast(k), cast(v));
+// Move both (key and val are nulled after)
+hashmap_put_move(m, (u8**)&key, (u8**)&val);
 
-// Move value only (common pattern)
-String* heap_val = string_from_cstr("world");
-hashmap_put_val_move(map, cast(k), (u8**)&heap_val);  // heap_val = NULL
+// Mixed: copy key, move value
+hashmap_put_val_move(m, (u8*)&key, (u8**)&val);
 
-// Move both (when key is also heap-allocated, e.g. String key)
-String* key = string_from_cstr("mykey");
-String* val = string_from_cstr("myval");
-hashmap_put_move(map, (u8**)&key, (u8**)&val);   // both nulled
+// Mixed: move key, copy value
+hashmap_put_key_move(m, (u8**)&key, (u8*)&val);
+
+// Returns 1 if key existed and was updated, 0 if key was new
 ```
 
-All `put` variants return `1` if the key already existed (value was updated), `0` if it was a new insertion.
-
-**Retrieval:**
+**Looking up:**
 
 ```c
-// Copy out
-String out;
-if (hashmap_get(map, cast(k), cast(out))) {
-    string_print(&out);
-    string_destroy_stk(&out);
-}
-
-// Direct pointer (invalidated by any put/del)
-String* ptr = (String*)hashmap_get_ptr(map, cast(k));
-if (ptr) {
-    string_append_cstr(ptr, "_modified");   // modifies in place
-}
-
-b8 exists = hashmap_has(map, cast(k));
+b8 found = hashmap_get(m, (u8*)&key, (u8*)&out);   // copy value into out
+u8* ptr  = hashmap_get_ptr(m, (u8*)&key);           // direct pointer to value
+b8 has   = hashmap_has(m, (u8*)&key);
 ```
 
-**Deletion:**
+**Deleting:**
 
 ```c
-// Delete and discard
-hashmap_del(map, cast(k), NULL);
-
-// Delete and get the value back
-String deleted;
-if (hashmap_del(map, cast(k), cast(deleted))) {
-    string_print(&deleted);
-    string_destroy_stk(&deleted);
-}
+b8 found = hashmap_del(m, (u8*)&key, (u8*)&out);   // copy value out before delete
+b8 found = hashmap_del(m, (u8*)&key, NULL);          // delete without copying
 ```
 
-**Utilities:**
+**State and lifecycle:**
 
 ```c
-u64 n   = hashmap_size(map);
-u64 cap = hashmap_capacity(map);
-b8  emp = hashmap_empty(map);
+u64 n = hashmap_size(m);
+u64 c = hashmap_capacity(m);
+b8  e = hashmap_empty(m);
+hashmap_print(m, key_print_fn, val_print_fn);
+hashmap_destroy(m);
+```
 
-hashmap_print(map, key_print_fn, val_print_fn);
-hashmap_destroy(map);
+**Convenience macros** (from `wc_macros.h`):
+
+```c
+MAP_PUT(m, key, val);
+MAP_PUT_MOVE(m, key_ptr, val_ptr);
+MAP_PUT_VAL_MOVE(m, key, val_ptr);
+MAP_PUT_STR_STR(m, "name", "Alice");    // creates Strings, inserts by move
+int v = MAP_GET(m, int, key);
 ```
 
 ---
 
 ### HashSet
 
-Same implementation strategy as HashMap but stores only elements, no values.
+Same architecture as HashMap — open addressing, linear probing, tombstones, prime capacities — but stores only elements with no associated value.
 
 ```c
-hashset* set = hashset_create(sizeof(int), NULL, NULL, NULL, NULL, NULL);
+hashset* s = hashset_create(
+    sizeof(elm_type),
+    hash_fn, cmp_fn,        // NULL = FNV-1a, memcmp
+    copy_fn, move_fn, del_fn
+);
 
-int x = 42;
-b8 existed = hashset_insert(set, cast(x));        // 0 = inserted, 1 = already existed
-b8 existed = hashset_insert_move(set, (u8**)&p);  // move semantics
+b8 already_existed = hashset_insert(s, (u8*)&elm);
+b8 already_existed = hashset_insert_move(s, (u8**)&elm);
 
-b8 found   = hashset_has(set, cast(x));
-b8 removed = hashset_remove(set, cast(x));
+b8 found   = hashset_has(s, (u8*)&elm);
+b8 removed = hashset_remove(s, (u8*)&elm);
 
-hashset_clear(set);    // empty, keep capacity
-hashset_reset(set);    // empty, reset to initial capacity
-hashset_destroy(set);
+u64 n = hashset_size(s);
+u64 c = hashset_capacity(s);
+b8  e = hashset_empty(s);
+
+hashset_clear(s);    // remove all elements, keep capacity
+hashset_reset(s);    // remove all elements, reset to initial capacity
+hashset_print(s, print_fn);
+hashset_destroy(s);
 ```
 
-**String set example (from the test suite):**
+---
+
+### BitVector
+
+A compact dynamic bit array backed by a `genVec<u8>`. Bits are indexed from 0. The backing byte array grows automatically as you set higher-index bits.
 
 ```c
-#include "str_setup.h"
+bitVec* bv = bitVec_create();
 
-hashset* set = hashset_create(sizeof(String),
-    murmurhash3_str, str_cmp, str_copy, str_move, str_del);
+bitVec_set(bv, 42);           // set bit 42 to 1
+bitVec_clear(bv, 42);         // set bit 42 to 0
+bitVec_toggle(bv, 42);        // flip bit 42
+u8 b = bitVec_test(bv, 42);  // returns 0 or 1
 
-String* s = string_from_cstr("hello");
-hashset_insert_move(set, (u8**)&s);   // s is now NULL
+bitVec_push(bv);              // append a set (1) bit at the end
+bitVec_pop(bv);               // remove the last bit
 
-// Check membership with a temporary stack string
-String query;
-string_create_stk(&query, "hello");
-b8 found = hashset_has(set, cast(query));
-string_destroy_stk(&query);
+u64 nbits  = bitVec_size_bits(bv);    // logical number of bits
+u64 nbytes = bitVec_size_bytes(bv);   // backing byte count
 
-hashset_destroy(set);
+bitVec_print(bv, byte_index);  // print one byte as binary digits
+bitVec_destroy(bv);
 ```
+
+`bitVec_set` will grow the backing array as needed — setting bit 255 on an empty vector allocates 32 bytes automatically. `bitVec_clear`, `bitVec_test`, and `bitVec_toggle` require the bit to already be within the allocated range.
 
 ---
 
 ### Matrix
 
-Row-major 2D float matrix with cache-optimized operations.
+Row-major 2D float matrix (`Matrixf`). Three allocation strategies: heap, stack, arena.
 
-**Creation:**
+**Creating:**
 
 ```c
-// Heap
-Matrix* mat = matrix_create(3, 4);
-Matrix* mat = matrix_create_arr(3, 3, (float*)(float[3][3]){
-    {1, 2, 3},
-    {4, 5, 6},
-    {7, 8, 9}
-});
+Matrixf* m = matrix_create(rows, cols);
+Matrixf* m = matrix_create_arr(rows, cols, float_array);
 
-// Stack (matrix struct + data both on the stack)
-Matrix mat;
-matrix_create_stk(&mat, 3, 3, (float*)(float[3][3]){
-    {1, 2, 3},
-    {4, 5, 6},
-    {7, 8, 9}
-});
+// Stack: you provide the struct and the data array
+float data[9];
+Matrixf m;
+matrix_create_stk(&m, 3, 3, data);
 
-// Stack with zero data
-Matrix out;
-matrix_create_stk(&out, 3, 3, (float*)ZEROS_2D(3, 3));
+// Arena (no free needed — released with the arena)
+Matrixf* m = matrix_arena_alloc(arena, 3, 3);
+Matrixf* m = matrix_arena_arr_alloc(arena, 3, 3, float_array);
+
+matrix_destroy(m);   // heap only — do NOT call on stack or arena matrices
 ```
 
 **Setting values:**
 
 ```c
-// Preferred: explicit 2D array initializer
-matrix_set_val_arr(mat, 9, (float*)(float[3][3]){
+matrix_set_elm(m, value, row, col);
+
+// From a flat C array (row-major)
+matrix_set_val_arr(m, 9, (float*)(float[3][3]){
     {1, 2, 3},
     {4, 5, 6},
     {7, 8, 9}
 });
+```
 
-// Single element
-matrix_set_elm(mat, 3.14f, 1, 2);   // row 1, col 2
+**Element access macros:**
 
-// Direct macro access (no bounds checking)
-MATRIX_AT(mat, 1, 2) = 42.0f;
-float v = MATRIX_AT(mat, 1, 2);
+```c
+MATRIX_AT(m, i, j)     // m->data[i * m->n + j] — direct lvalue access
+IDX(m, i, j)           // just the index, without dereferencing
+MATRIX_TOTAL(m)        // m->m * m->n
 ```
 
 **Operations:**
 
 ```c
-matrix_add(out, a, b);        // out = a + b  (out may alias a or b)
-matrix_sub(out, a, b);        // out = a - b  (out may alias a or b)
-matrix_scale(mat, 2.0f);      // mat *= 2
-matrix_div(mat, 2.0f);        // mat /= 2
-matrix_copy(dest, src);
+matrix_add(out, a, b);         // out = a + b  (out may alias a or b)
+matrix_sub(out, a, b);         // out = a - b  (out may alias a or b)
+matrix_scale(m, scalar);       // m *= scalar (in place)
+matrix_div(m, scalar);         // m /= scalar (in place)
+matrix_copy(dest, src);        // element-wise copy
 
-// Multiply: out CANNOT alias a or b
-// (m×k) * (k×n) = (m×n)
-matrix_xply(out, a, b);       // blocked ikj — good for small/medium
-matrix_xply_2(out, a, b);     // transposes b internally — better for large
+// Multiplication (out may NOT alias a or b)
+matrix_xply(out, a, b);        // blocked ikj — good for small to medium matrices
+matrix_xply_2(out, a, b);      // transposes b first — better for large matrices
 
-// Transpose: out CANNOT alias mat
-matrix_T(out, mat);           // out = mat^T
+matrix_T(out, m);              // transpose (out may NOT alias m)
 
 // LU decomposition and determinant
-matrix_LU_Decomp(L, U, mat);
-float det = matrix_det(mat);
+matrix_LU_Decomp(L, U, m);    // Doolittle algorithm — m = L * U
+float det = matrix_det(m);    // uses LU decomposition internally
 
-matrix_print(mat);
-matrix_destroy(mat);   // only for heap-allocated matrices
-```
-
-**Generic matrix** (for other element types — compile-time instantiation):
-
-```c
-#include "matrix_generic.h"
-
-// In a .c file, instantiate all functions for a type:
-INSTANTIATE_MATRIX(int, "%d ");
-INSTANTIATE_MATRIX(double, "%.6f ");
-
-// Then use the type-suffixed functions:
-Matrix_int* m = matrix_create_int(3, 3);
-matrix_set_elm_int(m, 42, 0, 0);
-double det = matrix_det_int(m);     // always returns double
-matrix_print_int(m);
-matrix_destroy_int(m);
+matrix_print(m);               // formatted matrix to stdout
 ```
 
 ---
 
-### Bit Vector
+### Random (PCG32)
 
-Compact dynamic bit array backed by a `genVec` of bytes.
+Permuted Congruential Generator. Fast, high-quality, reproducible. All output uses a single global RNG instance.
+
+**Seeding:**
 
 ```c
-bitVec* bv = bitVec_create();
-
-bitVec_set(bv, 42);          // set bit 42 to 1
-bitVec_clear(bv, 42);        // set bit 42 to 0
-bitVec_toggle(bv, 42);       // flip bit 42
-u8 b = bitVec_test(bv, 42);  // returns 0 or 1
-
-bitVec_push(bv);             // append a 1 bit
-bitVec_pop(bv);              // remove last bit
-
-u64 nbits  = bitVec_size_bits(bv);   // logical bit count
-u64 nbytes = bitVec_size_bytes(bv);  // backing byte count
-
-bitVec_print(bv, 0);         // print byte 0 as binary
-bitVec_destroy(bv);
+pcg32_rand_seed(seed, sequence);   // explicit seed — same inputs always produce same sequence
+pcg32_rand_seed_time();            // seed from time(NULL) — different each second
 ```
 
----
-
-### Random
-
-PCG32 random number generator — fast, high quality, reproducible.
+**Integer output:**
 
 ```c
-// Seed with explicit values (same seed = same sequence)
-pcg32_rand_seed(42, 1);
+u32 r    = pcg32_rand();                  // full 32-bit random
+u32 dice = pcg32_rand_bounded(6);         // uniform in [0, 6), no modulo bias
+```
 
-// Seed from system time (different each run, second precision)
-pcg32_rand_seed_time();
+**Floating point:**
 
-// Raw 32-bit random
-u32 r = pcg32_rand();
+```c
+float  f = pcg32_rand_float();              // uniform in [0.0, 1.0)
+double d = pcg32_rand_double();             // uniform in [0.0, 1.0), 53-bit precision
 
-// Bounded: uniform in [0, bound), no modulo bias
-u32 dice = pcg32_rand_bounded(6);
-
-// Floating point in [0, 1)
-float  f = pcg32_rand_float();
-double d = pcg32_rand_double();  // 53-bit precision
-
-// Range: [min, max)
 float  fv = pcg32_rand_float_range(-1.0f, 1.0f);
-double dv = pcg32_rand_double_range(0.0, 100.0);
-
-// Gaussian (Box-Muller, standard normal N(0, 1))
-float g = pcg32_rand_gaussian();
-
-// Custom normal N(mean, stddev²)
-float gv = pcg32_rand_gaussian_custom(0.0f, 1.0f);
+double dv = pcg32_rand_double_range(0.0,  100.0);
 ```
+
+**Gaussian:**
+
+```c
+float g  = pcg32_rand_gaussian();                      // standard normal N(0, 1)
+float gv = pcg32_rand_gaussian_custom(mean, stddev);   // N(mean, stddev²)
+```
+
+The Gaussian generator uses the Box-Muller transform. It internally caches one value per two calls — the second value from each transform pair is returned on the next call. This is efficient but means the internal `static` state breaks if you use multiple independent RNG instances (see Known Issues).
 
 ---
 
 ### Fast Math
 
-Approximate implementations of common math functions. Faster than `<math.h>` at the cost of some precision. Designed for use cases like RNG, simulations, or visualizations where exactness isn't critical.
+Approximations of common math functions using numerical methods. Faster than `<math.h>` with reduced precision. Originally built to support the Gaussian RNG, but generally usable wherever exactness is not required.
 
 ```c
 #include "fast_math.h"
 
-float s = fast_sqrt(x);    // Newton-Raphson, 4 iterations
-float l = fast_log(x);     // range reduction + Taylor series
-float e = fast_exp(x);     // range reduction + repeated squaring
-float sn = fast_sin(x);    // Taylor series, input reduced to [-π, π]
-float cs = fast_cos(x);    // = fast_sin(x + π/2)
-float c  = fast_ceil(x);
+float s = fast_sqrt(x);    // Newton-Raphson, 4 iterations, bit-hack initial guess
+float l = fast_log(x);     // range reduction + Taylor series (5 terms)
+float e = fast_exp(x);     // range reduction + repeated squaring for integer part
+float s = fast_sin(x);     // Taylor series, input reduced to [-π, π]
+float c = fast_cos(x);     // = fast_sin(x + π/2)
+float v = fast_ceil(x);
 ```
+
+Constants: `PI`, `TWO_PI`, `LN2` are defined in `fast_math.h`.
 
 ---
 
-## Callback Reference
+## Helpers and Callbacks
 
-All callbacks follow the same signature conventions across the entire library.
+`helpers.h` provides ready-to-use copy/move/delete/print/compare callbacks for `String` and `genVec` in both storage strategies, fully documented with explanations of *why* each callback is written the way it is. Include it alongside `wc_macros.h` for the full ergonomic API.
 
-### For By-Value storage (e.g. `genVec` of `String`)
+### For String, stored by value
 
 ```c
-// str_copy, str_move, str_del from helpers.h
-
-void str_copy(u8* dest, const u8* src) {
-    String* d = (String*)dest;
-    String* s = (String*)src;
-    memcpy(d, s, sizeof(String));     // copy all fields
-    u64 n = s->size * s->data_size;
-    d->data = malloc(n);
-    memcpy(d->data, s->data, n);      // deep copy data buffer
-}
-
-void str_move(u8* dest, u8** src) {
-    memcpy(dest, *src, sizeof(String));
-    free(*src);
-    *src = NULL;
-}
-
-void str_del(u8* elm) {
-    string_destroy_stk((String*)elm); // free data buffer, not the struct
-}
+str_copy    // copy_fn  — deep copies the String struct and its data buffer
+str_move    // move_fn  — moves fields into slot, frees heap container, nulls src
+str_del     // delete_fn — frees data buffer only (not the slot)
+str_print   // print_fn
+str_cmp     // compare_fn — wraps string_compare
 ```
 
-### For By-Pointer storage (e.g. `genVec` of `String*`)
+### For String*, stored by pointer
 
 ```c
-// str_copy_ptr, str_move_ptr, str_del_ptr from helpers.h
-
-void str_copy_ptr(u8* dest, const u8* src) {
-    String* s = *(String**)src;    // src is String**
-    String* d = malloc(sizeof(String));
-    memcpy(d, s, sizeof(String));
-    u64 n = s->size * s->data_size;
-    d->data = malloc(n);
-    memcpy(d->data, s->data, n);
-    *(String**)dest = d;           // dest is String**
-}
-
-void str_move_ptr(u8* dest, u8** src) {
-    *(String**)dest = *(String**)src;
-    *src = NULL;
-}
-
-void str_del_ptr(u8* elm) {
-    string_destroy(*(String**)elm); // free both data buffer and the struct
-}
+str_copy_ptr    // copy_fn  — allocs new String, deep copies
+str_move_ptr    // move_fn  — transfers pointer into slot, nulls src
+str_del_ptr     // delete_fn — calls string_destroy (frees both data and struct)
+str_print_ptr   // print_fn
+str_cmp_ptr     // compare_fn
 ```
 
-### For HashMap/HashSet — compare function
+### For genVec, stored by value (vec of vecs)
 
 ```c
-// str_cmp from helpers.h (for String keys)
-int str_cmp(const u8* a, const u8* b, u64 size) {
-    (void)size;
-    return string_compare((const String*)a, (const String*)b);
-}
+vec_copy    // copy_fn
+vec_move    // move_fn
+vec_del     // delete_fn
+vec_print_int  // print_fn for int elements
 ```
 
-### Utility print functions (from helpers.h)
+### For genVec*, stored by pointer
 
 ```c
-void int_print(const u8* elm)    { printf("%d",  *(int*)elm); }
-void float_print(const u8* elm)  { printf("%f",  *(float*)elm); }
-void double_print(const u8* elm) { printf("%f",  *(double*)elm); }
-void str_print(const u8* elm)    { string_print((const String*)elm); }
-void str_print_ptr(const u8* elm){ string_print(*(const String**)elm); }
+vec_copy_ptr
+vec_move_ptr
+vec_del_ptr
+vec_print_int_ptr
+```
+
+### Hash functions (from map_setup.h)
+
+```c
+fnv1a_hash          // default — fast 32-bit FNV-1a, works for any key type
+murmurhash3_str     // MurmurHash3 for String keys (by value)
+murmurhash3_str_ptr // MurmurHash3 for String* keys (by pointer)
+```
+
+### Print functions (from common.h)
+
+```c
+wc_print_int    wc_print_u32    wc_print_u64
+wc_print_float  wc_print_char   wc_print_cstr
 ```
 
 ---
 
 ## Building
 
-The project uses CMake with Clang:
+The project uses CMake with Clang. C extensions must be enabled (`set(CMAKE_C_EXTENSIONS ON)`) for GNU statement expressions used in `wc_macros.h`.
 
 ```bash
-# Debug build (ASan + UBSan enabled, -O0)
+# Debug build: ASan + UBSan, -O0
 cmake -B build -G Ninja
-ninja -C build
+cmake --build build
 ./build/main
 
-# Release build (-O3, no sanitizers)
+# Release build: -O3, no sanitizers
 cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
-ninja -C build
+cmake --build build
 ```
 
-All source files in `src/` are compiled automatically. Test headers live in `tests/`.
+All source files in `src/` are compiled into both the `main` and `tests` targets. There is no separate library target — the sources are included directly.
+
+---
+
+## Testing
+
+The test suite lives in `tests/`. Each component has its own test file. `test_main.c` runs them all.
+
+```bash
+# Build and run tests
+cmake -B build -G Ninja
+cmake --build build
+./build/tests
+
+# Via CTest
+ctest --test-dir build --output-on-failure
+```
+
+Each suite exercises creation, operations, edge cases, ownership correctness, `wc_errno` signaling, growth/shrink behavior, and cross-component ownership patterns. The random number suite tests statistical properties: mean, standard deviation, 68% rule, and full range coverage.
+
+The test framework (`wc_test.h`) is minimal and self-contained — zero dependencies. Assertions are non-aborting: all asserts in a test function run even after a failure, so you see every problem in one pass.
+
+```
+══ String ══
+  test_create_empty                                 OK
+  test_append_cstr                                  OK
+  test_insert_char_mid                              FAIL (1 assertion(s))
+    FAIL at: string_equals_cstr(s, "abc")
+         at tests/string_test.c:78
+```
 
 ---
 
 ## Single-Header Distribution
 
-Each component can be converted into a self-contained single-header file that requires no
-separate compilation step — just drop it into your project and include it.
+Any component (and its full transitive dependency chain) can be bundled into a self-contained single-header file — no separate compilation step required. Drop the file into your project and include it.
 
-### Generating the headers
-
-The script lives in `scripts/make_single_header.py`. Run it from the `scripts/` directory:
+**Generating:**
 
 ```bash
 cd scripts
 
-# Convert specific components (dependencies are pulled in automatically)
-python make_single_header.py arena gen_vector string
+# Specific components — dependencies pulled in automatically
+python make_single_header.py arena gen_vector String
 
-# Convert everything
+# Everything
 python make_single_header.py --all
 
-# See all components and their dependency chains
+# Custom directory layout
+python make_single_header.py --all \
+    --include-dir path/to/include \
+    --src-dir     path/to/src \
+    --out-dir     path/to/output
+
+# List all components and their dependency chains
 python make_single_header.py --list
 ```
 
-Output goes to `../single_header/` as `<component>_single.h`.
+Output is written to `../single_header/<component>_single.h`.
 
-Custom paths (defaults are `../include`, `../src`, `../single_header`):
+**Using a generated header:**
 
-```bash
-python make_single_header.py --all \
-    --include-dir path/to/include \
-    --src-dir path/to/src \
-    --out-dir path/to/output
-```
-
-### Using a generated header
-
-In **exactly one** `.c` file, define `WC_IMPLEMENTATION` before the include:
+In **exactly one** `.c` file in your project, define `WC_IMPLEMENTATION` before the include:
 
 ```c
-// my_app.c  — only in this one file
+// impl.c — only in this one file
 #define WC_IMPLEMENTATION
-#include "string_single.h"
+#include "String_single.h"
 ```
 
 In all other files, just include normally:
 
 ```c
 // other.c
-#include "string_single.h"
+#include "String_single.h"
 ```
 
-Dependencies are inlined automatically. Requesting `string_single.h` also brings in
-`gen_vector` and `common` — you don't include those separately.
+**Using multiple single-headers together:**
 
-### Using multiple single-headers together
-
-Each implementation block is guarded against being emitted more than once, so including
-several single-headers in the same project is safe:
+Each implementation block is guarded against duplicate emission, so combining several single-headers is safe:
 
 ```c
 #define WC_IMPLEMENTATION
-#include "string_single.h"    // inlines common + gen_vector + string
-#include "hashmap_single.h"   // inlines common + map_setup + hashmap
-                              // common is NOT duplicated — guard prevents it
+#include "String_single.h"     // inlines: common, gen_vector, String
+#include "hashmap_single.h"    // inlines: common, map_setup, hashmap
+                               // common is NOT duplicated — guard prevents it
 ```
 
-### Available components
+**Dependency table:**
 
 | Component | Depends on |
 |---|---|
 | `common` | — |
+| `wc_errno` | — |
 | `fast_math` | `common` |
-| `arena` | `common` |
-| `gen_vector` | `common` |
-| `bit_vector` | `common`, `gen_vector` |
-| `String` | `common`, `gen_vector` |
-| `Stack` | `common`, `gen_vector` |
-| `Queue` | `common`, `gen_vector` |
-| `map_setup` | `common` |
-| `random` | `common`, `fast_math` |
-| `hashmap` | `common`, `map_setup` |
-| `hashset` | `common`, `map_setup` |
-| `matrix` | `common`, `arena` |
-
-> **Note:** `matrix_generic.h` is already header-only (macro-generated) and needs no
-> conversion. Copy it directly.
+| `arena` | `common`, `wc_errno` |
+| `gen_vector` | `common`, `wc_errno` |
+| `bit_vector` | `gen_vector` |
+| `String` | `gen_vector` |
+| `Stack` | `gen_vector` |
+| `Queue` | `gen_vector` |
+| `map_setup` | `String` |
+| `random` | `fast_math` |
+| `hashmap` | `map_setup` |
+| `hashset` | `map_setup` |
+| `matrix` | `arena` |
+| `helpers` | `String` |
 
 ---
 
-## Type Reference
+## Known Issues
+
+These are documented bugs identified but not yet fixed.
+
+**`ARENA_PUSH_ARRAY` macro** (`arena.h`): The type syntax `(T)* _dst` is a compiler error. Should be `T* _dst`. The macro is unusable as written.
+
+**`prev_prime` underflow** (`map_setup.h`): The loop uses `u64 i = PRIMES_COUNT - 1; i >= 0` as its condition. Since `i` is unsigned, it wraps around on underflow and the loop never exits. Change the loop index to `int` or `i64`.
+
+**`find_slot` sentinel** (`hashmap.c`, `hashset.c`): When the table is entirely tombstones and no `EMPTY` bucket is found, the function returns `0` as a fallback. `0` is a valid bucket index. Should return `(u64)-1` and callers should check for it.
+
+**`murmurhash3_str` multiple definition** (`map_setup.h`): The function is defined without `static` in a header. Including `map_setup.h` in more than one translation unit causes a linker error. Mark it `static` (or `static inline`).
+
+**`print_hex` bitwise OR** (`common.h`): The null-check condition uses `|` instead of `||`, evaluating all three operands even when `ptr` is null. Change to `||`.
+
+**Gaussian spare state** (`random.c`): `pcg32_rand_gaussian` caches its second Box-Muller output in a `static` variable. This state is invisible to callers and breaks correctness if multiple independent RNG instances are needed. Move `gaussian_spare` and `has_spare` into `pcg32_random_t`.
+
+---
+
+## Type and Diagnostic Reference
 
 ### Primitive types (`common.h`)
 
 ```c
 typedef uint8_t  u8;
-typedef uint8_t  b8;   // boolean: false (0), true (1)
+typedef uint8_t  b8;    // boolean: false (0) / true (1)
 typedef uint16_t u16;
 typedef uint32_t u32;
 typedef uint64_t u64;
-```
 
-### Casting helpers
-
-```c
-cast(x)     // (u8*)(&x)    — address of a local variable
-castptr(x)  // (u8*)(x)     — cast a pointer directly
+#define false ((b8)0)
+#define true  ((b8)1)
 ```
 
 ### Size helpers
@@ -952,18 +1139,36 @@ nKB(n)   // n * 1024
 nMB(n)   // n * 1024 * 1024
 ```
 
+### Casting helpers
+
+```c
+cast(x)     // (u8*)(&x)   — address of a local variable
+castptr(x)  // (u8*)(x)    — reinterpret a pointer as u8*
+```
+
 ### Diagnostics
 
 ```c
-FATAL(fmt, ...)                      // print to stderr and exit
-WARN(fmt, ...)                       // print to stdout and continue
+FATAL(fmt, ...)                      // print to stderr, exit
+WARN(fmt, ...)                       // print to stdout, continue
 LOG(fmt, ...)                        // info print
 
-CHECK_FATAL(cond, fmt, ...)          // exit if cond is true
+CHECK_FATAL(cond, fmt, ...)          // exit if cond is true (bugs)
 CHECK_WARN(cond, fmt, ...)           // warn if cond is true
 CHECK_WARN_RET(cond, ret, fmt, ...)  // warn and return ret if cond is true
-ASSERT_FATAL(cond, fmt, ...)         // exit if cond is false
-ASSERT_WARN(cond, fmt, ...)          // warn if cond is false
+```
+
+All diagnostics print `[FATAL]`, `[WARN]`, or `[LOG]` in color, with file, line, and function name.
+
+### Function pointer typedefs (`common.h`)
+
+```c
+typedef void (*copy_fn)(u8* dest, const u8* src);
+typedef void (*move_fn)(u8* dest, u8** src);
+typedef void (*delete_fn)(u8* elm);
+typedef void (*print_fn)(const u8* elm);
+typedef int  (*compare_fn)(const u8* a, const u8* b, u64 size);
+typedef u64  (*custom_hash_fn)(const u8* key, u64 size);
 ```
 
 ---
@@ -971,4 +1176,3 @@ ASSERT_WARN(cond, fmt, ...)          // warn if cond is false
 ## License
 
 MIT — see `LICENSE`.
-
