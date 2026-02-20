@@ -52,6 +52,16 @@ COMPONENTS = [
     "helpers",
 ]
 
+# Add a set of components that are dependency-only (no standalone output)
+INTERNAL_COMPONENTS = [
+    "common", 
+    "wc_errno", 
+    "map_setup",
+]
+
+
+# TODO: i dont want map_setup, common, wc_errno to have their own independent files
+
 # Maps a component name to the names it depends on (other lib components only).
 # Only direct dependencies are listed; transitive ones are resolved automatically.
 DEPENDENCIES: dict[str, list[str]] = {
@@ -60,17 +70,17 @@ DEPENDENCIES: dict[str, list[str]] = {
     "fast_math":        ["common"],
     "arena":            ["common", "wc_errno"],
     "gen_vector":       ["common", "wc_errno"],
-    "bit_vector":       ["common", "gen_vector"],
-    "String":           ["common", "gen_vector"],
-    "Stack":            ["common", "gen_vector"],
-    "Queue":            ["common", "gen_vector"],
-    "map_setup":        ["common"],
-    "random":           ["common", "fast_math"],
-    "hashmap":          ["common", "map_setup"],
-    "hashset":          ["common", "map_setup"],
-    "matrix":           ["common", "arena"],
-    "matrix_generic":   ["common", "arena"],
-    "helpers":          ["String", "hashmap"],
+    "bit_vector":       ["gen_vector"],
+    "String":           ["gen_vector"],
+    "Stack":            ["gen_vector"],
+    "Queue":            ["gen_vector"],
+    "map_setup":        ["String"],
+    "random":           ["fast_math"],
+    "hashmap":          ["map_setup"],
+    "hashset":          ["map_setup"],
+    "matrix":           ["arena"],
+    "matrix_generic":   ["arena"],
+    "helpers":          ["String"],
 }
 
 

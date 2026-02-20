@@ -153,6 +153,7 @@ Usage:
     })
 
 
+
 /* ── Iterate ──────────────────────────────────────────────────────────────── */
 
 /* VEC_FOREACH — typed mutable pointer to each element.
@@ -172,4 +173,165 @@ Usage:
         for (T* name = (T*)genVec_get_ptr_mut((vec), _wvf_i); name; name = NULL)
 
 
-#endif /* WC_MACROS_H */
+
+
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * 5.  TYPED CONVENIENCE MACROS
+ *
+ * These fill gaps in wc_macros.h for common patterns:
+ *   VEC_OF_INT      — quick int vector creation
+ *   VEC_OF_STR      — String-by-value vector
+ *   VEC_OF_STR_PTR  — String-by-pointer vector
+ *   VEC_OF_VEC      — genVec-by-value vector (vec of vecs)
+ *   VEC_OF_VEC_PTR  — genVec-by-pointer vector
+ *
+ *   VEC_PUSH_VEC      — push a heap genVec* by move into a vec-of-vecs (by val)
+ *   VEC_PUSH_VEC_PTR  — push a heap genVec* by move into a vec-of-vecs (by ptr)
+ *
+ *   MAP_PUT_INT_STR  — one-liner: int key, cstr value (moves String in)
+ *   MAP_PUT_STR_STR  — one-liner: cstr key, cstr value (both moved in)
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+
+/* ── Vector creation shorthands ─────────────────────────────────────────── */
+
+#define VEC_OF_INT(cap) \
+    genVec_init((cap), sizeof(int), NULL, NULL, NULL)
+
+#define VEC_OF_STR(cap) \
+    VEC_CX(String, (cap), str_copy, str_move, str_del)
+
+#define VEC_OF_STR_PTR(cap) \
+    VEC_CX(String*, (cap), str_copy_ptr, str_move_ptr, str_del_ptr)
+
+#define VEC_OF_VEC(cap) \
+    VEC_CX(genVec, (cap), vec_copy, vec_move, vec_del)
+
+#define VEC_OF_VEC_PTR(cap) \
+    VEC_CX(genVec*, (cap), vec_copy_ptr, vec_move_ptr, vec_del_ptr)
+
+
+/* ── Push shorthands ────────────────────────────────────────────────────── */
+
+/*
+ * VEC_PUSH_VEC(outer, inner_ptr)
+ * Push a heap-allocated genVec* by move into a by-value vec-of-vecs.
+ * inner_ptr is nulled after the call.
+ * The inner vec's struct is freed; its data buffer lives in the outer slot.
+ */
+#define VEC_PUSH_VEC(outer, inner_ptr) \
+    VEC_PUSH_MOVE((outer), (inner_ptr))
+
+/*
+ * VEC_PUSH_VEC_PTR(outer, inner_ptr)
+ * Push a heap-allocated genVec* by move into a by-pointer vec-of-vecs.
+ * inner_ptr is nulled after the call.
+ */
+#define VEC_PUSH_VEC_PTR(outer, inner_ptr) \
+    VEC_PUSH_MOVE((outer), (inner_ptr))
+
+
+/* ── Hashmap shorthands ─────────────────────────────────────────────────── */
+
+/*
+ * MAP_PUT_INT_STR(map, int_key, cstr_literal)
+ * Inserts key=int_key, val=string_from_cstr(cstr_literal) with move semantics.
+ * Map must have been created with int key, String val, str_copy/str_move/str_del.
+ */
+#define MAP_PUT_INT_STR(map, k, cstr_val)                           \
+    do {                                                            \
+        String* _v = string_from_cstr(cstr_val);                   \
+        hashmap_put_val_move((map), (u8*)&(int){(k)}, (u8**)&_v);  \
+    } while (0)
+
+/*
+ * MAP_PUT_STR_STR(map, cstr_key, cstr_val)
+ * Inserts key=string_from_cstr(cstr_key), val=string_from_cstr(cstr_val).
+ * Both moved in. Map must use str_copy/str_move/str_del for both key and val.
+ */
+#define MAP_PUT_STR_STR(map, cstr_key, cstr_val)                    \
+    do {                                                            \
+        String* _k = string_from_cstr(cstr_key);                   \
+        String* _v = string_from_cstr(cstr_val);                   \
+        hashmap_put_move((map), (u8**)&_k, (u8**)&_v);             \
+    } while (0)
+
+
+/* ── Put (COPY semantics) ─────────────────────────────────────────────────── */
+
+/* MAP_PUT — copy key + value
+ *
+ *   MAP_PUT(m, key, val);
+ */
+#define MAP_PUT(map, key, val)                \
+    ({                                        \
+        typeof(key) _mk = (key);              \
+        typeof(val) _mv = (val);              \
+        hashmap_put((map),                    \
+                    (const u8*)&_mk,          \
+                    (const u8*)&_mv);         \
+    })
+
+
+/* ── Put (MOVE semantics) ─────────────────────────────────────────────────── */
+
+/* MAP_PUT_MOVE — move key + value
+ *
+ *   String k, v;
+ *   MAP_PUT_MOVE(m, k, v);   // k == NULL, v == NULL after
+ */
+#define MAP_PUT_MOVE(map, kptr, vptr)           \
+    ({                                          \
+        typeof(kptr) _mkp = (kptr);              \
+        typeof(vptr) _mvp = (vptr);              \
+        hashmap_put_move((map),                 \
+                          (u8**)&_mkp,          \
+                          (u8**)&_mvp);         \
+        (kptr) = _mkp;                           \
+        (vptr) = _mvp;                           \
+    })
+
+
+/* Mixed ownership */
+#define MAP_PUT_KEY_MOVE(map, kptr, val)        \
+    ({                                          \
+        typeof(val) _mv = (val);                 \
+        hashmap_put_key_move((map),              \
+                              (u8**)&(kptr),    \
+                              (const u8*)&_mv); \
+    })
+
+#define MAP_PUT_VAL_MOVE(map, key, vptr)        \
+    ({                                          \
+        typeof(key) _mk = (key);                 \
+        hashmap_put_val_move((map),              \
+                              (const u8*)&_mk,  \
+                              (u8**)&(vptr));   \
+    })
+
+
+/* ── Get ─────────────────────────────────────────────────────────────────── */
+
+/* MAP_GET — copy value into expression
+ *
+ *   int x = MAP_GET(m, int, key);
+ *   String s = MAP_GET(m, String, key); // you own s
+ *
+ * NOTE: Undefined if key does not exist (same as VEC_POP style)
+ */
+#define MAP_GET(map, V, key)                 \
+    ({                                       \
+        V _out;                              \
+        typeof(key) _mk = (key);             \
+        hashmap_get((map),                   \
+                    (const u8*)&_mk,         \
+                    (u8*)&_out);             \
+        _out;                                \
+    })
+
+
+
+
+
+#endif // WC_MACROS_H

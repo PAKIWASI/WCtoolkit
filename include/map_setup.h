@@ -1,5 +1,5 @@
-#ifndef MAP_SETUP
-#define MAP_SETUP
+#ifndef MAP_SETUP_H
+#define MAP_SETUP_H
 
 #include "common.h"
 #include <string.h>
@@ -204,4 +204,4 @@ static u64 murmurhash3_str_ptr(const u8* key, u64 size)
     return h1;
 }
 
-#endif // MAP_SETUP
+#endif // MAP_SETUP_H
