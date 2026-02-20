@@ -1,3 +1,4 @@
+#include "common.h"
 #include "wc_macros.h"
 #include "wc_test.h"
 #include "gen_vector.h"
@@ -60,7 +61,12 @@ static void test_init_stk(void)
 
 static void test_init_arr(void)
 {
+    genVec* v = VEC_FROM_ARR(int, 4, ((int[4]){1,2,3,4}));
 
+    WC_ASSERT_EQ_U64(genVec_size(v), 4);
+    WC_ASSERT_EQ_U64(v->data_size, sizeof(int));
+
+    genVec_destroy(v);
 }
 
 
@@ -371,6 +377,7 @@ void gen_vector_suite(void)
     WC_RUN(test_init_with_cap);
     WC_RUN(test_init_val);
     WC_RUN(test_init_stk);
+    WC_RUN(test_init_arr);
 
     /* push / pop */
     WC_RUN(test_push_grows_size);

@@ -32,14 +32,21 @@
 #define VEC_EMPTY(T)                     VEC(T, 0)
 #define VEC_EMPTY_CX(T, copy, move, del) VEC_CX(T, 0, copy, move, del)
 
-#define VEC_FROM_ARR(T, n, arr)\
-    ({\
-        genVec* _v = genVec_init((n), sizeof(T), NULL, NULL, NULL);\
-        for (u64 i = 0; i < n; i++) {\
-            genVec_push(_v, (u8*)&arr[i]);\
-        }\
-        _v;\
-     })
+#define VEC_STK(T, cap, vec)                     genVec_init_stk((cap), sizeof(T), NULL, NULL, NULL, vec)
+#define VEC_CX_STK(T, cap, copy, move, del, vec) genVec_init_stk((cap), sizeof(T), (copy), (move), (del), vec)
+
+/* Create vector with elements from an initilizer list
+Usage:
+    genVec* v = VEC_FROM_ARR(int, 4, ((int[4]){1,2,3,4}));
+*/
+#define VEC_FROM_ARR(T, n, arr)                                     \
+    ({                                                              \
+        genVec* _v = genVec_init((n), sizeof(T), NULL, NULL, NULL); \
+        for (u64 _i = 0; _i < n; _i++) {                            \
+            genVec_push(_v, (u8*)&arr[_i]);                         \
+        }                                                           \
+        _v;                                                         \
+    })
 
 
 /* ── Push ─────────────────────────────────────────────────────────────────── */

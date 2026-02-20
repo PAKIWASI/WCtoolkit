@@ -49,7 +49,7 @@ add_executable(main
     src/main.c
     ${LIB_SOURCES}
 )
-target_include_directories(main PRIVATE include tests)
+target_include_directories(main PRIVATE include)
 
 
 # ── Test executable ───────────────────────────────────────────────────────

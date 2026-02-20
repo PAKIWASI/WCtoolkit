@@ -3,6 +3,8 @@
 
 #include "map_setup.h"
 
+// TODO: make ergonomic macros
+
 
 typedef struct {
     u8*             buckets;

@@ -140,7 +140,7 @@ void matrix_print(const Matrixf* mat);
 
 // ARENA-BASED MATRIX ALLOCATION MACROS
 // ============================================================================
-#include "arena.h"
+#include "arena.h"  // TODO: how to just declare?
 
 /*
 Create a matrix allocated from arena (heap-style)

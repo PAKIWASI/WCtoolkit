@@ -3,10 +3,23 @@
 
 ---
 
+## Immediate
+
+Update Readme
+
+Add matrix_generic, wc_macros, helpers.h to single_headers
+
+---
+
 ## Testing
 
-Something wrong with test suite? test it (lol)
 
+---
+
+## Ergonomics
+
+Make ergonimic macros for various containers
+Use gnu macro extensions
 
 ---
 
