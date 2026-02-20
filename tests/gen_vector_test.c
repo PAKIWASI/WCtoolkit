@@ -1,3 +1,4 @@
+#include "wc_macros.h"
 #include "wc_test.h"
 #include "gen_vector.h"
 #include "wc_errno.h"
@@ -55,6 +56,11 @@ static void test_init_stk(void)
     WC_ASSERT_EQ_U64(genVec_size(&v), 0);
     WC_ASSERT_EQ_U64(genVec_capacity(&v), 4);
     genVec_destroy_stk(&v);
+}
+
+static void test_init_arr(void)
+{
+
 }
 
 

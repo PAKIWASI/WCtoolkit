@@ -1,3 +1,4 @@
+#define WC_TEST_MAIN
 #include "wc_test.h"
 
 /* ── Forward declarations — one per test file ───────────────────────────── */

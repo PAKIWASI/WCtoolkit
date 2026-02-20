@@ -31,56 +31,40 @@
 #include <stdlib.h>
 
 // ANSI Color Codes
-#define COLOR_RESET   "\033[0m"
-#define COLOR_RED     "\033[1;31m"
-#define COLOR_YELLOW  "\033[1;33m"
-#define COLOR_GREEN   "\033[1;32m"
-#define COLOR_BLUE    "\033[1;34m"
-#define COLOR_CYAN    "\033[1;36m"
+#define COLOR_RESET  "\033[0m"
+#define COLOR_RED    "\033[1;31m"
+#define COLOR_YELLOW "\033[1;33m"
+#define COLOR_GREEN  "\033[1;32m"
+#define COLOR_BLUE   "\033[1;34m"
+#define COLOR_CYAN   "\033[1;36m"
 
-#define WARN(fmt, ...)                                                                       \
-    do {                                                                                     \
-        printf(COLOR_YELLOW "[WARN]" " %s:%d:%s(): " fmt "\n" COLOR_RESET, __FILE__, __LINE__, __func__, ##__VA_ARGS__); \
+
+#define WARN(fmt, ...)                                            \
+    do {                                                          \
+        printf(COLOR_YELLOW "[WARN]"                              \
+                            " %s:%d:%s(): " fmt "\n" COLOR_RESET, \
+               __FILE__, __LINE__, __func__, ##__VA_ARGS__);      \
     } while (0)
 
-#define FATAL(fmt, ...)                                                                                \
-    do {                                                                                               \
-        fprintf(stderr, COLOR_RED "[FATAL]" " %s:%d:%s(): " fmt "\n" COLOR_RESET, __FILE__, __LINE__, __func__, ##__VA_ARGS__); \
-        exit(EXIT_FAILURE);                                                                            \
-    } while (0)
-
-#define ASSERT_WARN(cond, fmt, ...)                                     \
-    do {                                                                \
-        if (!(cond)) {                                                  \
-            WARN("Assertion failed: (%s): " fmt, #cond, ##__VA_ARGS__); \
-        }                                                               \
-    } while (0)
-
-#define ASSERT_WARN_RET(cond, ret, fmt, ...)                            \
-    do {                                                                \
-        if (!(cond)) {                                                  \
-            WARN("Assertion failed: (%s): " fmt, #cond, ##__VA_ARGS__); \
-            return ret;                                                 \
-        }                                                               \
-    } while (0)
-
-#define ASSERT_FATAL(cond, fmt, ...)                                     \
-    do {                                                                 \
-        if (!(cond)) {                                                   \
-            FATAL("Assertion failed: (%s): " fmt, #cond, ##__VA_ARGS__); \
-        }                                                                \
+#define FATAL(fmt, ...)                                         \
+    do {                                                        \
+        fprintf(stderr,                                         \
+                COLOR_RED "[FATAL]"                             \
+                          " %s:%d:%s(): " fmt "\n" COLOR_RESET, \
+                __FILE__, __LINE__, __func__, ##__VA_ARGS__);   \
+        exit(EXIT_FAILURE);                                     \
     } while (0)
 
 #define CHECK_WARN(cond, fmt, ...)                           \
     do {                                                     \
-        if ((cond)) {                                        \
+        if (__builtin_expect(!!(cond), 0)) {                                        \
             WARN("Check: (%s): " fmt, #cond, ##__VA_ARGS__); \
         }                                                    \
     } while (0)
 
 #define CHECK_WARN_RET(cond, ret, fmt, ...)                  \
     do {                                                     \
-        if ((cond)) {                                        \
+        if (__builtin_expect(!!(cond), 0)) {                                        \
             WARN("Check: (%s): " fmt, #cond, ##__VA_ARGS__); \
             return ret;                                      \
         }                                                    \
@@ -88,15 +72,18 @@
 
 #define CHECK_FATAL(cond, fmt, ...)                           \
     do {                                                      \
-        if (cond) {                                           \
+        if (__builtin_expect(!!(cond), 0)) {                                           \
             FATAL("Check: (%s): " fmt, #cond, ##__VA_ARGS__); \
         }                                                     \
     } while (0)
 
-#define LOG(fmt, ...)                               \
-    do {                                            \
-        printf(COLOR_CYAN "[LOG]" " : %s(): " fmt "\n" COLOR_RESET, __func__, ##__VA_ARGS__); \
+#define LOG(fmt, ...)                                       \
+    do {                                                    \
+        printf(COLOR_CYAN "[LOG]"                           \
+                          " : %s(): " fmt "\n" COLOR_RESET, \
+               __func__, ##__VA_ARGS__);                    \
     } while (0)
+
 
 // TYPES
 
@@ -117,8 +104,7 @@ typedef void (*copy_fn)(u8* dest, const u8* src);
 typedef void (*move_fn)(u8* dest, u8** src);
 typedef void (*delete_fn)(u8* key);
 typedef void (*print_fn)(const u8* elm);
-typedef int  (*compare_fn)(const u8* a, const u8* b, u64 size);
-typedef void (*for_each_fn)(u8* elm); 
+typedef int (*compare_fn)(const u8* a, const u8* b, u64 size);
 
 
 // CASTING
@@ -138,9 +124,178 @@ typedef void (*for_each_fn)(u8* elm);
 
 // RAW BYTES TO HEX
 
-void print_hex(const u8* ptr, u64 size, u32 bytes_per_line);
+static inline void print_hex(const u8* ptr, u64 size, u32 bytes_per_line) 
+{
+    if (ptr == NULL || size == 0 || bytes_per_line == 0) { return; }
+
+    // hex rep 0-15
+    const char* hex = "0123456789ABCDEF";
+    
+    for (u64 i = 0; i < size; i++) 
+    {
+        u8 val1 = ptr[i] >> 4;      // get upper 4 bits as num b/w 0-15
+        u8 val2 = ptr[i] & 0x0F;    // get lower 4 bits as num b/w 0-15
+        
+        printf("%c%c", hex[val1], hex[val2]);
+        
+        // Add space or newline appropriately
+        if ((i + 1) % bytes_per_line == 0) {
+            printf("\n");
+        } else if (i < size - 1) {
+            printf(" ");
+        }
+    }
+
+    // Add final newline if we didn't just print one
+    if (size % bytes_per_line != 0) {
+        printf("\n");
+    }
+}
+
+
+// TEST HELPERS
+
+// Generic print functions for primitive types
+static inline void wc_print_int(const u8* elm)
+{
+    printf("%d ", *(int*)elm);
+}
+static inline void wc_print_u32(const u8* elm)
+{
+    printf("%u ", *(u32*)elm);
+}
+static inline void wc_print_u64(const u8* elm)
+{
+    printf("%llu ", (unsigned long long)*(u64*)elm);
+}
+static inline void wc_print_float(const u8* elm)
+{
+    printf("%.2f ", *(float*)elm);
+}
+static inline void wc_print_char(const u8* elm)
+{
+    printf("%c ", *(char*)elm);
+}
+static inline void wc_print_cstr(const u8* elm)
+{
+    printf("%s ", (const char*)elm);
+}
 
 #endif /* WC_COMMON_H */
+
+/* ===== wc_errno.h ===== */
+#ifndef WC_WC_ERRNO_H
+#define WC_WC_ERRNO_H
+
+#include <stdio.h>
+
+
+/* wc_errno.h — Error reporting for WCtoolkit
+ * ============================================
+ *
+ * Two tiers:
+ *
+ *   CHECK_FATAL  Programmer errors: null pointer, out of bounds, OOM.
+ *                Crashes with a message. These are bugs, not conditions.
+ *
+ *   wc_errno     Expected conditions: pop on empty, arena full.
+ *                Function returns NULL / 0 / void. wc_errno says why.
+ *                Ignore it if you don't care. Check it if you do.
+ *
+ *
+ * USAGE
+ * -----
+ *   // Check a single call:
+ *   wc_errno = WC_OK;
+ *   u8* p = arena_alloc(arena, size);
+ *   if (!p && wc_errno == WC_ERR_FULL) { ... }
+ *
+ *   // Check a batch — wc_errno stays set if any call failed:
+ *   wc_errno = WC_OK;
+ *   float* a = (float*)arena_alloc(arena, 256);
+ *   float* b = (float*)arena_alloc(arena, 256);
+ *   if (wc_errno) { wc_perror("alloc"); }
+ *
+ *
+ * RULES
+ * -----
+ *   1. Successful calls do NOT clear wc_errno — clear it yourself.
+ *   2. Check the return value first. wc_errno tells you WHY, not WHETHER.
+ *   3. wc_errno is thread-local. Each thread has its own copy.
+ *
+ *
+ * WHAT SETS wc_errno
+ * ------------------
+ *   arena_alloc, arena_alloc_aligned      WC_ERR_FULL    arena exhausted
+ *   genVec_pop, genVec_front, genVec_back WC_ERR_EMPTY   vec is empty
+ *   dequeue, queue_peek, queue_peek_ptr   WC_ERR_EMPTY   queue is empty
+ *   stack_pop, stack_peek                 WC_ERR_EMPTY   stack is empty
+ */
+
+
+typedef enum {
+    WC_OK        = 0,
+    WC_ERR_FULL,       // arena exhausted / container at capacity
+    WC_ERR_EMPTY,      // pop or peek on empty container
+} wc_err;
+
+static inline const char* wc_strerror(wc_err e)
+{
+    switch (e) {
+        case WC_OK:        return "ok";
+        case WC_ERR_FULL:  return "full";
+        case WC_ERR_EMPTY: return "empty";
+        default:           return "unknown";
+    }
+}
+
+/* Defined in wc_errno.c:
+ *   _Thread_local wc_err wc_errno = WC_OK;
+ */
+extern _Thread_local wc_err wc_errno;
+
+/* Print last error — same pattern as perror(3).
+ *   wc_perror("arena_alloc");  ->  "arena_alloc: full"
+ */
+static inline void wc_perror(const char* prefix)
+{
+    if (prefix && prefix[0]) {
+        fprintf(stderr, "%s: %s\n", prefix, wc_strerror(wc_errno));
+    } else {
+        fprintf(stderr, "%s\n", wc_strerror(wc_errno));
+    }
+}
+
+
+/* Internal macros (library use only)
+ * ------------------------------------
+ * WC_SET_RET — replaces CHECK_WARN_RET at expected-condition sites.
+ * Sets wc_errno silently and returns. No print.
+ *
+ *   WC_SET_RET(WC_ERR_EMPTY, vec->size == 0, );     void return
+ *   WC_SET_RET(WC_ERR_FULL,  cond,           NULL); pointer return
+ */
+#define WC_SET_RET(err_code, cond, ret) \
+    do {                                \
+        if (cond) {                     \
+            wc_errno = (err_code);      \
+            return ret;                 \
+        }                               \
+    } while (0)
+
+/* WC_PROPAGATE_RET — exit immediately if a callee already set wc_errno.
+ *
+ *   some_internal_fn(vec);
+ *   WC_PROPAGATE_RET( );   // exits if some_internal_fn set wc_errno
+ */
+#define WC_PROPAGATE_RET(ret)    \
+    do {                         \
+        if (wc_errno != WC_OK) { \
+            return ret;          \
+        }                        \
+    } while (0)
+
+#endif /* WC_WC_ERRNO_H */
 
 /* ===== gen_vector.h ===== */
 #ifndef WC_GEN_VECTOR_H
@@ -161,13 +316,13 @@ void print_hex(const u8* ptr, u64 size, u32 bytes_per_line);
 
 // genVec growth/shrink settings (user can change)
 #ifndef GENVEC_GROWTH
-    #define GENVEC_GROWTH 1.5F // vec capacity multiplier
+#define GENVEC_GROWTH 1.5F // vec capacity multiplier
 #endif
 #ifndef GENVEC_SHRINK_AT
-    #define GENVEC_SHRINK_AT 0.25F // % filled to shrink at (25% filled)
+#define GENVEC_SHRINK_AT 0.25F // % filled to shrink at (25% filled)
 #endif
 #ifndef GENVEC_SHRINK_BY
-    #define GENVEC_SHRINK_BY 0.5F // capacity dividor (half)
+#define GENVEC_SHRINK_BY 0.5F // capacity dividor (half)
 #endif
 
 
@@ -198,21 +353,18 @@ genVec* genVec_init(u64 n, u32 data_size, copy_fn copy_fn, move_fn move_fn, dele
 
 // Initialize vector on stack with data on heap
 // SVO works best here as it is on the stack***
-void genVec_init_stk(u64 n, u32 data_size, copy_fn copy_fn, move_fn move_fn, delete_fn del_fn,
-                     genVec* vec);
+void genVec_init_stk(u64 n, u32 data_size, copy_fn copy_fn, move_fn move_fn, delete_fn del_fn, genVec* vec);
 
 // Initialize vector of size n, all elements set to val
-genVec* genVec_init_val(u64 n, const u8* val, u32 data_size, copy_fn copy_fn, move_fn move_fn,
-                        delete_fn del_fn);
+genVec* genVec_init_val(u64 n, const u8* val, u32 data_size, copy_fn copy_fn, move_fn move_fn, delete_fn del_fn);
 
-void genVec_init_val_stk(u64 n, const u8* val, u32 data_size, copy_fn copy_fn, move_fn move_fn,
-                         delete_fn del_fn, genVec* vec);
+void genVec_init_val_stk(u64 n, const u8* val, u32 data_size, copy_fn copy_fn, move_fn move_fn, delete_fn del_fn,
+                         genVec* vec);
 
 // vector COMPLETELY on stack (can't grow in size)
 // you provide a stack inited array which becomes internal array of vector
 // WARNING - This crashes when size = capacity and you try to push
-void genVec_init_arr(u64 n, u8* arr, u32 data_size, copy_fn copy_fn, move_fn move_fn,
-                     delete_fn del_fn, genVec* vec);
+void genVec_init_arr(u64 n, u8* arr, u32 data_size, copy_fn copy_fn, move_fn move_fn, delete_fn del_fn, genVec* vec);
 
 // Destroy heap-allocated vector and clean up all elements
 void genVec_destroy(genVec* vec);
@@ -260,9 +412,6 @@ const u8* genVec_get_ptr(const genVec* vec, u64 i);
 // Get MUTABLE pointer to element at index i
 // Note: Pointer invalidated by push/insert/remove operations
 u8* genVec_get_ptr_mut(const genVec* vec, u64 i);
-
-// apply a function on each value of the array
-void genVec_for_each(genVec* vec, for_each_fn for_each);
 
 // Replace element at index i with data (cleans up old element)
 void genVec_replace(genVec* vec, u64 i, const u8* data);
@@ -375,39 +524,17 @@ static inline u64 bitVec_size_bytes(bitVec* bvec) {
 
 #ifdef WC_IMPLEMENTATION
 
-/* ===== common.c ===== */
-#ifndef WC_COMMON_IMPL
-#define WC_COMMON_IMPL
+/* ===== wc_errno.c ===== */
+#ifndef WC_WC_ERRNO_IMPL
+#define WC_WC_ERRNO_IMPL
 
-void print_hex(const u8* ptr, u64 size, u32 bytes_per_line) 
-{
-    if (ptr == NULL | size == 0 | bytes_per_line == 0) { return; }
+/* One definition of the thread-local error variable.
+ * Every translation unit that includes wc_error.h sees the extern declaration.
+ * This file provides the actual storage.
+ */
+_Thread_local wc_err wc_errno = WC_OK;
 
-    // hex rep 0-15
-    const char* hex = "0123456789ABCDEF";
-    
-    for (u64 i = 0; i < size; i++) 
-    {
-        u8 val1 = ptr[i] >> 4;      // get upper 4 bits as num b/w 0-15
-        u8 val2 = ptr[i] & 0x0F;    // get lower 4 bits as num b/w 0-15
-        
-        printf("%c%c", hex[val1], hex[val2]);
-        
-        // Add space or newline appropriately
-        if ((i + 1) % bytes_per_line == 0) {
-            printf("\n");
-        } else if (i < size - 1) {
-            printf(" ");
-        }
-    }
-
-    // Add final newline if we didn't just print one
-    if (size % bytes_per_line != 0) {
-        printf("\n");
-    }
-}
-
-#endif /* WC_COMMON_IMPL */
+#endif /* WC_WC_ERRNO_IMPL */
 
 /* ===== gen_vector.c ===== */
 #ifndef WC_GEN_VECTOR_IMPL
@@ -419,12 +546,15 @@ void print_hex(const u8* ptr, u64 size, u32 bytes_per_line)
 
 #define GENVEC_MIN_CAPACITY 4
 
+
 // MACROS
 
 // get ptr to elm at index i
-#define GET_PTR(vec, i) ((vec->data) + ((u64)(i) * ((vec)->data_size)))
+#define GET_PTR(vec, i) \
+    ((vec->data) + ((u64)(i) * ((vec)->data_size)))
 // get total_size in bytes for i elements
-#define GET_SCALED(vec, i) ((u64)(i) * ((vec)->data_size))
+#define GET_SCALED(vec, i) \
+    ((u64)(i) * ((vec)->data_size))
 
 #define MAYBE_GROW(vec)                                 \
     do {                                                \
@@ -441,11 +571,10 @@ void print_hex(const u8* ptr, u64 size, u32 bytes_per_line)
     } while (0)
 
 
-
 //private functions
 
-void genVec_grow(genVec* vec);
-void genVec_shrink(genVec* vec);
+static void genVec_grow(genVec* vec);
+static void genVec_shrink(genVec* vec);
 
 
 // API Implementation
@@ -477,8 +606,7 @@ genVec* genVec_init(u64 n, u32 data_size, copy_fn copy_fn, move_fn move_fn, dele
 }
 
 
-void genVec_init_stk(u64 n, u32 data_size, copy_fn copy_fn, move_fn move_fn, delete_fn del_fn,
-                     genVec* vec)
+void genVec_init_stk(u64 n, u32 data_size, copy_fn copy_fn, move_fn move_fn, delete_fn del_fn, genVec* vec)
 {
     CHECK_FATAL(!vec, "vec is null");
     CHECK_FATAL(data_size == 0, "data_size can't be 0");
@@ -495,8 +623,7 @@ void genVec_init_stk(u64 n, u32 data_size, copy_fn copy_fn, move_fn move_fn, del
     vec->del_fn    = del_fn;
 }
 
-genVec* genVec_init_val(u64 n, const u8* val, u32 data_size, copy_fn copy_fn, move_fn move_fn,
-                        delete_fn del_fn)
+genVec* genVec_init_val(u64 n, const u8* val, u32 data_size, copy_fn copy_fn, move_fn move_fn, delete_fn del_fn)
 {
     CHECK_FATAL(!val, "val can't be null");
     CHECK_FATAL(n == 0, "cant init with val if n = 0");
@@ -516,8 +643,8 @@ genVec* genVec_init_val(u64 n, const u8* val, u32 data_size, copy_fn copy_fn, mo
     return vec;
 }
 
-void genVec_init_val_stk(u64 n, const u8* val, u32 data_size, copy_fn copy_fn, move_fn move_fn,
-                         delete_fn del_fn, genVec* vec)
+void genVec_init_val_stk(u64 n, const u8* val, u32 data_size, copy_fn copy_fn, move_fn move_fn, delete_fn del_fn,
+                         genVec* vec)
 {
     CHECK_FATAL(!val, "val can't be null");
     CHECK_FATAL(n == 0, "cant init with val if n = 0");
@@ -535,8 +662,7 @@ void genVec_init_val_stk(u64 n, const u8* val, u32 data_size, copy_fn copy_fn, m
     }
 }
 
-void genVec_init_arr(u64 n, u8* arr, u32 data_size, copy_fn copy_fn, move_fn move_fn,
-                     delete_fn del_fn, genVec* vec)
+void genVec_init_arr(u64 n, u8* arr, u32 data_size, copy_fn copy_fn, move_fn move_fn, delete_fn del_fn, genVec* vec)
 {
     CHECK_FATAL(!arr, "arr is null");
     CHECK_FATAL(!vec, "vec is null");
@@ -661,6 +787,8 @@ void genVec_shrink_to_fit(genVec* vec)
     }
 
     u8* new_data = realloc(vec->data, GET_SCALED(vec, min_cap));
+    CHECK_FATAL(!new_data, "data realloc failed");
+
     // update data ptr
     vec->data     = new_data;
     vec->size     = min_cap;
@@ -710,7 +838,8 @@ void genVec_push_move(genVec* vec, u8** data)
 void genVec_pop(genVec* vec, u8* popped)
 {
     CHECK_FATAL(!vec, "vec is null");
-    CHECK_WARN_RET(vec->size == 0, , "vec is empty");
+
+    WC_SET_RET(WC_ERR_EMPTY, vec->size == 0, );
 
     u8* last_elm = GET_PTR(vec, vec->size - 1);
 
@@ -758,16 +887,6 @@ u8* genVec_get_ptr_mut(const genVec* vec, u64 i)
     CHECK_FATAL(i >= vec->size, "index out of bounds");
 
     return GET_PTR(vec, i);
-}
-
-void genVec_for_each(genVec* vec, void (*for_each)(u8* elm))
-{
-    CHECK_FATAL(!vec, "vec is null");
-    CHECK_FATAL(!for_each, "for_each function is null");
-
-    for (u64 i = 0; i < vec->size; i++) {
-        for_each(GET_PTR(vec, i));
-    }
 }
 
 void genVec_insert(genVec* vec, u64 i, const u8* data)
@@ -1008,17 +1127,14 @@ void genVec_replace_move(genVec* vec, u64 i, u8** data)
 const u8* genVec_front(const genVec* vec)
 {
     CHECK_FATAL(!vec, "vec is null");
-    CHECK_FATAL(vec->size == 0, "vec is empty");
-
-    return (const u8*)vec->data;
+    WC_SET_RET(WC_ERR_EMPTY, vec->size == 0, NULL);
+    return GET_PTR(vec, 0);
 }
-
 
 const u8* genVec_back(const genVec* vec)
 {
     CHECK_FATAL(!vec, "vec is null");
-    CHECK_FATAL(vec->size == 0, "vec is empty");
-
+    WC_SET_RET(WC_ERR_EMPTY, vec->size == 0, NULL);
     return GET_PTR(vec, vec->size - 1);
 }
 
@@ -1054,6 +1170,7 @@ void genVec_copy(genVec* dest, const genVec* src)
 
     // malloc data ptr
     dest->data = malloc(GET_SCALED(src, src->capacity));
+    CHECK_FATAL(!dest->data, "dest data malloc failed");
 
     // Copy elements
     if (src->copy_fn) {
@@ -1092,7 +1209,7 @@ void genVec_move(genVec* dest, genVec** src)
 }
 
 
-void genVec_grow(genVec* vec)
+static void genVec_grow(genVec* vec)
 {
     CHECK_FATAL(!vec, "vec is null");
 
@@ -1107,14 +1224,14 @@ void genVec_grow(genVec* vec)
     }
 
     u8* new_data = realloc(vec->data, GET_SCALED(vec, new_cap));
-    CHECK_FATAL(!new_data, "realloc failed");
+    CHECK_FATAL(!new_data, "data realloc failed");
 
     vec->data     = new_data;
     vec->capacity = new_cap;
 }
 
 
-void genVec_shrink(genVec* vec)
+static void genVec_shrink(genVec* vec)
 {
     CHECK_FATAL(!vec, "vec is null");
 
@@ -1125,8 +1242,8 @@ void genVec_shrink(genVec* vec)
 
     u8* new_data = realloc(vec->data, GET_SCALED(vec, reduced_cap));
     if (!new_data) {
-        CHECK_WARN_RET(1, , "data realloc failed");
-        return; // Keep original allocation
+        WARN("shrink realloc failed");
+        return; // keep original
     }
 
     vec->data     = new_data;

@@ -31,56 +31,40 @@
 #include <stdlib.h>
 
 // ANSI Color Codes
-#define COLOR_RESET   "\033[0m"
-#define COLOR_RED     "\033[1;31m"
-#define COLOR_YELLOW  "\033[1;33m"
-#define COLOR_GREEN   "\033[1;32m"
-#define COLOR_BLUE    "\033[1;34m"
-#define COLOR_CYAN    "\033[1;36m"
+#define COLOR_RESET  "\033[0m"
+#define COLOR_RED    "\033[1;31m"
+#define COLOR_YELLOW "\033[1;33m"
+#define COLOR_GREEN  "\033[1;32m"
+#define COLOR_BLUE   "\033[1;34m"
+#define COLOR_CYAN   "\033[1;36m"
 
-#define WARN(fmt, ...)                                                                       \
-    do {                                                                                     \
-        printf(COLOR_YELLOW "[WARN]" " %s:%d:%s(): " fmt "\n" COLOR_RESET, __FILE__, __LINE__, __func__, ##__VA_ARGS__); \
+
+#define WARN(fmt, ...)                                            \
+    do {                                                          \
+        printf(COLOR_YELLOW "[WARN]"                              \
+                            " %s:%d:%s(): " fmt "\n" COLOR_RESET, \
+               __FILE__, __LINE__, __func__, ##__VA_ARGS__);      \
     } while (0)
 
-#define FATAL(fmt, ...)                                                                                \
-    do {                                                                                               \
-        fprintf(stderr, COLOR_RED "[FATAL]" " %s:%d:%s(): " fmt "\n" COLOR_RESET, __FILE__, __LINE__, __func__, ##__VA_ARGS__); \
-        exit(EXIT_FAILURE);                                                                            \
-    } while (0)
-
-#define ASSERT_WARN(cond, fmt, ...)                                     \
-    do {                                                                \
-        if (!(cond)) {                                                  \
-            WARN("Assertion failed: (%s): " fmt, #cond, ##__VA_ARGS__); \
-        }                                                               \
-    } while (0)
-
-#define ASSERT_WARN_RET(cond, ret, fmt, ...)                            \
-    do {                                                                \
-        if (!(cond)) {                                                  \
-            WARN("Assertion failed: (%s): " fmt, #cond, ##__VA_ARGS__); \
-            return ret;                                                 \
-        }                                                               \
-    } while (0)
-
-#define ASSERT_FATAL(cond, fmt, ...)                                     \
-    do {                                                                 \
-        if (!(cond)) {                                                   \
-            FATAL("Assertion failed: (%s): " fmt, #cond, ##__VA_ARGS__); \
-        }                                                                \
+#define FATAL(fmt, ...)                                         \
+    do {                                                        \
+        fprintf(stderr,                                         \
+                COLOR_RED "[FATAL]"                             \
+                          " %s:%d:%s(): " fmt "\n" COLOR_RESET, \
+                __FILE__, __LINE__, __func__, ##__VA_ARGS__);   \
+        exit(EXIT_FAILURE);                                     \
     } while (0)
 
 #define CHECK_WARN(cond, fmt, ...)                           \
     do {                                                     \
-        if ((cond)) {                                        \
+        if (__builtin_expect(!!(cond), 0)) {                                        \
             WARN("Check: (%s): " fmt, #cond, ##__VA_ARGS__); \
         }                                                    \
     } while (0)
 
 #define CHECK_WARN_RET(cond, ret, fmt, ...)                  \
     do {                                                     \
-        if ((cond)) {                                        \
+        if (__builtin_expect(!!(cond), 0)) {                                        \
             WARN("Check: (%s): " fmt, #cond, ##__VA_ARGS__); \
             return ret;                                      \
         }                                                    \
@@ -88,15 +72,18 @@
 
 #define CHECK_FATAL(cond, fmt, ...)                           \
     do {                                                      \
-        if (cond) {                                           \
+        if (__builtin_expect(!!(cond), 0)) {                                           \
             FATAL("Check: (%s): " fmt, #cond, ##__VA_ARGS__); \
         }                                                     \
     } while (0)
 
-#define LOG(fmt, ...)                               \
-    do {                                            \
-        printf(COLOR_CYAN "[LOG]" " : %s(): " fmt "\n" COLOR_RESET, __func__, ##__VA_ARGS__); \
+#define LOG(fmt, ...)                                       \
+    do {                                                    \
+        printf(COLOR_CYAN "[LOG]"                           \
+                          " : %s(): " fmt "\n" COLOR_RESET, \
+               __func__, ##__VA_ARGS__);                    \
     } while (0)
+
 
 // TYPES
 
@@ -117,8 +104,7 @@ typedef void (*copy_fn)(u8* dest, const u8* src);
 typedef void (*move_fn)(u8* dest, u8** src);
 typedef void (*delete_fn)(u8* key);
 typedef void (*print_fn)(const u8* elm);
-typedef int  (*compare_fn)(const u8* a, const u8* b, u64 size);
-typedef void (*for_each_fn)(u8* elm); 
+typedef int (*compare_fn)(const u8* a, const u8* b, u64 size);
 
 
 // CASTING
@@ -138,9 +124,178 @@ typedef void (*for_each_fn)(u8* elm);
 
 // RAW BYTES TO HEX
 
-void print_hex(const u8* ptr, u64 size, u32 bytes_per_line);
+static inline void print_hex(const u8* ptr, u64 size, u32 bytes_per_line) 
+{
+    if (ptr == NULL || size == 0 || bytes_per_line == 0) { return; }
+
+    // hex rep 0-15
+    const char* hex = "0123456789ABCDEF";
+    
+    for (u64 i = 0; i < size; i++) 
+    {
+        u8 val1 = ptr[i] >> 4;      // get upper 4 bits as num b/w 0-15
+        u8 val2 = ptr[i] & 0x0F;    // get lower 4 bits as num b/w 0-15
+        
+        printf("%c%c", hex[val1], hex[val2]);
+        
+        // Add space or newline appropriately
+        if ((i + 1) % bytes_per_line == 0) {
+            printf("\n");
+        } else if (i < size - 1) {
+            printf(" ");
+        }
+    }
+
+    // Add final newline if we didn't just print one
+    if (size % bytes_per_line != 0) {
+        printf("\n");
+    }
+}
+
+
+// TEST HELPERS
+
+// Generic print functions for primitive types
+static inline void wc_print_int(const u8* elm)
+{
+    printf("%d ", *(int*)elm);
+}
+static inline void wc_print_u32(const u8* elm)
+{
+    printf("%u ", *(u32*)elm);
+}
+static inline void wc_print_u64(const u8* elm)
+{
+    printf("%llu ", (unsigned long long)*(u64*)elm);
+}
+static inline void wc_print_float(const u8* elm)
+{
+    printf("%.2f ", *(float*)elm);
+}
+static inline void wc_print_char(const u8* elm)
+{
+    printf("%c ", *(char*)elm);
+}
+static inline void wc_print_cstr(const u8* elm)
+{
+    printf("%s ", (const char*)elm);
+}
 
 #endif /* WC_COMMON_H */
+
+/* ===== wc_errno.h ===== */
+#ifndef WC_WC_ERRNO_H
+#define WC_WC_ERRNO_H
+
+#include <stdio.h>
+
+
+/* wc_errno.h — Error reporting for WCtoolkit
+ * ============================================
+ *
+ * Two tiers:
+ *
+ *   CHECK_FATAL  Programmer errors: null pointer, out of bounds, OOM.
+ *                Crashes with a message. These are bugs, not conditions.
+ *
+ *   wc_errno     Expected conditions: pop on empty, arena full.
+ *                Function returns NULL / 0 / void. wc_errno says why.
+ *                Ignore it if you don't care. Check it if you do.
+ *
+ *
+ * USAGE
+ * -----
+ *   // Check a single call:
+ *   wc_errno = WC_OK;
+ *   u8* p = arena_alloc(arena, size);
+ *   if (!p && wc_errno == WC_ERR_FULL) { ... }
+ *
+ *   // Check a batch — wc_errno stays set if any call failed:
+ *   wc_errno = WC_OK;
+ *   float* a = (float*)arena_alloc(arena, 256);
+ *   float* b = (float*)arena_alloc(arena, 256);
+ *   if (wc_errno) { wc_perror("alloc"); }
+ *
+ *
+ * RULES
+ * -----
+ *   1. Successful calls do NOT clear wc_errno — clear it yourself.
+ *   2. Check the return value first. wc_errno tells you WHY, not WHETHER.
+ *   3. wc_errno is thread-local. Each thread has its own copy.
+ *
+ *
+ * WHAT SETS wc_errno
+ * ------------------
+ *   arena_alloc, arena_alloc_aligned      WC_ERR_FULL    arena exhausted
+ *   genVec_pop, genVec_front, genVec_back WC_ERR_EMPTY   vec is empty
+ *   dequeue, queue_peek, queue_peek_ptr   WC_ERR_EMPTY   queue is empty
+ *   stack_pop, stack_peek                 WC_ERR_EMPTY   stack is empty
+ */
+
+
+typedef enum {
+    WC_OK        = 0,
+    WC_ERR_FULL,       // arena exhausted / container at capacity
+    WC_ERR_EMPTY,      // pop or peek on empty container
+} wc_err;
+
+static inline const char* wc_strerror(wc_err e)
+{
+    switch (e) {
+        case WC_OK:        return "ok";
+        case WC_ERR_FULL:  return "full";
+        case WC_ERR_EMPTY: return "empty";
+        default:           return "unknown";
+    }
+}
+
+/* Defined in wc_errno.c:
+ *   _Thread_local wc_err wc_errno = WC_OK;
+ */
+extern _Thread_local wc_err wc_errno;
+
+/* Print last error — same pattern as perror(3).
+ *   wc_perror("arena_alloc");  ->  "arena_alloc: full"
+ */
+static inline void wc_perror(const char* prefix)
+{
+    if (prefix && prefix[0]) {
+        fprintf(stderr, "%s: %s\n", prefix, wc_strerror(wc_errno));
+    } else {
+        fprintf(stderr, "%s\n", wc_strerror(wc_errno));
+    }
+}
+
+
+/* Internal macros (library use only)
+ * ------------------------------------
+ * WC_SET_RET — replaces CHECK_WARN_RET at expected-condition sites.
+ * Sets wc_errno silently and returns. No print.
+ *
+ *   WC_SET_RET(WC_ERR_EMPTY, vec->size == 0, );     void return
+ *   WC_SET_RET(WC_ERR_FULL,  cond,           NULL); pointer return
+ */
+#define WC_SET_RET(err_code, cond, ret) \
+    do {                                \
+        if (cond) {                     \
+            wc_errno = (err_code);      \
+            return ret;                 \
+        }                               \
+    } while (0)
+
+/* WC_PROPAGATE_RET — exit immediately if a callee already set wc_errno.
+ *
+ *   some_internal_fn(vec);
+ *   WC_PROPAGATE_RET( );   // exits if some_internal_fn set wc_errno
+ */
+#define WC_PROPAGATE_RET(ret)    \
+    do {                         \
+        if (wc_errno != WC_OK) { \
+            return ret;          \
+        }                        \
+    } while (0)
+
+#endif /* WC_WC_ERRNO_H */
 
 /* ===== arena.h ===== */
 #ifndef WC_ARENA_H
@@ -357,39 +512,17 @@ ARENA_SCRATCH(scratch, arena) {
 
 #ifdef WC_IMPLEMENTATION
 
-/* ===== common.c ===== */
-#ifndef WC_COMMON_IMPL
-#define WC_COMMON_IMPL
+/* ===== wc_errno.c ===== */
+#ifndef WC_WC_ERRNO_IMPL
+#define WC_WC_ERRNO_IMPL
 
-void print_hex(const u8* ptr, u64 size, u32 bytes_per_line) 
-{
-    if (ptr == NULL | size == 0 | bytes_per_line == 0) { return; }
+/* One definition of the thread-local error variable.
+ * Every translation unit that includes wc_error.h sees the extern declaration.
+ * This file provides the actual storage.
+ */
+_Thread_local wc_err wc_errno = WC_OK;
 
-    // hex rep 0-15
-    const char* hex = "0123456789ABCDEF";
-    
-    for (u64 i = 0; i < size; i++) 
-    {
-        u8 val1 = ptr[i] >> 4;      // get upper 4 bits as num b/w 0-15
-        u8 val2 = ptr[i] & 0x0F;    // get lower 4 bits as num b/w 0-15
-        
-        printf("%c%c", hex[val1], hex[val2]);
-        
-        // Add space or newline appropriately
-        if ((i + 1) % bytes_per_line == 0) {
-            printf("\n");
-        } else if (i < size - 1) {
-            printf(" ");
-        }
-    }
-
-    // Add final newline if we didn't just print one
-    if (size % bytes_per_line != 0) {
-        printf("\n");
-    }
-}
-
-#endif /* WC_COMMON_IMPL */
+#endif /* WC_WC_ERRNO_IMPL */
 
 /* ===== arena.c ===== */
 #ifndef WC_ARENA_IMPL
@@ -479,9 +612,7 @@ u8* arena_alloc(Arena* arena, u64 size)
     
     // Align the current index first
     u64 aligned_idx = ALIGN_UP_DEFAULT(arena->idx);
-    
-    CHECK_WARN_RET(arena->size - aligned_idx < size,
-                   NULL, "not enough space in arena for SIZE");
+    WC_SET_RET(WC_ERR_FULL, arena->size - aligned_idx < size, NULL);
     
     u8* ptr = ARENA_PTR(arena, aligned_idx);
     arena->idx = aligned_idx + size;
@@ -500,8 +631,7 @@ u8* arena_alloc_aligned(Arena* arena, u64 size, u32 alignment)
 
     u64 aligned_idx = ALIGN_UP(arena->idx, alignment);
 
-    CHECK_WARN_RET(arena->size - aligned_idx < size,
-                   NULL, "not enough space in arena for SIZE");
+    WC_SET_RET(WC_ERR_FULL, arena->size - aligned_idx < size, NULL);
 
     u8* ptr = ARENA_PTR(arena, aligned_idx);
     arena->idx = aligned_idx + size;

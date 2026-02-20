@@ -31,56 +31,40 @@
 #include <stdlib.h>
 
 // ANSI Color Codes
-#define COLOR_RESET   "\033[0m"
-#define COLOR_RED     "\033[1;31m"
-#define COLOR_YELLOW  "\033[1;33m"
-#define COLOR_GREEN   "\033[1;32m"
-#define COLOR_BLUE    "\033[1;34m"
-#define COLOR_CYAN    "\033[1;36m"
+#define COLOR_RESET  "\033[0m"
+#define COLOR_RED    "\033[1;31m"
+#define COLOR_YELLOW "\033[1;33m"
+#define COLOR_GREEN  "\033[1;32m"
+#define COLOR_BLUE   "\033[1;34m"
+#define COLOR_CYAN   "\033[1;36m"
 
-#define WARN(fmt, ...)                                                                       \
-    do {                                                                                     \
-        printf(COLOR_YELLOW "[WARN]" " %s:%d:%s(): " fmt "\n" COLOR_RESET, __FILE__, __LINE__, __func__, ##__VA_ARGS__); \
+
+#define WARN(fmt, ...)                                            \
+    do {                                                          \
+        printf(COLOR_YELLOW "[WARN]"                              \
+                            " %s:%d:%s(): " fmt "\n" COLOR_RESET, \
+               __FILE__, __LINE__, __func__, ##__VA_ARGS__);      \
     } while (0)
 
-#define FATAL(fmt, ...)                                                                                \
-    do {                                                                                               \
-        fprintf(stderr, COLOR_RED "[FATAL]" " %s:%d:%s(): " fmt "\n" COLOR_RESET, __FILE__, __LINE__, __func__, ##__VA_ARGS__); \
-        exit(EXIT_FAILURE);                                                                            \
-    } while (0)
-
-#define ASSERT_WARN(cond, fmt, ...)                                     \
-    do {                                                                \
-        if (!(cond)) {                                                  \
-            WARN("Assertion failed: (%s): " fmt, #cond, ##__VA_ARGS__); \
-        }                                                               \
-    } while (0)
-
-#define ASSERT_WARN_RET(cond, ret, fmt, ...)                            \
-    do {                                                                \
-        if (!(cond)) {                                                  \
-            WARN("Assertion failed: (%s): " fmt, #cond, ##__VA_ARGS__); \
-            return ret;                                                 \
-        }                                                               \
-    } while (0)
-
-#define ASSERT_FATAL(cond, fmt, ...)                                     \
-    do {                                                                 \
-        if (!(cond)) {                                                   \
-            FATAL("Assertion failed: (%s): " fmt, #cond, ##__VA_ARGS__); \
-        }                                                                \
+#define FATAL(fmt, ...)                                         \
+    do {                                                        \
+        fprintf(stderr,                                         \
+                COLOR_RED "[FATAL]"                             \
+                          " %s:%d:%s(): " fmt "\n" COLOR_RESET, \
+                __FILE__, __LINE__, __func__, ##__VA_ARGS__);   \
+        exit(EXIT_FAILURE);                                     \
     } while (0)
 
 #define CHECK_WARN(cond, fmt, ...)                           \
     do {                                                     \
-        if ((cond)) {                                        \
+        if (__builtin_expect(!!(cond), 0)) {                                        \
             WARN("Check: (%s): " fmt, #cond, ##__VA_ARGS__); \
         }                                                    \
     } while (0)
 
 #define CHECK_WARN_RET(cond, ret, fmt, ...)                  \
     do {                                                     \
-        if ((cond)) {                                        \
+        if (__builtin_expect(!!(cond), 0)) {                                        \
             WARN("Check: (%s): " fmt, #cond, ##__VA_ARGS__); \
             return ret;                                      \
         }                                                    \
@@ -88,15 +72,18 @@
 
 #define CHECK_FATAL(cond, fmt, ...)                           \
     do {                                                      \
-        if (cond) {                                           \
+        if (__builtin_expect(!!(cond), 0)) {                                           \
             FATAL("Check: (%s): " fmt, #cond, ##__VA_ARGS__); \
         }                                                     \
     } while (0)
 
-#define LOG(fmt, ...)                               \
-    do {                                            \
-        printf(COLOR_CYAN "[LOG]" " : %s(): " fmt "\n" COLOR_RESET, __func__, ##__VA_ARGS__); \
+#define LOG(fmt, ...)                                       \
+    do {                                                    \
+        printf(COLOR_CYAN "[LOG]"                           \
+                          " : %s(): " fmt "\n" COLOR_RESET, \
+               __func__, ##__VA_ARGS__);                    \
     } while (0)
+
 
 // TYPES
 
@@ -117,8 +104,7 @@ typedef void (*copy_fn)(u8* dest, const u8* src);
 typedef void (*move_fn)(u8* dest, u8** src);
 typedef void (*delete_fn)(u8* key);
 typedef void (*print_fn)(const u8* elm);
-typedef int  (*compare_fn)(const u8* a, const u8* b, u64 size);
-typedef void (*for_each_fn)(u8* elm); 
+typedef int (*compare_fn)(const u8* a, const u8* b, u64 size);
 
 
 // CASTING
@@ -138,7 +124,62 @@ typedef void (*for_each_fn)(u8* elm);
 
 // RAW BYTES TO HEX
 
-void print_hex(const u8* ptr, u64 size, u32 bytes_per_line);
+static inline void print_hex(const u8* ptr, u64 size, u32 bytes_per_line) 
+{
+    if (ptr == NULL || size == 0 || bytes_per_line == 0) { return; }
+
+    // hex rep 0-15
+    const char* hex = "0123456789ABCDEF";
+    
+    for (u64 i = 0; i < size; i++) 
+    {
+        u8 val1 = ptr[i] >> 4;      // get upper 4 bits as num b/w 0-15
+        u8 val2 = ptr[i] & 0x0F;    // get lower 4 bits as num b/w 0-15
+        
+        printf("%c%c", hex[val1], hex[val2]);
+        
+        // Add space or newline appropriately
+        if ((i + 1) % bytes_per_line == 0) {
+            printf("\n");
+        } else if (i < size - 1) {
+            printf(" ");
+        }
+    }
+
+    // Add final newline if we didn't just print one
+    if (size % bytes_per_line != 0) {
+        printf("\n");
+    }
+}
+
+
+// TEST HELPERS
+
+// Generic print functions for primitive types
+static inline void wc_print_int(const u8* elm)
+{
+    printf("%d ", *(int*)elm);
+}
+static inline void wc_print_u32(const u8* elm)
+{
+    printf("%u ", *(u32*)elm);
+}
+static inline void wc_print_u64(const u8* elm)
+{
+    printf("%llu ", (unsigned long long)*(u64*)elm);
+}
+static inline void wc_print_float(const u8* elm)
+{
+    printf("%.2f ", *(float*)elm);
+}
+static inline void wc_print_char(const u8* elm)
+{
+    printf("%c ", *(char*)elm);
+}
+static inline void wc_print_cstr(const u8* elm)
+{
+    printf("%s ", (const char*)elm);
+}
 
 #endif /* WC_COMMON_H */
 
@@ -229,43 +270,69 @@ static u64 prev_prime(u64 current)
     return HASHMAP_INIT_CAPACITY;
 }
 
+
+// custom hash function for "String"
+
+static u64 murmurhash3_str(const u8* key, u64 size) 
+{
+    (void)size;
+    
+    String* str= (String*)key;
+    const char* data = string_data_ptr(str);
+    u64 len = string_len(str);
+    
+    const u32 c1 = 0xcc9e2d51;
+    const u32 c2 = 0x1b873593;
+    const u32 seed = 0x9747b28c;
+    
+    u32 h1 = seed;
+    
+    // Body - process 4-byte chunks
+    const u32* blocks = (const u32*)data;
+    const u64 nblocks = len / 4;
+    
+    for (u64 i = 0; i < nblocks; i++) {
+        u32 k1 = blocks[i];
+        
+        k1 *= c1;
+        k1 = (k1 << 15) | (k1 >> 17);
+        k1 *= c2;
+        
+        h1 ^= k1;
+        h1 = (h1 << 13) | (h1 >> 19);
+        h1 = (h1 * 5) + 0xe6546b64;
+    }
+    
+    // Tail - handle remaining bytes
+    const u8* tail = (const uint8_t*)(data + ((size_t)nblocks * 4));
+    u32 k1 = 0;
+    
+    switch (len & 3) {
+        case 3: k1 ^= tail[2] << 16;
+        case 2: k1 ^= tail[1] << 8;
+        case 1: k1 ^= tail[0];
+                k1 *= c1;
+                k1 = (k1 << 15) | (k1 >> 17);
+                k1 *= c2;
+                h1 ^= k1;
+        default:
+           break; 
+    }
+    
+    // Finalization
+    h1 ^= len;
+    h1 ^= h1 >> 16;
+    h1 *= 0x85ebca6b;
+    h1 ^= h1 >> 13;
+    h1 *= 0xc2b2ae35;
+    h1 ^= h1 >> 16;
+    
+    return h1;
+}
+
 #endif /* WC_MAP_SETUP_H */
 
 #ifdef WC_IMPLEMENTATION
-
-/* ===== common.c ===== */
-#ifndef WC_COMMON_IMPL
-#define WC_COMMON_IMPL
-
-void print_hex(const u8* ptr, u64 size, u32 bytes_per_line) 
-{
-    if (ptr == NULL | size == 0 | bytes_per_line == 0) { return; }
-
-    // hex rep 0-15
-    const char* hex = "0123456789ABCDEF";
-    
-    for (u64 i = 0; i < size; i++) 
-    {
-        u8 val1 = ptr[i] >> 4;      // get upper 4 bits as num b/w 0-15
-        u8 val2 = ptr[i] & 0x0F;    // get lower 4 bits as num b/w 0-15
-        
-        printf("%c%c", hex[val1], hex[val2]);
-        
-        // Add space or newline appropriately
-        if ((i + 1) % bytes_per_line == 0) {
-            printf("\n");
-        } else if (i < size - 1) {
-            printf(" ");
-        }
-    }
-
-    // Add final newline if we didn't just print one
-    if (size % bytes_per_line != 0) {
-        printf("\n");
-    }
-}
-
-#endif /* WC_COMMON_IMPL */
 
 #endif /* WC_IMPLEMENTATION */
 

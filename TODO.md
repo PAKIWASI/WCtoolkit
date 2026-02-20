@@ -1,23 +1,12 @@
 # WCtoolkit — TODO
 
----
-
-## Immediate
-
-Minimal test suite, with seperate test exe
-
-im getting waring on using gnu extention
-
 
 ---
 
 ## Testing
 
-Currently I only have a single test header for each component, in which
-I have multiple functions that test the various implementations
-These functions are called by main
+Something wrong with test suite? test it (lol)
 
-I want to explore how testing is done professionally
 
 ---
 
@@ -41,6 +30,7 @@ How much code is vectorizable using 'restrict' keyword ?
 
 The generated files look correct
 Need to test them
+We have to update dependency list in it 
 
 ---
 

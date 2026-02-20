@@ -31,56 +31,40 @@
 #include <stdlib.h>
 
 // ANSI Color Codes
-#define COLOR_RESET   "\033[0m"
-#define COLOR_RED     "\033[1;31m"
-#define COLOR_YELLOW  "\033[1;33m"
-#define COLOR_GREEN   "\033[1;32m"
-#define COLOR_BLUE    "\033[1;34m"
-#define COLOR_CYAN    "\033[1;36m"
+#define COLOR_RESET  "\033[0m"
+#define COLOR_RED    "\033[1;31m"
+#define COLOR_YELLOW "\033[1;33m"
+#define COLOR_GREEN  "\033[1;32m"
+#define COLOR_BLUE   "\033[1;34m"
+#define COLOR_CYAN   "\033[1;36m"
 
-#define WARN(fmt, ...)                                                                       \
-    do {                                                                                     \
-        printf(COLOR_YELLOW "[WARN]" " %s:%d:%s(): " fmt "\n" COLOR_RESET, __FILE__, __LINE__, __func__, ##__VA_ARGS__); \
+
+#define WARN(fmt, ...)                                            \
+    do {                                                          \
+        printf(COLOR_YELLOW "[WARN]"                              \
+                            " %s:%d:%s(): " fmt "\n" COLOR_RESET, \
+               __FILE__, __LINE__, __func__, ##__VA_ARGS__);      \
     } while (0)
 
-#define FATAL(fmt, ...)                                                                                \
-    do {                                                                                               \
-        fprintf(stderr, COLOR_RED "[FATAL]" " %s:%d:%s(): " fmt "\n" COLOR_RESET, __FILE__, __LINE__, __func__, ##__VA_ARGS__); \
-        exit(EXIT_FAILURE);                                                                            \
-    } while (0)
-
-#define ASSERT_WARN(cond, fmt, ...)                                     \
-    do {                                                                \
-        if (!(cond)) {                                                  \
-            WARN("Assertion failed: (%s): " fmt, #cond, ##__VA_ARGS__); \
-        }                                                               \
-    } while (0)
-
-#define ASSERT_WARN_RET(cond, ret, fmt, ...)                            \
-    do {                                                                \
-        if (!(cond)) {                                                  \
-            WARN("Assertion failed: (%s): " fmt, #cond, ##__VA_ARGS__); \
-            return ret;                                                 \
-        }                                                               \
-    } while (0)
-
-#define ASSERT_FATAL(cond, fmt, ...)                                     \
-    do {                                                                 \
-        if (!(cond)) {                                                   \
-            FATAL("Assertion failed: (%s): " fmt, #cond, ##__VA_ARGS__); \
-        }                                                                \
+#define FATAL(fmt, ...)                                         \
+    do {                                                        \
+        fprintf(stderr,                                         \
+                COLOR_RED "[FATAL]"                             \
+                          " %s:%d:%s(): " fmt "\n" COLOR_RESET, \
+                __FILE__, __LINE__, __func__, ##__VA_ARGS__);   \
+        exit(EXIT_FAILURE);                                     \
     } while (0)
 
 #define CHECK_WARN(cond, fmt, ...)                           \
     do {                                                     \
-        if ((cond)) {                                        \
+        if (__builtin_expect(!!(cond), 0)) {                                        \
             WARN("Check: (%s): " fmt, #cond, ##__VA_ARGS__); \
         }                                                    \
     } while (0)
 
 #define CHECK_WARN_RET(cond, ret, fmt, ...)                  \
     do {                                                     \
-        if ((cond)) {                                        \
+        if (__builtin_expect(!!(cond), 0)) {                                        \
             WARN("Check: (%s): " fmt, #cond, ##__VA_ARGS__); \
             return ret;                                      \
         }                                                    \
@@ -88,15 +72,18 @@
 
 #define CHECK_FATAL(cond, fmt, ...)                           \
     do {                                                      \
-        if (cond) {                                           \
+        if (__builtin_expect(!!(cond), 0)) {                                           \
             FATAL("Check: (%s): " fmt, #cond, ##__VA_ARGS__); \
         }                                                     \
     } while (0)
 
-#define LOG(fmt, ...)                               \
-    do {                                            \
-        printf(COLOR_CYAN "[LOG]" " : %s(): " fmt "\n" COLOR_RESET, __func__, ##__VA_ARGS__); \
+#define LOG(fmt, ...)                                       \
+    do {                                                    \
+        printf(COLOR_CYAN "[LOG]"                           \
+                          " : %s(): " fmt "\n" COLOR_RESET, \
+               __func__, ##__VA_ARGS__);                    \
     } while (0)
+
 
 // TYPES
 
@@ -117,8 +104,7 @@ typedef void (*copy_fn)(u8* dest, const u8* src);
 typedef void (*move_fn)(u8* dest, u8** src);
 typedef void (*delete_fn)(u8* key);
 typedef void (*print_fn)(const u8* elm);
-typedef int  (*compare_fn)(const u8* a, const u8* b, u64 size);
-typedef void (*for_each_fn)(u8* elm); 
+typedef int (*compare_fn)(const u8* a, const u8* b, u64 size);
 
 
 // CASTING
@@ -138,9 +124,178 @@ typedef void (*for_each_fn)(u8* elm);
 
 // RAW BYTES TO HEX
 
-void print_hex(const u8* ptr, u64 size, u32 bytes_per_line);
+static inline void print_hex(const u8* ptr, u64 size, u32 bytes_per_line) 
+{
+    if (ptr == NULL || size == 0 || bytes_per_line == 0) { return; }
+
+    // hex rep 0-15
+    const char* hex = "0123456789ABCDEF";
+    
+    for (u64 i = 0; i < size; i++) 
+    {
+        u8 val1 = ptr[i] >> 4;      // get upper 4 bits as num b/w 0-15
+        u8 val2 = ptr[i] & 0x0F;    // get lower 4 bits as num b/w 0-15
+        
+        printf("%c%c", hex[val1], hex[val2]);
+        
+        // Add space or newline appropriately
+        if ((i + 1) % bytes_per_line == 0) {
+            printf("\n");
+        } else if (i < size - 1) {
+            printf(" ");
+        }
+    }
+
+    // Add final newline if we didn't just print one
+    if (size % bytes_per_line != 0) {
+        printf("\n");
+    }
+}
+
+
+// TEST HELPERS
+
+// Generic print functions for primitive types
+static inline void wc_print_int(const u8* elm)
+{
+    printf("%d ", *(int*)elm);
+}
+static inline void wc_print_u32(const u8* elm)
+{
+    printf("%u ", *(u32*)elm);
+}
+static inline void wc_print_u64(const u8* elm)
+{
+    printf("%llu ", (unsigned long long)*(u64*)elm);
+}
+static inline void wc_print_float(const u8* elm)
+{
+    printf("%.2f ", *(float*)elm);
+}
+static inline void wc_print_char(const u8* elm)
+{
+    printf("%c ", *(char*)elm);
+}
+static inline void wc_print_cstr(const u8* elm)
+{
+    printf("%s ", (const char*)elm);
+}
 
 #endif /* WC_COMMON_H */
+
+/* ===== wc_errno.h ===== */
+#ifndef WC_WC_ERRNO_H
+#define WC_WC_ERRNO_H
+
+#include <stdio.h>
+
+
+/* wc_errno.h — Error reporting for WCtoolkit
+ * ============================================
+ *
+ * Two tiers:
+ *
+ *   CHECK_FATAL  Programmer errors: null pointer, out of bounds, OOM.
+ *                Crashes with a message. These are bugs, not conditions.
+ *
+ *   wc_errno     Expected conditions: pop on empty, arena full.
+ *                Function returns NULL / 0 / void. wc_errno says why.
+ *                Ignore it if you don't care. Check it if you do.
+ *
+ *
+ * USAGE
+ * -----
+ *   // Check a single call:
+ *   wc_errno = WC_OK;
+ *   u8* p = arena_alloc(arena, size);
+ *   if (!p && wc_errno == WC_ERR_FULL) { ... }
+ *
+ *   // Check a batch — wc_errno stays set if any call failed:
+ *   wc_errno = WC_OK;
+ *   float* a = (float*)arena_alloc(arena, 256);
+ *   float* b = (float*)arena_alloc(arena, 256);
+ *   if (wc_errno) { wc_perror("alloc"); }
+ *
+ *
+ * RULES
+ * -----
+ *   1. Successful calls do NOT clear wc_errno — clear it yourself.
+ *   2. Check the return value first. wc_errno tells you WHY, not WHETHER.
+ *   3. wc_errno is thread-local. Each thread has its own copy.
+ *
+ *
+ * WHAT SETS wc_errno
+ * ------------------
+ *   arena_alloc, arena_alloc_aligned      WC_ERR_FULL    arena exhausted
+ *   genVec_pop, genVec_front, genVec_back WC_ERR_EMPTY   vec is empty
+ *   dequeue, queue_peek, queue_peek_ptr   WC_ERR_EMPTY   queue is empty
+ *   stack_pop, stack_peek                 WC_ERR_EMPTY   stack is empty
+ */
+
+
+typedef enum {
+    WC_OK        = 0,
+    WC_ERR_FULL,       // arena exhausted / container at capacity
+    WC_ERR_EMPTY,      // pop or peek on empty container
+} wc_err;
+
+static inline const char* wc_strerror(wc_err e)
+{
+    switch (e) {
+        case WC_OK:        return "ok";
+        case WC_ERR_FULL:  return "full";
+        case WC_ERR_EMPTY: return "empty";
+        default:           return "unknown";
+    }
+}
+
+/* Defined in wc_errno.c:
+ *   _Thread_local wc_err wc_errno = WC_OK;
+ */
+extern _Thread_local wc_err wc_errno;
+
+/* Print last error — same pattern as perror(3).
+ *   wc_perror("arena_alloc");  ->  "arena_alloc: full"
+ */
+static inline void wc_perror(const char* prefix)
+{
+    if (prefix && prefix[0]) {
+        fprintf(stderr, "%s: %s\n", prefix, wc_strerror(wc_errno));
+    } else {
+        fprintf(stderr, "%s\n", wc_strerror(wc_errno));
+    }
+}
+
+
+/* Internal macros (library use only)
+ * ------------------------------------
+ * WC_SET_RET — replaces CHECK_WARN_RET at expected-condition sites.
+ * Sets wc_errno silently and returns. No print.
+ *
+ *   WC_SET_RET(WC_ERR_EMPTY, vec->size == 0, );     void return
+ *   WC_SET_RET(WC_ERR_FULL,  cond,           NULL); pointer return
+ */
+#define WC_SET_RET(err_code, cond, ret) \
+    do {                                \
+        if (cond) {                     \
+            wc_errno = (err_code);      \
+            return ret;                 \
+        }                               \
+    } while (0)
+
+/* WC_PROPAGATE_RET — exit immediately if a callee already set wc_errno.
+ *
+ *   some_internal_fn(vec);
+ *   WC_PROPAGATE_RET( );   // exits if some_internal_fn set wc_errno
+ */
+#define WC_PROPAGATE_RET(ret)    \
+    do {                         \
+        if (wc_errno != WC_OK) { \
+            return ret;          \
+        }                        \
+    } while (0)
+
+#endif /* WC_WC_ERRNO_H */
 
 /* ===== arena.h ===== */
 #ifndef WC_ARENA_H
@@ -368,24 +523,24 @@ typedef struct {
     float* data;
     u64    m; // rows
     u64    n; // cols
-} Matrix;
+} Matrixf;
 
 
 // CREATION AND DESTRUCTION
 // ============================================================================
 
 // create heap matrix with m rows and n cols
-Matrix* matrix_create(u64 m, u64 n);
+Matrixf* matrix_create(u64 m, u64 n);
 
 // create heap matrix with m rows and n cols and an array of size m x n
-Matrix* matrix_create_arr(u64 m, u64 n, const float* arr);
+Matrixf* matrix_create_arr(u64 m, u64 n, const float* arr);
 
 // create matrix with everything on the stack
-void matrix_create_stk(Matrix* mat, u64 m, u64 n, float* data);
+void matrix_create_stk(Matrixf* mat, u64 m, u64 n, float* data);
 
 // destroy the matrix created with matrix_create or matrix_create_arr
 // DO NOT use on stack-allocated matrices (created with matrix_create_stk)
-void matrix_destroy(Matrix* mat);
+void matrix_destroy(Matrixf* mat);
 
 
 // SETTERS
@@ -401,13 +556,13 @@ void matrix_destroy(Matrix* mat);
            {7, 8, 9}
        });
 */
-void matrix_set_val_arr(Matrix* mat, u64 count, const float* arr);
+void matrix_set_val_arr(Matrixf* mat, u64 count, const float* arr);
 
 // for 2D arrays (array of pointers)
-void matrix_set_val_arr2(Matrix* mat, u64 m, u64 n, const float** arr2);
+void matrix_set_val_arr2(Matrixf* mat, u64 m, u64 n, const float** arr2);
 
 // set the value at position (i, j) where i is row and j is column
-void matrix_set_elm(Matrix* mat, float elm, u64 i, u64 j);
+void matrix_set_elm(Matrixf* mat, float elm, u64 i, u64 j);
 
 
 // BASIC OPERATIONS
@@ -415,20 +570,20 @@ void matrix_set_elm(Matrix* mat, float elm, u64 i, u64 j);
 
 // Matrix addition: out = a + b
 // out may alias a and/or b (safe to do: matrix_add(a, a, b))
-void matrix_add(Matrix* out, const Matrix* a, const Matrix* b);
+void matrix_add(Matrixf* out, const Matrixf* a, const Matrixf* b);
 
 // Matrix subtraction: out = a - b
 // out may alias a and/or b (safe to do: matrix_sub(a, a, b))
-void matrix_sub(Matrix* out, const Matrix* a, const Matrix* b);
+void matrix_sub(Matrixf* out, const Matrixf* a, const Matrixf* b);
 
 // Scalar multiplication: mat = mat * val
-void matrix_scale(Matrix* mat, float val);
+void matrix_scale(Matrixf* mat, float val);
 
 // Element wise divistion
-void matrix_div(Matrix* mat, float val);
+void matrix_div(Matrixf* mat, float val);
 
 // Matrix copy: dest = src
-void matrix_copy(Matrix* dest, const Matrix* src);
+void matrix_copy(Matrixf* dest, const Matrixf* src);
 
 
 // MATRIX MULTIPLICATION
@@ -438,13 +593,13 @@ void matrix_copy(Matrix* dest, const Matrix* src);
 // (m×k) * (k×n) = (m×n)
 // out may NOT alias a or b
 // Uses blocked ikj multiplication for cache efficiency (good for small-medium matrices)
-void matrix_xply(Matrix* out, const Matrix* a, const Matrix* b);
+void matrix_xply(Matrixf* out, const Matrixf* a, const Matrixf* b);
 
 // Matrix multiplication variant 2: out = a × b
 // Transposes b internally for better cache locality
 // Takes more memory but can be faster for large matrices
 // out may NOT alias a or b
-void matrix_xply_2(Matrix* out, const Matrix* a, const Matrix* b);
+void matrix_xply_2(Matrixf* out, const Matrixf* a, const Matrixf* b);
 
 
 /* TODO: 
@@ -452,7 +607,7 @@ void matrix_xply_2(Matrix* out, const Matrix* a, const Matrix* b);
 OR  vec * mat => (1 x m) * (m * n) => (1 x n)
 OR  vec * mat => (m x 1) * (1 x n) => (m x n) - this doesnot fit here ?
 */
-u8* matrix_xply_vec(const Matrix* a, const u8* arr, u32 data_size, u64 size);
+u8* matrix_xply_vec(const Matrixf* a, const u8* arr, u32 data_size, u64 size);
 
 
 
@@ -461,29 +616,29 @@ u8* matrix_xply_vec(const Matrix* a, const u8* arr, u32 data_size, u64 size);
 
 // Transpose: out = mat^T
 // out may NOT alias mat
-void matrix_T(Matrix* out, const Matrix* mat);
+void matrix_T(Matrixf* out, const Matrixf* mat);
 
 // LU Decomposition: mat = L × U
 // Decomposes square matrix into Lower and Upper triangular matrices
-void matrix_LU_Decomp(Matrix* L, Matrix* U, const Matrix* mat);
+void matrix_LU_Decomp(Matrixf* L, Matrixf* U, const Matrixf* mat);
 
 // Calculate determinant using LU decomposition
-float matrix_det(const Matrix* mat);
+float matrix_det(const Matrixf* mat);
 
 // Calculate adjugate (adjoint) matrix
 // TODO: NOT IMPLEMENTED
-void matrix_adj(Matrix* out, const Matrix* mat);
+void matrix_adj(Matrixf* out, const Matrixf* mat);
 
 // Calculate matrix inverse: out = mat^(-1)
 // TODO: NOT IMPLEMENTED
-void matrix_inv(Matrix* out, const Matrix* mat);
+void matrix_inv(Matrixf* out, const Matrixf* mat);
 
 
 // UTILITIES
 // ============================================================================
 
 // print the formatted, aligned matrix to stdout
-void matrix_print(const Matrix* mat);
+void matrix_print(const Matrixf* mat);
 
 
 #define MATRIX_TOTAL(mat)    ((u64)((mat)->n * (mat)->m))
@@ -505,11 +660,11 @@ No need to call matrix_destroy - freed when arena is cleared/released
 Usage:
     Matrix* mat = MATRIX_ARENA(arena, 3, 3);
 */
-static inline Matrix* matrix_arena_alloc(Arena* arena, u64 m, u64 n)
+static inline Matrixf* matrix_arena_alloc(Arena* arena, u64 m, u64 n)
 {
     CHECK_FATAL(m == 0 && n == 0, "n == m == 0");
 
-    Matrix* mat = ARENA_ALLOC(arena, Matrix);
+    Matrixf* mat = ARENA_ALLOC(arena, Matrixf);
     CHECK_FATAL(!mat, "matrix arena allocation failed");
 
     mat->m = m;
@@ -529,12 +684,12 @@ Usage:
     Matrix* mat = MATRIX_ARENA_ARR(arena, 3, 3, (float[9]){1,2,3,4,5,6,7,8,9});
 */
 
-static inline Matrix* matrix_arena_arr_alloc(Arena* arena, u64 m, u64 n, const float* arr)
+static inline Matrixf* matrix_arena_arr_alloc(Arena* arena, u64 m, u64 n, const float* arr)
 {
     CHECK_FATAL(m == 0 || n == 0, "matrix dims must be > 0");
     CHECK_FATAL(!arr, "input arr is null");
 
-    Matrix* mat = matrix_arena_alloc(arena, m, n);
+    Matrixf* mat = matrix_arena_alloc(arena, m, n);
     memcpy(mat->data, arr, sizeof(float) * m * n);
     return mat;
 }
@@ -543,39 +698,17 @@ static inline Matrix* matrix_arena_arr_alloc(Arena* arena, u64 m, u64 n, const f
 
 #ifdef WC_IMPLEMENTATION
 
-/* ===== common.c ===== */
-#ifndef WC_COMMON_IMPL
-#define WC_COMMON_IMPL
+/* ===== wc_errno.c ===== */
+#ifndef WC_WC_ERRNO_IMPL
+#define WC_WC_ERRNO_IMPL
 
-void print_hex(const u8* ptr, u64 size, u32 bytes_per_line) 
-{
-    if (ptr == NULL | size == 0 | bytes_per_line == 0) { return; }
+/* One definition of the thread-local error variable.
+ * Every translation unit that includes wc_error.h sees the extern declaration.
+ * This file provides the actual storage.
+ */
+_Thread_local wc_err wc_errno = WC_OK;
 
-    // hex rep 0-15
-    const char* hex = "0123456789ABCDEF";
-    
-    for (u64 i = 0; i < size; i++) 
-    {
-        u8 val1 = ptr[i] >> 4;      // get upper 4 bits as num b/w 0-15
-        u8 val2 = ptr[i] & 0x0F;    // get lower 4 bits as num b/w 0-15
-        
-        printf("%c%c", hex[val1], hex[val2]);
-        
-        // Add space or newline appropriately
-        if ((i + 1) % bytes_per_line == 0) {
-            printf("\n");
-        } else if (i < size - 1) {
-            printf(" ");
-        }
-    }
-
-    // Add final newline if we didn't just print one
-    if (size % bytes_per_line != 0) {
-        printf("\n");
-    }
-}
-
-#endif /* WC_COMMON_IMPL */
+#endif /* WC_WC_ERRNO_IMPL */
 
 /* ===== arena.c ===== */
 #ifndef WC_ARENA_IMPL
@@ -665,9 +798,7 @@ u8* arena_alloc(Arena* arena, u64 size)
     
     // Align the current index first
     u64 aligned_idx = ALIGN_UP_DEFAULT(arena->idx);
-    
-    CHECK_WARN_RET(arena->size - aligned_idx < size,
-                   NULL, "not enough space in arena for SIZE");
+    WC_SET_RET(WC_ERR_FULL, arena->size - aligned_idx < size, NULL);
     
     u8* ptr = ARENA_PTR(arena, aligned_idx);
     arena->idx = aligned_idx + size;
@@ -686,8 +817,7 @@ u8* arena_alloc_aligned(Arena* arena, u64 size, u32 alignment)
 
     u64 aligned_idx = ALIGN_UP(arena->idx, alignment);
 
-    CHECK_WARN_RET(arena->size - aligned_idx < size,
-                   NULL, "not enough space in arena for SIZE");
+    WC_SET_RET(WC_ERR_FULL, arena->size - aligned_idx < size, NULL);
 
     u8* ptr = ARENA_PTR(arena, aligned_idx);
     arena->idx = aligned_idx + size;
@@ -718,11 +848,11 @@ void arena_clear_mark(Arena* arena, u64 mark)
 #ifndef WC_MATRIX_IMPL
 #define WC_MATRIX_IMPL
 
-Matrix* matrix_create(u64 m, u64 n)
+Matrixf* matrix_create(u64 m, u64 n)
 {
     CHECK_FATAL(n == 0 && m == 0, "n == m == 0");
 
-    Matrix* mat = (Matrix*)malloc(sizeof(Matrix));
+    Matrixf* mat = (Matrixf*)malloc(sizeof(Matrixf));
     CHECK_FATAL(!mat, "matrix malloc failed");
 
     mat->m    = m;
@@ -733,15 +863,15 @@ Matrix* matrix_create(u64 m, u64 n)
     return mat;
 }
 
-Matrix* matrix_create_arr(u64 m, u64 n, const float* arr)
+Matrixf* matrix_create_arr(u64 m, u64 n, const float* arr)
 {
     CHECK_FATAL(!arr, "input arr is null");
-    Matrix* mat = matrix_create(m, n);
+    Matrixf* mat = matrix_create(m, n);
     memcpy(mat->data, arr, sizeof(float) * m * n);
     return mat;
 }
 
-void matrix_create_stk(Matrix* mat, u64 m, u64 n, float* data)
+void matrix_create_stk(Matrixf* mat, u64 m, u64 n, float* data)
 {
     CHECK_FATAL(!mat, "matrix is null");
     CHECK_FATAL(!data, "data is null");
@@ -752,7 +882,7 @@ void matrix_create_stk(Matrix* mat, u64 m, u64 n, float* data)
     mat->n    = n;
 }
 
-void matrix_destroy(Matrix* mat)
+void matrix_destroy(Matrixf* mat)
 {
     CHECK_FATAL(!mat, "matrix is null");
 
@@ -761,7 +891,7 @@ void matrix_destroy(Matrix* mat)
 }
 
 
-void matrix_set_val_arr(Matrix* mat, u64 count, const float* arr)
+void matrix_set_val_arr(Matrixf* mat, u64 count, const float* arr)
 {
     CHECK_FATAL(!mat, "matrix is null");
     CHECK_FATAL(!arr, "arr is null");
@@ -770,7 +900,7 @@ void matrix_set_val_arr(Matrix* mat, u64 count, const float* arr)
     memcpy(mat->data, arr, sizeof(float) * count);
 }
 
-void matrix_set_val_arr2(Matrix* mat, u64 m, u64 n, const float** arr2)
+void matrix_set_val_arr2(Matrixf* mat, u64 m, u64 n, const float** arr2)
 {
     CHECK_FATAL(!mat, "matrix is null");
     CHECK_FATAL(!arr2, "arr is null");
@@ -785,7 +915,7 @@ void matrix_set_val_arr2(Matrix* mat, u64 m, u64 n, const float** arr2)
     }
 }
 
-void matrix_set_elm(Matrix* mat, float elm, u64 i, u64 j)
+void matrix_set_elm(Matrixf* mat, float elm, u64 i, u64 j)
 {
     CHECK_FATAL(!mat, "matrix is null");
     CHECK_FATAL(i >= mat->m || j >= mat->n, "index out of bounds");
@@ -793,7 +923,7 @@ void matrix_set_elm(Matrix* mat, float elm, u64 i, u64 j)
     mat->data[IDX(mat, i, j)] = elm;
 }
 
-void matrix_add(Matrix* out, const Matrix* a, const Matrix* b)
+void matrix_add(Matrixf* out, const Matrixf* a, const Matrixf* b)
 {
     CHECK_FATAL(!out, "out matrix is null");
     CHECK_FATAL(!a, "a matrix is null");
@@ -810,7 +940,7 @@ void matrix_add(Matrix* out, const Matrix* a, const Matrix* b)
 }
 
 
-void matrix_sub(Matrix* out, const Matrix* a, const Matrix* b)
+void matrix_sub(Matrixf* out, const Matrixf* a, const Matrixf* b)
 {
     CHECK_FATAL(!out, "out matrix is null");
     CHECK_FATAL(!a, "a matrix is null");
@@ -829,7 +959,7 @@ void matrix_sub(Matrix* out, const Matrix* a, const Matrix* b)
 
 // ikj multiplication. (mxk) * (kxn) = (mxn)
 // this is good for small to medium size matrices
-void matrix_xply(Matrix* out, const Matrix* a, const Matrix* b)
+void matrix_xply(Matrixf* out, const Matrixf* a, const Matrixf* b)
 {
     CHECK_FATAL(!out, "out matrix is null");
     CHECK_FATAL(!a, "a matrix is null");
@@ -878,7 +1008,7 @@ void matrix_xply(Matrix* out, const Matrix* a, const Matrix* b)
 
 // this function transposes b for cache-friendly access
 // takes more memory, good for large size matrices
-void matrix_xply_2(Matrix* out, const Matrix* a, const Matrix* b)
+void matrix_xply_2(Matrixf* out, const Matrixf* a, const Matrixf* b)
 {
     CHECK_FATAL(!out, "out matrix is null");
     CHECK_FATAL(!a, "a matrix is null");
@@ -892,7 +1022,7 @@ void matrix_xply_2(Matrix* out, const Matrix* a, const Matrix* b)
     u64 n = b->n;
 
     // Transpose B for cache-friendly access
-    Matrix b_T;
+    Matrixf b_T;
     float  data[n * k]; // random vals
     matrix_create_stk(&b_T, n, k, data);
     matrix_T(&b_T, b); // transpose sets all vals
@@ -929,7 +1059,7 @@ void matrix_xply_2(Matrix* out, const Matrix* a, const Matrix* b)
 Doolittle algorithm computes U's i-th row, then L's i-th column, alternating.
 For each element, you subtract the dot product of already-computed L and U values.
 */
-void matrix_LU_Decomp(Matrix* L, Matrix* U, const Matrix* mat)
+void matrix_LU_Decomp(Matrixf* L, Matrixf* U, const Matrixf* mat)
 {
     CHECK_FATAL(!L, "L mat is null");
     CHECK_FATAL(!U, "U mat is null");
@@ -988,7 +1118,7 @@ void matrix_LU_Decomp(Matrix* L, Matrix* U, const Matrix* mat)
     LU Decomposition is when we make 2 triangular matrices from one,
     which when multiplied give original matrix: A = L * U
 */
-float matrix_det(const Matrix* mat)
+float matrix_det(const Matrixf* mat)
 {
     CHECK_FATAL(!mat, "mat matrix is null");
     CHECK_FATAL(mat->m != mat->n, "only square matrices have determinant");
@@ -996,7 +1126,7 @@ float matrix_det(const Matrix* mat)
 
     u64 n = mat->n;
 
-    Matrix L, U;
+    Matrixf L, U;
     float  Ldata[n * n]; // random vals
     float  Udata[n * n];
     matrix_create_stk(&L, n, n, Ldata);
@@ -1014,7 +1144,7 @@ float matrix_det(const Matrix* mat)
 }
 
 
-void matrix_T(Matrix* out, const Matrix* mat)
+void matrix_T(Matrixf* out, const Matrixf* mat)
 {
     CHECK_FATAL(!mat, "mat matrix is null");
     CHECK_FATAL(!out, "out matrix is null");
@@ -1043,7 +1173,7 @@ void matrix_T(Matrix* out, const Matrix* mat)
     }
 }
 
-void matrix_scale(Matrix* mat, float val)
+void matrix_scale(Matrixf* mat, float val)
 {
     CHECK_FATAL(!mat, "matrix is null");
 
@@ -1052,7 +1182,7 @@ void matrix_scale(Matrix* mat, float val)
 }
 
 
-void matrix_div(Matrix* mat, float val)
+void matrix_div(Matrixf* mat, float val)
 {
     CHECK_FATAL(!mat, "mat is null");
     CHECK_FATAL(val == 0, "division by zero!");
@@ -1061,7 +1191,7 @@ void matrix_div(Matrix* mat, float val)
     for (u64 i = 0; i < total; i++) { mat->data[i] /= val; }
 }
 
-void matrix_copy(Matrix* dest, const Matrix* src)
+void matrix_copy(Matrixf* dest, const Matrixf* src)
 {
     CHECK_FATAL(!dest, "dest matrix is null");
     CHECK_FATAL(!src, "src matrix is null");
@@ -1071,7 +1201,7 @@ void matrix_copy(Matrix* dest, const Matrix* src)
     memcpy(dest->data, src->data, sizeof(float) * MATRIX_TOTAL(src));
 }
 
-void matrix_print(const Matrix* mat)
+void matrix_print(const Matrixf* mat)
 {
     CHECK_FATAL(!mat, "matrix is null");
 

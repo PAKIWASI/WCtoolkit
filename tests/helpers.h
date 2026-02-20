@@ -54,10 +54,7 @@
  */
 
 #include "String.h"
-#include "gen_vector.h"
 #include <string.h>
-#include <stdlib.h>
-#include <stdio.h>
 
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -174,7 +171,7 @@ static inline void vec_copy(u8* dest, const u8* src)
 
     if (s->copy_fn) {
         for (u64 i = 0; i < s->size; i++) {
-            s->copy_fn(d->data + i * d->data_size,
+            s->copy_fn(d->data + (i * d->data_size),
                        genVec_get_ptr(s, i));
         }
     } else {
@@ -203,7 +200,7 @@ static inline void vec_print_int(const u8* elm)
     printf("[");
     for (u64 i = 0; i < v->size; i++) {
         printf("%d", *(int*)genVec_get_ptr(v, i));
-        if (i + 1 < v->size) printf(", ");
+        if (i + 1 < v->size) { printf(", "); }
     }
     printf("]");
 }
@@ -225,7 +222,7 @@ static inline void vec_copy_ptr(u8* dest, const u8* src)
 
     if (s->copy_fn) {
         for (u64 i = 0; i < s->size; i++) {
-            s->copy_fn(d->data + i * d->data_size,
+            s->copy_fn(d->data + (i * d->data_size),
                        genVec_get_ptr(s, i));
         }
     } else {

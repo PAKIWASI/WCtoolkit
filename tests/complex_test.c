@@ -227,7 +227,7 @@ static void test_vecval_push_move(void)
     genVec* outer = VEC_OF_VEC(4);
 
     genVec* inner = VEC_OF_INT(8);
-    for (int i = 0; i < 5; i++) VEC_PUSH(inner, i);
+    for (int i = 0; i < 5; i++) { VEC_PUSH(inner, i); }
 
     VEC_PUSH_VEC(outer, inner); /* inner nulled, data lives in outer slot */
     WC_ASSERT_NULL(inner);
@@ -247,7 +247,7 @@ static void test_vecval_push_copy_independent(void)
     genVec* outer = VEC_OF_VEC(4);
 
     genVec* inner = VEC_OF_INT(4);
-    for (int i = 0; i < 3; i++) VEC_PUSH(inner, i);
+    for (int i = 0; i < 3; i++) { VEC_PUSH(inner, i); }
 
     /* push by copy — inner stays valid */
     genVec_push(outer, (u8*)inner);
@@ -271,7 +271,7 @@ static void test_vecval_multiple_inner_vecs(void)
     for (int row = 0; row < 4; row++) {
         genVec* inner = VEC_OF_INT(4);
         for (int col = 0; col < (row + 1); col++) {
-            int v = row * 10 + col;
+            int v = (row * 10) + col;
             VEC_PUSH(inner, v);
         }
         VEC_PUSH_VEC(outer, inner);
@@ -282,7 +282,7 @@ static void test_vecval_multiple_inner_vecs(void)
         genVec* slot = VEC_AT_MUT(outer, genVec, (u64)row);
         WC_ASSERT_EQ_U64(genVec_size(slot), (u64)(row + 1));
         for (int col = 0; col < (row + 1); col++) {
-            WC_ASSERT_EQ_INT(*(int*)genVec_get_ptr(slot, (u64)col), row * 10 + col);
+            WC_ASSERT_EQ_INT(*(int*)genVec_get_ptr(slot, (u64)col), (row * 10) + col);
         }
     }
 
@@ -294,7 +294,7 @@ static void test_vecval_copy_outer(void)
     genVec* src = VEC_OF_VEC(4);
     for (int row = 0; row < 3; row++) {
         genVec* inner = VEC_OF_INT(4);
-        for (int i = 0; i < 3; i++) VEC_PUSH(inner, i);
+        for (int i = 0; i < 3; i++) { VEC_PUSH(inner, i); }
         VEC_PUSH_VEC(src, inner);
     }
 
@@ -417,7 +417,7 @@ static void test_map_int_vec_put_move(void)
 {
     hashmap* m = int_vec_map();
     genVec*  v = VEC_OF_INT(4);
-    for (int i = 0; i < 5; i++) VEC_PUSH(v, i);
+    for (int i = 0; i < 5; i++) { VEC_PUSH(v, i); }
 
     int key = 10;
     hashmap_put_val_move(m, (u8*)&key, (u8**)&v);
@@ -437,7 +437,7 @@ static void test_map_int_vec_copy_independence(void)
 {
     hashmap* m   = int_vec_map();
     genVec*  src = VEC_OF_INT(4);
-    for (int i = 0; i < 3; i++) VEC_PUSH(src, i);
+    for (int i = 0; i < 3; i++) { VEC_PUSH(src, i); }
 
     int key = 1;
     hashmap_put(m, (u8*)&key, (u8*)src);
@@ -532,7 +532,7 @@ static void test_strategy_b_pointer_outlives_growth(void)
     String* anchor = VEC_AT(v, String*, 0);
 
     /* force 10x growth */
-    for (int i = 0; i < 60; i++) VEC_PUSH_CSTR(v, "x");
+    for (int i = 0; i < 60; i++) { VEC_PUSH_CSTR(v, "x"); }
 
     /* anchor still points to the same heap String, content intact */
     WC_ASSERT_TRUE(VEC_AT(v, String*, 0) == anchor);
@@ -584,3 +584,5 @@ void complex_suite(void)
     WC_RUN(test_strategy_a_b_same_content);
     WC_RUN(test_strategy_b_pointer_outlives_growth);
 }
+
+

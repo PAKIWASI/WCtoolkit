@@ -2,7 +2,8 @@
 
 """
 make_single_header.py
----------------------
+=====================
+
 Converts C header/source pairs into self-contained single-header libraries.
 
 Layout expected:
@@ -29,12 +30,12 @@ import sys
 from pathlib import Path
 
 
-# ---------------------------------------------------------------------------
 # Known components and their dependency order.
 # A component's dependencies must appear BEFORE it in this list.
-# ---------------------------------------------------------------------------
+# =========================================================================
 COMPONENTS = [
     "common",
+    "wc_errno",
     "fast_math",
     "arena",
     "gen_vector",
@@ -53,9 +54,10 @@ COMPONENTS = [
 # Only direct dependencies are listed; transitive ones are resolved automatically.
 DEPENDENCIES: dict[str, list[str]] = {
     "common":      [],
+    "wc_errno":    [],
     "fast_math":   ["common"],
-    "arena":       ["common"],
-    "gen_vector":  ["common"],
+    "arena":       ["common", "wc_errno"],
+    "gen_vector":  ["common", "wc_errno"],
     "bit_vector":  ["common", "gen_vector"],
     "String":      ["common", "gen_vector"],
     "Stack":       ["common", "gen_vector"],
@@ -68,9 +70,8 @@ DEPENDENCIES: dict[str, list[str]] = {
 }
 
 
-# ---------------------------------------------------------------------------
 # Helpers
-# ---------------------------------------------------------------------------
+# =========================================================================
 
 def guard_name(component: str) -> str:
     """WC_GEN_VECTOR_H  /  WC_STRING_H  etc."""

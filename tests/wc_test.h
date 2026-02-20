@@ -57,12 +57,27 @@
 
 /* ── Internal state ──────────────────────────────────────────────────────── */
 
-static int wc_total  = 0;
-static int wc_passed = 0;
-static int wc_failed = 0;
+// static int wc_total  = 0;
+// static int wc_passed = 0;
+// static int wc_failed = 0;
+//
+// /* Per-test tracking: reset at the start of each WC_RUN */
+// static int wc_test_failed = 0;
 
-/* Per-test tracking: reset at the start of each WC_RUN */
-static int wc_test_failed = 0;
+
+#ifdef WC_TEST_MAIN
+    /* Defined exactly once, in the file that #define WC_TEST_MAIN */
+    int wc_total       = 0;
+    int wc_passed      = 0;
+    int wc_failed      = 0;
+    int wc_test_failed = 0;
+#else
+    /* All other translation units: just extern declarations */
+    extern int wc_total;
+    extern int wc_passed;
+    extern int wc_failed;
+    extern int wc_test_failed;
+#endif
 
 /* ANSI colours (same palette as common.h) */
 #define WC_RED    "\033[1;31m"

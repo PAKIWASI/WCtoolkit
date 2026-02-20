@@ -32,6 +32,15 @@
 #define VEC_EMPTY(T)                     VEC(T, 0)
 #define VEC_EMPTY_CX(T, copy, move, del) VEC_CX(T, 0, copy, move, del)
 
+#define VEC_FROM_ARR(T, n, arr)\
+    ({\
+        genVec* _v = genVec_init((n), sizeof(T), NULL, NULL, NULL);\
+        for (u64 i = 0; i < n; i++) {\
+            genVec_push(_v, (u8*)&arr[i]);\
+        }\
+        _v;\
+     })
+
 
 /* ── Push ─────────────────────────────────────────────────────────────────── */
 
@@ -45,8 +54,8 @@
  * letting us safely take the address of the temporary.
  * Key: (u8*)&wvp_tmp — address of local. NOT (u8*)wvp_tmp — that's wrong.
  */
-#define VEC_PUSH(vec, val)                  \
-    ({                                      \
+#define VEC_PUSH(vec, val)                 \
+    ({                                     \
         typeof(val) wvp_tmp = (val);       \
         genVec_push((vec), (u8*)&wvp_tmp); \
     })
@@ -59,8 +68,8 @@
  *   String* s = string_from_cstr("hello");
  *   VEC_PUSH_COPY(v, s);    // str_copy_ptr called, s still valid
  */
-#define VEC_PUSH_COPY(vec, val)             \
-    ({                                      \
+#define VEC_PUSH_COPY(vec, val)            \
+    ({                                     \
         typeof(val) wpc_tmp = (val);       \
         genVec_push((vec), (u8*)&wpc_tmp); \
     })
@@ -73,8 +82,8 @@
  *
  * Do NOT pass a stack String — strategy A's move_fn calls free(*src).
  */
-#define VEC_PUSH_MOVE(vec, ptr)                   \
-    ({                                            \
+#define VEC_PUSH_MOVE(vec, ptr)                  \
+    ({                                           \
         typeof(ptr) wvm_p = (ptr);               \
         genVec_push_move((vec), (u8**)&wvm_p);   \
         (ptr) = wvm_p; /* propagate NULL back */ \
@@ -83,8 +92,8 @@
 /* VEC_PUSH_CSTR — allocate a heap String and move it in. One line.
  * Works for both strategies.
  */
-#define VEC_PUSH_CSTR(vec, cstr)                 \
-    ({                                           \
+#define VEC_PUSH_CSTR(vec, cstr)                \
+    ({                                          \
         String* wpc_s = string_from_cstr(cstr); \
         genVec_push_move((vec), (u8**)&wpc_s);  \
     })
@@ -114,8 +123,8 @@
  *   VEC_SET(v, 0, 99);         // int
  *   VEC_SET(v, 0, my_string);  // String: del + copy called
  */
-#define VEC_SET(vec, i, val)                        \
-    ({                                              \
+#define VEC_SET(vec, i, val)                       \
+    ({                                             \
         typeof(val) wvs_tmp = (val);               \
         genVec_replace((vec), (i), (u8*)&wvs_tmp); \
     })
@@ -129,8 +138,8 @@
  *   String s = VEC_POP(v, String);  // you own s, must destroy
  *   String* p = VEC_POP(v, String*);
  */
-#define VEC_POP(vec, T)                  \
-    ({                                   \
+#define VEC_POP(vec, T)                 \
+    ({                                  \
         T wvpop;                        \
         genVec_pop((vec), (u8*)&wvpop); \
         wvpop;                          \
@@ -147,13 +156,13 @@
  * Strategy B:  VEC_FOREACH(v, String*, sp) { string_print(*sp); }
  *   sp is String** — *sp is the stored String*
  *
- * Double-for trick: outer increments i, inner declares name and runs once,
- * then sets i = size so the outer condition fails and the loop ends cleanly.
+* The inner loop's update is `name = NULL`, so after the body executes,
+ * name becomes NULL, the inner condition fails, and we return to the outer
+ * loop which increments i correctly. The body sees i and name as expected.
  */
-#define VEC_FOREACH(vec, T, name)                                                   \
-    for (u64 wvf_i = 0; wvf_i < (vec)->size; wvf_i++)                           \
-        for (T* name = (T*)genVec_get_ptr_mut((vec), wvf_i); wvf_i < (vec)->size; \
-             wvf_i  = (vec)->size)
+#define VEC_FOREACH(vec, T, name)                        \
+    for (u64 _wvf_i = 0; _wvf_i < (vec)->size; _wvf_i++) \
+        for (T* name = (T*)genVec_get_ptr_mut((vec), _wvf_i); name; name = NULL)
 
 
 #endif /* WC_MACROS_H */
