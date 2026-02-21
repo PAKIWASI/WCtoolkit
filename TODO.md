@@ -15,6 +15,7 @@ Add comparison with other libs in readme
 
 ## Testing
 
+some genVec functions are not tested 
 
 ---
 
@@ -29,13 +30,11 @@ How to package this as a library ?
 I have sinle header version but as a whole?
 make a binary?
 
-Need to add CONTRIBUTING.md
-
 ---
 
 ## SIMD
 
-How much code is vectorizable using 'restrict' keyword ?
+How much code is vectorizable using 'restrict' ?
 
 ---
 
@@ -43,7 +42,6 @@ How much code is vectorizable using 'restrict' keyword ?
 
 The generated files look correct
 Need to test them
-We have to update dependency list in it 
 
 ---
 

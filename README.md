@@ -1,7 +1,12 @@
 # WCtoolkit
 
-A C data structures library built around explicit ownership, value semantics, and zero hidden costs. No dependencies beyond the C standard library. 
+A C toolkit built around explicit ownership, value semantics, and zero hidden costs.
 
+WCtoolkit is designed for C programmers who care about lifetime correctness more than convenience.
+Containers do not guess how to copy or destroy your data — you must define it.
+This makes ownership explicit, prevents accidental deep copies, and scales well as programs grow.
+
+No dependencies beyond the C standard library. 
 Targets C11 with GNU extensions (Clang/GCC). But can degrade to C99 by sacrificing some ergonomics
 
 ```c

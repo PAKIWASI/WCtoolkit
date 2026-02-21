@@ -252,7 +252,7 @@ void genVec_shrink_to_fit(genVec* vec)
 
     // update data ptr
     vec->data     = new_data;
-    vec->size     = min_cap;
+    // vec->size     = min_cap;     // TODO: this is not needed right? RIGHT?
     vec->capacity = min_cap;
 }
 

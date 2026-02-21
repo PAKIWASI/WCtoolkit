@@ -25,4 +25,5 @@ int main(void)
     string_destroy(s);
     string_destroy_stk(&str);
     genVec_destroy(vec);
+    return 0;
 }
