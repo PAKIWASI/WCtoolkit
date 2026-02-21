@@ -162,8 +162,7 @@ static inline b8 string_empty(const String* str)
  Note: Must not break or return in the block
  Usage:
 
-TEMP_CSTR_READ(s)
-{
+TEMP_CSTR_READ(s) {
     printf("%s\n", string_data_ptr(s));
 }
 */

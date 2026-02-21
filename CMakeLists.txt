@@ -2,7 +2,12 @@ cmake_minimum_required(VERSION 3.20)
 
 set(CMAKE_C_COMPILER clang)
 
-project(c_ds_lib LANGUAGES C)
+project(
+    WCtoolkit
+    VERSION 0.6.0
+    DESCRIPTION "A C systems toolkit where ownership is part of the API"
+    LANGUAGES C
+)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -74,6 +79,14 @@ target_link_libraries(tests)
 enable_testing()
 add_test(NAME unit_tests COMMAND tests)
 
+
+# Example programs
+add_executable(examples
+    examples/examples.c
+    examples/json_parser.c
+    ${LIB_SOURCES}
+)
+target_include_directories(examples PRIVATE include)
 
 # ── Usage comments ───────────────────────────────────────────────────────
 # Debug build (default):

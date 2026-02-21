@@ -2,7 +2,7 @@
 #define HELPERS_H
 
 /*
- * helpers.h — Generic container callbacks and typed macros for WCtoolkit
+ * wc_helpers.h — Generic container callbacks and typed macros for WCtoolkit
  * =======================================================================
  *
  * ALL functions are static inline to avoid multiple-definition linker
@@ -70,23 +70,23 @@ static inline void str_copy(u8* dest, const u8* src)
     const String* s = (const String*)src;
     String*       d = (String*)dest;
 
-    memcpy(d, s, sizeof(String));       /* copy all fields (data ptr too)  */
+    memcpy(d, s, sizeof(String));       // copy all fields (data ptr too)
 
     u64 n   = s->size * s->data_size;
-    d->data = malloc(n);                /* independent data buffer          */
+    d->data = malloc(n);                // independent data buffer
     memcpy(d->data, s->data, n);
 }
 
 static inline void str_move(u8* dest, u8** src)
 {
-    memcpy(dest, *src, sizeof(String)); /* copy all fields into slot        */
-    free(*src);                         /* free heap container, not data    */
+    memcpy(dest, *src, sizeof(String)); // copy all fields into slot (including data ptr)
+    free(*src);                         // free heap container, not data   
     *src = NULL;
 }
 
 static inline void str_del(u8* elm)
 {
-    string_destroy_stk((String*)elm);   /* free data buffer, NOT the slot   */
+    string_destroy_stk((String*)elm);   // free data buffer, NOT the slot   
 }
 
 static inline void str_print(const u8* elm)
@@ -117,13 +117,13 @@ static inline void str_copy_ptr(u8* dest, const u8* src)
 
 static inline void str_move_ptr(u8* dest, u8** src)
 {
-    *(String**)dest = *(String**)src;   /* transfer pointer into slot       */
+    *(String**)dest = *(String**)src;   // transfer pointer into slot       
     *src            = NULL;
 }
 
 static inline void str_del_ptr(u8* elm)
 {
-    string_destroy(*(String**)elm);     /* free data buffer + struct        */
+    string_destroy(*(String**)elm);     // free data buffer + struct        
 }
 
 static inline void str_print_ptr(const u8* elm)
@@ -166,8 +166,8 @@ static inline void vec_copy(u8* dest, const u8* src)
     const genVec* s = (const genVec*)src;
     genVec*       d = (genVec*)dest;
 
-    memcpy(d, s, sizeof(genVec));                           /* copy all fields  */
-    d->data = malloc(s->capacity * (u64)s->data_size);      /* new data buffer  */
+    memcpy(d, s, sizeof(genVec));                           // copy all fields  
+    d->data = malloc(s->capacity * (u64)s->data_size);      // new data buffer 
 
     if (s->copy_fn) {
         for (u64 i = 0; i < s->size; i++) {
@@ -184,14 +184,14 @@ static inline void vec_move(u8* dest, u8** src)
     genVec* s = *(genVec**)src;
     genVec* d = (genVec*)dest;
 
-    memcpy(d, s, sizeof(genVec));   /* transfer all fields (incl. data ptr) */
-    free(*src);                     /* free container struct only           */
+    memcpy(d, s, sizeof(genVec));   // transfer all fields (incl. data ptr) 
+    free(*src);                     // free container struct only          
     *src = NULL;
 }
 
 static inline void vec_del(u8* elm)
 {
-    genVec_destroy_stk((genVec*)elm); /* free data buffer, NOT the slot     */
+    genVec_destroy_stk((genVec*)elm); // free data buffer, NOT the slot   
 }
 
 static inline void vec_print_int(const u8* elm)
@@ -234,13 +234,13 @@ static inline void vec_copy_ptr(u8* dest, const u8* src)
 
 static inline void vec_move_ptr(u8* dest, u8** src)
 {
-    *(genVec**)dest = *(genVec**)src;  /* transfer pointer into slot        */
+    *(genVec**)dest = *(genVec**)src;  // transfer pointer into slot
     *src            = NULL;
 }
 
 static inline void vec_del_ptr(u8* elm)
 {
-    genVec_destroy(*(genVec**)elm);    /* free data buffer + struct         */
+    genVec_destroy(*(genVec**)elm);    // free data buffer + struct         
 }
 
 static inline void vec_print_int_ptr(const u8* elm)

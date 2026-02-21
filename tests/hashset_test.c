@@ -1,7 +1,7 @@
 #include "wc_test.h"
 #include "hashset.h"
 #include "String.h"
-#include "helpers.h"
+#include "wc_helpers.h"
 
 
 /* ── int set (trivial) ───────────────────────────────────────────────────── */

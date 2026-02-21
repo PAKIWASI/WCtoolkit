@@ -1,5 +1,7 @@
+#include "hashmap.h"
 #include "wc_test.h"
-#include "helpers.h"
+#include "wc_helpers.h"
+#include "wc_macros.h"
 
 
 /* ══════════════════════════════════════════════════════════════════════════

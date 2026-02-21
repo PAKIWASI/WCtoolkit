@@ -6,9 +6,10 @@
 
 ## Immediate
 
-Update Readme
+Write example programs, solve leetcode questions
+Update TODO
+Add comparison with other libs in readme
 
-in single_headers, hashmap hashset has some issue 
 
 ---
 
@@ -19,8 +20,6 @@ in single_headers, hashmap hashset has some issue
 
 ## Ergonomics
 
-Make ergonimic macros for various containers
-Use gnu macro extensions
 
 ---
 

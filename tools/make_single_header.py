@@ -49,7 +49,7 @@ COMPONENTS = [
     "hashset",
     "matrix",
     "matrix_generic",
-    "helpers",
+    "wc_helpers",
 ]
 
 # Add a set of components that are dependency-only (no standalone output)
@@ -80,7 +80,7 @@ DEPENDENCIES: dict[str, list[str]] = {
     "hashset":          ["map_setup"],
     "matrix":           ["arena"],
     "matrix_generic":   ["arena"],
-    "helpers":          ["String"],
+    "wc_helpers":       ["String"],
 }
 
 
@@ -166,9 +166,8 @@ def resolve_deps(components: list[str]) -> list[str]:
     return visited
 
 
-# ---------------------------------------------------------------------------
 # Core builder
-# ---------------------------------------------------------------------------
+# ==================================================
 
 def build_single_header(
     component: str,
@@ -205,9 +204,9 @@ def build_single_header(
     )
     lines.append("")
 
-    # ------------------------------------------------------------------ #
     # 1. Inline each dependency's header declarations
-    # ------------------------------------------------------------------ #
+    # ==================================================
+
     for dep in dep_chain:
         h_path = include_dir / f"{dep}.h"
         h_src = read_file(h_path)
@@ -230,9 +229,8 @@ def build_single_header(
         lines.append(f"#endif /* {dep_guard} */")
         lines.append("")
 
-    # ------------------------------------------------------------------ #
     # 2. Wrap all implementations in the WC_IMPLEMENTATION block
-    # ------------------------------------------------------------------ #
+    # ==================================================
     lines.append("#ifdef WC_IMPLEMENTATION")
     lines.append("")
 
@@ -264,9 +262,8 @@ def build_single_header(
     return "\n".join(lines)
 
 
-# ---------------------------------------------------------------------------
 # CLI
-# ---------------------------------------------------------------------------
+# ==================================================
 
 def main():
     parser = argparse.ArgumentParser(

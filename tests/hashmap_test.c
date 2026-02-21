@@ -2,8 +2,8 @@
 #include "hashmap.h"
 #include "String.h"
 
-/* helpers from helpers.h — redeclared static here so no header dependency */
-#include "helpers.h"
+/* helpers from wc_helpers.h — redeclared static here so no header dependency */
+#include "wc_helpers.h"
 
 
 /* ── int -> int map (trivial, no copy/move/del) ──────────────────────────── */

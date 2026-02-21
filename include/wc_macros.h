@@ -25,7 +25,7 @@
  */
 
 
-/* ── Creation ─────────────────────────────────────────────────────────────── */
+// ── Creation ───────────────────────────────────────────────────────────────
 
 #define VEC(T, cap)                      genVec_init((cap), sizeof(T), NULL, NULL, NULL)
 #define VEC_CX(T, cap, copy, move, del)  genVec_init((cap), sizeof(T), (copy), (move), (del))
@@ -49,7 +49,7 @@ Usage:
     })
 
 
-/* ── Push ─────────────────────────────────────────────────────────────────── */
+// ── Push ───────────────────────────────────────────────────────────────────
 
 /* VEC_PUSH — push any POD value. typeof deduces the type from the value.
  *
@@ -87,7 +87,7 @@ Usage:
  *   String* s = string_from_cstr("hello");
  *   VEC_PUSH_MOVE(v, s);    // s == NULL after this
  *
- * Do NOT pass a stack String — strategy A's move_fn calls free(*src).
+ * NOTE: Do NOT pass a stack String — strategy A's move_fn calls free(*src).
  */
 #define VEC_PUSH_MOVE(vec, ptr)                  \
     ({                                           \
@@ -106,7 +106,7 @@ Usage:
     })
 
 
-/* ── Access ───────────────────────────────────────────────────────────────── */
+// ── Access ─────────────────────────────────────────────────────────────────
 
 /* typeof can't help here — we need T to know the return type.
  *
@@ -122,7 +122,7 @@ Usage:
 #define VEC_BACK(vec, T)      (*(T*)genVec_back((vec)))
 
 
-/* ── Mutate ───────────────────────────────────────────────────────────────── */
+// ── Mutate ─────────────────────────────────────────────────────────────────
 
 /* VEC_SET — replace element at i. del_fn on old, copy_fn on new.
  * typeof deduces type from val — no T param needed.
@@ -137,14 +137,14 @@ Usage:
     })
 
 
-/* ── Pop ──────────────────────────────────────────────────────────────────── */
+// ── Pop ────────────────────────────────────────────────────────────────────
 
 /* VEC_POP — pop and return value as an expression.
  *
  *   int x    = VEC_POP(v, int);
- *   String s = VEC_POP(v, String);  // you own s, must destroy
  *   String* p = VEC_POP(v, String*);
  */
+// NOTE: can't use for String, as String needs a malloced data ptr
 #define VEC_POP(vec, T)                 \
     ({                                  \
         T wvpop;                        \
@@ -154,7 +154,7 @@ Usage:
 
 
 
-/* ── Iterate ──────────────────────────────────────────────────────────────── */
+// ── Iterate ────────────────────────────────────────────────────────────────
 
 /* VEC_FOREACH — typed mutable pointer to each element.
  *
@@ -194,7 +194,7 @@ Usage:
  * ══════════════════════════════════════════════════════════════════════════ */
 
 
-/* ── Vector creation shorthands ─────────────────────────────────────────── */
+// ── Vector creation shorthands ───────────────────────────────────────────
 
 #define VEC_OF_INT(cap) \
     genVec_init((cap), sizeof(int), NULL, NULL, NULL)
@@ -212,7 +212,7 @@ Usage:
     VEC_CX(genVec*, (cap), vec_copy_ptr, vec_move_ptr, vec_del_ptr)
 
 
-/* ── Push shorthands ────────────────────────────────────────────────────── */
+// ── Push shorthands ──────────────────────────────────────────────────────
 
 /*
  * VEC_PUSH_VEC(outer, inner_ptr)
@@ -232,7 +232,7 @@ Usage:
     VEC_PUSH_MOVE((outer), (inner_ptr))
 
 
-/* ── Hashmap shorthands ─────────────────────────────────────────────────── */
+// ── Hashmap shorthands ───────────────────────────────────────────────────
 
 /*
  * MAP_PUT_INT_STR(map, int_key, cstr_literal)
@@ -258,7 +258,7 @@ Usage:
     } while (0)
 
 
-/* ── Put (COPY semantics) ─────────────────────────────────────────────────── */
+// ── Put (COPY semantics) ───────────────────────────────────────────────────
 
 /* MAP_PUT — copy key + value
  *
@@ -274,7 +274,7 @@ Usage:
     })
 
 
-/* ── Put (MOVE semantics) ─────────────────────────────────────────────────── */
+// ── Put (MOVE semantics) ───────────────────────────────────────────────────
 
 /* MAP_PUT_MOVE — move key + value
  *
@@ -293,7 +293,7 @@ Usage:
     })
 
 
-/* Mixed ownership */
+// Mixed ownership
 #define MAP_PUT_KEY_MOVE(map, kptr, val)        \
     ({                                          \
         typeof(val) _mv = (val);                 \
@@ -311,7 +311,7 @@ Usage:
     })
 
 
-/* ── Get ─────────────────────────────────────────────────────────────────── */
+// ── Get ───────────────────────────────────────────────────────────────────
 
 /* MAP_GET — copy value into expression
  *

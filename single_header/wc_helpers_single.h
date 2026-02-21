@@ -1,16 +1,16 @@
-#ifndef WC_HELPERS_SINGLE_H
-#define WC_HELPERS_SINGLE_H
+#ifndef WC_WC_HELPERS_SINGLE_H
+#define WC_WC_HELPERS_SINGLE_H
 
 /*
- * helpers_single.h
+ * wc_helpers_single.h
  * Auto-generated single-header library.
  *
  * In EXACTLY ONE .c file, before including this header:
  *     #define WC_IMPLEMENTATION
- *     #include "helpers_single.h"
+ *     #include "wc_helpers_single.h"
  *
  * All other files just:
- *     #include "helpers_single.h"
+ *     #include "wc_helpers_single.h"
  */
 
 /* ===== common.h ===== */
@@ -653,12 +653,12 @@ TEMP_CSTR_READ(s)
 
 #endif /* WC_STRING_H */
 
-/* ===== helpers.h ===== */
-#ifndef WC_HELPERS_H
-#define WC_HELPERS_H
+/* ===== wc_helpers.h ===== */
+#ifndef WC_WC_HELPERS_H
+#define WC_WC_HELPERS_H
 
 /*
- * helpers.h — Generic container callbacks and typed macros for WCtoolkit
+ * wc_helpers.h — Generic container callbacks and typed macros for WCtoolkit
  * =======================================================================
  *
  * ALL functions are static inline to avoid multiple-definition linker
@@ -903,7 +903,7 @@ static inline void vec_print_int_ptr(const u8* elm)
     vec_print_int((const u8*)*(const genVec**)elm);
 }
 
-#endif /* WC_HELPERS_H */
+#endif /* WC_WC_HELPERS_H */
 
 #ifdef WC_IMPLEMENTATION
 
@@ -2092,4 +2092,4 @@ u64 cstr_len(const char* cstr)
 
 #endif /* WC_IMPLEMENTATION */
 
-#endif /* WC_HELPERS_SINGLE_H */
+#endif /* WC_WC_HELPERS_SINGLE_H */

@@ -6,11 +6,21 @@ Targets C11 with GNU extensions (Clang/GCC). But can degrade to C99 by sacrifici
 
 ```c
 // A taste of the library
-genVec* names = VEC_OF_STR(8);
-VEC_PUSH_CSTR(names, "PAKI");
-VEC_PUSH_CSTR(names, "WASI");
-VEC_FOREACH(names, String, s) { string_print(s); }
-genVec_destroy(names);
+genVec* vec = VEC_CX(String, 8, str_copy, str_move, str_del);
+
+VEC_PUSH_CSTR(vec, "PAKI");     // create Strings and move into vec
+VEC_PUSH_CSTR(vec, "WASI");
+
+VEC_FOREACH(vec, String, s) { string_append_char(s, '!'); }
+
+String* s = string_create();    // create new string as buffer
+genVec_pop(vec, castptr(s));    // get element out of vec, s owns it now
+
+string_print(s);
+genVec_print(vec);
+
+string_destroy(s);              // free resources 
+genVec_destroy(vec);
 ```
 
 ---
@@ -220,7 +230,7 @@ if (wc_errno) { wc_perror("alloc"); }
 
 Raw `genVec` calls require casts and address-taking. `wc_macros.h` provides a typed macro layer using GNU statement expressions (`({ })`) and `__typeof__` that reads more naturally, requires no explicit casts, and works correctly for both storage strategies.
 
-Include `wc_macros.h` and `helpers.h` together to get the full ergonomic API.
+Include `wc_macros.h` and `wc_helpers.h` together to get the full ergonomic API.
 
 ### Creating Vectors
 
@@ -917,7 +927,7 @@ Constants: `PI`, `TWO_PI`, `LN2` are defined in `fast_math.h`.
 
 ## Helpers and Callbacks
 
-`helpers.h` provides ready-to-use copy/move/delete/print/compare callbacks for `String` and `genVec` in both storage strategies, fully documented with explanations of *why* each callback is written the way it is. Include it alongside `wc_macros.h` for the full ergonomic API.
+`wc_helpers.h` provides ready-to-use copy/move/delete/print/compare callbacks for `String` and `genVec` in both storage strategies, fully documented with explanations of *why* each callback is written the way it is. Include it alongside `wc_macros.h` for the full ergonomic API.
 
 ### For String, stored by value
 
