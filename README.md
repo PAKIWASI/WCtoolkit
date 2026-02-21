@@ -43,6 +43,7 @@ genVec_destroy(vec);
 | Stable element addresses | Optional (by-pointer strategy) | No | No | Yes | Yes |
 | Type safety | Medium (macros + sizeof) | Low | Low | High | Medium |
 | Runtime overhead | **Zero** | Low | Low | High | Medium |
+| Single-header | **Yes (per utility)** | Yes | Yes | No | No |
 | Primary goal | **Explicit ownership & control** | Convenience | Header-only convenience | Safety & portability | STL-like containers |
 
 ---
