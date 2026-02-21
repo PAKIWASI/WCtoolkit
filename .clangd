@@ -24,22 +24,22 @@ Diagnostics:
       - readability-*
       - misc-*
     Remove:
-      # Too noisy or subjective
       - readability-magic-numbers
       - readability-identifier-length
       - readability-identifier-naming
       - readability-function-cognitive-complexity
       - readability-uppercase-literal-suffix
-      - bugprone-easily-swappable-parameters
       - readability-avoid-const-params-in-decls
       - readability-isolate-declaration
+      - readability-non-const-parameter
       
-      # Often impractical for C
-      - cert-err33-c  # Would require checking every function return
-      - bugprone-assignment-in-if-condition  # Sometimes intentional in C
-      - misc-include-cleaner  # Can be too aggressive
+      - bugprone-easily-swappable-parameters
+      - bugprone-assignment-in-if-condition
+
+      - cert-err33-c
+      - cert-dcl03-c
+
+      - misc-include-cleaner
+      - misc-no-recursion
       
-      # C-specific exceptions
-      - readability-non-const-parameter  # Common in C APIs
-      - cert-dcl03-c  # Reserved identifiers - allow common patterns
       
