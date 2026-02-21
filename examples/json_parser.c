@@ -2,7 +2,6 @@
 #include "wc_helpers.h"
 #include "wc_macros.h"
 #include <ctype.h>
-#include <stdio.h>
 
 
 // WCtoolkit callbacks for JsonValue
@@ -182,14 +181,12 @@ JsonValue* json_object_new(void)
     return v;
 }
 
-/* ══════════════════════════════════════════════════════════════════════════
- * PART 4 — Array / object helpers
- * ══════════════════════════════════════════════════════════════════════════ */
+// Array / object helpers
 
 void json_array_push(JsonValue* arr, JsonValue** elem)
 {
-    CHECK_FATAL(arr->type != JSON_ARRAY, "json_array_push: not an array");
-    CHECK_FATAL(!elem || !*elem, "json_array_push: null elem");
+    CHECK_FATAL(arr->type != JSON_ARRAY, "not an array");
+    CHECK_FATAL(!elem || !*elem, "null elem");
     genVec_push_move(arr->array, (u8**)elem);
 }
 
@@ -207,8 +204,8 @@ JsonValue* json_array_get(const JsonValue* arr, u64 i)
 
 void json_object_set(JsonValue* obj, const char* key, JsonValue** val)
 {
-    CHECK_FATAL(obj->type != JSON_OBJECT, "json_object_set: not an object");
-    CHECK_FATAL(!val || !*val, "json_object_set: null val");
+    CHECK_FATAL(obj->type != JSON_OBJECT, "not an object");
+    CHECK_FATAL(!val || !*val, "null val");
     String key_str;
     string_create_stk(&key_str, key);
     hashmap_put_val_move(obj->object, (const u8*)&key_str, (u8**)val);
@@ -217,7 +214,7 @@ void json_object_set(JsonValue* obj, const char* key, JsonValue** val)
 
 JsonValue* json_object_get(JsonValue* obj, const char* key)
 {
-    CHECK_FATAL(obj->type != JSON_OBJECT, "json_object_get: not an object");
+    CHECK_FATAL(obj->type != JSON_OBJECT, "not an object");
     String key_str;
     string_create_stk(&key_str, key);
     u8* ptr = hashmap_get_ptr(obj->object, (const u8*)&key_str);
@@ -227,7 +224,7 @@ JsonValue* json_object_get(JsonValue* obj, const char* key)
 
 b8 json_object_has(const JsonValue* obj, const char* key)
 {
-    CHECK_FATAL(obj->type != JSON_OBJECT, "json_object_has: not an object");
+    CHECK_FATAL(obj->type != JSON_OBJECT, "not an object");
     String key_str;
     string_create_stk(&key_str, key);
     b8 found = hashmap_has(obj->object, (const u8*)&key_str);
@@ -235,9 +232,7 @@ b8 json_object_has(const JsonValue* obj, const char* key)
     return found;
 }
 
-/* ══════════════════════════════════════════════════════════════════════════
- * PART 5 — Lexer
- * ══════════════════════════════════════════════════════════════════════════ */
+// Lexer
 
 typedef enum {
     TOK_LBRACE,
@@ -260,6 +255,7 @@ typedef struct {
     const char* start;
     u64         len;
 } Token;
+
 typedef struct {
     const char* src;
     u64         pos;
@@ -284,7 +280,8 @@ static b8 lex_string(Lexer* lex)
         }
         lex->pos++;
     }
-    fprintf(stderr, "[json] lex error: unterminated string\n");
+
+    WARN("lex error: unterminated string\n");
     return false;
 }
 
@@ -312,6 +309,7 @@ static b8 lex_number(Lexer* lex)
             lex->pos++;
         }
     }
+
     Token tok = {TOK_NUMBER, lex->src + start, lex->pos - start};
     VEC_PUSH(lex->tokens, tok);
     return true;
@@ -323,6 +321,7 @@ static b8 lex_keyword(Lexer* lex, const char* kw, TokenType type)
     if (lex->pos + kwlen > lex->len || memcmp(lex->src + lex->pos, kw, kwlen) != 0) {
         return false;
     }
+
     Token tok = {type, lex->src + lex->pos, kwlen};
     lex->pos += kwlen;
     VEC_PUSH(lex->tokens, tok);
@@ -381,19 +380,19 @@ static b8 do_lex(Lexer* lex)
             break;
         case 't':
             if (!lex_keyword(lex, "true", TOK_TRUE)) {
-                fprintf(stderr, "[json] lex: expected 'true'\n");
+                WARN("expected 'true'\n");
                 return false;
             }
             break;
         case 'f':
             if (!lex_keyword(lex, "false", TOK_FALSE)) {
-                fprintf(stderr, "[json] lex: expected 'false'\n");
+                WARN("expected 'false'\n");
                 return false;
             }
             break;
         case 'n':
             if (!lex_keyword(lex, "null", TOK_NULL)) {
-                fprintf(stderr, "[json] lex: expected 'null'\n");
+                WARN("expected 'null'\n");
                 return false;
             }
             break;
@@ -403,20 +402,19 @@ static b8 do_lex(Lexer* lex)
                     return false;
                 }
             } else {
-                fprintf(stderr, "[json] lex: unexpected char '%c'\n", c);
+                WARN("unexpected char '%c'\n", c);
                 return false;
             }
             break;
         }
     }
+
     Token eof = {TOK_EOF, NULL, 0};
     VEC_PUSH(lex->tokens, eof);
     return true;
 }
 
-/* ══════════════════════════════════════════════════════════════════════════
- * PART 6 — Recursive-descent parser
- * ══════════════════════════════════════════════════════════════════════════ */
+// Recursive-descent parser
 
 typedef struct {
     genVec* tokens;
@@ -438,11 +436,13 @@ static b8 pexpect(Parser* p, TokenType t, const char* ctx)
         p->pos++;
         return true;
     }
-    fprintf(stderr, "[json] parse error in %s: unexpected token\n", ctx);
+    WARN("parse error in %s: unexpected token\n", ctx);
     return false;
 }
 
+
 static JsonValue* parse_value(Parser* p);
+
 
 static JsonValue* parse_string_tok(Parser* p)
 {
@@ -527,7 +527,7 @@ static JsonValue* parse_array(Parser* p)
             break;
         }
         if (ppeek(p)->type != TOK_COMMA) {
-            fprintf(stderr, "[json] parse error: expected ',' or ']'\n");
+            WARN("parse error: expected ',' or ']'\n");
             json_value_destroy(arr);
             return NULL;
         }
@@ -546,7 +546,7 @@ static JsonValue* parse_object(Parser* p)
     }
     while (1) {
         if (ppeek(p)->type != TOK_STRING) {
-            fprintf(stderr, "[json] parse error: expected string key\n");
+            WARN("parse error: expected string key\n");
             json_value_destroy(obj);
             return NULL;
         }
@@ -570,7 +570,7 @@ static JsonValue* parse_object(Parser* p)
             break;
         }
         if (ppeek(p)->type != TOK_COMMA) {
-            fprintf(stderr, "[json] parse error: expected ',' or '}'\n");
+            WARN("parse error: expected ',' or '}'\n");
             json_value_destroy(obj);
             return NULL;
         }
@@ -600,7 +600,7 @@ static JsonValue* parse_value(Parser* p)
     case TOK_LBRACE:
         return parse_object(p);
     default:
-        fprintf(stderr, "[json] parse error: unexpected token type %d\n", ppeek(p)->type);
+        WARN("parse error: unexpected token type %d\n", ppeek(p)->type);
         return NULL;
     }
 }
@@ -619,7 +619,7 @@ JsonValue* json_parse(const char* input)
     Parser     parser = {.tokens = lex.tokens, .pos = 0};
     JsonValue* root   = parse_value(&parser);
     if (root && ppeek(&parser)->type != TOK_EOF) {
-        fprintf(stderr, "[json] parse error: trailing content\n");
+        WARN("parse error: trailing content\n");
         json_value_destroy(root);
         root = NULL;
     }
@@ -627,9 +627,8 @@ JsonValue* json_parse(const char* input)
     return root;
 }
 
-/* ══════════════════════════════════════════════════════════════════════════
- * PART 7 — Output
- * ══════════════════════════════════════════════════════════════════════════ */
+
+// PART 7 — Output
 
 static void print_indent(int depth, int width)
 {
@@ -852,3 +851,5 @@ String* json_to_string(const JsonValue* val)
     }
     return out;
 }
+
+

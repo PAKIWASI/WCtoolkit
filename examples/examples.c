@@ -7,7 +7,7 @@
 
 
 /*
- * WCtoolkit JSON parser showcase
+ * WCtoolkit JSON parser showcase   (Written with AI)
  * ==============================================
  *
  * Demonstrates the four key strengths of the library:
@@ -24,8 +24,7 @@
  *   4. ROUND-TRIP   — json_to_string() serializes back to a WCtoolkit String.
  *                     The String is owned and must be string_destroy()ed.
  *
- * Memory correctness is verified throughout using ASan / Valgrind (build with
- * cmake -B build -G Ninja then ./build/tests or ./build/main).
+ * Memory correctness is verified throughout using ASan
  */
 
 
@@ -34,7 +33,7 @@
 #include <stdio.h>
 
 
-/* ── helpers ──────────────────────────────────────────────────────────── */
+// ── helpers ────────────────────────────────────────────────────────────
 
 static void section(const char* title)
 {
@@ -47,9 +46,7 @@ static void subsection(const char* title)
 }
 
 
-/* ══════════════════════════════════════════════════════════════════════════
- * Demo 1 — Parse a complex JSON document and inspect it
- * ══════════════════════════════════════════════════════════════════════════ */
+// Demo 1 — Parse a complex JSON document and inspect it
 static void demo_parse(void)
 {
     section("Demo 1: Parsing");
@@ -90,8 +87,10 @@ static void demo_parse(void)
      */
     JsonValue* name_val = json_object_get(doc, "name");
     if (name_val && name_val->type == JSON_STRING) {
-        /* TEMP_CSTR_READ: appends '\0', runs block, removes '\0'.
-         * Gives us a null-terminated view without malloc. */
+        /* 
+         * TEMP_CSTR_READ: appends '\0', runs block, removes '\0'.
+         * Gives us a null-terminated view without malloc. 
+        */
         TEMP_CSTR_READ(&name_val->string)
         {
             printf("  name:    %s\n", string_data_ptr(&name_val->string));
@@ -137,7 +136,7 @@ static void demo_parse(void)
     {
         printf("  %s\n", string_data_ptr(serialized));
     }
-    string_destroy(serialized); /* we own it — free it */
+    string_destroy(serialized); // we own it — free it
 
     /*
      * ONE call frees the entire tree:
@@ -157,9 +156,7 @@ static void demo_parse(void)
 }
 
 
-/* ══════════════════════════════════════════════════════════════════════════
- * Demo 2 — Build a JSON document programmatically with move semantics
- * ══════════════════════════════════════════════════════════════════════════ */
+// Demo 2 — Build a JSON document programmatically with move semantics
 static void demo_build(void)
 {
     section("Demo 2: Building with move semantics");
@@ -170,10 +167,9 @@ static void demo_build(void)
      * We never write free() because ownership is always clear.
      */
 
-    /* Build an array of numbers */
+    // Build an array of numbers
     JsonValue* primes = json_array_new();
     for (int p = 2; p <= 19; p++) {
-        /* quick primality check */
         b8 is_prime = true;
         for (int d = 2; d * d <= p; d++) {
             if (p % d == 0) {
@@ -187,10 +183,9 @@ static void demo_build(void)
 
         JsonValue* n = json_number((double)p);
         json_array_push(primes, &n);
-        /* n == NULL — primes owns it now */
     }
 
-    /* Build an array of strings via the macro layer */
+    // Build an array of strings via the macro layer
     JsonValue*  langs       = json_array_new();
     const char* lang_list[] = {"C", "Zig", "Rust", "Odin", NULL};
     for (const char** l = lang_list; *l; l++) {
@@ -198,7 +193,7 @@ static void demo_build(void)
         json_array_push(langs, &s);
     }
 
-    /* Build a nested object */
+    // Build a nested object
     JsonValue* meta = json_object_new();
     {
         JsonValue* author = json_string_val("PAKIWASI");
@@ -211,23 +206,21 @@ static void demo_build(void)
         json_object_set(meta, "open_source", &open);
     }
 
-    /* Assemble top-level object — move everything in */
+    // Assemble top-level object — move everything in
     JsonValue* root = json_object_new();
-    json_object_set(root, "primes", &primes); /* primes → NULL */
-    json_object_set(root, "langs", &langs);   /* langs  → NULL */
-    json_object_set(root, "meta", &meta);     /* meta   → NULL */
+    json_object_set(root, "primes", &primes); // primes → NULL 
+    json_object_set(root, "langs", &langs);   // langs  → NULL
+    json_object_set(root, "meta", &meta);     // meta   → NULL
 
     subsection("Built document");
     json_print(root, 2);
 
-    json_value_destroy(root); /* frees the entire tree */
+    json_value_destroy(root); // frees the entire tree 
     printf("\n  [All resources freed by json_value_destroy(root)]\n");
 }
 
 
-/* ══════════════════════════════════════════════════════════════════════════
- * Demo 3 — Deep copy: two independent trees, mutate one, other unchanged
- * ══════════════════════════════════════════════════════════════════════════ */
+// Demo 3 — Deep copy: two independent trees, mutate one, other unchanged
 static void demo_deep_copy(void)
 {
     section("Demo 3: Deep copy — ownership independence");
@@ -245,7 +238,7 @@ static void demo_deep_copy(void)
      */
     JsonValue* copy = json_value_copy(original);
 
-    /* Mutate the copy: set copy[0]["x"] = 999 */
+    // Mutate the copy: set copy[0]["x"] = 999
     JsonValue* elem0 = json_array_get(copy, 0);
     JsonValue* new_x = json_number(999.0);
     json_object_set(elem0, "x", &new_x);
@@ -262,18 +255,16 @@ static void demo_deep_copy(void)
 }
 
 
-/* ══════════════════════════════════════════════════════════════════════════
- * Demo 4 — Error handling: invalid JSON is rejected cleanly
- * ══════════════════════════════════════════════════════════════════════════ */
+// Demo 4 — Error handling: invalid JSON is rejected cleanly
 static void demo_errors(void)
 {
     section("Demo 4: Error handling");
 
-    const char* bad[] = {"{\"key\": }",         /* missing value        */
-                         "[1, 2, 3",            /* unclosed array       */
-                         "{\"a\": 1, \"b\": 2", /* unclosed object      */
-                         "tru",                 /* truncated keyword    */
-                         "\"unterminated",      /* unterminated string  */
+    const char* bad[] = {"{\"key\": }",         // missing value       
+                         "[1, 2, 3",            // unclosed array      
+                         "{\"a\": 1, \"b\": 2", // unclosed object     
+                         "tru",                 // truncated keyword   
+                         "\"unterminated",      // unterminated string 
                          NULL};
 
     for (const char** b = bad; *b; b++) {
@@ -289,9 +280,7 @@ static void demo_errors(void)
 }
 
 
-/* ══════════════════════════════════════════════════════════════════════════
- * Demo 5 — A realistic config file scenario
- * ══════════════════════════════════════════════════════════════════════════ */
+// Demo 5 — A realistic config file scenario
 static void demo_config(void)
 {
     section("Demo 5: Real-world config file");
@@ -318,7 +307,7 @@ static void demo_config(void)
         return;
     }
 
-    /* Safely extract server config */
+    // Safely extract server config
     JsonValue* server = json_object_get(cfg, "server");
     if (server && server->type == JSON_OBJECT) {
         JsonValue* host = json_object_get(server, "host");
@@ -333,7 +322,7 @@ static void demo_config(void)
         }
     }
 
-    /* Extract and display features list */
+    // Extract and display features list
     JsonValue* features = json_object_get(cfg, "features");
     if (features && features->type == JSON_ARRAY) {
         printf("  Features enabled (%llu):\n", (unsigned long long)json_array_len(features));
@@ -346,7 +335,7 @@ static void demo_config(void)
         }
     }
 
-    /* Demonstrate: build a modified copy with a different log level */
+    // Demonstrate: build a modified copy with a different log level 
     subsection("Modified copy with log_level = \"debug\"");
     JsonValue* cfg_copy = json_value_copy(cfg);
     {
@@ -354,12 +343,12 @@ static void demo_config(void)
         json_object_set(cfg_copy, "log_level", &debug);
     }
 
-    /* Serialize both to Strings and compare */
+    // Serialize both to Strings and compare
     String* orig_s = json_to_string(cfg);
     String* copy_s = json_to_string(cfg_copy);
 
     printf("  original log_level in serialized:\n  ");
-    /* Find "log_level" in the serialized string to verify */
+    // Find "log_level" in the serialized string to verify
     JsonValue* ll_orig = json_object_get(cfg, "log_level");
     JsonValue* ll_copy = json_object_get(cfg_copy, "log_level");
     if (ll_orig && ll_copy) {
@@ -381,9 +370,6 @@ static void demo_config(void)
 }
 
 
-/* ══════════════════════════════════════════════════════════════════════════
- * Main
- * ══════════════════════════════════════════════════════════════════════════ */
 
 int main(void)
 {
@@ -400,3 +386,5 @@ int main(void)
     printf("\n\033[1;32m[All demos complete — no leaks, no double-frees]\033[0m\n\n");
     return 0;
 }
+
+

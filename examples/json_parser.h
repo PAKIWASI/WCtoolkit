@@ -48,7 +48,6 @@ typedef enum {
 
 typedef struct JsonValue JsonValue;
 
-
 struct JsonValue {
     JsonType type;
     union {
