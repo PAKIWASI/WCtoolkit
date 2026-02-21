@@ -35,17 +35,14 @@ genVec_destroy(vec);
 
 | Feature / Library | WCtoolkit | klib | stb_ds | GLib | ccontainers |
 |------------------|----------|------|--------|------|-------------|
-| Language | C11 (+ GNU ext) | C89 | C89 | C89 | C99 |
+| Language | C11 (+ GNU ext) (removeable) | C89 | C89 | C89 | C99 |
 | Ownership model | **Explicit (copy / move / del)** | Implicit | Implicit | Implicit (ref-counted) | Semi-explicit |
 | Value semantics | **Yes** | Limited | No | No | Partial |
 | Move semantics | **Yes (manual, explicit)** | No | No | No | No |
 | Hidden allocations | **None** | Yes | Yes | Yes | Some |
 | Stable element addresses | Optional (by-pointer strategy) | No | No | Yes | Yes |
-| Stack + heap support | **Yes** | Heap only | Heap only | Heap only | Heap only |
-| Macro-heavy API | Yes (intentional) | Yes | Yes | No | No |
 | Type safety | Medium (macros + sizeof) | Low | Low | High | Medium |
 | Runtime overhead | **Zero** | Low | Low | High | Medium |
-| Beginner-friendly | No | Medium | Medium | Yes | Medium |
 | Primary goal | **Explicit ownership & control** | Convenience | Header-only convenience | Safety & portability | STL-like containers |
 
 ---
