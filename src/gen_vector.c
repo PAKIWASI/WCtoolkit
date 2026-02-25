@@ -11,11 +11,9 @@
 // MACROS
 
 // get ptr to elm at index i
-#define GET_PTR(vec, i) \
-    ((vec->data) + ((u64)(i) * ((vec)->data_size)))
+#define GET_PTR(vec, i) ((vec->data) + ((u64)(i) * ((vec)->data_size)))
 // get total_size in bytes for i elements
-#define GET_SCALED(vec, i) \
-    ((u64)(i) * ((vec)->data_size))
+#define GET_SCALED(vec, i) ((u64)(i) * ((vec)->data_size))
 
 #define MAYBE_GROW(vec)                                 \
     do {                                                \
@@ -252,7 +250,6 @@ void genVec_shrink_to_fit(genVec* vec)
 
     // update data ptr
     vec->data     = new_data;
-    // vec->size     = min_cap;     // TODO: this is not needed right? RIGHT?
     vec->capacity = min_cap;
 }
 
