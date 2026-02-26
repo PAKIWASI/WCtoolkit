@@ -9,7 +9,7 @@
 
 /* Simple int vec — no copy/move/del needed */
 static genVec* int_vec(u64 cap) {
-    return genVec_init(cap, sizeof(int), NULL, NULL, NULL);
+    return genVec_init(cap, sizeof(int), NULL);
 }
 
 static void push_ints(genVec* v, int count) {
@@ -23,7 +23,7 @@ static void push_ints(genVec* v, int count) {
 
 static void test_init_zero_cap(void)
 {
-    genVec* v = genVec_init(0, sizeof(int), NULL, NULL, NULL);
+    genVec* v = genVec_init(0, sizeof(int), NULL);
     WC_ASSERT_NOT_NULL(v);
     WC_ASSERT_EQ_U64(genVec_size(v), 0);
     WC_ASSERT_EQ_U64(genVec_capacity(v), 0);
@@ -42,7 +42,7 @@ static void test_init_with_cap(void)
 static void test_init_val(void)
 {
     int val  = 42;
-    genVec* v = genVec_init_val(5, (u8*)&val, sizeof(int), NULL, NULL, NULL);
+    genVec* v = genVec_init_val(5, (u8*)&val, sizeof(int), NULL);
     WC_ASSERT_EQ_U64(genVec_size(v), 5);
     for (u64 i = 0; i < 5; i++) {
         WC_ASSERT_EQ_INT(*(int*)genVec_get_ptr(v, i), 42);
@@ -53,7 +53,7 @@ static void test_init_val(void)
 static void test_init_stk(void)
 {
     genVec v;
-    genVec_init_stk(4, sizeof(int), NULL, NULL, NULL, &v);
+    genVec_init_stk(4, sizeof(int), NULL, &v);
     WC_ASSERT_EQ_U64(genVec_size(&v), 0);
     WC_ASSERT_EQ_U64(genVec_capacity(&v), 4);
     genVec_destroy_stk(&v);
@@ -303,7 +303,7 @@ static void test_copy(void)
     push_ints(src, 4);
 
     genVec dest;
-    genVec_init_stk(0, sizeof(int), NULL, NULL, NULL, &dest);
+    genVec_init_stk(0, sizeof(int), NULL, &dest);
     genVec_copy(&dest, src);
 
     WC_ASSERT_EQ_U64(genVec_size(&dest), 4);
@@ -326,7 +326,7 @@ static void test_move_nulls_src(void)
     push_ints(src, 4);
 
     genVec dest;
-    genVec_init_stk(0, sizeof(int), NULL, NULL, NULL, &dest);
+    genVec_init_stk(0, sizeof(int), NULL, &dest);
     genVec_move(&dest, &src);
 
     WC_ASSERT_NULL(src);

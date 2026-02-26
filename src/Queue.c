@@ -6,8 +6,8 @@
 
 #define QUEUE_MIN_CAP   4
 #define QUEUE_GROWTH    1.5
-#define QUEUE_SHRINK_AT 0.25 // Shrink when less than 25% full
-#define QUEUE_SHRINK_BY 0.5  // Reduce capacity by half when shrinking
+#define QUEUE_SHRINK_AT 0.25
+#define QUEUE_SHRINK_BY 0.5
 
 
 #define HEAD_UPDATE(q)                                    \
@@ -40,13 +40,12 @@
     } while (0)
 
 
-
 static void queue_grow(Queue* q);
 static void queue_shrink(Queue* q);
 static void queue_compact(Queue* q, u64 new_capacity);
 
 
-Queue* queue_create(u64 n, u32 data_size, copy_fn copy_fn, move_fn move_fn, delete_fn del_fn)
+Queue* queue_create(u64 n, u32 data_size, const genVec_ops* ops)
 {
     CHECK_FATAL(n == 0, "n can't be 0");
     CHECK_FATAL(data_size == 0, "data_size can't be 0");
@@ -54,7 +53,7 @@ Queue* queue_create(u64 n, u32 data_size, copy_fn copy_fn, move_fn move_fn, dele
     Queue* q = malloc(sizeof(Queue));
     CHECK_FATAL(!q, "queue malloc failed");
 
-    q->arr = genVec_init(n, data_size, copy_fn, move_fn, del_fn);
+    q->arr = genVec_init(n, data_size, ops);
 
     q->head = 0;
     q->tail = 0;
@@ -63,8 +62,7 @@ Queue* queue_create(u64 n, u32 data_size, copy_fn copy_fn, move_fn move_fn, dele
     return q;
 }
 
-Queue* queue_create_val(u64 n, const u8* val, u32 data_size, copy_fn copy_fn, move_fn move_fn,
-                        delete_fn del_fn)
+Queue* queue_create_val(u64 n, const u8* val, u32 data_size, const genVec_ops* ops)
 {
     CHECK_FATAL(n == 0, "n can't be 0");
     CHECK_FATAL(data_size == 0, "data_size can't be 0");
@@ -73,7 +71,7 @@ Queue* queue_create_val(u64 n, const u8* val, u32 data_size, copy_fn copy_fn, mo
     Queue* q = malloc(sizeof(Queue));
     CHECK_FATAL(!q, "queue malloc failed");
 
-    q->arr = genVec_init_val(n, val, data_size, copy_fn, move_fn, del_fn);
+    q->arr = genVec_init_val(n, val, data_size, ops);
 
     q->head = 0;
     q->tail = n % genVec_capacity(q->arr);
@@ -110,7 +108,6 @@ void queue_reset(Queue* q)
     q->tail = 0;
 }
 
-// Manual shrink function
 void queue_shrink_to_fit(Queue* q)
 {
     CHECK_FATAL(!q, "queue is null");
@@ -120,7 +117,6 @@ void queue_shrink_to_fit(Queue* q)
         return;
     }
 
-    // Don't shrink below minimum useful capacity
     u64 min_capacity     = q->size > QUEUE_MIN_CAP ? q->size : QUEUE_MIN_CAP;
     u64 current_capacity = genVec_capacity(q->arr);
 
@@ -136,7 +132,6 @@ void enqueue(Queue* q, const u8* x)
 
     MAYBE_GROW(q);
 
-    // If the tail position doesn't exist in the vector yet, push
     if (q->tail >= genVec_size(q->arr)) {
         genVec_push(q->arr, x);
     } else {
@@ -175,10 +170,11 @@ void dequeue(Queue* q, u8* out)
         genVec_get(q->arr, q->head, out);
     }
 
-    // Clear the element if del_fn exists
-    if (q->arr->del_fn) {
+    // Clean up the element if del_fn exists
+    delete_fn del = VEC_DEL_FN(q->arr);
+    if (del) {
         u8* elem = (u8*)genVec_get_ptr(q->arr, q->head);
-        q->arr->del_fn(elem);
+        del(elem);
         memset(elem, 0, q->arr->data_size);
     }
 
@@ -243,24 +239,22 @@ static void queue_shrink(Queue* q)
     u64 current_cap = genVec_capacity(q->arr);
     u64 new_cap     = (u64)((float)current_cap * QUEUE_SHRINK_BY);
 
-    // Don't shrink below current size or minimum capacity
     u64 min_capacity = q->size > QUEUE_MIN_CAP ? q->size : QUEUE_MIN_CAP;
     if (new_cap < min_capacity) {
         new_cap = min_capacity;
     }
 
-    // Only shrink if we're actually reducing capacity
     if (new_cap < current_cap) {
         queue_compact(q, new_cap);
     }
 }
 
-
 static void queue_compact(Queue* q, u64 new_capacity)
 {
     CHECK_FATAL(new_capacity < q->size, "new_capacity must be >= current size");
 
-    genVec* new_arr = genVec_init(new_capacity, q->arr->data_size, q->arr->copy_fn, q->arr->move_fn, q->arr->del_fn);
+    // Share the same ops pointer — no callbacks to copy
+    genVec* new_arr = genVec_init(new_capacity, q->arr->data_size, q->arr->ops);
 
     u64 h       = q->head;
     u64 old_cap = genVec_capacity(q->arr);
@@ -277,5 +271,3 @@ static void queue_compact(Queue* q, u64 new_capacity)
     q->head = 0;
     q->tail = q->size % new_capacity;
 }
-
-

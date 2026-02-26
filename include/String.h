@@ -47,18 +47,13 @@ void string_copy(String* dest, const String* src);
 // get cstr as COPY ('\0' present)
 // cstr is MALLOCED and must be freed by user
 char* string_to_cstr(const String* str);
+
 // get ptr to the cstr buffer
 // Note: NO NULL TERMINATOR
 char* string_data_ptr(const String* str);
 
 
-// TODO:
-// void string_to_cstr_buf(const String* str, char* buf, u32 buf_size);
-// void string_to_cstr_buf_move(const String* str, char* buf, u32 buf_size);
-
-
 // Modification
-
 
 // append a cstr to the end of a string
 void string_append_cstr(String* str, const char* cstr);
@@ -102,11 +97,11 @@ char string_char_at(const String* str, u64 i);
 // set the value of char at index i
 void string_set_char(String* str, u64 i, char c);
 
+
 // Comparison
 
-
 // compare (c-style) two strings
-// 0 -> equal, 1 -> not equal
+// 0 -> equal, negative -> str1 < str2, positive -> str1 > str2
 int string_compare(const String* str1, const String* str2);
 
 // return true if string's data matches
@@ -115,8 +110,8 @@ b8 string_equals(const String* str1, const String* str2);
 // return true if a string's data matches a cstr
 b8 string_equals_cstr(const String* str, const char* cstr);
 
-// Search
 
+// Search
 
 // return index of char c (UINT_MAX otherwise)
 u64 string_find_char(const String* str, char c);
@@ -127,12 +122,12 @@ u64 string_find_cstr(const String* str, const char* substr);
 // Set a heap allocated string of a substring starting at index "start", upto length
 String* string_substr(const String* str, u64 start, u64 length);
 
-// TODO: pass a buffer version of substr??
 
 // I/O
 
 // print the content of str
 void string_print(const String* str);
+
 
 // Basic properties
 
@@ -140,7 +135,6 @@ void string_print(const String* str);
 static inline u64 string_len(const String* str)
 {
     CHECK_FATAL(!str, "str is null");
-
     return str->size;
 }
 
@@ -156,10 +150,9 @@ static inline b8 string_empty(const String* str)
     return string_len(str) == 0;
 }
 
-// TODO: test
 /*
- macro to create a temporary cstr for read ops
- Note: Must not break or return in the block
+ Macro to create a temporary cstr for read ops.
+ Note: Must not break or return in the block.
  Usage:
 
 TEMP_CSTR_READ(s) {

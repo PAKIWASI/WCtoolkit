@@ -7,7 +7,7 @@
 /* ── int set (trivial) ───────────────────────────────────────────────────── */
 
 static hashset* int_set(void) {
-    return hashset_create(sizeof(int), NULL, NULL, NULL, NULL, NULL);
+    return hashset_create(sizeof(int), NULL, NULL, NULL);
 }
 
 static void test_insert_and_has(void)
@@ -114,8 +114,7 @@ static void test_reset(void)
 
 static hashset* str_set(void) {
     return hashset_create(sizeof(String),
-                          murmurhash3_str, str_cmp,
-                          str_copy, str_move, str_del);
+                          murmurhash3_str, str_cmp, &wc_str_ops);
 }
 
 static void test_str_insert_has(void)

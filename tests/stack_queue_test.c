@@ -9,7 +9,7 @@
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 static Stack* int_stack(u64 cap) {
-    return stack_create(cap, sizeof(int), NULL, NULL, NULL);
+    return stack_create(cap, sizeof(int), NULL);
 }
 
 static void test_stack_push_peek(void)
@@ -82,7 +82,7 @@ static void test_stack_growth(void)
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 static Queue* int_queue(u64 cap) {
-    return queue_create(cap, sizeof(int), NULL, NULL, NULL);
+    return queue_create(cap, sizeof(int), NULL);
 }
 
 static void test_queue_enqueue_dequeue_fifo(void)

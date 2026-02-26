@@ -103,7 +103,7 @@ static void test_strval_copy_vec(void)
     VEC_PUSH_CSTR(src, "b");
 
     genVec dest;
-    genVec_init_stk(0, sizeof(String), str_copy, str_move, str_del, &dest);
+    genVec_init_stk(0, sizeof(String), &wc_str_ops, &dest);
     genVec_copy(&dest, src);
 
     /* modifying src must not affect dest */
@@ -301,7 +301,7 @@ static void test_vecval_copy_outer(void)
     }
 
     genVec dest;
-    genVec_init_stk(0, sizeof(genVec), vec_copy, vec_move, vec_del, &dest);
+    genVec_init_stk(0, sizeof(genVec), &wc_vec_ops, &dest);
     genVec_copy(&dest, src);
 
     /* modify src inner — dest must be independent */
@@ -387,7 +387,7 @@ static void test_vecptr_copy_outer(void)
     VEC_PUSH_VEC_PTR(src, inner);
 
     genVec dest;
-    genVec_init_stk(0, sizeof(genVec*), vec_copy_ptr, vec_move_ptr, vec_del_ptr, &dest);
+    genVec_init_stk(0, sizeof(genVec*), &wc_vec_ptr_ops, &dest);
     genVec_copy(&dest, src);
 
     /* modify src inner — dest copy must be independent */
@@ -408,11 +408,7 @@ static void test_vecptr_copy_outer(void)
 
 static hashmap* int_vec_map(void)
 {
-    return hashmap_create(sizeof(int), sizeof(genVec),
-                          NULL, NULL,
-                          NULL, vec_copy,
-                          NULL, vec_move,
-                          NULL, vec_del);
+    return hashmap_create(sizeof(int), sizeof(genVec), NULL, NULL, NULL, &wc_vec_ops);
 }
 
 static void test_map_int_vec_put_move(void)
@@ -459,10 +455,7 @@ static void test_map_str_str_macro(void)
 {
     hashmap* m = hashmap_create(
         sizeof(String), sizeof(String),
-        murmurhash3_str, str_cmp,
-        str_copy, str_copy,
-        str_move, str_move,
-        str_del,  str_del);
+        murmurhash3_str, str_cmp, &wc_str_ops, &wc_str_ops);
 
     MAP_PUT_STR_STR(m, "name",  "Alice");
     MAP_PUT_STR_STR(m, "city",  "Cairo");
@@ -483,10 +476,7 @@ static void test_map_int_str_macro(void)
 {
     hashmap* m = hashmap_create(
         sizeof(int), sizeof(String),
-        NULL, NULL,
-        NULL, str_copy,
-        NULL, str_move,
-        NULL, str_del);
+        NULL, NULL, NULL, &wc_str_ops);
 
     MAP_PUT_INT_STR(m, 1, "one");
     MAP_PUT_INT_STR(m, 2, "two");

@@ -9,11 +9,7 @@
 /* ── int -> int map (trivial, no copy/move/del) ──────────────────────────── */
 
 static hashmap* int_map(void) {
-    return hashmap_create(sizeof(int), sizeof(int),
-                          NULL, NULL,
-                          NULL, NULL,
-                          NULL, NULL,
-                          NULL, NULL);
+    return hashmap_create(sizeof(int), sizeof(int), NULL, NULL, NULL, NULL);
 }
 
 static void test_put_and_get(void)
@@ -131,11 +127,7 @@ static void test_resize_preserves_data(void)
 /* ── int -> String (val owns heap memory) ────────────────────────────────── */
 
 static hashmap* int_str_map(void) {
-    return hashmap_create(sizeof(int), sizeof(String),
-                          NULL, NULL,
-                          NULL, str_copy,
-                          NULL, str_move,
-                          NULL, str_del);
+    return hashmap_create(sizeof(int), sizeof(String), NULL, NULL, NULL, &wc_str_ops);
 }
 
 static void test_str_val_put_copy(void)
@@ -190,10 +182,7 @@ static void test_str_val_move(void)
 
 static hashmap* str_str_map(void) {
     return hashmap_create(sizeof(String), sizeof(String),
-                          murmurhash3_str, str_cmp,
-                          str_copy, str_copy,
-                          str_move, str_move,
-                          str_del,  str_del);
+                          murmurhash3_str, str_cmp, &wc_str_ops, &wc_str_ops);
 }
 
 static void test_str_key_lookup(void)

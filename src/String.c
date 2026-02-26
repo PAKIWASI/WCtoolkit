@@ -3,8 +3,6 @@
 #include <string.h>
 
 
-
-
 // private func
 u64 cstr_len(const char* cstr);
 
@@ -12,13 +10,13 @@ u64 cstr_len(const char* cstr);
 
 String* string_create(void)
 {
-    return (String*)genVec_init(0, sizeof(char), NULL, NULL, NULL);
+    // chars are POD — no ops needed
+    return (String*)genVec_init(0, sizeof(char), NULL);
 }
 
 
 void string_create_stk(String* str, const char* cstr)
 {
-    // the difference is that we dont use string_create(), so str is not initilised
     CHECK_FATAL(!str, "str is null");
 
     u64 len = 0;
@@ -26,8 +24,8 @@ void string_create_stk(String* str, const char* cstr)
         len = cstr_len(cstr);
     }
 
-    genVec_init_stk(len, sizeof(char), NULL, NULL, NULL, str);
-    
+    genVec_init_stk(len, sizeof(char), NULL, str);
+
     if (len != 0) {
         genVec_insert_multi(str, 0, (const u8*)cstr, len);
     }
@@ -51,7 +49,7 @@ String* string_from_string(const String* other)
     String* str = malloc(sizeof(String));
     CHECK_FATAL(!str, "str malloc failed");
 
-    genVec_init_stk(other->size, sizeof(char), NULL, NULL, NULL, str);
+    genVec_init_stk(other->size, sizeof(char), NULL, str);
 
     if (other->size != 0) {
         genVec_insert_multi(str, 0, other->data, other->size);
@@ -79,6 +77,7 @@ void string_destroy(String* str)
     free(str);
 }
 
+
 void string_destroy_stk(String* str)
 {
     genVec_destroy_stk(str);
@@ -96,10 +95,8 @@ void string_move(String* dest, String** src)
         return;
     }
 
-    // no op if dest's data ptr is null (like stack inited)
     string_destroy_stk(dest);
 
-    // copy fields (including data ptr)
     memcpy(dest, *src, sizeof(String));
 
     (*src)->data = NULL;
@@ -117,16 +114,12 @@ void string_copy(String* dest, const String* src)
         return;
     }
 
-    // no op if data ptr is null
     string_destroy_stk(dest);
 
-    // copy all fields (data ptr too)
     memcpy(dest, src, sizeof(String));
 
-    // malloc new data ptr
     dest->data = malloc(src->capacity);
 
-    // copy all data (arr of chars)
     memcpy(dest->data, src->data, src->size);
 }
 
@@ -142,12 +135,11 @@ char* string_to_cstr(const String* str)
         return empty;
     }
 
-    char* out = malloc(str->size + 1); // + 1 for null term
+    char* out = malloc(str->size + 1);
     CHECK_FATAL(!out, "out str malloc failed");
 
     memcpy(out, str->data, str->size);
-
-    out[str->size] = '\0'; // add null term
+    out[str->size] = '\0';
 
     return out;
 }
@@ -188,11 +180,10 @@ void string_append_string(String* str, const String* other)
         return;
     }
 
-    // direct insertion from other's buffer
     genVec_insert_multi(str, str->size, other->data, other->size);
 }
 
-// append and consume source string
+
 void string_append_string_move(String* str, String** other)
 {
     CHECK_FATAL(!str, "str is null");
@@ -260,7 +251,6 @@ void string_insert_string(String* str, u64 i, const String* other)
         return;
     }
 
-    // direct insertion
     genVec_insert_multi(str, i, other->data, other->size);
 }
 
@@ -316,14 +306,12 @@ int string_compare(const String* str1, const String* str2)
 
     u64 min_len = str1->size < str2->size ? str1->size : str2->size;
 
-    // Compare byte by byte
     int cmp = memcmp(str1->data, str2->data, min_len);
 
     if (cmp != 0) {
         return cmp;
     }
 
-    // If equal so far, shorter string is "less"
     if (str1->size < str2->size) {
         return -1;
     }
@@ -348,11 +336,9 @@ b8 string_equals_cstr(const String* str, const char* cstr)
 
     u64 len = cstr_len(cstr);
 
-    // Different lengths = not equal
     if (str->size != len) {
         return false;
     }
-    // Both empty
     if (len == 0) {
         return true;
     }
@@ -371,7 +357,7 @@ u64 string_find_char(const String* str, char c)
         }
     }
 
-    return (u64)-1; // Not found
+    return (u64)-1;
 }
 
 
@@ -382,7 +368,6 @@ u64 string_find_cstr(const String* str, const char* substr)
 
     u64 len = cstr_len(substr);
 
-    // Empty substring is found at index 0
     if (len == 0) {
         return 0;
     }
@@ -416,7 +401,7 @@ String* string_substr(const String* str, u64 start, u64 length)
 
     u64 actual_len = end - start;
 
-    if (actual_len > 0) { // Insert substring all at once
+    if (actual_len > 0) {
         const char* csrc = string_data_ptr(str) + start;
         genVec_insert_multi(result, 0, (const u8*)csrc, actual_len);
     }

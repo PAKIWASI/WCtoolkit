@@ -4,6 +4,18 @@
 #include <ctype.h>
 
 
+genVec_ops json_val_ops = {
+    .copy_fn = json_val_copy,
+    .move_fn = json_val_move,
+    .del_fn = json_val_del
+};
+
+genVec_ops str_val_ops = {
+    .copy_fn = str_copy,
+    .move_fn = str_move,
+    .del_fn = str_del
+};
+
 // WCtoolkit callbacks for JsonValue
 
 void json_val_copy(u8* dest, const u8* src)
@@ -33,7 +45,7 @@ void json_val_copy(u8* dest, const u8* src)
     case JSON_ARRAY: {
         const genVec* sv = s->array;
         genVec*       dv =
-            genVec_init(sv->capacity ? sv->capacity : 4, sizeof(JsonValue), json_val_copy, json_val_move, json_val_del);
+            genVec_init(sv->capacity ? sv->capacity : 4, sizeof(JsonValue), &json_val_ops);
         for (u64 i = 0; i < sv->size; i++) {
             genVec_push(dv, genVec_get_ptr(sv, i));
         }
@@ -41,8 +53,7 @@ void json_val_copy(u8* dest, const u8* src)
     } break;
     case JSON_OBJECT: {
         const hashmap* sm = s->object;
-        hashmap*       dm = hashmap_create(sizeof(String), sizeof(JsonValue), murmurhash3_str, str_cmp, str_copy,
-                                           json_val_copy, str_move, json_val_move, str_del, json_val_del);
+        hashmap*       dm = hashmap_create(sizeof(String), sizeof(JsonValue), murmurhash3_str, str_cmp, &str_val_ops, &json_val_ops);
         /*
          * The hashmap stores buckets as an array of KV structs:
          *   typedef struct { u8* key; u8* val; STATE state; } KV;
@@ -168,7 +179,7 @@ JsonValue* json_array_new(void)
 {
     JsonValue* v = malloc(sizeof(JsonValue));
     v->type      = JSON_ARRAY;
-    v->array     = genVec_init(8, sizeof(JsonValue), json_val_copy, json_val_move, json_val_del);
+    v->array     = genVec_init(8, sizeof(JsonValue), &json_val_ops);
     return v;
 }
 
@@ -176,8 +187,7 @@ JsonValue* json_object_new(void)
 {
     JsonValue* v = malloc(sizeof(JsonValue));
     v->type      = JSON_OBJECT;
-    v->object    = hashmap_create(sizeof(String), sizeof(JsonValue), murmurhash3_str, str_cmp, str_copy, json_val_copy,
-                                  str_move, json_val_move, str_del, json_val_del);
+    v->object    = hashmap_create(sizeof(String), sizeof(JsonValue), murmurhash3_str, str_cmp, &str_val_ops, &json_val_ops);
     return v;
 }
 
@@ -611,7 +621,7 @@ JsonValue* json_parse(const char* input)
         return NULL;
     }
     Lexer lex = {
-        .src = input, .pos = 0, .len = strlen(input), .tokens = genVec_init(64, sizeof(Token), NULL, NULL, NULL)};
+        .src = input, .pos = 0, .len = strlen(input), .tokens = genVec_init(64, sizeof(Token), NULL)};
     if (!do_lex(&lex)) {
         genVec_destroy(lex.tokens);
         return NULL;
