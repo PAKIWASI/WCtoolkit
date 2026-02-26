@@ -185,6 +185,4 @@ static inline b8 genVec_empty(const genVec* vec)
 
 
 
-
-
 #endif // GEN_VECTOR_H
