@@ -162,5 +162,9 @@ TEMP_CSTR_READ(s) {
 #define TEMP_CSTR_READ(str) \
     for (u8 _once = 0; (_once == 0) && (string_append_char((str), '\0'), 1); _once++, string_pop_char((str)))
 
+// TODO: how to do this??
+#define TEMP_CSTR_READ_NAMED(str, name) \
+    for (u8 _once = 0; (_once == 0) && (string_append_char((str), '\0'), 1); _once++, string_pop_char((str)))
+
 
 #endif // STRING_H

@@ -1,9 +1,10 @@
-
-
 #include "String.h"
 #include "gen_vector.h"
 #include "wc_helpers.h"
 #include "wc_macros.h"
+
+
+
 int main(void)
 {
     genVec_ops ops = VEC_MAKE_OPS(str_copy, str_move, str_del);
@@ -16,6 +17,7 @@ int main(void)
     VEC_PUSH_CSTR(vec, "hello");
 
     genVec_print(vec, str_print);
+    putchar('\n');
 
     genVec_destroy(vec);
     return 0;
