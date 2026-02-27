@@ -5,6 +5,9 @@
 #include "gen_vector.h"
 
 
+// TODO: make changes according to hashmap changes
+
+
 typedef struct {
     u8*            buckets;
     u64            size;

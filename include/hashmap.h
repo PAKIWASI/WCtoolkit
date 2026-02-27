@@ -5,8 +5,15 @@
 #include "gen_vector.h"
 
 
+
 typedef struct {
-    u8*            buckets;
+    u8*   key;
+    u8*   val;
+    STATE state;
+} KV;
+
+typedef struct {
+    KV*            buckets;
     u64            size;
     u64            capacity;
     u32            key_size;
@@ -22,6 +29,13 @@ typedef struct {
     const genVec_ops* key_ops;
     const genVec_ops* val_ops;
 } hashmap;
+
+
+// safely get copy/move/del funcs
+#define MAP_COPY(ops) ((ops)->copy_fn ? (ops)->copy_fn : NULL)
+#define MAP_MOVE(ops) ((ops)->move_fn ? (ops)->move_fn : NULL)
+#define MAP_DEL(ops)  ((ops)->del_fn  ? (ops)->del_fn  : NULL)
+
 
 
 // Create a new hashmap.
@@ -54,6 +68,8 @@ b8 hashmap_get(const hashmap* map, const u8* key, u8* val);
 // WARNING: invalidated by put/del operations.
 u8* hashmap_get_ptr(hashmap* map, const u8* key);
 
+KV* hashmap_get_bucket(hashmap* map, u64 i);
+
 // Delete key. If out is provided, value is copied to it before deletion.
 // Returns 1 if found and deleted, 0 if not found.
 b8 hashmap_del(hashmap* map, const u8* key, u8* out);
@@ -64,10 +80,16 @@ b8 hashmap_has(const hashmap* map, const u8* key);
 // Print all key-value pairs.
 void hashmap_print(const hashmap* map, print_fn key_print, print_fn val_print);
 
+// TODO: 
+void hashmap_clear(hashmap* map);
+void hashmap_reset(hashmap* map);
+void hashmap_copy(hashmap* dest, const hashmap* src);
+
 
 static inline u64 hashmap_size(const hashmap* map)     { CHECK_FATAL(!map, "map is null"); return map->size;      }
 static inline u64 hashmap_capacity(const hashmap* map) { CHECK_FATAL(!map, "map is null"); return map->capacity;  }
 static inline b8  hashmap_empty(const hashmap* map)    { CHECK_FATAL(!map, "map is null"); return map->size == 0; }
+
 
 
 #endif // HASHMAP_H

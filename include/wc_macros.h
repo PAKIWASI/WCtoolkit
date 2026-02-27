@@ -221,4 +221,14 @@ Usage:
     })
 
 
+#define MAP_FOREACH_BUCKET(map, name)                          \
+    for (u64 _wvf_i = 0; _wvf_i < (map)->size; _wvf_i++)  \
+        for (KV* name = (KV*)genVec_get_ptr_mut((map), _wvf_i); name; name = NULL)
+
+#define MAP_FOREACH_VAL(map, T, name)                          \
+    for (u64 _wvf_i = 0; _wvf_i < (map)->size; _wvf_i++)  \
+        for (T* name = (T*)hashmap_get_bucket((map), _wvf_i); name; name = NULL)
+
+
+
 #endif // WC_MACROS_H

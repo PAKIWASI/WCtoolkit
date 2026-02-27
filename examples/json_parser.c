@@ -1,19 +1,34 @@
 #include "json_parser.h"
+#include "gen_vector.h"
 #include "wc_helpers.h"
 #include "wc_macros.h"
 #include <ctype.h>
 
 
+
+/*
+ * WCtoolkit callbacks — must be registered in every container that holds
+ * JsonValues. With them in place, push/pop/copy/destroy of the container
+ * automatically handles the full recursive tree.
+*/
+void json_val_copy(u8* dest, const u8* src);
+void json_val_move(u8* dest, u8** src);
+void json_val_del(u8* elm);
+void json_val_print(const u8* elm);
+
+
+// construct ops struct for json (by value)
 genVec_ops json_val_ops = {
     .copy_fn = json_val_copy,
     .move_fn = json_val_move,
-    .del_fn = json_val_del
+    .del_fn  = json_val_del
 };
 
+// construct ops struct for string (by value)
 genVec_ops str_val_ops = {
     .copy_fn = str_copy,
     .move_fn = str_move,
-    .del_fn = str_del
+    .del_fn  = str_del
 };
 
 // WCtoolkit callbacks for JsonValue
@@ -33,25 +48,28 @@ void json_val_copy(u8* dest, const u8* src)
         d->number = s->number;
         break;
     case JSON_STRING:
-        memcpy(&d->string, &s->string, sizeof(String));
-        {
-            u64 n          = s->string.size * (u64)s->string.data_size;
-            d->string.data = malloc(n ? n : 1);
-            if (n) {
-                memcpy(d->string.data, s->string.data, n);
-            }
-        }
+        // memcpy(&d->string, &s->string, sizeof(String));
+        // {
+        //     u64 n          = s->string.size * (u64)s->string.data_size;
+        //     d->string.data = malloc(n ? n : 1);
+        //     if (n) {
+        //         memcpy(d->string.data, s->string.data, n);
+        //     }
+        // }
+        string_copy(&d->string, &s->string);
+
         break;
     case JSON_ARRAY: {
-        const genVec* sv = s->array;
-        genVec*       dv =
-            genVec_init(sv->capacity ? sv->capacity : 4, sizeof(JsonValue), &json_val_ops);
-        for (u64 i = 0; i < sv->size; i++) {
-            genVec_push(dv, genVec_get_ptr(sv, i));
-        }
-        d->array = dv;
+        // const genVec* sv = s->array;
+        // genVec*       dv =
+        //     genVec_init(sv->capacity ? sv->capacity : 4, sizeof(JsonValue), &json_val_ops);
+        // for (u64 i = 0; i < sv->size; i++) {
+        //     genVec_push(dv, genVec_get_ptr(sv, i));
+        // }
+        // d->array = dv;
+        genVec_copy(d->array, s->array);
     } break;
-    case JSON_OBJECT: {
+    case JSON_OBJECT: {         // TODO: i was here
         const hashmap* sm = s->object;
         hashmap*       dm = hashmap_create(sizeof(String), sizeof(JsonValue), murmurhash3_str, str_cmp, &str_val_ops, &json_val_ops);
         /*
@@ -111,6 +129,8 @@ void json_val_print(const u8* elm)
     json_print((const JsonValue*)elm, 2);
     putchar('\n');
 }
+
+
 
 
 // Lifecycle

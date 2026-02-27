@@ -46,9 +46,8 @@ typedef enum {
     JSON_OBJECT = 5,
 } JsonType;
 
-typedef struct JsonValue JsonValue;
 
-struct JsonValue {
+typedef struct {
     JsonType type;
     union {
         b8       boolean;
@@ -57,18 +56,9 @@ struct JsonValue {
         genVec*  array;  // genVec<JsonValue> with json_val_* callbacks
         hashmap* object; // String key → JsonValue value
     };
-};
+} JsonValue;
 
 
-/*
- * WCtoolkit callbacks — must be registered in every container that holds
- * JsonValues. With them in place, push/pop/copy/destroy of the container
- * automatically handles the full recursive tree.
-*/
-void json_val_copy(u8* dest, const u8* src);
-void json_val_move(u8* dest, u8** src);
-void json_val_del(u8* elm);
-void json_val_print(const u8* elm);
 
 
 // Lifecycle

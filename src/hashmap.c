@@ -1,139 +1,26 @@
 #include "hashmap.h"
+#include "common.h"
+#include "gen_vector.h"
+#include <string.h>
 
 
+#define GET_KV(data, i) ((data) + i)
 
-#define GET_KV(data, i) ((KV*)(data) + i)
 
-
-typedef struct {
-    u8*   key;
-    u8*   val;
-    STATE state;
-} KV;
-
-/*
-====================KV HANDLERS====================
-*/
-
-static void kv_destroy(const genVec_ops* key_ops, const genVec_ops* val_ops, const KV* kv)
-{
-    CHECK_FATAL(!kv, "kv is null");
-
-    if (kv->key) {
-        if (key_ops && key_ops->del_fn) {
-            key_ops->del_fn(kv->key);
-        }
-        free(kv->key);
-    }
-
-    if (kv->val) {
-        if (val_ops && val_ops->del_fn) {
-            val_ops->del_fn(kv->val);
-        }
-        free(kv->val);
-    }
-}
 
 /*
 ====================PRIVATE FUNCTIONS====================
 */
 
-static void reset_buckets(u8* buckets, u64 size)
-{
-    KV kv = {
-        .key   = NULL,
-        .val   = NULL,
-        .state = EMPTY
-    };
+static void memset_buckets(KV* buckets, u64 size);
+static void kv_destroy(const genVec_ops* key_ops, const genVec_ops* val_ops, const KV* kv);
 
-    for (u64 i = 0; i < size; i++) {
-        memcpy(GET_KV(buckets, i), &kv, sizeof(KV));
-    }
-}
+static u64  find_slot(const hashmap* map, const u8* key, b8* found, int* tombstone);
+
+static void hashmap_resize(hashmap* map, u64 new_capacity);
+static void hashmap_maybe_resize(hashmap* map);
 
 
-static u64 find_slot(const hashmap* map, const u8* key, b8* found, int* tombstone)
-{
-    u64 index = map->hash_fn(key, map->key_size) % map->capacity;
-
-    *found     = 0;
-    *tombstone = -1;
-
-    for (u64 x = 0; x < map->capacity; x++) {
-        u64      i  = (index + x) % map->capacity;
-        const KV* kv = GET_KV(map->buckets, i);
-
-        switch (kv->state) {
-            case EMPTY:
-                return i;
-            case FILLED:
-                if (map->cmp_fn(kv->key, key, map->key_size) == 0) {
-                    *found = 1;
-                    return i;
-                }
-                break;
-            case TOMBSTONE:
-                if (*tombstone == -1) {
-                    *tombstone = (int)i;
-                }
-                break;
-        }
-    }
-
-    return (*tombstone != -1) ? (u64)*tombstone : 0;
-}
-
-static void hashmap_resize(hashmap* map, u64 new_capacity)
-{
-    if (new_capacity <= HASHMAP_INIT_CAPACITY) {
-        new_capacity = HASHMAP_INIT_CAPACITY;
-    }
-
-    u8* old_vec = map->buckets;
-    u64 old_cap = map->capacity;
-
-    map->buckets = malloc(new_capacity * sizeof(KV));
-    reset_buckets(map->buckets, new_capacity);
-
-    map->capacity = new_capacity;
-    map->size     = 0;
-
-    for (u64 i = 0; i < old_cap; i++) {
-        const KV* old_kv = GET_KV(old_vec, i);
-
-        if (old_kv->state == FILLED) {
-            b8  found     = 0;
-            int tombstone = -1;
-            u64 slot      = find_slot(map, old_kv->key, &found, &tombstone);
-
-            KV* new_kv   = GET_KV(map->buckets, slot);
-            new_kv->key   = old_kv->key;
-            new_kv->val   = old_kv->val;
-            new_kv->state = FILLED;
-
-            map->size++;
-        }
-    }
-
-    free(old_vec);
-}
-
-static void hashmap_maybe_resize(hashmap* map)
-{
-    CHECK_FATAL(!map, "map is null");
-
-    double load_factor = (double)map->size / (double)map->capacity;
-
-    if (load_factor > LOAD_FACTOR_GROW) {
-        u64 new_cap = next_prime(map->capacity);
-        hashmap_resize(map, new_cap);
-    } else if (load_factor < LOAD_FACTOR_SHRINK && map->capacity > HASHMAP_INIT_CAPACITY) {
-        u64 new_cap = prev_prime(map->capacity);
-        if (new_cap >= HASHMAP_INIT_CAPACITY) {
-            hashmap_resize(map, new_cap);
-        }
-    }
-}
 
 /*
 ====================PUBLIC FUNCTIONS====================
@@ -152,7 +39,7 @@ hashmap* hashmap_create(u32 key_size, u32 val_size,
     map->buckets = malloc(HASHMAP_INIT_CAPACITY * sizeof(KV));
     CHECK_FATAL(!map->buckets, "map bucket init failed");
 
-    reset_buckets(map->buckets, HASHMAP_INIT_CAPACITY);
+    memset_buckets(map->buckets, HASHMAP_INIT_CAPACITY);
 
     map->capacity = HASHMAP_INIT_CAPACITY;
     map->size     = 0;
@@ -476,6 +363,14 @@ u8* hashmap_get_ptr(hashmap* map, const u8* key)
     return NULL;
 }
 
+KV* hashmap_get_bucket(hashmap* map, u64 i)
+{
+    CHECK_FATAL(!map, "map is null");
+    CHECK_FATAL(i >= map->capacity, "index out of bounds");
+
+    return (map->buckets + i);
+}
+
 b8 hashmap_del(hashmap* map, const u8* key, u8* out)
 {
     CHECK_FATAL(!map, "map is null");
@@ -549,3 +444,137 @@ void hashmap_print(const hashmap* map, print_fn key_print, print_fn val_print)
 
     printf("\t=========\n");
 }
+
+void hashmap_clear(hashmap* map)
+{
+    CHECK_FATAL(!map, "map is null");
+
+    for (u64 i = 0; i < map->capacity; i++) {
+        KV* kv = GET_KV(map->buckets, i);
+        
+    }
+
+}
+
+void hashmap_copy(hashmap* dest, const hashmap* src)
+{
+
+}
+
+
+/*
+====================PRIVATE FUNCTION IMPLEMENTATIONS====================
+*/
+
+static void kv_destroy(const genVec_ops* key_ops, const genVec_ops* val_ops, const KV* kv)
+{
+    CHECK_FATAL(!kv, "kv is null");
+
+    if (kv->key) {
+        if (key_ops && key_ops->del_fn) {
+            key_ops->del_fn(kv->key);
+        }
+        free(kv->key);
+    }
+
+    if (kv->val) {
+        if (val_ops && val_ops->del_fn) {
+            val_ops->del_fn(kv->val);
+        }
+        free(kv->val);
+    }
+}
+
+// we can memset so key, val will be effectively NULL
+// state will be = 0, which is EMPTY
+// externally, if someone does hashmap_get_bucket(map, i) and we 
+// haven't set it, it will be NULL
+static void memset_buckets(KV* buckets, u64 size)
+{
+    memset(buckets, 0, sizeof(KV) * size);
+}
+
+
+static u64 find_slot(const hashmap* map, const u8* key, b8* found, int* tombstone)
+{
+    u64 index = map->hash_fn(key, map->key_size) % map->capacity;
+
+    *found     = 0;
+    *tombstone = -1;
+
+    for (u64 x = 0; x < map->capacity; x++) {
+        u64      i  = (index + x) % map->capacity;
+        const KV* kv = GET_KV(map->buckets, i);
+
+        switch (kv->state) {
+            case EMPTY:
+                return i;
+            case FILLED:
+                if (map->cmp_fn(kv->key, key, map->key_size) == 0) {
+                    *found = 1;
+                    return i;
+                }
+                break;
+            case TOMBSTONE:
+                if (*tombstone == -1) {
+                    *tombstone = (int)i;
+                }
+                break;
+        }
+    }
+
+    return (*tombstone != -1) ? (u64)*tombstone : 0;
+}
+
+static void hashmap_resize(hashmap* map, u64 new_capacity)
+{
+    if (new_capacity <= HASHMAP_INIT_CAPACITY) {
+        new_capacity = HASHMAP_INIT_CAPACITY;
+    }
+
+    KV* old_vec = map->buckets;
+    u64 old_cap = map->capacity;
+
+    map->buckets = malloc(new_capacity * sizeof(KV));
+    memset_buckets(map->buckets, new_capacity);
+
+    map->capacity = new_capacity;
+    map->size     = 0;
+
+    for (u64 i = 0; i < old_cap; i++) {
+        const KV* old_kv = GET_KV(old_vec, i);
+
+        if (old_kv->state == FILLED) {
+            b8  found     = 0;
+            int tombstone = -1;
+            u64 slot      = find_slot(map, old_kv->key, &found, &tombstone);
+
+            KV* new_kv   = GET_KV(map->buckets, slot);
+            new_kv->key   = old_kv->key;
+            new_kv->val   = old_kv->val;
+            new_kv->state = FILLED;
+
+            map->size++;
+        }
+    }
+
+    free(old_vec);
+}
+
+static void hashmap_maybe_resize(hashmap* map)
+{
+    CHECK_FATAL(!map, "map is null");
+
+    double load_factor = (double)map->size / (double)map->capacity;
+
+    if (load_factor > LOAD_FACTOR_GROW) {
+        u64 new_cap = next_prime(map->capacity);
+        hashmap_resize(map, new_cap);
+    } else if (load_factor < LOAD_FACTOR_SHRINK && map->capacity > HASHMAP_INIT_CAPACITY) {
+        u64 new_cap = prev_prime(map->capacity);
+        if (new_cap >= HASHMAP_INIT_CAPACITY) {
+            hashmap_resize(map, new_cap);
+        }
+    }
+}
+
