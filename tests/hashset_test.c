@@ -35,8 +35,8 @@ static void test_insert_returns_existed(void)
     int x = 5;
     b8 first  = hashset_insert(s, (u8*)&x);
     b8 second = hashset_insert(s, (u8*)&x);
-    WC_ASSERT_FALSE(first);   /* new insert */
-    WC_ASSERT_TRUE(second);   /* already existed */
+    WC_ASSERT_FALSE(first);   // new insert
+    WC_ASSERT_TRUE(second);   // already existed
     hashset_destroy(s);
 }
 
@@ -126,7 +126,7 @@ static void test_resize_preserves_membership(void)
 
 static void test_shrink_on_remove(void)
 {
-    /* Insert enough to grow, remove most — capacity should shrink back */
+    // Insert enough to grow, remove most — capacity should shrink back 
     hashset* s    = int_set();
     u64      cap0 = hashset_capacity(s);
 
@@ -140,7 +140,7 @@ static void test_shrink_on_remove(void)
     }
     WC_ASSERT_TRUE(hashset_capacity(s) < 50);
 
-    /* Remaining elements must still be reachable */
+    // Remaining elements must still be reachable 
     for (int i = 48; i < 50; i++) {
         WC_ASSERT_TRUE(hashset_has(s, (u8*)&i));
     }

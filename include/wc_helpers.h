@@ -65,9 +65,9 @@ static inline void str_copy(u8* dest, const u8* src)
 
     memcpy(d, s, sizeof(String));       // copy all fields (data ptr too)
 
-    u64 n   = s->size * s->data_size;
-    d->data = malloc(n);                // independent data buffer
-    memcpy(d->data, s->data, n);
+    u64 n   = s->size * (u64)s->data_size;
+    d->data = malloc(n ? n : 1);
+    if (n) { memcpy(d->data, s->data, n); }
 }
 
 static inline void str_move(u8* dest, u8** src)
@@ -99,9 +99,9 @@ static inline void str_copy_ptr(u8* dest, const u8* src)
     String* d = malloc(sizeof(String));
     memcpy(d, s, sizeof(String));
 
-    u64 n   = s->size * s->data_size;
-    d->data = malloc(n);
-    memcpy(d->data, s->data, n);
+    u64 n   = s->size * (u64)s->data_size;
+    d->data = malloc(n ? n : 1);
+    if (n) { memcpy(d->data, s->data, n); }
 
     *(String**)dest = d;
 }

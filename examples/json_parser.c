@@ -1,8 +1,13 @@
 #include "json_parser.h"
+#include "String.h"
 #include "gen_vector.h"
+#include "hashmap.h"
+#include "map_setup.h"
 #include "wc_helpers.h"
 #include "wc_macros.h"
 #include <ctype.h>
+#include <limits.h>
+#include <math.h>
 
 
 
@@ -48,49 +53,23 @@ void json_val_copy(u8* dest, const u8* src)
         d->number = s->number;
         break;
     case JSON_STRING:
-        // memcpy(&d->string, &s->string, sizeof(String));
-        // {
-        //     u64 n          = s->string.size * (u64)s->string.data_size;
-        //     d->string.data = malloc(n ? n : 1);
-        //     if (n) {
-        //         memcpy(d->string.data, s->string.data, n);
-        //     }
-        // }
         string_copy(&d->string, &s->string);
-
         break;
     case JSON_ARRAY: {
-        // const genVec* sv = s->array;
-        // genVec*       dv =
-        //     genVec_init(sv->capacity ? sv->capacity : 4, sizeof(JsonValue), &json_val_ops);
-        // for (u64 i = 0; i < sv->size; i++) {
-        //     genVec_push(dv, genVec_get_ptr(sv, i));
-        // }
-        // d->array = dv;
+        /*
+         * Allocate a fresh empty vec with the right ops, then copy into it.
+         * Do NOT pre-size with s->array->capacity — genVec_copy handles
+         * sizing internally and would destroy the pre-allocated (uninitialised)
+         * data if we did.
+         */
+        d->array = genVec_init(0, sizeof(JsonValue), &json_val_ops);
         genVec_copy(d->array, s->array);
     } break;
-    case JSON_OBJECT: {         // TODO: i was here
-        const hashmap* sm = s->object;
-        hashmap*       dm = hashmap_create(sizeof(String), sizeof(JsonValue), murmurhash3_str, str_cmp, &str_val_ops, &json_val_ops);
-        /*
-         * The hashmap stores buckets as an array of KV structs:
-         *   typedef struct { u8* key; u8* val; STATE state; } KV;
-         * Each KV holds POINTERS to separately malloc'd key and value data.
-         * We must cast the bucket array to KV* and use ->state, ->key, ->val.
-         */
-        typedef struct {
-            u8* key;
-            u8* val;
-            u32 state;
-        } KV_iter;
-        KV_iter* buckets = (KV_iter*)sm->buckets;
-        for (u64 i = 0; i < sm->capacity; i++) {
-            if (buckets[i].state != 1 /* FILLED */) {
-                continue;
-            }
-            hashmap_put(dm, buckets[i].key, buckets[i].val);
-        }
-        d->object = dm;
+    case JSON_OBJECT: {
+        d->object = hashmap_create(sizeof(String), sizeof(JsonValue),
+                                   murmurhash3_str, str_cmp,
+                                   &str_val_ops, &json_val_ops);
+        hashmap_copy(d->object, s->object);
     } break;
     }
 }
@@ -129,8 +108,6 @@ void json_val_print(const u8* elm)
     json_print((const JsonValue*)elm, 2);
     putchar('\n');
 }
-
-
 
 
 // Lifecycle
@@ -207,7 +184,9 @@ JsonValue* json_object_new(void)
 {
     JsonValue* v = malloc(sizeof(JsonValue));
     v->type      = JSON_OBJECT;
-    v->object    = hashmap_create(sizeof(String), sizeof(JsonValue), murmurhash3_str, str_cmp, &str_val_ops, &json_val_ops);
+    v->object    = hashmap_create(sizeof(String), sizeof(JsonValue),
+                                  murmurhash3_str, str_cmp,
+                                  &str_val_ops, &json_val_ops);
     return v;
 }
 
@@ -641,7 +620,11 @@ JsonValue* json_parse(const char* input)
         return NULL;
     }
     Lexer lex = {
-        .src = input, .pos = 0, .len = strlen(input), .tokens = genVec_init(64, sizeof(Token), NULL)};
+        .src    = input,
+        .pos    = 0,
+        .len    = strlen(input),
+        .tokens = genVec_init(64, sizeof(Token), NULL)
+    };
     if (!do_lex(&lex)) {
         genVec_destroy(lex.tokens);
         return NULL;
@@ -658,7 +641,17 @@ JsonValue* json_parse(const char* input)
 }
 
 
-// PART 7 — Output
+// Output
+
+/*
+ * Returns true if d can be represented exactly as a long long
+ * (i.e. it is finite, has no fractional part, and fits in the range).
+ */
+static b8 is_integer(double d)
+{
+    return isfinite(d) && d == floor(d) &&
+           d >= (double)LLONG_MIN && d <= (double)LLONG_MAX;
+}
 
 static void print_indent(int depth, int width)
 {
@@ -673,24 +666,12 @@ static void print_str_esc(const String* s)
     for (u64 i = 0; i < s->size; i++) {
         char c = ((const char*)s->data)[i];
         switch (c) {
-        case '"':
-            fputs("\\\"", stdout);
-            break;
-        case '\\':
-            fputs("\\\\", stdout);
-            break;
-        case '\n':
-            fputs("\\n", stdout);
-            break;
-        case '\r':
-            fputs("\\r", stdout);
-            break;
-        case '\t':
-            fputs("\\t", stdout);
-            break;
-        default:
-            putchar(c);
-            break;
+        case '"':  fputs("\\\"", stdout); break;
+        case '\\': fputs("\\\\", stdout); break;
+        case '\n': fputs("\\n",  stdout); break;
+        case '\r': fputs("\\r",  stdout); break;
+        case '\t': fputs("\\t",  stdout); break;
+        default:   putchar(c);            break;
         }
     }
     putchar('"');
@@ -706,7 +687,9 @@ static void print_val(const JsonValue* val, int depth, int width)
         fputs(val->boolean ? "true" : "false", stdout);
         break;
     case JSON_NUMBER:
-        if (val->number == (double)val->number) {
+        /* FIX: was `val->number == (double)val->number` — always true.
+         * Correct check: does the value round-trip through long long? */
+        if (is_integer(val->number)) {
             printf("%lld", (long long)val->number);
         } else {
             printf("%.10g", val->number);
@@ -722,14 +705,11 @@ static void print_val(const JsonValue* val, int depth, int width)
             break;
         }
         fputs("[\n", stdout);
-        VEC_FOREACH(val->array, JsonValue, elem)
-        {
+        VEC_FOREACH(val->array, JsonValue, elem) {
             u64 idx = (u64)((u8*)elem - val->array->data) / sizeof(JsonValue);
             print_indent(depth + 1, width);
             print_val(elem, depth + 1, width);
-            if (idx + 1 < n) {
-                putchar(',');
-            }
+            if (idx + 1 < n) { putchar(','); }
             putchar('\n');
         }
         print_indent(depth, width);
@@ -743,27 +723,18 @@ static void print_val(const JsonValue* val, int depth, int width)
             break;
         }
         fputs("{\n", stdout);
-        typedef struct {
-            u8* key;
-            u8* val;
-            u32 state;
-        } KV_p;
-        KV_p* buckets = (KV_p*)val->object->buckets;
-        u64   printed = 0;
-        for (u64 i = 0; i < val->object->capacity; i++) {
-            if (buckets[i].state != 1) {
-                continue;
-            }
-            const String*    k = (const String*)buckets[i].key;
-            const JsonValue* v = (const JsonValue*)buckets[i].val;
+        u64 printed = 0;
+        /* FIX: was raw KV_p shadow-struct cast — fragile and bypassed the
+         * proper API. Use MAP_FOREACH_BUCKET instead. */
+        MAP_FOREACH_BUCKET(val->object, kv) {
+            const String*    k = (const String*)kv->key;
+            const JsonValue* v = (const JsonValue*)kv->val;
             print_indent(depth + 1, width);
             print_str_esc(k);
             fputs(": ", stdout);
             print_val(v, depth + 1, width);
             printed++;
-            if (printed < n) {
-                putchar(',');
-            }
+            if (printed < n) { putchar(','); }
             putchar('\n');
         }
         print_indent(depth, width);
@@ -789,24 +760,12 @@ static void serialize_str_esc(const String* s, String* out)
     for (u64 i = 0; i < s->size; i++) {
         char c = ((const char*)s->data)[i];
         switch (c) {
-        case '"':
-            string_append_cstr(out, "\\\"");
-            break;
-        case '\\':
-            string_append_cstr(out, "\\\\");
-            break;
-        case '\n':
-            string_append_cstr(out, "\\n");
-            break;
-        case '\r':
-            string_append_cstr(out, "\\r");
-            break;
-        case '\t':
-            string_append_cstr(out, "\\t");
-            break;
-        default:
-            string_append_char(out, c);
-            break;
+        case '"':  string_append_cstr(out, "\\\""); break;
+        case '\\': string_append_cstr(out, "\\\\"); break;
+        case '\n': string_append_cstr(out, "\\n");  break;
+        case '\r': string_append_cstr(out, "\\r");  break;
+        case '\t': string_append_cstr(out, "\\t");  break;
+        default:   string_append_char(out, c);       break;
         }
     }
     string_append_char(out, '"');
@@ -823,7 +782,8 @@ static void serialize_val(const JsonValue* val, String* out)
         break;
     case JSON_NUMBER: {
         char buf[32];
-        if (val->number == (double)val->number) {
+        /* FIX: same is_integer() guard as print_val */
+        if (is_integer(val->number)) {
             snprintf(buf, sizeof(buf), "%lld", (long long)val->number);
         } else {
             snprintf(buf, sizeof(buf), "%.10g", val->number);
@@ -838,9 +798,7 @@ static void serialize_val(const JsonValue* val, String* out)
         string_append_char(out, '[');
         u64 n = genVec_size(val->array);
         for (u64 i = 0; i < n; i++) {
-            if (i > 0) {
-                string_append_char(out, ',');
-            }
+            if (i > 0) { string_append_char(out, ','); }
             serialize_val((const JsonValue*)genVec_get_ptr(val->array, i), out);
         }
         string_append_char(out, ']');
@@ -848,24 +806,14 @@ static void serialize_val(const JsonValue* val, String* out)
     }
     case JSON_OBJECT: {
         string_append_char(out, '{');
-        typedef struct {
-            u8* key;
-            u8* val;
-            u32 state;
-        } KV_s;
-        KV_s* buckets = (KV_s*)val->object->buckets;
-        b8    first   = true;
-        for (u64 i = 0; i < val->object->capacity; i++) {
-            if (buckets[i].state != 1) {
-                continue;
-            }
-            if (!first) {
-                string_append_char(out, ',');
-            }
+        b8 first = true;
+        /* FIX: was raw KV_s shadow-struct cast — use MAP_FOREACH_BUCKET. */
+        MAP_FOREACH_BUCKET(val->object, kv) {
+            if (!first) { string_append_char(out, ','); }
             first = false;
-            serialize_str_esc((const String*)buckets[i].key, out);
+            serialize_str_esc((const String*)kv->key, out);
             string_append_char(out, ':');
-            serialize_val((const JsonValue*)buckets[i].val, out);
+            serialize_val((const JsonValue*)kv->val, out);
         }
         string_append_char(out, '}');
         break;
@@ -881,5 +829,3 @@ String* json_to_string(const JsonValue* val)
     }
     return out;
 }
-
-

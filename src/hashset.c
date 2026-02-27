@@ -1,5 +1,4 @@
 #include "hashset.h"
-#include "common.h"
 #include "wc_macros.h"
 #include <string.h>
 
