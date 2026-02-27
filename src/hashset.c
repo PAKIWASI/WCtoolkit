@@ -14,7 +14,7 @@ typedef struct {
 ====================ELM HANDLERS====================
 */
 
-static void elm_destroy(const genVec_ops* ops, const ELM* elm)
+static void elm_destroy(const container_ops* ops, const ELM* elm)
 {
     CHECK_FATAL(!elm, "ELM is null");
 
@@ -131,7 +131,7 @@ static void hashset_maybe_resize(hashset* set)
 */
 
 hashset* hashset_create(u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
-                        const genVec_ops* ops)
+                        const container_ops* ops)
 {
     CHECK_FATAL(elm_size == 0, "elm size can't be 0");
 

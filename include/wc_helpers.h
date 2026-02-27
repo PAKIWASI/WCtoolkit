@@ -233,10 +233,10 @@ static inline void vec_print_int_ptr(const u8* elm)
  *   hashmap* m = hashmap_create(..., &wc_str_ops, &wc_str_ops);
  * ══════════════════════════════════════════════════════════════════════════ */
 
-static const genVec_ops wc_str_ops     = { str_copy,     str_move,     str_del     };
-static const genVec_ops wc_str_ptr_ops = { str_copy_ptr, str_move_ptr, str_del_ptr };
-static const genVec_ops wc_vec_ops     = { vec_copy,     vec_move,     vec_del     };
-static const genVec_ops wc_vec_ptr_ops = { vec_copy_ptr, vec_move_ptr, vec_del_ptr };
+static const container_ops wc_str_ops     = { str_copy,     str_move,     str_del     };
+static const container_ops wc_str_ptr_ops = { str_copy_ptr, str_move_ptr, str_del_ptr };
+static const container_ops wc_vec_ops     = { vec_copy,     vec_move,     vec_del     };
+static const container_ops wc_vec_ptr_ops = { vec_copy_ptr, vec_move_ptr, vec_del_ptr };
 
 
 #endif // HELPERS_H

@@ -18,14 +18,14 @@ void json_val_print(const u8* elm);
 
 
 // construct ops struct for json (by value)
-genVec_ops json_val_ops = {
+container_ops json_val_ops = {
     .copy_fn = json_val_copy,
     .move_fn = json_val_move,
     .del_fn  = json_val_del
 };
 
 // construct ops struct for string (by value)
-genVec_ops str_val_ops = {
+container_ops str_val_ops = {
     .copy_fn = str_copy,
     .move_fn = str_move,
     .del_fn  = str_del

@@ -37,7 +37,7 @@
 
 // TODO: test
 #define VEC_MAKE_OPS(copy, move, del) \
-    (genVec_ops)                      \
+    (container_ops)                   \
     {                                 \
         (copy), (move), (del)         \
     }
@@ -215,16 +215,19 @@ Usage:
     })
 
 
-// TODO: test
+// // TODO: test
 
-#define MAP_FOREACH_BUCKET(map, name)                    \
-    for (u64 _wvf_i = 0; _wvf_i < (map)->size; _wvf_i++) \
-        for (KV* name = hashmap_get_bucket((map), _wvf_i); name; name = NULL)
+// Iterate over every FILLED bucket.
+// name is a KV* pointing to each filled bucket in turn.
+#define MAP_FOREACH_BUCKET(map, name)                        \
+    for (u64 _mfb_i = 0; _mfb_i < (map)->capacity; _mfb_i++) \
+        for (KV* name = ((map)->buckets[_mfb_i].state == FILLED) ? &(map)->buckets[_mfb_i] : NULL; name; name = NULL)
 
-#define MAP_FOREACH_VAL(map, T, name)                    \
-    for (u64 _wvf_i = 0; _wvf_i < (map)->size; _wvf_i++) \
-        for (T* name = (T*)(hashmap_get_bucket((map), _wvf_i)->val); name; name = NULL)
-
+// Iterate over the val of every FILLED bucket, typed as T*.
+#define MAP_FOREACH_VAL(map, T, name)                                                                          \
+    for (u64 _mfv_i = 0; _mfv_i < (map)->capacity; _mfv_i++)                                                   \
+        for (T* name = ((map)->buckets[_mfv_i].state == FILLED) ? (T*)(map)->buckets[_mfv_i].val : NULL; name; \
+             name    = NULL)
 
 
 #endif // WC_MACROS_H

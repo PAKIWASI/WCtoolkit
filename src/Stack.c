@@ -2,12 +2,12 @@
 
 
 
-Stack* stack_create(u64 n, u32 data_size, const genVec_ops* ops)
+Stack* stack_create(u64 n, u32 data_size, const container_ops* ops)
 {
     return genVec_init(n, data_size, ops);
 }
 
-Stack* stack_create_val(u64 n, const u8* val, u32 data_size, const genVec_ops* ops)
+Stack* stack_create_val(u64 n, const u8* val, u32 data_size, const container_ops* ops)
 {
     return genVec_init_val(n, val, data_size, ops);
 }

@@ -7,7 +7,7 @@
 
 int main(void)
 {
-    genVec_ops ops = VEC_MAKE_OPS(str_copy, str_move, str_del);
+    container_ops ops = VEC_MAKE_OPS(str_copy, str_move, str_del);
     genVec* vec = VEC_CX(String, 10, &ops);
 
     VEC_PUSH_CSTR(vec, "hello");

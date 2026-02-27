@@ -12,8 +12,8 @@ typedef struct { // Circular Queue
 } Queue;
 
 
-Queue*    queue_create(u64 n, u32 data_size, const genVec_ops* ops);
-Queue*    queue_create_val(u64 n, const u8* val, u32 data_size, const genVec_ops* ops);
+Queue*    queue_create(u64 n, u32 data_size, const container_ops* ops);
+Queue*    queue_create_val(u64 n, const u8* val, u32 data_size, const container_ops* ops);
 
 void      queue_destroy(Queue* q);
 void      queue_clear(Queue* q);

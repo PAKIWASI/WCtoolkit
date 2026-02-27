@@ -8,8 +8,8 @@
 typedef genVec Stack;
 
 
-Stack* stack_create(u64 n, u32 data_size, const genVec_ops* ops);
-Stack* stack_create_val(u64 n, const u8* val, u32 data_size, const genVec_ops* ops);
+Stack* stack_create(u64 n, u32 data_size, const container_ops* ops);
+Stack* stack_create_val(u64 n, const u8* val, u32 data_size, const container_ops* ops);
 
 void stack_destroy(Stack* stk);
 void stack_clear(Stack* stk);

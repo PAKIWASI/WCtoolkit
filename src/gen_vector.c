@@ -44,7 +44,7 @@ static void genVec_shrink(genVec* vec);
 
 // API Implementation
 
-genVec* genVec_init(u64 n, u32 data_size, const genVec_ops* ops)
+genVec* genVec_init(u64 n, u32 data_size, const container_ops* ops)
 {
     CHECK_FATAL(data_size == 0, "data_size can't be 0");
 
@@ -68,7 +68,7 @@ genVec* genVec_init(u64 n, u32 data_size, const genVec_ops* ops)
 }
 
 
-void genVec_init_stk(u64 n, u32 data_size, const genVec_ops* ops, genVec* vec)
+void genVec_init_stk(u64 n, u32 data_size, const container_ops* ops, genVec* vec)
 {
     CHECK_FATAL(!vec, "vec is null");
     CHECK_FATAL(data_size == 0, "data_size can't be 0");
@@ -83,7 +83,7 @@ void genVec_init_stk(u64 n, u32 data_size, const genVec_ops* ops, genVec* vec)
 }
 
 
-genVec* genVec_init_val(u64 n, const u8* val, u32 data_size, const genVec_ops* ops)
+genVec* genVec_init_val(u64 n, const u8* val, u32 data_size, const container_ops* ops)
 {
     CHECK_FATAL(!val, "val can't be null");
     CHECK_FATAL(n == 0, "cant init with val if n = 0");
@@ -105,7 +105,7 @@ genVec* genVec_init_val(u64 n, const u8* val, u32 data_size, const genVec_ops* o
 }
 
 
-void genVec_init_val_stk(u64 n, const u8* val, u32 data_size, const genVec_ops* ops, genVec* vec)
+void genVec_init_val_stk(u64 n, const u8* val, u32 data_size, const container_ops* ops, genVec* vec)
 {
     CHECK_FATAL(!val, "val can't be null");
     CHECK_FATAL(n == 0, "cant init with val if n = 0");
@@ -125,7 +125,7 @@ void genVec_init_val_stk(u64 n, const u8* val, u32 data_size, const genVec_ops* 
 }
 
 
-void genVec_init_arr(u64 n, u8* arr, u32 data_size, const genVec_ops* ops, genVec* vec)
+void genVec_init_arr(u64 n, u8* arr, u32 data_size, const container_ops* ops, genVec* vec)
 {
     CHECK_FATAL(!arr, "arr is null");
     CHECK_FATAL(!vec, "vec is null");

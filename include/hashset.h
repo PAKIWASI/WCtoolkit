@@ -18,7 +18,7 @@ typedef struct {
 
     // Shared ops vtable for elements.
     // Pass NULL for POD types (int, float, flat structs).
-    const genVec_ops* ops;
+    const container_ops* ops;
 } hashset;
 
 
@@ -26,7 +26,7 @@ typedef struct {
 // hash_fn and cmp_fn default to fnv1a_hash / default_compare if NULL.
 // ops: pass NULL for POD types.
 hashset* hashset_create(u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
-                        const genVec_ops* ops);
+                        const container_ops* ops);
 
 void hashset_destroy(hashset* set);
 

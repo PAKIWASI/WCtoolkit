@@ -94,6 +94,16 @@ typedef void (*print_fn)(const u8* elm);
 typedef int (*compare_fn)(const u8* a, const u8* b, u64 size);
 
 
+// Vtable: one instance shared across all vectors of the same type.
+// Pass NULL for any callback not needed.
+// For POD types, pass NULL for the whole ops pointer.
+typedef struct {
+    copy_fn   copy_fn; // Deep copy function for owned resources (or NULL)
+    move_fn   move_fn; // Transfer ownership and null original (or NULL)
+    delete_fn del_fn;  // Cleanup function for owned resources (or NULL)
+} container_ops;
+
+
 // CASTING
 
 #define cast(x)    ((u8*)(&(x)))

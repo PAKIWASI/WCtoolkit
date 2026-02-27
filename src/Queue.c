@@ -45,7 +45,7 @@ static void queue_shrink(Queue* q);
 static void queue_compact(Queue* q, u64 new_capacity);
 
 
-Queue* queue_create(u64 n, u32 data_size, const genVec_ops* ops)
+Queue* queue_create(u64 n, u32 data_size, const container_ops* ops)
 {
     CHECK_FATAL(n == 0, "n can't be 0");
     CHECK_FATAL(data_size == 0, "data_size can't be 0");
@@ -62,7 +62,7 @@ Queue* queue_create(u64 n, u32 data_size, const genVec_ops* ops)
     return q;
 }
 
-Queue* queue_create_val(u64 n, const u8* val, u32 data_size, const genVec_ops* ops)
+Queue* queue_create_val(u64 n, const u8* val, u32 data_size, const container_ops* ops)
 {
     CHECK_FATAL(n == 0, "n can't be 0");
     CHECK_FATAL(data_size == 0, "data_size can't be 0");
