@@ -6,12 +6,12 @@ WCtoolkit is designed for C programmers who care about lifetime correctness more
 Containers do not guess how to copy or destroy your data — you must define it.
 This makes ownership explicit, prevents accidental deep copies, and scales well as programs grow.
 
-No dependencies beyond the C standard library. 
-Targets C11 with GNU extensions (Clang/GCC). But can degrade to C99 by sacrificing some ergonomics
+No dependencies beyond the C standard library.
+Targets C11 with GNU extensions (Clang/GCC). But can degrade to C99 by sacrificing some ergonomics.
 
 ```c
 // A taste of the library
-genVec* vec = VEC_CX(String, 8, str_copy, str_move, str_del);
+genVec* vec = VEC_CX(String, 8, &wc_str_ops);
 
 VEC_PUSH_CSTR(vec, "PAKI");     // create Strings and move into vec
 VEC_PUSH_CSTR(vec, "WASI");     // zero copies, only one move
@@ -23,9 +23,9 @@ String* s = string_create();    // create new string as buffer
 genVec_pop(vec, castptr(s));    // get element out of vec, s owns it now
 
 string_print(s);
-genVec_print(vec);
+genVec_print(vec, str_print);
 
-string_destroy(s);              // free resources 
+string_destroy(s);              // free resources
 genVec_destroy(vec);
 ```
 
@@ -97,7 +97,16 @@ By-pointer storage is supported when you need stable addresses or very large ele
 
 ### Callbacks Over Macros
 
-Genericity is achieved through **function pointer callbacks**, not `void*`-cast macros or `_Generic`. Every container accepts optional `copy_fn`, `move_fn`, and `delete_fn` callbacks that describe how to deep-copy, transfer ownership of, and free an element. For plain-old-data types — `int`, `float`, any struct without heap pointers — all three callbacks are `NULL` and the container uses `memcpy` directly.
+Genericity is achieved through **function pointer callbacks** grouped into a vtable struct, not `void*`-cast macros or `_Generic`. Every container accepts an optional `container_ops*` that bundles the `copy_fn`, `move_fn`, and `delete_fn` callbacks describing how to deep-copy, transfer ownership of, and free an element. For plain-old-data types — `int`, `float`, any struct without heap pointers — pass `NULL` and the container uses `memcpy` directly.
+
+```c
+// Define once, reuse everywhere
+static const container_ops string_ops = { str_copy, str_move, str_del };
+
+genVec* vec = genVec_init(8, sizeof(String), &string_ops);
+```
+
+`wc_helpers.h` ships pre-built ops instances for `String` and `genVec` in both storage strategies so you rarely need to define your own.
 
 This has a real cost: you write more setup code. The benefit is that the behavior is explicit, readable, debuggable, and correct across container operations like `push`, `insert`, `replace`, `pop`, `remove`, `copy`, and `move`.
 
@@ -113,8 +122,8 @@ Most types offer both heap-allocated and stack-allocated variants:
 
 ```c
 // Heap: library manages memory
-Arena* arena  = arena_create(nKB(4));
-genVec* vec   = genVec_init(8, sizeof(int), NULL, NULL, NULL);
+Arena*  arena = arena_create(nKB(4));
+genVec* vec   = genVec_init(8, sizeof(int), NULL);
 String* str   = string_from_cstr("hello");
 
 // Stack: you provide the struct, often the data too
@@ -122,7 +131,7 @@ Arena arena;
 ARENA_CREATE_STK_ARR(&arena, 4);   // 4KB on the stack
 
 genVec vec;
-genVec_init_stk(8, sizeof(int), NULL, NULL, NULL, &vec);
+genVec_init_stk(8, sizeof(int), NULL, &vec);
 
 String str;
 string_create_stk(&str, "hello");
@@ -158,28 +167,40 @@ The key contract:
 - `move_fn`: `*src` is a **heap pointer** to the source struct. Copy the struct fields into `dest`, then `free(*src)` and null it. Do **not** free the data buffer — it moves with the fields.
 - `delete_fn`: `elm` is **a slot in the container** — do not `free(elm)` itself. Only free resources the element owns (e.g. a `data` buffer).
 
+For `genVec` and the adapters built on it, callbacks are passed as a `container_ops` vtable:
+
+```c
+typedef struct {
+    copy_fn   copy_fn;
+    move_fn   move_fn;
+    delete_fn del_fn;
+} container_ops;
+```
+
+For `hashmap`, keys and values each get their own `container_ops` (same three fields, different type name). `hashset` still takes the three callbacks directly.
+
 ### By Value vs By Pointer
 
 **Strategy A — By Value**: The slot holds the entire struct (`sizeof(String)` bytes). Better cache locality. Pointers into the container are invalidated by any realloc.
 
 ```c
-genVec* vec = genVec_init(8, sizeof(String), str_copy, str_move, str_del);
+genVec* vec = genVec_init(8, sizeof(String), &wc_str_ops);
 String s;
 string_create_stk(&s, "hello");
 genVec_push(vec, (u8*)&s);     // str_copy is called, vec owns its own copy
 string_destroy_stk(&s);        // s's buffer is freed, vec is unaffected
 ```
 
-**Strategy B — By Pointer**: The slot holds `String*` (`8` bytes). The pointed-to struct lives elsewhere. Addresses inside the container are stable across reallocations.
+**Strategy B — By Pointer**: The slot holds `String*` (8 bytes). The pointed-to struct lives elsewhere. Addresses inside the container are stable across reallocations.
 
 ```c
-genVec* vec = genVec_init(8, sizeof(String*), str_copy_ptr, str_move_ptr, str_del_ptr);
+genVec* vec = genVec_init(8, sizeof(String*), &wc_str_ptr_ops);
 String* s = string_from_cstr("hello");
 genVec_push_move(vec, (u8**)&s);    // str_move_ptr is called, s is now NULL
 // vec now owns the String* and the String it points to
 ```
 
-The only visible difference at call sites is the type you pass (`String` vs `String*`) and which set of callbacks you register. Everything else — push, pop, iterate, destroy — works identically.
+The only visible difference at call sites is the type you pass (`String` vs `String*`) and which ops instance you register. Everything else — push, pop, iterate, destroy — works identically.
 
 ### Copy vs Move at the Call Site
 
@@ -259,9 +280,9 @@ Include `wc_macros.h` and `wc_helpers.h` together to get the full ergonomic API.
 
 ```c
 // Generic
-genVec* v = VEC(int, 16);                              // POD, no callbacks
-genVec* v = VEC_CX(String, 8, str_copy, str_move, str_del);  // with callbacks
-genVec* v = VEC_EMPTY(float);                          // capacity 0
+genVec* v = VEC(int, 16);                     // POD, no callbacks
+genVec* v = VEC_CX(String, 8, &wc_str_ops);  // with callbacks
+genVec* v = VEC_EMPTY(float);                 // capacity 0
 
 // Common shorthands
 genVec* v = VEC_OF_INT(16);
@@ -362,7 +383,7 @@ ARENA_CREATE_STK_ARR(&stack_arena, 4); // 4KB on the stack — no release needed
 
 ```c
 // Untyped
-u8* raw = arena_alloc(arena, 256);
+u8* raw     = arena_alloc(arena, 256);
 u8* aligned = arena_alloc_aligned(arena, 64, 16);  // align to 16 bytes
 
 // Typed macros (preferred)
@@ -431,23 +452,33 @@ The foundation of the library. `String`, `Stack`, `Queue`, and `bitVec` are all 
 
 ```c
 // Heap-allocated vector struct, heap-allocated data
-genVec* v = genVec_init(capacity, sizeof(T), copy_fn, move_fn, del_fn);
+genVec* v = genVec_init(capacity, sizeof(T), &ops);     // with callbacks
+genVec* v = genVec_init(capacity, sizeof(T), NULL);     // POD types
 
 // Stack-allocated vector struct, heap-allocated data
 genVec v;
-genVec_init_stk(capacity, sizeof(T), copy_fn, move_fn, del_fn, &v);
+genVec_init_stk(capacity, sizeof(T), &ops, &v);
 
 // Fully stack-allocated (data array provided by you — cannot grow)
 int buf[8];
 genVec v;
-genVec_init_arr(8, (u8*)buf, sizeof(int), NULL, NULL, NULL, &v);
+genVec_init_arr(8, (u8*)buf, sizeof(int), NULL, &v);
 
 // Pre-filled with a value
-genVec* v = genVec_init_val(n, (u8*)&val, sizeof(T), copy_fn, move_fn, del_fn);
+genVec* v = genVec_init_val(n, (u8*)&val, sizeof(T), &ops);
 
-// From a literal array (heap vector)
+// From a literal array (heap vector, macro layer)
 genVec* v = VEC_FROM_ARR(int, 4, ((int[4]){1, 2, 3, 4}));
 ```
+
+The `ops` pointer is a `const container_ops*`. Define one statically and share it across all containers of the same type:
+
+```c
+static const container_ops string_ops = { str_copy, str_move, str_del };
+genVec* v = genVec_init(8, sizeof(String), &string_ops);
+```
+
+`wc_helpers.h` provides `wc_str_ops`, `wc_str_ptr_ops`, `wc_vec_ops`, and `wc_vec_ptr_ops` ready to use — see [Helpers and Callbacks](#helpers-and-callbacks).
 
 **Growth behavior** — configurable before the include:
 
@@ -571,8 +602,8 @@ string_clear(s);                     // size → 0, keep capacity
 **Access:**
 
 ```c
-char c  = string_char_at(s, i);
-void    string_set_char(s, i, 'x');
+char  c   = string_char_at(s, i);
+void      string_set_char(s, i, 'x');
 
 char* ptr = string_data_ptr(s);      // raw pointer, NO null terminator
 char* cs  = string_to_cstr(s);       // malloced, null-terminated copy — you free it
@@ -678,7 +709,7 @@ When the buffer wraps around and more space is needed, `queue_compact` rebuilds 
 
 ### HashMap
 
-Open-addressing hashmap with linear probing and tombstone deletion. Keys and values are heap-allocated separately per bucket. Supports independent copy/move/delete semantics for keys and values.
+Open-addressing hashmap with linear probing and tombstone deletion. Keys and values are heap-allocated separately per bucket. Supports independent copy/move/delete semantics for keys and values via `container_ops` vtables.
 
 Load factors: grow at **0.70**, shrink at **0.20**. Capacity is always chosen from a prime number table.
 
@@ -686,11 +717,9 @@ Load factors: grow at **0.70**, shrink at **0.20**. Capacity is always chosen fr
 
 ```c
 hashmap* m = hashmap_create(
-    sizeof(key_type),   sizeof(val_type),
-    hash_fn,            cmp_fn,           // NULL = FNV-1a, memcmp
-    key_copy,           val_copy,
-    key_move,           val_move,
-    key_del,            val_del
+    sizeof(key_type), sizeof(val_type),
+    hash_fn, cmp_fn,          // NULL = FNV-1a, memcmp
+    key_ops, val_ops          // const container_ops*, NULL for POD
 );
 ```
 
@@ -698,18 +727,16 @@ For `int` keys and `int` values with no ownership:
 
 ```c
 hashmap* m = hashmap_create(sizeof(int), sizeof(int),
-                             NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+                             NULL, NULL, NULL, NULL);
 ```
 
-For `String` keys and `String` values:
+For `String` keys and `String` values, use the pre-built ops from `wc_helpers.h`:
 
 ```c
 hashmap* m = hashmap_create(
     sizeof(String), sizeof(String),
     murmurhash3_str, str_cmp,
-    str_copy, str_copy,
-    str_move, str_move,
-    str_del,  str_del
+    &wc_str_ops, &wc_str_ops
 );
 ```
 
@@ -770,7 +797,7 @@ int v = MAP_GET(m, int, key);
 
 ### HashSet
 
-Same architecture as HashMap — open addressing, linear probing, tombstones, prime capacities — but stores only elements with no associated value.
+Same architecture as HashMap — open addressing, linear probing, tombstones, prime capacities — but stores only elements with no associated value. Takes the three callbacks directly rather than as a vtable.
 
 ```c
 hashset* s = hashset_create(
@@ -950,7 +977,34 @@ Constants: `PI`, `TWO_PI`, `LN2` are defined in `fast_math.h`.
 
 ## Helpers and Callbacks
 
-`wc_helpers.h` provides ready-to-use copy/move/delete/print/compare callbacks for `String` and `genVec` in both storage strategies, fully documented with explanations of *why* each callback is written the way it is. Include it alongside `wc_macros.h` for the full ergonomic API.
+`wc_helpers.h` provides ready-to-use copy/move/delete/print/compare callbacks for `String` and `genVec` in both storage strategies. It also exports four pre-built `container_ops` instances you can pass directly to any container — no need to define your own vtable for the common cases.
+
+Include it alongside `wc_macros.h` for the full ergonomic API.
+
+### Pre-built ops instances
+
+```c
+// Pass these directly to genVec_init, VEC_CX, hashmap_create, etc.
+&wc_str_ops       // String stored by value  — { str_copy,     str_move,     str_del     }
+&wc_str_ptr_ops   // String* stored by ptr   — { str_copy_ptr, str_move_ptr, str_del_ptr }
+&wc_vec_ops       // genVec stored by value  — { vec_copy,     vec_move,     vec_del     }
+&wc_vec_ptr_ops   // genVec* stored by ptr   — { vec_copy_ptr, vec_move_ptr, vec_del_ptr }
+```
+
+Example:
+
+```c
+// Vector of Strings
+genVec* v = genVec_init(8, sizeof(String), &wc_str_ops);
+
+// Map from String keys to String values
+hashmap* m = hashmap_create(sizeof(String), sizeof(String),
+                             murmurhash3_str, str_cmp,
+                             &wc_str_ops, &wc_str_ops);
+
+// Vector of Strings via macro
+genVec* v = VEC_CX(String, 8, &wc_str_ops);
+```
 
 ### For String, stored by value
 
@@ -975,9 +1029,9 @@ str_cmp_ptr     // compare_fn
 ### For genVec, stored by value (vec of vecs)
 
 ```c
-vec_copy    // copy_fn
-vec_move    // move_fn
-vec_del     // delete_fn
+vec_copy       // copy_fn
+vec_move       // move_fn
+vec_del        // delete_fn
 vec_print_int  // print_fn for int elements
 ```
 
@@ -1141,10 +1195,6 @@ These are documented bugs identified but not yet fixed.
 **`prev_prime` underflow** (`map_setup.h`): The loop uses `u64 i = PRIMES_COUNT - 1; i >= 0` as its condition. Since `i` is unsigned, it wraps around on underflow and the loop never exits. Change the loop index to `int` or `i64`.
 
 **`find_slot` sentinel** (`hashmap.c`, `hashset.c`): When the table is entirely tombstones and no `EMPTY` bucket is found, the function returns `0` as a fallback. `0` is a valid bucket index. Should return `(u64)-1` and callers should check for it.
-
-**`murmurhash3_str` multiple definition** (`map_setup.h`): The function is defined without `static` in a header. Including `map_setup.h` in more than one translation unit causes a linker error. Mark it `static` (or `static inline`).
-
-**`print_hex` bitwise OR** (`common.h`): The null-check condition uses `|` instead of `||`, evaluating all three operands even when `ptr` is null. Change to `||`.
 
 **Gaussian spare state** (`random.c`): `pcg32_rand_gaussian` caches its second Box-Muller output in a `static` variable. This state is invisible to callers and breaks correctness if multiple independent RNG instances are needed. Move `gaussian_spare` and `has_spare` into `pcg32_random_t`.
 
