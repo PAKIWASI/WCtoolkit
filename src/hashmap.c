@@ -1,11 +1,15 @@
 #include "hashmap.h"
 #include "common.h"
 #include "gen_vector.h"
+#include "map_setup.h"
+#include "wc_macros.h"
 #include <string.h>
 
 
-#define GET_KV(data, i) ((data) + i)
+#define GET_KV(map, i) (((map)->buckets + i))
 
+
+// TODO: will it be better to pass kv around by val instead of ptr ?
 
 
 /*
@@ -13,7 +17,7 @@
 */
 
 static void memset_buckets(KV* buckets, u64 size);
-static void kv_destroy(const genVec_ops* key_ops, const genVec_ops* val_ops, const KV* kv);
+static void kv_destroy(KV* kv, const genVec_ops* key_ops, const genVec_ops* val_ops);
 
 static u64  find_slot(const hashmap* map, const u8* key, b8* found, int* tombstone);
 
@@ -61,11 +65,17 @@ void hashmap_destroy(hashmap* map)
     CHECK_FATAL(!map->buckets, "map bucket is null");
 
     for (u64 i = 0; i < map->capacity; i++) {
-        const KV* kv = GET_KV(map->buckets, i);
+        KV* kv = GET_KV(map, i);
         if (kv->state == FILLED) {
-            kv_destroy(map->key_ops, map->val_ops, kv);
+            kv_destroy(kv, map->key_ops, map->val_ops);
         }
     }
+    // TODO: 
+    // MAP_FOREACH_BUCKET(map, kv) {
+    //     if (kv->state == FILLED) {
+    //         kv_destroy(kv, map->key_ops, map->val_ops);
+    //     }
+    // }
 
     free(map->buckets);
     free(map);
@@ -85,17 +95,22 @@ b8 hashmap_put(hashmap* map, const u8* key, const u8* val)
     int tombstone = -1;
     u64 slot      = find_slot(map, key, &found, &tombstone);
 
+    copy_fn k_copy = MAP_COPY(map->key_ops);
+    copy_fn v_copy = MAP_COPY(map->val_ops);
+    delete_fn k_del = MAP_DEL(map->key_ops);
+    delete_fn v_del = MAP_DEL(map->val_ops);
+
     if (found) {
-        KV* kv = GET_KV(map->buckets, slot);
+        KV* kv = GET_KV(map, slot);
 
         // Free old value's resources
-        if (map->val_ops && map->val_ops->del_fn) {
-            map->val_ops->del_fn(kv->val);
+        if (v_del) {
+            v_del(kv->val);
         }
 
         // Update value
-        if (map->val_ops && map->val_ops->copy_fn) {
-            map->val_ops->copy_fn(kv->val, val);
+        if (v_copy) {
+            v_copy(kv->val, val);
         } else {
             memcpy(kv->val, val, map->val_size);
         }
@@ -109,19 +124,19 @@ b8 hashmap_put(hashmap* map, const u8* key, const u8* val)
     u8* v = malloc(map->val_size);
     CHECK_FATAL(!v, "val malloc failed");
 
-    if (map->key_ops && map->key_ops->copy_fn) {
-        map->key_ops->copy_fn(k, key);
+    if (k_copy) {
+        k_copy(k, key);
     } else {
         memcpy(k, key, map->key_size);
     }
 
-    if (map->val_ops && map->val_ops->copy_fn) {
-        map->val_ops->copy_fn(v, val);
+    if (v_copy) {
+        v_copy(v, val);
     } else {
         memcpy(v, val, map->val_size);
     }
 
-    KV* old_kv   = GET_KV(map->buckets, slot);
+    KV* old_kv   = GET_KV(map, slot);
     old_kv->key   = k;
     old_kv->val   = v;
     old_kv->state = FILLED;
@@ -147,7 +162,7 @@ b8 hashmap_put_move(hashmap* map, u8** key, u8** val)
     u64 slot      = find_slot(map, *key, &found, &tombstone);
 
     if (found) {
-        KV* kv = GET_KV(map->buckets, slot);
+        KV* kv = GET_KV(map, slot);
 
         if (map->val_ops && map->val_ops->del_fn) {
             map->val_ops->del_fn(kv->val);
@@ -189,7 +204,7 @@ b8 hashmap_put_move(hashmap* map, u8** key, u8** val)
         *val = NULL;
     }
 
-    KV* old_kv   = GET_KV(map->buckets, slot);
+    KV* old_kv   = GET_KV(map, slot);
     old_kv->key   = k;
     old_kv->val   = v;
     old_kv->state = FILLED;
@@ -214,7 +229,7 @@ b8 hashmap_put_val_move(hashmap* map, const u8* key, u8** val)
     u64 slot      = find_slot(map, key, &found, &tombstone);
 
     if (found) {
-        KV* kv = GET_KV(map->buckets, slot);
+        KV* kv = GET_KV(map, slot);
 
         if (map->val_ops && map->val_ops->del_fn) {
             map->val_ops->del_fn(kv->val);
@@ -248,7 +263,7 @@ b8 hashmap_put_val_move(hashmap* map, const u8* key, u8** val)
         *val = NULL;
     }
 
-    KV* old_kv   = GET_KV(map->buckets, slot);
+    KV* old_kv   = GET_KV(map, slot);
     old_kv->key   = k;
     old_kv->val   = v;
     old_kv->state = FILLED;
@@ -273,7 +288,7 @@ b8 hashmap_put_key_move(hashmap* map, u8** key, const u8* val)
     u64 slot      = find_slot(map, *key, &found, &tombstone);
 
     if (found) {
-        KV* kv = GET_KV(map->buckets, slot);
+        KV* kv = GET_KV(map, slot);
 
         if (map->val_ops && map->val_ops->del_fn) {
             map->val_ops->del_fn(kv->val);
@@ -312,7 +327,7 @@ b8 hashmap_put_key_move(hashmap* map, u8** key, const u8* val)
         memcpy(v, val, map->val_size);
     }
 
-    KV* old_kv   = GET_KV(map->buckets, slot);
+    KV* old_kv   = GET_KV(map, slot);
     old_kv->key   = k;
     old_kv->val   = v;
     old_kv->state = FILLED;
@@ -333,7 +348,7 @@ b8 hashmap_get(const hashmap* map, const u8* key, u8* val)
     u64 slot      = find_slot(map, key, &found, &tombstone);
 
     if (found) {
-        const KV* kv = GET_KV(map->buckets, slot);
+        const KV* kv = GET_KV(map, slot);
 
         if (map->val_ops && map->val_ops->copy_fn) {
             map->val_ops->copy_fn(val, kv->val);
@@ -357,7 +372,7 @@ u8* hashmap_get_ptr(hashmap* map, const u8* key)
     u64 slot      = find_slot(map, key, &found, &tombstone);
 
     if (found) {
-        return (GET_KV(map->buckets, slot))->val;
+        return (GET_KV(map, slot))->val;
     }
 
     return NULL;
@@ -383,7 +398,7 @@ b8 hashmap_del(hashmap* map, const u8* key, u8* out)
     u64 slot      = find_slot(map, key, &found, &tombstone);
 
     if (found) {
-        KV* kv = GET_KV(map->buckets, slot);
+        KV* kv = GET_KV(map, slot);
 
         if (out) {
             if (map->val_ops && map->val_ops->copy_fn) {
@@ -393,7 +408,7 @@ b8 hashmap_del(hashmap* map, const u8* key, u8* out)
             }
         }
 
-        kv_destroy(map->key_ops, map->val_ops, kv);
+        kv_destroy(kv, map->key_ops, map->val_ops);
 
         kv->key   = NULL;
         kv->val   = NULL;
@@ -432,7 +447,7 @@ void hashmap_print(const hashmap* map, print_fn key_print, print_fn val_print)
     printf("\t=========\n");
 
     for (u64 i = 0; i < map->capacity; i++) {
-        const KV* kv = GET_KV(map->buckets, i);
+        const KV* kv = GET_KV(map, i);
         if (kv->state == FILLED) {
             putchar('\t');
             key_print(kv->key);
@@ -450,7 +465,7 @@ void hashmap_clear(hashmap* map)
     CHECK_FATAL(!map, "map is null");
 
     for (u64 i = 0; i < map->capacity; i++) {
-        KV* kv = GET_KV(map->buckets, i);
+        KV* kv = GET_KV(map, i);
         
     }
 
@@ -466,7 +481,7 @@ void hashmap_copy(hashmap* dest, const hashmap* src)
 ====================PRIVATE FUNCTION IMPLEMENTATIONS====================
 */
 
-static void kv_destroy(const genVec_ops* key_ops, const genVec_ops* val_ops, const KV* kv)
+static void kv_destroy(KV* kv, const genVec_ops* key_ops, const genVec_ops* val_ops)
 {
     CHECK_FATAL(!kv, "kv is null");
 
@@ -504,7 +519,7 @@ static u64 find_slot(const hashmap* map, const u8* key, b8* found, int* tombston
 
     for (u64 x = 0; x < map->capacity; x++) {
         u64      i  = (index + x) % map->capacity;
-        const KV* kv = GET_KV(map->buckets, i);
+        const KV* kv = GET_KV(map, i);
 
         switch (kv->state) {
             case EMPTY:
@@ -542,14 +557,14 @@ static void hashmap_resize(hashmap* map, u64 new_capacity)
     map->size     = 0;
 
     for (u64 i = 0; i < old_cap; i++) {
-        const KV* old_kv = GET_KV(old_vec, i);
+        const KV* old_kv = (old_vec + i);
 
         if (old_kv->state == FILLED) {
             b8  found     = 0;
             int tombstone = -1;
             u64 slot      = find_slot(map, old_kv->key, &found, &tombstone);
 
-            KV* new_kv   = GET_KV(map->buckets, slot);
+            KV* new_kv   = GET_KV(map, slot);
             new_kv->key   = old_kv->key;
             new_kv->val   = old_kv->val;
             new_kv->state = FILLED;

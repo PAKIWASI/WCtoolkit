@@ -28,31 +28,35 @@
 // ── Creation ───────────────────────────────────────────────────────────────
 
 // POD types (int, float, flat structs) — pass NULL for ops
-#define VEC(T, cap)         genVec_init((cap), sizeof(T), NULL)
-#define VEC_EMPTY(T)        genVec_init(0,     sizeof(T), NULL)
+#define VEC(T, cap)  genVec_init((cap), sizeof(T), NULL)
+#define VEC_EMPTY(T) genVec_init(0, sizeof(T), NULL)
 
 // Types with owned heap resources — pass a genVec_ops pointer
-#define VEC_CX(T, cap, ops) genVec_init((cap), sizeof(T), (ops))
-#define VEC_EMPTY_CX(T, ops) genVec_init(0,    sizeof(T), (ops))
+#define VEC_CX(T, cap, ops)  genVec_init((cap), sizeof(T), (ops))
+#define VEC_EMPTY_CX(T, ops) genVec_init(0, sizeof(T), (ops))
 
 // TODO: test
-#define VEC_MAKE_OPS(copy, move, del) (genVec_ops){ (copy), (move), (del) }
+#define VEC_MAKE_OPS(copy, move, del) \
+    (genVec_ops)                      \
+    {                                 \
+        (copy), (move), (del)         \
+    }
 
 // Stack variants
-#define VEC_STK(T, cap, vec)      genVec_init_stk((cap), sizeof(T), NULL,  (vec))
+#define VEC_STK(T, cap, vec)         genVec_init_stk((cap), sizeof(T), NULL, (vec))
 #define VEC_CX_STK(T, cap, ops, vec) genVec_init_stk((cap), sizeof(T), (ops), (vec))
 
 /* Create vector from an initializer list
 Usage:
     genVec* v = VEC_FROM_ARR(int, 4, ((int[4]){1,2,3,4}));
 */
-#define VEC_FROM_ARR(T, n, arr)                             \
-    ({                                                      \
-        genVec* _v = genVec_init((n), sizeof(T), NULL);     \
-        for (u64 _i = 0; _i < (n); _i++) {                  \
-            genVec_push(_v, (u8*)&(arr)[_i]);               \
-        }                                                   \
-        _v;                                                 \
+#define VEC_FROM_ARR(T, n, arr)                         \
+    ({                                                  \
+        genVec* _v = genVec_init((n), sizeof(T), NULL); \
+        for (u64 _i = 0; _i < (n); _i++) {              \
+            genVec_push(_v, (u8*)&(arr)[_i]);           \
+        }                                               \
+        _v;                                             \
     })
 
 
@@ -73,11 +77,11 @@ Usage:
     })
 
 /* VEC_PUSH_MOVE — transfer ownership. Source becomes NULL. */
-#define VEC_PUSH_MOVE(vec, ptr)                  \
-    ({                                           \
-        typeof(ptr) wvm_p = (ptr);               \
-        genVec_push_move((vec), (u8**)&wvm_p);   \
-        (ptr) = wvm_p;                           \
+#define VEC_PUSH_MOVE(vec, ptr)                \
+    ({                                         \
+        typeof(ptr) wvm_p = (ptr);             \
+        genVec_push_move((vec), (u8**)&wvm_p); \
+        (ptr) = wvm_p;                         \
     })
 
 /* VEC_PUSH_CSTR — allocate a heap String and move it in. */
@@ -117,8 +121,8 @@ Usage:
 
 // ── Iterate ────────────────────────────────────────────────────────────────
 
-#define VEC_FOREACH(vec, T, name)                          \
-    for (u64 _wvf_i = 0; _wvf_i < (vec)->size; _wvf_i++)  \
+#define VEC_FOREACH(vec, T, name)                        \
+    for (u64 _wvf_i = 0; _wvf_i < (vec)->size; _wvf_i++) \
         for (T* name = (T*)genVec_get_ptr_mut((vec), _wvf_i); name; name = NULL)
 
 
@@ -129,10 +133,10 @@ Usage:
 
 // ── Vector creation shorthands ───────────────────────────────────────────
 
-#define VEC_OF_INT(cap)     genVec_init((cap), sizeof(int),    NULL)
-#define VEC_OF_STR(cap)     VEC_CX(String,  (cap), &wc_str_ops)
+#define VEC_OF_INT(cap)     genVec_init((cap), sizeof(int), NULL)
+#define VEC_OF_STR(cap)     VEC_CX(String, (cap), &wc_str_ops)
 #define VEC_OF_STR_PTR(cap) VEC_CX(String*, (cap), &wc_str_ptr_ops)
-#define VEC_OF_VEC(cap)     VEC_CX(genVec,  (cap), &wc_vec_ops)
+#define VEC_OF_VEC(cap)     VEC_CX(genVec, (cap), &wc_vec_ops)
 #define VEC_OF_VEC_PTR(cap) VEC_CX(genVec*, (cap), &wc_vec_ptr_ops)
 
 
@@ -148,86 +152,78 @@ Usage:
  * MAP_PUT_INT_STR(map, int_key, cstr_literal)
  * Map must have int key, String val, created with &wc_str_ops for val.
  */
-#define MAP_PUT_INT_STR(map, k, cstr_val)                           \
-    do {                                                            \
-        String* _v = string_from_cstr(cstr_val);                    \
-        hashmap_put_val_move((map), (u8*)&(int){(k)}, (u8**)&_v);  \
+#define MAP_PUT_INT_STR(map, k, cstr_val)                         \
+    do {                                                          \
+        String* _v = string_from_cstr(cstr_val);                  \
+        hashmap_put_val_move((map), (u8*)&(int){(k)}, (u8**)&_v); \
     } while (0)
 
 /*
  * MAP_PUT_STR_STR(map, cstr_key, cstr_val)
  * Map must use &wc_str_ops for both key and val.
  */
-#define MAP_PUT_STR_STR(map, cstr_key, cstr_val)                    \
-    do {                                                            \
-        String* _k = string_from_cstr(cstr_key);                    \
-        String* _v = string_from_cstr(cstr_val);                    \
-        hashmap_put_move((map), (u8**)&_k, (u8**)&_v);             \
+#define MAP_PUT_STR_STR(map, cstr_key, cstr_val)       \
+    do {                                               \
+        String* _k = string_from_cstr(cstr_key);       \
+        String* _v = string_from_cstr(cstr_val);       \
+        hashmap_put_move((map), (u8**)&_k, (u8**)&_v); \
     } while (0)
 
 
 // ── Put (COPY semantics) ──────────────────────────────────────────────────
 
-#define MAP_PUT(map, key, val)        \
-    ({                                \
-        typeof(key) _mk = (key);      \
-        typeof(val) _mv = (val);      \
-        hashmap_put((map),            \
-                    (const u8*)&_mk,  \
-                    (const u8*)&_mv); \
+#define MAP_PUT(map, key, val)                                \
+    ({                                                        \
+        typeof(key) _mk = (key);                              \
+        typeof(val) _mv = (val);                              \
+        hashmap_put((map), (const u8*)&_mk, (const u8*)&_mv); \
     })
 
 
 // ── Put (MOVE semantics) ──────────────────────────────────────────────────
 
-#define MAP_PUT_MOVE(map, kptr, vptr)       \
-    ({                                      \
-        typeof(kptr) _mkp = (kptr);         \
-        typeof(vptr) _mvp = (vptr);         \
-        hashmap_put_move((map),             \
-                          (u8**)&_mkp,      \
-                          (u8**)&_mvp);     \
-        (kptr) = _mkp;                      \
-        (vptr) = _mvp;                      \
+#define MAP_PUT_MOVE(map, kptr, vptr)                      \
+    ({                                                     \
+        typeof(kptr) _mkp = (kptr);                        \
+        typeof(vptr) _mvp = (vptr);                        \
+        hashmap_put_move((map), (u8**)&_mkp, (u8**)&_mvp); \
+        (kptr) = _mkp;                                     \
+        (vptr) = _mvp;                                     \
     })
 
-#define MAP_PUT_KEY_MOVE(map, kptr, val)        \
-    ({                                          \
-        typeof(val) _mv = (val);                \
-        hashmap_put_key_move((map),             \
-                              (u8**)&(kptr),    \
-                              (const u8*)&_mv); \
+#define MAP_PUT_KEY_MOVE(map, kptr, val)                             \
+    ({                                                               \
+        typeof(val) _mv = (val);                                     \
+        hashmap_put_key_move((map), (u8**)&(kptr), (const u8*)&_mv); \
     })
 
-#define MAP_PUT_VAL_MOVE(map, key, vptr)        \
-    ({                                          \
-        typeof(key) _mk = (key);                \
-        hashmap_put_val_move((map),             \
-                              (const u8*)&_mk,  \
-                              (u8**)&(vptr));   \
+#define MAP_PUT_VAL_MOVE(map, key, vptr)                             \
+    ({                                                               \
+        typeof(key) _mk = (key);                                     \
+        hashmap_put_val_move((map), (const u8*)&_mk, (u8**)&(vptr)); \
     })
 
 
 // ── Get ───────────────────────────────────────────────────────────────────
 
-#define MAP_GET(map, V, key)          \
-    ({                                \
-        V _out;                       \
-        typeof(key) _mk = (key);      \
-        hashmap_get((map),            \
-                    (const u8*)&_mk,  \
-                    (u8*)&_out);      \
-        _out;                         \
+#define MAP_GET(map, V, key)                             \
+    ({                                                   \
+        V           _out;                                \
+        typeof(key) _mk = (key);                         \
+        hashmap_get((map), (const u8*)&_mk, (u8*)&_out); \
+        _out;                                            \
     })
 
 
-#define MAP_FOREACH_BUCKET(map, name)                          \
-    for (u64 _wvf_i = 0; _wvf_i < (map)->size; _wvf_i++)  \
-        for (KV* name = (KV*)genVec_get_ptr_mut((map), _wvf_i); name; name = NULL)
+// TODO: test
 
-#define MAP_FOREACH_VAL(map, T, name)                          \
-    for (u64 _wvf_i = 0; _wvf_i < (map)->size; _wvf_i++)  \
-        for (T* name = (T*)hashmap_get_bucket((map), _wvf_i); name; name = NULL)
+#define MAP_FOREACH_BUCKET(map, name)                    \
+    for (u64 _wvf_i = 0; _wvf_i < (map)->size; _wvf_i++) \
+        for (KV* name = hashmap_get_bucket((map), _wvf_i); name; name = NULL)
+
+#define MAP_FOREACH_VAL(map, T, name)                    \
+    for (u64 _wvf_i = 0; _wvf_i < (map)->size; _wvf_i++) \
+        for (T* name = (T*)(hashmap_get_bucket((map), _wvf_i)->val); name; name = NULL)
 
 
 

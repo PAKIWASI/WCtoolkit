@@ -37,7 +37,6 @@ typedef struct {
 #define MAP_DEL(ops)  ((ops)->del_fn  ? (ops)->del_fn  : NULL)
 
 
-
 // Create a new hashmap.
 // hash_fn and cmp_fn default to fnv1a_hash / default_compare if NULL.
 // key_ops / val_ops: pass NULL for POD types.
