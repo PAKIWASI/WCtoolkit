@@ -88,6 +88,7 @@
 // TYPES
 
 #include <stdint.h>
+#include <stdbool.h>
 
 typedef uint8_t  u8;
 typedef uint8_t  b8;
@@ -95,8 +96,8 @@ typedef uint16_t u16;
 typedef uint32_t u32;
 typedef uint64_t u64;
 
-#define false ((b8)0)
-#define true  ((b8)1)
+// #define false ((b8)0)
+// #define true  ((b8)1)
 
 
 // GENERIC FUNCTIONS
@@ -105,6 +106,16 @@ typedef void (*move_fn)(u8* dest, u8** src);
 typedef void (*delete_fn)(u8* key);
 typedef void (*print_fn)(const u8* elm);
 typedef int (*compare_fn)(const u8* a, const u8* b, u64 size);
+
+
+// Vtable: one instance shared across all vectors of the same type.
+// Pass NULL for any callback not needed.
+// For POD types, pass NULL for the whole ops pointer.
+typedef struct {
+    copy_fn   copy_fn; // Deep copy function for owned resources (or NULL)
+    move_fn   move_fn; // Transfer ownership and null original (or NULL)
+    delete_fn del_fn;  // Cleanup function for owned resources (or NULL)
+} container_ops;
 
 
 // CASTING

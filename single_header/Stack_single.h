@@ -88,6 +88,7 @@
 // TYPES
 
 #include <stdint.h>
+#include <stdbool.h>
 
 typedef uint8_t  u8;
 typedef uint8_t  b8;
@@ -95,8 +96,8 @@ typedef uint16_t u16;
 typedef uint32_t u32;
 typedef uint64_t u64;
 
-#define false ((b8)0)
-#define true  ((b8)1)
+// #define false ((b8)0)
+// #define true  ((b8)1)
 
 
 // GENERIC FUNCTIONS
@@ -105,6 +106,16 @@ typedef void (*move_fn)(u8* dest, u8** src);
 typedef void (*delete_fn)(u8* key);
 typedef void (*print_fn)(const u8* elm);
 typedef int (*compare_fn)(const u8* a, const u8* b, u64 size);
+
+
+// Vtable: one instance shared across all vectors of the same type.
+// Pass NULL for any callback not needed.
+// For POD types, pass NULL for the whole ops pointer.
+typedef struct {
+    copy_fn   copy_fn; // Deep copy function for owned resources (or NULL)
+    move_fn   move_fn; // Transfer ownership and null original (or NULL)
+    delete_fn del_fn;  // Cleanup function for owned resources (or NULL)
+} container_ops;
 
 
 // CASTING
@@ -335,14 +346,14 @@ static inline void wc_perror(const char* prefix)
 #endif
 
 
-// Vtable: one instance shared across all vectors of the same type.
-// Pass NULL for any callback not needed.
-// For POD types, pass NULL for the whole ops pointer.
-typedef struct {
-    copy_fn   copy_fn; // Deep copy function for owned resources (or NULL)
-    move_fn   move_fn; // Transfer ownership and null original (or NULL)
-    delete_fn del_fn;  // Cleanup function for owned resources (or NULL)
-} genVec_ops;
+// // Vtable: one instance shared across all vectors of the same type.
+// // Pass NULL for any callback not needed.
+// // For POD types, pass NULL for the whole ops pointer.
+// typedef struct {
+//     copy_fn   copy_fn; // Deep copy function for owned resources (or NULL)
+//     move_fn   move_fn; // Transfer ownership and null original (or NULL)
+//     delete_fn del_fn;  // Cleanup function for owned resources (or NULL)
+// } container_ops;
 
 
 // generic vector container
@@ -354,11 +365,10 @@ typedef struct {
     u32 data_size; // Size of each element in bytes
 
     // Pointer to shared type-ops vtable (or NULL for POD types)
-    const genVec_ops* ops;
+    const container_ops* ops;
 } genVec;
 
 // sizeof(genVec) == 48
-
 
 
 // Convenience: access ops callbacks safely
@@ -373,20 +383,20 @@ typedef struct {
 
 // Initialize vector with capacity n.
 // ops: pointer to a shared genVec_ops vtable, or NULL for POD types.
-genVec* genVec_init(u64 n, u32 data_size, const genVec_ops* ops);
+genVec* genVec_init(u64 n, u32 data_size, const container_ops* ops);
 
 // Initialize vector on stack (struct on stack, data on heap).
-void genVec_init_stk(u64 n, u32 data_size, const genVec_ops* ops, genVec* vec);
+void genVec_init_stk(u64 n, u32 data_size, const container_ops* ops, genVec* vec);
 
 // Initialize vector of size n with all elements set to val.
-genVec* genVec_init_val(u64 n, const u8* val, u32 data_size, const genVec_ops* ops);
+genVec* genVec_init_val(u64 n, const u8* val, u32 data_size, const container_ops* ops);
 
-void genVec_init_val_stk(u64 n, const u8* val, u32 data_size, const genVec_ops* ops, genVec* vec);
+void genVec_init_val_stk(u64 n, const u8* val, u32 data_size, const container_ops* ops, genVec* vec);
 
 // Vector COMPLETELY on stack (can't grow in size).
 // You provide a stack-allocated array which becomes the internal array.
 // WARNING: crashes when size == capacity and you try to push.
-void genVec_init_arr(u64 n, u8* arr, u32 data_size, const genVec_ops* ops, genVec* vec);
+void genVec_init_arr(u64 n, u8* arr, u32 data_size, const container_ops* ops, genVec* vec);
 
 // Destroy heap-allocated vector and clean up all elements.
 void genVec_destroy(genVec* vec);
@@ -512,8 +522,8 @@ static inline b8 genVec_empty(const genVec* vec)
 typedef genVec Stack;
 
 
-Stack* stack_create(u64 n, u32 data_size, const genVec_ops* ops);
-Stack* stack_create_val(u64 n, const u8* val, u32 data_size, const genVec_ops* ops);
+Stack* stack_create(u64 n, u32 data_size, const container_ops* ops);
+Stack* stack_create_val(u64 n, const u8* val, u32 data_size, const container_ops* ops);
 
 void stack_destroy(Stack* stk);
 void stack_clear(Stack* stk);
@@ -594,7 +604,7 @@ static void genVec_shrink(genVec* vec);
 
 // API Implementation
 
-genVec* genVec_init(u64 n, u32 data_size, const genVec_ops* ops)
+genVec* genVec_init(u64 n, u32 data_size, const container_ops* ops)
 {
     CHECK_FATAL(data_size == 0, "data_size can't be 0");
 
@@ -618,7 +628,7 @@ genVec* genVec_init(u64 n, u32 data_size, const genVec_ops* ops)
 }
 
 
-void genVec_init_stk(u64 n, u32 data_size, const genVec_ops* ops, genVec* vec)
+void genVec_init_stk(u64 n, u32 data_size, const container_ops* ops, genVec* vec)
 {
     CHECK_FATAL(!vec, "vec is null");
     CHECK_FATAL(data_size == 0, "data_size can't be 0");
@@ -633,7 +643,7 @@ void genVec_init_stk(u64 n, u32 data_size, const genVec_ops* ops, genVec* vec)
 }
 
 
-genVec* genVec_init_val(u64 n, const u8* val, u32 data_size, const genVec_ops* ops)
+genVec* genVec_init_val(u64 n, const u8* val, u32 data_size, const container_ops* ops)
 {
     CHECK_FATAL(!val, "val can't be null");
     CHECK_FATAL(n == 0, "cant init with val if n = 0");
@@ -655,7 +665,7 @@ genVec* genVec_init_val(u64 n, const u8* val, u32 data_size, const genVec_ops* o
 }
 
 
-void genVec_init_val_stk(u64 n, const u8* val, u32 data_size, const genVec_ops* ops, genVec* vec)
+void genVec_init_val_stk(u64 n, const u8* val, u32 data_size, const container_ops* ops, genVec* vec)
 {
     CHECK_FATAL(!val, "val can't be null");
     CHECK_FATAL(n == 0, "cant init with val if n = 0");
@@ -675,7 +685,7 @@ void genVec_init_val_stk(u64 n, const u8* val, u32 data_size, const genVec_ops* 
 }
 
 
-void genVec_init_arr(u64 n, u8* arr, u32 data_size, const genVec_ops* ops, genVec* vec)
+void genVec_init_arr(u64 n, u8* arr, u32 data_size, const container_ops* ops, genVec* vec)
 {
     CHECK_FATAL(!arr, "arr is null");
     CHECK_FATAL(!vec, "vec is null");
@@ -1240,12 +1250,12 @@ static void genVec_shrink(genVec* vec)
 #ifndef WC_STACK_IMPL
 #define WC_STACK_IMPL
 
-Stack* stack_create(u64 n, u32 data_size, const genVec_ops* ops)
+Stack* stack_create(u64 n, u32 data_size, const container_ops* ops)
 {
     return genVec_init(n, data_size, ops);
 }
 
-Stack* stack_create_val(u64 n, const u8* val, u32 data_size, const genVec_ops* ops)
+Stack* stack_create_val(u64 n, const u8* val, u32 data_size, const container_ops* ops)
 {
     return genVec_init_val(n, val, data_size, ops);
 }

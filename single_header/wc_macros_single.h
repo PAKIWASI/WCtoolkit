@@ -1,6 +1,21 @@
-#ifndef WC_MACROS_H
-#define WC_MACROS_H
+#ifndef WC_WC_MACROS_SINGLE_H
+#define WC_WC_MACROS_SINGLE_H
 
+/*
+ * wc_macros_single.h
+ * Auto-generated single-header library.
+ *
+ * In EXACTLY ONE .c file, before including this header:
+ *     #define WC_IMPLEMENTATION
+ *     #include "wc_macros_single.h"
+ *
+ * All other files just:
+ *     #include "wc_macros_single.h"
+ */
+
+/* ===== wc_macros.h ===== */
+#ifndef WC_WC_MACROS_H
+#define WC_WC_MACROS_H
 
 /* C11 + GNU extensions used here:
  *   typeof  (__typeof__)  — GNU ext, available with Clang/GCC + -std=c11
@@ -234,5 +249,10 @@ Usage:
     for (u64 _sfb_i = 0; _sfb_i < (set)->capacity; _sfb_i++) \
         for (ELM* name = ((set)->buckets[_sfb_i].state == FILLED) ? &(set)->buckets[_sfb_i] : NULL; name; name = NULL)
 
+#endif /* WC_WC_MACROS_H */
 
-#endif // WC_MACROS_H
+#ifdef WC_IMPLEMENTATION
+
+#endif /* WC_IMPLEMENTATION */
+
+#endif /* WC_WC_MACROS_SINGLE_H */

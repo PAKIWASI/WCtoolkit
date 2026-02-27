@@ -402,14 +402,20 @@ void hashmap_copy(hashmap* dest, const hashmap* src)
     copy_fn k_copy = MAP_COPY(src->key_ops);
     copy_fn v_copy = MAP_COPY(src->val_ops);
 
-    // if dest already has elements, clear it
-    hashmap_clear(dest);
+    // Copy all scalar fields (sizes, fn ptrs, ops), then give dest its own bucket array.
+    // Can't memcpy the whole struct — that would alias dest->buckets to src->buckets.
+    dest->capacity = src->capacity;
+    dest->size     = 0;
+    dest->key_size = src->key_size;
+    dest->val_size = src->val_size;
+    dest->hash_fn  = src->hash_fn;
+    dest->cmp_fn   = src->cmp_fn;
+    dest->key_ops  = src->key_ops;
+    dest->val_ops  = src->val_ops;
 
-    // copy all fields from src to dest, but leave dest's bucket arr
-    KV* old_buckets = dest->buckets;
-    memcpy(dest, src, sizeof(KV));
-    dest->buckets = old_buckets;
-
+    dest->buckets = malloc(src->capacity * sizeof(KV));
+    CHECK_FATAL(!dest->buckets, "dest bucket malloc failed");
+    memset_buckets(dest->buckets, src->capacity);
 
     MAP_FOREACH_BUCKET(src, kv) {
         b8  found     = 0;

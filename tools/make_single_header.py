@@ -50,23 +50,19 @@ COMPONENTS = [
     "matrix",
     "matrix_generic",
     "wc_helpers",
-]
-
-# Add a set of components that are dependency-only (no standalone output)
-INTERNAL_COMPONENTS = [
-    "common", 
-    "wc_errno", 
-    "map_setup",
+    "wc_macros",
 ]
 
 
 # TODO: i dont want map_setup, common, wc_errno to have their own independent files
+
 
 # Maps a component name to the names it depends on (other lib components only).
 # Only direct dependencies are listed; transitive ones are resolved automatically.
 DEPENDENCIES: dict[str, list[str]] = {
     "common":           [],
     "wc_errno":         [],
+    "wc_macros":        [],
     "fast_math":        ["common"],
     "arena":            ["common", "wc_errno"],
     "gen_vector":       ["common", "wc_errno"],

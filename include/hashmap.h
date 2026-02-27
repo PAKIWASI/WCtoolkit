@@ -76,11 +76,9 @@ b8 hashmap_has(const hashmap* map, const u8* key);
 // Print all key-value pairs.
 void hashmap_print(const hashmap* map, print_fn key_print, print_fn val_print);
 
-// TODO: test
 // Remove all elements, keep capacity.
 void hashmap_clear(hashmap* map);
 
-// TODO: test
 // Deep copy src into dest (dest must be uninitialised or already destroyed).
 void hashmap_copy(hashmap* dest, const hashmap* src);
 
