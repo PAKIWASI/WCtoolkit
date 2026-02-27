@@ -18,7 +18,7 @@
 #define WC_COMMON_H
 
 /*
- * C Data Structures Library
+ * WCtoolkit
  * Copyright (c) 2026 Wasi Ullah (PAKIWASI)
  * Licensed under the MIT License. See LICENSE file for details.
  */

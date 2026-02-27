@@ -1,6 +1,7 @@
 #define WC_TEST_MAIN
 #include "wc_test.h"
 
+
 /* ── Forward declarations — one per test file ───────────────────────────── */
 void string_suite(void);
 void arena_suite(void);

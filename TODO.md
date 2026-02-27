@@ -6,9 +6,7 @@
 
 ## Immediate
 
-Write example programs, solve leetcode questions
-Update TODO
-Add comparison with other libs in readme
+Update Readme for genVec_ops
 
 
 ---

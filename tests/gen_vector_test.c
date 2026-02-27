@@ -1,6 +1,5 @@
-#include "common.h"
-#include "wc_macros.h"
 #include "wc_test.h"
+#include "wc_macros.h"
 #include "gen_vector.h"
 #include "wc_errno.h"
 
@@ -419,3 +418,5 @@ void gen_vector_suite(void)
     WC_RUN(test_insert_multi);
     WC_RUN(test_insert_multi_mid);
 }
+
+

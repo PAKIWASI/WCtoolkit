@@ -4,7 +4,7 @@
 
 
 /*
- * C Data Structures Library
+ * WCtoolkit
  * Copyright (c) 2026 Wasi Ullah (PAKIWASI)
  * Licensed under the MIT License. See LICENSE file for details.
  */
@@ -74,6 +74,7 @@
 // TYPES
 
 #include <stdint.h>
+#include <stdbool.h>
 
 typedef uint8_t  u8;
 typedef uint8_t  b8;
@@ -81,8 +82,8 @@ typedef uint16_t u16;
 typedef uint32_t u32;
 typedef uint64_t u64;
 
-#define false ((b8)0)
-#define true  ((b8)1)
+// #define false ((b8)0)
+// #define true  ((b8)1)
 
 
 // GENERIC FUNCTIONS

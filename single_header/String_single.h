@@ -18,7 +18,7 @@
 #define WC_COMMON_H
 
 /*
- * C Data Structures Library
+ * WCtoolkit
  * Copyright (c) 2026 Wasi Ullah (PAKIWASI)
  * Licensed under the MIT License. See LICENSE file for details.
  */
@@ -104,7 +104,7 @@ typedef void (*copy_fn)(u8* dest, const u8* src);
 typedef void (*move_fn)(u8* dest, u8** src);
 typedef void (*delete_fn)(u8* key);
 typedef void (*print_fn)(const u8* elm);
-typedef int (*compare_fn)(const u8* a, const u8* b, u64 size);
+typedef int  (*compare_fn)(const u8* a, const u8* b, u64 size);
 
 
 // CASTING
@@ -358,7 +358,6 @@ typedef struct {
 } genVec;
 
 // sizeof(genVec) == 48
-
 
 
 // Convenience: access ops callbacks safely
