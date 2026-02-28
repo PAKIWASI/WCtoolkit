@@ -166,5 +166,19 @@ TEMP_CSTR_READ(s) {
 #define TEMP_CSTR_READ_NAMED(str, name) \
     for (u8 _once = 0; (_once == 0) && (string_append_char((str), '\0'), 1); _once++, string_pop_char((str)))
 
+// TODO: remove genVec dependency ?
+// we only use a handfull of genVec funcs so we could write them specificly for str
+
+typedef struct {
+    union {
+        char* heap;
+        char stk[23];
+    }; 
+    b8 sso;
+    u64 size;
+    u64 capacity;
+} str;
+
+// 23 1 8 8 = 40
 
 #endif // STRING_H

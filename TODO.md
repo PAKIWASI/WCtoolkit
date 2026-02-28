@@ -6,6 +6,7 @@
 
 ## Immediate
 
+- Make Hashmap optimal (SIMD, load factor)
 
 
 

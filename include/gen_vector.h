@@ -51,15 +51,16 @@
 typedef struct {
     u8* data; // pointer to generic data
 
+    // Pointer to shared type-ops vtable (or NULL for POD types)
+    const container_ops* ops;
+
     u64 size;      // Number of elements currently in vector
     u64 capacity;  // Total allocated capacity (in elements)
     u32 data_size; // Size of each element in bytes
 
-    // Pointer to shared type-ops vtable (or NULL for POD types)
-    const container_ops* ops;
 } genVec;
 
-// sizeof(genVec) == 48
+// 8 8 8 8 4 '4'  = 40 bytes ? 
 
 
 // Convenience: access ops callbacks safely

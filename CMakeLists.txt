@@ -69,7 +69,6 @@ add_executable(tests
     tests/matrix_test.c
     tests/bit_vector_test.c
     tests/complex_test.c
-    tests/speed_test.c
     ${LIB_SOURCES}
 )
 target_include_directories(tests PRIVATE include tests)

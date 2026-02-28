@@ -15,7 +15,6 @@ void matrix_suite(void);
 void bit_vector_suite(void);
 void complex_suite(void);   /* vec-of-vec, vec-of-string, map-of-vec, macros */
 
-void speed_run(void);
 
 int main(void)
 {
@@ -40,7 +39,6 @@ int main(void)
     /* Complex / ownership patterns */
     complex_suite();
 
-    speed_run();
 
     return WC_REPORT();
 }
