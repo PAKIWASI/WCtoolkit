@@ -54,19 +54,28 @@ typedef struct {
     // Pointer to shared type-ops vtable (or NULL for POD types)
     const container_ops* ops;
 
-    u64 size;      // Number of elements currently in vector
-    u64 capacity;  // Total allocated capacity (in elements)
-    u32 data_size; // Size of each element in bytes
+    u64 size;               // Number of elements currently in vector
+    u64 capacity;           // Total allocated capacity (in elements)
+    u32 data_size;    // Size of each element in bytes
 
 } genVec;
 
 // 8 8 8 8 4 '4'  = 40 bytes ? 
 
-
 // Convenience: access ops callbacks safely
 #define VEC_COPY_FN(vec) ((vec)->ops ? (vec)->ops->copy_fn : NULL)
 #define VEC_MOVE_FN(vec) ((vec)->ops ? (vec)->ops->move_fn : NULL)
 #define VEC_DEL_FN(vec)  ((vec)->ops ? (vec)->ops->del_fn  : NULL)
+
+
+// read only slice of genVec
+// WARNING: genVec_view is invalidated by any operation that reallocates or mutates the source vector.
+typedef struct {
+    const u8* data;
+    const u64 len;
+    const u64 data_size;
+} genVec_view;
+
 
 
 
@@ -89,6 +98,9 @@ void genVec_init_val_stk(u64 n, const u8* val, u32 data_size, const container_op
 // You provide a stack-allocated array which becomes the internal array.
 // WARNING: crashes when size == capacity and you try to push.
 void genVec_init_arr(u64 n, u8* arr, u32 data_size, const container_ops* ops, genVec* vec);
+
+
+genVec_view genVec_view_create(const genVec* vec, u64 start, u64 count);
 
 // Destroy heap-allocated vector and clean up all elements.
 void genVec_destroy(genVec* vec);
@@ -203,6 +215,9 @@ static inline b8 genVec_empty(const genVec* vec)
     CHECK_FATAL(!vec, "vec is null");
     return vec->size == 0;
 }
+
+
+// TODO: vector view
 
 
 

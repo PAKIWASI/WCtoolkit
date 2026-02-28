@@ -2,6 +2,7 @@
 #include "gen_vector.h"
 #include "wc_helpers.h"
 #include "wc_macros.h"
+#include <stdio.h>
 
 
 
@@ -11,16 +12,17 @@ int main(void)
     genVec* vec = VEC_CX(String, 10, &ops);
 
     VEC_PUSH_CSTR(vec, "hel");
-    VEC_PUSH_CSTR(vec, "hel");
-    VEC_PUSH_CSTR(vec, "hel");
-    VEC_PUSH_CSTR(vec, "hel");
+    VEC_PUSH_CSTR(vec, "orldd");
+    VEC_PUSH_CSTR(vec, "paki");
+    VEC_PUSH_CSTR(vec, "wasi");
 
-    genVec v2;
-    genVec_move(&v2, &vec);
+    genVec_view view = genVec_view_create(vec, 1, 2);
 
-    genVec_print(&v2, str_print);
+    VECVIEW_FOREACH(view, String, ss) {
+        string_print(ss);
+        putchar('\n');
+    }
 
-    genVec_destroy_stk(&v2);
     genVec_destroy(vec);
     return 0;
 }

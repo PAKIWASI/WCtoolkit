@@ -139,6 +139,18 @@ void genVec_init_arr(u64 n, u8* arr, u32 data_size, const container_ops* ops, ge
     vec->ops       = ops;
 }
 
+genVec_view genVec_view_create(const genVec* vec, u64 start, u64 count) 
+{
+    CHECK_FATAL(!vec, "vec is null");
+    CHECK_FATAL(start + count > vec->size, "view out of bounds");
+
+    return (genVec_view){
+        .data = GET_PTR(vec, start),
+        .len = count,
+        .data_size = vec->data_size
+    };
+}
+
 
 void genVec_destroy(genVec* vec)
 {

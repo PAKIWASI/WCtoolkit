@@ -125,6 +125,11 @@ Usage:
     for (u64 _wvf_i = 0; _wvf_i < (vec)->size; _wvf_i++) \
         for (T* name = (T*)genVec_get_ptr_mut((vec), _wvf_i); name; name = NULL)
 
+// TODO: test
+#define VECVIEW_FOREACH(view, T, name) \
+    for (u64 _wvf_i = 0; _wvf_i < (view).len; _wvf_i++) \
+        for (T* name = (T*)(view).data + _wvf_i; name; name = NULL)
+
 
 /* ══════════════════════════════════════════════════════════════════════════
  * TYPED CONVENIENCE MACROS
