@@ -303,17 +303,16 @@ static void test_copy_int_set(void)
         hashset_insert(src, (u8*)&i);
     }
 
-    hashset dest;
-    hashset_copy(&dest, src);
-    WC_ASSERT_EQ_U64(hashset_size(&dest), hashset_size(src));
+    hashset* dest = int_set();
+    hashset_copy(dest, src);
+    WC_ASSERT_EQ_U64(hashset_size(dest), hashset_size(src));
 
     for (int i = 0; i < 10; i++) {
-        WC_ASSERT_TRUE(hashset_has(&dest, (u8*)&i));
+        WC_ASSERT_TRUE(hashset_has(dest, (u8*)&i));
     }
 
     hashset_destroy(src);
-    hashset_clear(&dest);
-    free(dest.buckets);
+    hashset_destroy(dest);
 }
 
 static void test_copy_independence(void)
@@ -323,19 +322,18 @@ static void test_copy_independence(void)
     int x = 1;
     hashset_insert(src, (u8*)&x);
 
-    hashset dest;
-    hashset_copy(&dest, src);
+    hashset* dest = int_set();
+    hashset_copy(dest, src);
 
     int y = 99;
-    hashset_insert(&dest, (u8*)&y);
+    hashset_insert(dest, (u8*)&y);
 
     WC_ASSERT_FALSE(hashset_has(src,   (u8*)&y)); /* src unaffected */
-    WC_ASSERT_TRUE(hashset_has(&dest,  (u8*)&x)); /* dest has original */
-    WC_ASSERT_TRUE(hashset_has(&dest,  (u8*)&y)); /* dest has new */
+    WC_ASSERT_TRUE(hashset_has(dest,  (u8*)&x)); /* dest has original */
+    WC_ASSERT_TRUE(hashset_has(dest,  (u8*)&y)); /* dest has new */
 
     hashset_destroy(src);
-    hashset_clear(&dest);
-    free(dest.buckets);
+    hashset_destroy(dest);
 }
 
 static void test_copy_str_set(void)
@@ -350,33 +348,31 @@ static void test_copy_str_set(void)
         string_destroy_stk(&sv);
     }
 
-    hashset dest;
-    hashset_copy(&dest, src);
-    WC_ASSERT_EQ_U64(hashset_size(&dest), 3);
+    hashset* dest = int_set();
+    hashset_copy(dest, src);
+    WC_ASSERT_EQ_U64(hashset_size(dest), 3);
 
     hashset_destroy(src); /* src gone — dest must still be intact */
 
     String probe;
     string_create_stk(&probe, "beta");
-    WC_ASSERT_TRUE(hashset_has(&dest, (u8*)&probe));
+    WC_ASSERT_TRUE(hashset_has(dest, (u8*)&probe));
     string_destroy_stk(&probe);
 
-    hashset_clear(&dest);
-    free(dest.buckets);
+    hashset_destroy(dest);
 }
 
 static void test_copy_empty_set(void)
 {
     hashset* src = int_set();
 
-    hashset dest;
-    hashset_copy(&dest, src);
-    WC_ASSERT_EQ_U64(hashset_size(&dest), 0);
-    WC_ASSERT_EQ_U64(hashset_capacity(&dest), hashset_capacity(src));
+    hashset* dest = int_set();
+    hashset_copy(dest, src);
+    WC_ASSERT_EQ_U64(hashset_size(dest), 0);
+    WC_ASSERT_EQ_U64(hashset_capacity(dest), hashset_capacity(src));
 
     hashset_destroy(src);
-    hashset_clear(&dest);
-    free(dest.buckets);
+    hashset_destroy(dest);
 }
 
 

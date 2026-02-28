@@ -610,8 +610,9 @@ void genVec_copy(genVec* dest, const genVec* src)
     // Copy all fields (including ops pointer)
     memcpy(dest, src, sizeof(genVec));
 
-    dest->data = malloc(GET_SCALED(src, src->capacity));
-    CHECK_FATAL(!dest->data, "dest data malloc failed");
+    // TODO: fix for copying into uninited memory ?
+    dest->data = calloc(src->capacity, src->data_size);
+    CHECK_FATAL(!dest->data, "dest data calloc failed");
 
     copy_fn copy = COPY_FN(src);
     if (copy) {

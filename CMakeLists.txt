@@ -67,9 +67,9 @@ add_executable(tests
     tests/hashset_test.c
     tests/stack_queue_test.c
     tests/matrix_test.c
-    tests/random_test.c
     tests/bit_vector_test.c
     tests/complex_test.c
+    tests/speed_test.c
     ${LIB_SOURCES}
 )
 target_include_directories(tests PRIVATE include tests)

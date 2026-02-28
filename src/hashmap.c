@@ -1,4 +1,5 @@
 #include "hashmap.h"
+#include "common.h"
 #include "map_setup.h"
 #include "wc_macros.h"
 #include <string.h>
@@ -11,10 +12,10 @@
 ====================PRIVATE FUNCTIONS====================
 */
 
-static void memset_buckets(KV* buckets, u64 size);
+static void hashmap_memset_buckets(KV* buckets, u64 size);
 static void kv_destroy(KV* kv, const container_ops* key_ops, const container_ops* val_ops);
 
-static u64  find_slot(const hashmap* map, const u8* key, b8* found, int* tombstone);
+static u64  hashmap_find_slot(const hashmap* map, const u8* key, b8* found, int* tombstone);
 
 static void hashmap_resize(hashmap* map, u64 new_capacity);
 static void hashmap_maybe_resize(hashmap* map);
@@ -38,7 +39,7 @@ hashmap* hashmap_create(u32 key_size, u32 val_size,
     map->buckets = malloc(HASHMAP_INIT_CAPACITY * sizeof(KV));
     CHECK_FATAL(!map->buckets, "map bucket init failed");
 
-    memset_buckets(map->buckets, HASHMAP_INIT_CAPACITY);
+    hashmap_memset_buckets(map->buckets, HASHMAP_INIT_CAPACITY);
 
     map->capacity = HASHMAP_INIT_CAPACITY;
     map->size     = 0;
@@ -83,7 +84,7 @@ b8 hashmap_put(hashmap* map, const u8* key, const u8* val)
 
     b8  found     = 0;
     int tombstone = -1;
-    u64 slot      = find_slot(map, key, &found, &tombstone);
+    u64 slot      = hashmap_find_slot(map, key, &found, &tombstone);
 
     if (found) {
         KV* kv = GET_KV(map, slot);
@@ -133,7 +134,7 @@ b8 hashmap_put_move(hashmap* map, u8** key, u8** val)
 
     b8  found     = 0;
     int tombstone = -1;
-    u64 slot      = find_slot(map, *key, &found, &tombstone);
+    u64 slot      = hashmap_find_slot(map, *key, &found, &tombstone);
 
     if (found) {
         KV* kv = GET_KV(map, slot);
@@ -186,7 +187,7 @@ b8 hashmap_put_val_move(hashmap* map, const u8* key, u8** val)
 
     b8  found     = 0;
     int tombstone = -1;
-    u64 slot      = find_slot(map, key, &found, &tombstone);
+    u64 slot      = hashmap_find_slot(map, key, &found, &tombstone);
 
     if (found) {
         KV* kv = GET_KV(map, slot);
@@ -235,7 +236,7 @@ b8 hashmap_put_key_move(hashmap* map, u8** key, const u8* val)
 
     b8  found     = 0;
     int tombstone = -1;
-    u64 slot      = find_slot(map, *key, &found, &tombstone);
+    u64 slot      = hashmap_find_slot(map, *key, &found, &tombstone);
 
     if (found) {
         KV* kv = GET_KV(map, slot);
@@ -282,7 +283,7 @@ b8 hashmap_get(const hashmap* map, const u8* key, u8* val)
 
     b8  found     = 0;
     int tombstone = -1;
-    u64 slot      = find_slot(map, key, &found, &tombstone);
+    u64 slot      = hashmap_find_slot(map, key, &found, &tombstone);
 
     if (found) {
         const KV* kv = GET_KV(map, slot);
@@ -301,7 +302,7 @@ u8* hashmap_get_ptr(hashmap* map, const u8* key)
 
     b8  found     = 0;
     int tombstone = -1;
-    u64 slot      = find_slot(map, key, &found, &tombstone);
+    u64 slot      = hashmap_find_slot(map, key, &found, &tombstone);
 
     return found ? GET_KV(map, slot)->val : NULL;
 }
@@ -324,7 +325,7 @@ b8 hashmap_del(hashmap* map, const u8* key, u8* out)
 
     b8  found     = 0;
     int tombstone = -1;
-    u64 slot      = find_slot(map, key, &found, &tombstone);
+    u64 slot      = hashmap_find_slot(map, key, &found, &tombstone);
 
     if (found) {
         KV* kv = GET_KV(map, slot);
@@ -354,7 +355,7 @@ b8 hashmap_has(const hashmap* map, const u8* key)
 
     b8  found     = 0;
     int tombstone = -1;
-    find_slot(map, key, &found, &tombstone);
+    hashmap_find_slot(map, key, &found, &tombstone);
 
     return found;
 }
@@ -402,30 +403,36 @@ void hashmap_copy(hashmap* dest, const hashmap* src)
     copy_fn k_copy = MAP_COPY(src->key_ops);
     copy_fn v_copy = MAP_COPY(src->val_ops);
 
-    // Copy all scalar fields (sizes, fn ptrs, ops), then give dest its own bucket array.
-    // Can't memcpy the whole struct — that would alias dest->buckets to src->buckets.
-    dest->capacity = src->capacity;
-    dest->size     = 0;
-    dest->key_size = src->key_size;
-    dest->val_size = src->val_size;
-    dest->hash_fn  = src->hash_fn;
-    dest->cmp_fn   = src->cmp_fn;
-    dest->key_ops  = src->key_ops;
-    dest->val_ops  = src->val_ops;
+    // Clear dest KVs (runs del callbacks, resets to EMPTY), keeps the bucket array.
+    hashmap_clear(dest);
 
-    dest->buckets = malloc(src->capacity * sizeof(KV));
-    CHECK_FATAL(!dest->buckets, "dest bucket malloc failed");
-    memset_buckets(dest->buckets, src->capacity);
+    // Copy all scalar fields and fn/ops pointers from src, but preserve dest->buckets.
+    KV* old_buckets  = dest->buckets;
+    u64 old_capacity = dest->capacity;
+    memcpy(dest, src, sizeof(hashmap));
+    dest->buckets = old_buckets;
+    dest->size = 0;
+
+    // If src is larger than dest's existing bucket array, grow it.
+    if (src->capacity > old_capacity) {
+        KV* grown = realloc(dest->buckets, src->capacity * sizeof(KV));
+        CHECK_FATAL(!grown, "bucket realloc failed");
+        hashmap_memset_buckets(grown + old_capacity, src->capacity - old_capacity);
+        dest->buckets = grown;
+    }
 
     MAP_FOREACH_BUCKET(src, kv) {
         b8  found     = 0;
         int tombstone = -1;
-        u64 slot      = find_slot(dest, kv->key, &found, &tombstone);
+        u64 slot      = hashmap_find_slot(dest, kv->key, &found, &tombstone);
 
-        u8* k = malloc(src->key_size);
-        CHECK_FATAL(!k, "key malloc failed");
-        u8* v = malloc(src->val_size);
-        CHECK_FATAL(!v, "val malloc failed");
+        // calloc (not malloc) so that copy_fn sees zero-initialised memory.
+        // copy_fns like string_copy call destroy_stk on dest before writing,
+        // and destroy_stk on a zeroed struct is a safe no-op.
+        u8* k = calloc(1, src->key_size);
+        CHECK_FATAL(!k, "key calloc failed");
+        u8* v = calloc(1, src->val_size);
+        CHECK_FATAL(!v, "val calloc failed");
 
         if (k_copy) { k_copy(k, kv->key); }
         else        { memcpy(k, kv->key, src->key_size); }
@@ -466,13 +473,13 @@ static void kv_destroy(KV* kv, const container_ops* key_ops, const container_ops
 }
 
 // memset gives: key = NULL, val = NULL, state = EMPTY (= 0)
-static void memset_buckets(KV* buckets, u64 size)
+static void hashmap_memset_buckets(KV* buckets, u64 size)
 {
     memset(buckets, 0, sizeof(KV) * size);
 }
 
 
-static u64 find_slot(const hashmap* map, const u8* key, b8* found, int* tombstone)
+static u64 hashmap_find_slot(const hashmap* map, const u8* key, b8* found, int* tombstone)
 {
     u64 index = map->hash_fn(key, map->key_size) % map->capacity;
 
@@ -515,7 +522,7 @@ static void hashmap_resize(hashmap* map, u64 new_capacity)
 
     map->buckets = malloc(new_capacity * sizeof(KV));
     CHECK_FATAL(!map->buckets, "resize malloc failed");
-    memset_buckets(map->buckets, new_capacity);
+    hashmap_memset_buckets(map->buckets, new_capacity);
 
     map->capacity = new_capacity;
     map->size     = 0;
@@ -527,7 +534,7 @@ static void hashmap_resize(hashmap* map, u64 new_capacity)
         if (old_kv->state == FILLED) {
             b8  found     = 0;
             int tombstone = -1;
-            u64 slot      = find_slot(map, old_kv->key, &found, &tombstone);
+            u64 slot      = hashmap_find_slot(map, old_kv->key, &found, &tombstone);
 
             KV* new_kv   = GET_KV(map, slot);
             new_kv->key   = old_kv->key;

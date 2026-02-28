@@ -335,7 +335,6 @@ static void demo_config(void)
         }
     }
 
-    // BUG: this crashes: ASan 
     // Demonstrate: build a modified copy with a different log level 
     subsection("Modified copy with log_level = \"debug\"");
     JsonValue* cfg_copy = json_value_copy(cfg);

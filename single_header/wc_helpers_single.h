@@ -748,9 +748,9 @@ static inline void str_copy(u8* dest, const u8* src)
 
     memcpy(d, s, sizeof(String));       // copy all fields (data ptr too)
 
-    u64 n   = s->size * s->data_size;
-    d->data = malloc(n);                // independent data buffer
-    memcpy(d->data, s->data, n);
+    u64 n   = s->size * (u64)s->data_size;
+    d->data = malloc(n ? n : 1);
+    if (n) { memcpy(d->data, s->data, n); }
 }
 
 static inline void str_move(u8* dest, u8** src)
@@ -782,9 +782,9 @@ static inline void str_copy_ptr(u8* dest, const u8* src)
     String* d = malloc(sizeof(String));
     memcpy(d, s, sizeof(String));
 
-    u64 n   = s->size * s->data_size;
-    d->data = malloc(n);
-    memcpy(d->data, s->data, n);
+    u64 n   = s->size * (u64)s->data_size;
+    d->data = malloc(n ? n : 1);
+    if (n) { memcpy(d->data, s->data, n); }
 
     *(String**)dest = d;
 }
@@ -1550,8 +1550,9 @@ void genVec_copy(genVec* dest, const genVec* src)
     // Copy all fields (including ops pointer)
     memcpy(dest, src, sizeof(genVec));
 
-    dest->data = malloc(GET_SCALED(src, src->capacity));
-    CHECK_FATAL(!dest->data, "dest data malloc failed");
+    // TODO: fix for copying into uninited memory ?
+    dest->data = calloc(src->capacity, src->data_size);
+    CHECK_FATAL(!dest->data, "dest data calloc failed");
 
     copy_fn copy = COPY_FN(src);
     if (copy) {

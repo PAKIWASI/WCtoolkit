@@ -52,6 +52,8 @@ void matrix_set_val_arr2(Matrixf* mat, u64 m, u64 n, const float** arr2);
 // set the value at position (i, j) where i is row and j is column
 void matrix_set_elm(Matrixf* mat, float elm, u64 i, u64 j);
 
+float matrix_get_elm(Matrixf* mat, u64 i, u64 j);
+
 
 // BASIC OPERATIONS
 // ============================================================================

@@ -7,7 +7,6 @@
 #include "wc_macros.h"
 #include <ctype.h>
 #include <limits.h>
-#include <math.h>
 
 
 
@@ -58,11 +57,10 @@ void json_val_copy(u8* dest, const u8* src)
     case JSON_ARRAY: {
         /*
          * Allocate a fresh empty vec with the right ops, then copy into it.
-         * Do NOT pre-size with s->array->capacity — genVec_copy handles
          * sizing internally and would destroy the pre-allocated (uninitialised)
          * data if we did.
          */
-        d->array = genVec_init(0, sizeof(JsonValue), &json_val_ops);
+        d->array = genVec_init(s->array->capacity, sizeof(JsonValue), &json_val_ops);
         genVec_copy(d->array, s->array);
     } break;
     case JSON_OBJECT: {
@@ -649,7 +647,7 @@ JsonValue* json_parse(const char* input)
  */
 static b8 is_integer(double d)
 {
-    return isfinite(d) && d == floor(d) &&
+    return 
            d >= (double)LLONG_MIN && d <= (double)LLONG_MAX;
 }
 

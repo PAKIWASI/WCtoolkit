@@ -576,6 +576,8 @@ void matrix_set_val_arr2(Matrixf* mat, u64 m, u64 n, const float** arr2);
 // set the value at position (i, j) where i is row and j is column
 void matrix_set_elm(Matrixf* mat, float elm, u64 i, u64 j);
 
+float matrix_get_elm(Matrixf* mat, u64 i, u64 j);
+
 
 // BASIC OPERATIONS
 // ============================================================================
@@ -925,6 +927,14 @@ void matrix_set_elm(Matrixf* mat, float elm, u64 i, u64 j)
     CHECK_FATAL(i >= mat->m || j >= mat->n, "index out of bounds");
 
     mat->data[IDX(mat, i, j)] = elm;
+}
+
+float matrix_get_elm(Matrixf* mat, u64 i, u64 j)
+{
+    CHECK_FATAL(!mat, "matrix is null");
+    CHECK_FATAL(i >= mat->m || j >= mat->n, "index out of bounds");
+
+    return mat->data[IDX(mat, i, j)];
 }
 
 void matrix_add(Matrixf* out, const Matrixf* a, const Matrixf* b)

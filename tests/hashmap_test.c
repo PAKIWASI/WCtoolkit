@@ -324,19 +324,18 @@ static void test_copy_int_map(void)
         hashmap_put(src, (u8*)&i, (u8*)&v);
     }
 
-    hashmap dest;
-    hashmap_copy(&dest, src);
-    WC_ASSERT_EQ_U64(hashmap_size(&dest), hashmap_size(src));
+    hashmap* dest = int_map();
+    hashmap_copy(dest, src);
+    WC_ASSERT_EQ_U64(hashmap_size(dest), hashmap_size(src));
 
     for (int i = 0; i < 10; i++) {
         int out = 0;
-        WC_ASSERT_TRUE(hashmap_get(&dest, (u8*)&i, (u8*)&out));
+        WC_ASSERT_TRUE(hashmap_get(dest, (u8*)&i, (u8*)&out));
         WC_ASSERT_EQ_INT(out, i * 3);
     }
 
     hashmap_destroy(src);
-    hashmap_clear(&dest);
-    free(dest.buckets);
+    hashmap_destroy(dest);
 }
 
 static void test_copy_independence(void)
@@ -346,21 +345,20 @@ static void test_copy_independence(void)
     int k = 1, v = 10;
     hashmap_put(src, (u8*)&k, (u8*)&v);
 
-    hashmap dest;
-    hashmap_copy(&dest, src);
+    hashmap* dest = int_map();
+    hashmap_copy(dest, src);
 
     int v2 = 99;
-    hashmap_put(&dest, (u8*)&k, (u8*)&v2);
+    hashmap_put(dest, (u8*)&k, (u8*)&v2);
 
     int src_out = 0, dest_out = 0;
     hashmap_get(src,   (u8*)&k, (u8*)&src_out);
-    hashmap_get(&dest, (u8*)&k, (u8*)&dest_out);
+    hashmap_get(dest, (u8*)&k, (u8*)&dest_out);
     WC_ASSERT_EQ_INT(src_out,  10);
     WC_ASSERT_EQ_INT(dest_out, 99);
 
     hashmap_destroy(src);
-    hashmap_clear(&dest);
-    free(dest.buckets);
+    hashmap_destroy(dest);
 }
 
 static void test_copy_str_str_map(void)
@@ -371,21 +369,20 @@ static void test_copy_str_str_map(void)
     MAP_PUT_STR_STR(src, "city",  "London");
     MAP_PUT_STR_STR(src, "color", "blue");
 
-    hashmap dest;
-    hashmap_copy(&dest, src);
-    WC_ASSERT_EQ_U64(hashmap_size(&dest), 3);
+    hashmap* dest = int_map();
+    hashmap_copy(dest, src);
+    WC_ASSERT_EQ_U64(hashmap_size(dest), 3);
 
     hashmap_destroy(src);
 
     String k;
     string_create_stk(&k, "city");
-    String* found = (String*)hashmap_get_ptr(&dest, (u8*)&k);
+    String* found = (String*)hashmap_get_ptr(dest, (u8*)&k);
     WC_ASSERT_NOT_NULL(found);
     WC_ASSERT_TRUE(string_equals_cstr(found, "London"));
     string_destroy_stk(&k);
 
-    hashmap_clear(&dest);
-    free(dest.buckets);
+    hashmap_destroy(dest);
 }
 
 

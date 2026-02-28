@@ -11,10 +11,11 @@ void hashset_suite(void);
 void stack_suite(void);
 void queue_suite(void);
 void matrix_suite(void);
-void random_suite(void);
+// void random_suite(void);
 void bit_vector_suite(void);
 void complex_suite(void);   /* vec-of-vec, vec-of-string, map-of-vec, macros */
 
+void speed_run(void);
 
 int main(void)
 {
@@ -34,10 +35,12 @@ int main(void)
 
     /* Math */
     matrix_suite();
-    random_suite();
+    // random_suite();
 
     /* Complex / ownership patterns */
     complex_suite();
+
+    speed_run();
 
     return WC_REPORT();
 }

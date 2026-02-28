@@ -77,6 +77,14 @@ void matrix_set_elm(Matrixf* mat, float elm, u64 i, u64 j)
     mat->data[IDX(mat, i, j)] = elm;
 }
 
+float matrix_get_elm(Matrixf* mat, u64 i, u64 j)
+{
+    CHECK_FATAL(!mat, "matrix is null");
+    CHECK_FATAL(i >= mat->m || j >= mat->n, "index out of bounds");
+
+    return mat->data[IDX(mat, i, j)];
+}
+
 void matrix_add(Matrixf* out, const Matrixf* a, const Matrixf* b)
 {
     CHECK_FATAL(!out, "out matrix is null");
