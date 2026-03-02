@@ -11,9 +11,9 @@
 // MACROS
 
 // get ptr to elm at index i
-#define GET_PTR(vec, i) ((vec->data) + ((u64)(i) * ((vec)->data_size)))
+#define GET_PTR(vec, i) ((vec->data) + ((i) * ((vec)->data_size)))
 // get total size in bytes for i elements
-#define GET_SCALED(vec, i) ((u64)(i) * ((vec)->data_size))
+#define GET_SCALED(vec, i) ((i) * ((vec)->data_size))
 
 #define MAYBE_GROW(vec)                                 \
     do {                                                \
