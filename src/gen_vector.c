@@ -1,4 +1,5 @@
 #include "gen_vector.h"
+#include "common.h"
 #include "wc_errno.h"
 
 #include <string.h>
@@ -150,7 +151,6 @@ genVec_view genVec_view_create(const genVec* vec, u64 start, u64 count)
         .data_size = vec->data_size
     };
 }
-
 
 void genVec_destroy(genVec* vec)
 {
