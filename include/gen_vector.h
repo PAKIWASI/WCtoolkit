@@ -68,17 +68,6 @@ typedef struct {
 #define VEC_DEL_FN(vec)  ((vec)->ops ? (vec)->ops->del_fn  : NULL)
 
 
-// read only slice of genVec
-// WARNING: genVec_view is invalidated by any operation that reallocates or mutates the source vector.
-typedef struct {
-    const u8* data;
-    const u64 len;
-    const u64 data_size;
-} genVec_view;
-
-
-
-
 // Memory Management
 // ===========================
 
@@ -98,10 +87,6 @@ void genVec_init_val_stk(u64 n, const u8* val, u32 data_size, const container_op
 // You provide a stack-allocated array which becomes the internal array.
 // WARNING: crashes when size == capacity and you try to push.
 void genVec_init_arr(u64 n, u8* arr, u32 data_size, const container_ops* ops, genVec* vec);
-
-
-// TODO: test
-genVec_view genVec_view_create(const genVec* vec, u64 start, u64 count);
 
 
 // Destroy heap-allocated vector and clean up all elements.
