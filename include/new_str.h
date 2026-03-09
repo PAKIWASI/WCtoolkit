@@ -29,6 +29,8 @@ typedef struct {
 } str;
 // 23 1 8 8 = 40
 
+// TODO: size is 48?
+
 
 str* str_create(void);
 str* str_from_cstr(const char* cstr);
@@ -37,6 +39,8 @@ void str_create_stk(str* str, const char* cstr);
 void str_destroy(str* str);
 void str_destroy_stk(str* str);
 
+void str_reserve(str* str, u64 len);
+void str_shrink_to_fit(str* str);
 
 void str_append_char(str* str, char c);
 void str_append_cstr(str* str, const char* cstr);
