@@ -265,7 +265,6 @@ void string_append_char(String* s, char c)
     GET_STR_AT(s, s->size++) = c;
 }
 
-// TODO: this always sets size = cap if size was not enough, no extra
 void string_append_cstr(String* s, const char* cstr)
 {
     CHECK_FATAL(!s, "str is null");
@@ -581,7 +580,7 @@ static u64 cstr_len(const char* cstr)
     u64 i = 0;
     while (cstr[i++] != '\0') {
     }
-    return i;
+    return i - 1;
 }
 
 static void str_copy_n(char* dest, const char* src, u64 n)
@@ -625,7 +624,6 @@ static void string_grow(String* s)
     s->capacity = new_cap;
 }
 
-// TODO: move from heap to stk if cap too low?
 static void string_shrink(String* s)
 {
     u64 new_cap = (u64)((float)s->capacity * STRING_SHRINK_BY);
@@ -652,19 +650,23 @@ static void ensure_capacity(String* s, u64 needed)
         return;
     }
 
+    // Grow by at least STRING_GROWTH factor so we don't alloc on every push.
+    u64 new_cap = (u64)((float)s->capacity * STRING_GROWTH);
+    if (new_cap < needed) {
+        new_cap = needed;
+    }
+
     if (IS_SSO(s)) {
-        // Jump straight to heap with the required size.
-        char* new_data = malloc(needed);
+        char* new_data = malloc(new_cap);
         CHECK_FATAL(!new_data, "malloc failed");
         str_copy_n(new_data, s->stk, s->size);
         s->heap     = new_data;
-        s->capacity = needed;
+        s->capacity = new_cap;
     } else {
-        // realloc to exactly what we need (caller can overshoot via reserve).
-        char* new_data = realloc(s->heap, needed);
+        char* new_data = realloc(s->heap, new_cap);
         CHECK_FATAL(!new_data, "realloc failed");
         s->heap     = new_data;
-        s->capacity = needed;
+        s->capacity = new_cap;
     }
 }
 
