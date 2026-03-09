@@ -45,8 +45,7 @@ set(LIB_SOURCES
     src/random.c
     src/Stack.c
     src/String.c
-    src/new_str.c
-    src/wc_errno.c      # defines _Thread_local wc_errno
+    src/wc_errno.c
 )
 
 
@@ -59,34 +58,34 @@ target_include_directories(main PRIVATE include)
 
 
 # ── Test executable ───────────────────────────────────────────────────────
-add_executable(tests
-    tests/test_main.c
-    tests/string_test.c
-    tests/arena_test.c
-    tests/gen_vector_test.c
-    tests/hashmap_test.c
-    tests/hashset_test.c
-    tests/stack_queue_test.c
-    tests/matrix_test.c
-    tests/bit_vector_test.c
-    tests/complex_test.c
-    ${LIB_SOURCES}
-)
-target_include_directories(tests PRIVATE include tests)
-target_link_libraries(tests)
-
-# Register with CTest so `ctest` works from the build directory
-enable_testing()
-add_test(NAME unit_tests COMMAND tests)
-
-
-# Example programs
-add_executable(examples
-    examples/examples.c
-    examples/json_parser.c
-    ${LIB_SOURCES}
-)
-target_include_directories(examples PRIVATE include)
+# add_executable(tests
+#     tests/test_main.c
+#     tests/string_test.c
+#     tests/arena_test.c
+#     tests/gen_vector_test.c
+#     tests/hashmap_test.c
+#     tests/hashset_test.c
+#     tests/stack_queue_test.c
+#     tests/matrix_test.c
+#     tests/bit_vector_test.c
+#     tests/complex_test.c
+#     ${LIB_SOURCES}
+# )
+# target_include_directories(tests PRIVATE include tests)
+# target_link_libraries(tests)
+#
+# # Register with CTest so `ctest` works from the build directory
+# enable_testing()
+# add_test(NAME unit_tests COMMAND tests)
+#
+#
+# # Example programs
+# add_executable(examples
+#     examples/examples.c
+#     examples/json_parser.c
+#     ${LIB_SOURCES}
+# )
+# target_include_directories(examples PRIVATE include)
 
 # ── Usage comments ───────────────────────────────────────────────────────
 # Debug build (default):

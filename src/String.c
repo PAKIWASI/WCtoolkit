@@ -1,93 +1,131 @@
 #include "String.h"
-
 #include <string.h>
 
 
-// private func
-u64 cstr_len(const char* cstr);
+//  Internal macros
+
+#define IS_SSO(s)        ((s)->capacity == STR_SSO_SIZE)
+#define GET_STR(s)       (IS_SSO(s) ? (s)->stk : (s)->heap)
+#define GET_STR_AT(s, i) (GET_STR(s)[i])
+#define STR_REMAINING(s) ((s)->capacity - (s)->size)
+
+// Grow if full.
+#define MAYBE_GROW(s)                     \
+    do {                                  \
+        if ((s)->size >= (s)->capacity) { \
+            if (IS_SSO(s)) {              \
+                stk_to_heap(s);           \
+            } else {                      \
+                string_grow(s);           \
+            }                             \
+        }                                 \
+    } while (0)
+
+// Shrink heap string if very sparse.
+#define MAYBE_SHRINK(s)                                                                  \
+    do {                                                                                 \
+        if (!IS_SSO(s) && (s)->size <= (u64)((float)(s)->capacity * STRING_SHRINK_AT)) { \
+            string_shrink(s);                                                            \
+        }                                                                                \
+    } while (0)
 
 
+//  Private helpers
+
+static u64  cstr_len(const char* cstr);
+static void str_copy_n(char* dest, const char* src, u64 n);
+static void stk_to_heap(String* s);
+static void string_grow(String* s);
+static void string_shrink(String* s);
+// Ensure capacity >= needed (handles SSO → heap transition).
+static void ensure_capacity(String* s, u64 needed);
+
+
+
+//  Construction / Destruction
 
 String* string_create(void)
 {
-    // chars are POD — no ops needed
-    return (String*)genVec_init(0, sizeof(char), NULL);
+    String* s = malloc(sizeof(String));
+    CHECK_FATAL(!s, "malloc failed");
+
+    s->size     = 0;
+    s->capacity = STR_SSO_SIZE;
+
+    return s;
 }
-
-
-void string_create_stk(String* str, const char* cstr)
-{
-    CHECK_FATAL(!str, "str is null");
-
-    u64 len = 0;
-    if (cstr) {
-        len = cstr_len(cstr);
-    }
-
-    genVec_init_stk(len, sizeof(char), NULL, str);
-
-    if (len != 0) {
-        genVec_insert_multi(str, 0, (const u8*)cstr, len);
-    }
-}
-
 
 String* string_from_cstr(const char* cstr)
 {
-    String* str = malloc(sizeof(String));
-    CHECK_FATAL(!str, "str malloc failed");
+    String* s = malloc(sizeof(String));
+    CHECK_FATAL(!s, "malloc failed");
 
-    string_create_stk(str, cstr);
-    return str;
+    string_create_stk(s, cstr);
+    return s;
 }
-
 
 String* string_from_string(const String* other)
 {
-    CHECK_FATAL(!other, "other str is null");
+    CHECK_FATAL(!other, "other is null");
 
-    String* str = malloc(sizeof(String));
-    CHECK_FATAL(!str, "str malloc failed");
+    String* s = malloc(sizeof(String));
+    CHECK_FATAL(!s, "malloc failed");
 
-    genVec_init_stk(other->size, sizeof(char), NULL, str);
+    s->size     = 0;
+    s->capacity = STR_SSO_SIZE;
 
-    if (other->size != 0) {
-        genVec_insert_multi(str, 0, other->data, other->size);
+    if (other->size > 0) {
+        ensure_capacity(s, other->size);
+        str_copy_n(GET_STR(s), GET_STR(other), other->size);
+        s->size = other->size;
     }
 
-    return str;
+    return s;
 }
 
-
-void string_reserve(String* str, u64 capacity)
+void string_create_stk(String* s, const char* cstr)
 {
-    genVec_reserve(str, capacity);
+    CHECK_FATAL(!s, "str is null");
+
+    s->size     = 0;
+    s->capacity = STR_SSO_SIZE;
+
+    if (!cstr) {
+        return;
+    }
+
+    u64 len = cstr_len(cstr);
+    if (len == 0) {
+        return;
+    }
+
+    ensure_capacity(s, len);
+    str_copy_n(GET_STR(s), cstr, len);
+    s->size = len;
 }
 
-
-void string_reserve_char(String* str, u64 capacity, char c)
+void string_destroy(String* s)
 {
-    genVec_reserve_val(str, capacity, cast(c));
+    CHECK_FATAL(!s, "str is null");
+    string_destroy_stk(s);
+    free(s);
 }
 
-
-void string_destroy(String* str)
+void string_destroy_stk(String* s)
 {
-    string_destroy_stk(str);
-    free(str);
+    CHECK_FATAL(!s, "str is null");
+    if (!IS_SSO(s)) {
+        free(s->heap);
+        s->heap = NULL;
+    }
+    s->size     = 0;
+    s->capacity = 0;
 }
-
-
-void string_destroy_stk(String* str)
-{
-    genVec_destroy_stk(str);
-}
-
 
 void string_move(String* dest, String** src)
 {
-    CHECK_FATAL(!src, "src is null");
-    CHECK_FATAL(!*src, "src is null");
+    CHECK_FATAL(!src, "src ptr is null");
+    CHECK_FATAL(!*src, "*src is null");
     CHECK_FATAL(!dest, "dest is null");
 
     if (dest == *src) {
@@ -96,14 +134,14 @@ void string_move(String* dest, String** src)
     }
 
     string_destroy_stk(dest);
-
     memcpy(dest, *src, sizeof(String));
 
-    (*src)->data = NULL;
+    // Zero out src so its destructor is harmless, then free the struct
+    (*src)->size     = 0;
+    (*src)->capacity = STR_SSO_SIZE;
     free(*src);
     *src = NULL;
 }
-
 
 void string_copy(String* dest, const String* src)
 {
@@ -116,50 +154,120 @@ void string_copy(String* dest, const String* src)
 
     string_destroy_stk(dest);
 
-    memcpy(dest, src, sizeof(String));
+    dest->size     = 0;
+    dest->capacity = STR_SSO_SIZE;
 
-    dest->data = malloc(src->capacity);
-
-    memcpy(dest->data, src->data, src->size);
+    if (src->size > 0) {
+        ensure_capacity(dest, src->size);
+        str_copy_n(GET_STR(dest), GET_STR(src), src->size);
+        dest->size = src->size;
+    }
 }
 
 
-char* string_to_cstr(const String* str)
-{
-    CHECK_FATAL(!str, "str is null");
+//  Capacity
 
-    if (str->size == 0) {
-        char* empty = malloc(1);
-        CHECK_FATAL(!empty, "malloc failed");
-        empty[0] = '\0';
-        return empty;
+void string_reserve(String* s, u64 new_cap)
+{
+    CHECK_FATAL(!s, "str is null");
+    if (new_cap <= s->capacity) {
+        return;
+    }
+    ensure_capacity(s, new_cap);
+}
+
+void string_reserve_char(String* s, u64 new_cap, char c)
+{
+    CHECK_FATAL(!s, "str is null");
+    if (new_cap <= s->capacity) {
+        return;
     }
 
-    char* out = malloc(str->size + 1);
-    CHECK_FATAL(!out, "out str malloc failed");
+    u64 old_cap = s->capacity;
+    ensure_capacity(s, new_cap);
 
-    memcpy(out, str->data, str->size);
-    out[str->size] = '\0';
+    // Fill newly available slots with c.
+    char* buf = GET_STR(s);
+    for (u64 i = old_cap; i < new_cap; i++) {
+        buf[i] = c;
+    }
+}
+
+void string_shrink_to_fit(String* s)
+{
+    CHECK_FATAL(!s, "str is null");
+
+    if (IS_SSO(s)) {
+        return;
+    } // already optimal
+
+    if (s->size == 0) {
+        free(s->heap);
+        s->heap     = NULL;
+        s->capacity = STR_SSO_SIZE;
+        return;
+    }
+
+    if (s->size <= STR_SSO_SIZE) {
+        // Bring back to SSO.
+        char tmp[STR_SSO_SIZE];
+        str_copy_n(tmp, s->heap, s->size);
+        free(s->heap);
+        str_copy_n(s->stk, tmp, s->size);
+        s->capacity = STR_SSO_SIZE;
+        return;
+    }
+
+    char* new_data = realloc(s->heap, s->size);
+    if (!new_data) {
+        WARN("shrink_to_fit realloc failed — keeping current allocation");
+        return;
+    }
+    s->heap     = new_data;
+    s->capacity = s->size;
+}
+
+
+//  Conversion
+
+char* string_to_cstr(const String* s)
+{
+    CHECK_FATAL(!s, "str is null");
+
+    char* out = malloc(s->size + 1);
+    CHECK_FATAL(!out, "malloc failed");
+
+    if (s->size > 0) {
+        str_copy_n(out, GET_STR(s), s->size);
+    }
+    out[s->size] = '\0';
 
     return out;
 }
 
-
-char* string_data_ptr(const String* str)
+char* string_data_ptr(const String* s)
 {
-    CHECK_FATAL(!str, "str is null");
-
-    if (str->size == 0) {
+    CHECK_FATAL(!s, "str is null");
+    if (s->size == 0) {
         return NULL;
     }
-
-    return (char*)str->data;
+    // Cast away const intentionally: caller may mutate via this pointer.
+    return (char*)(IS_SSO(s) ? s->stk : s->heap);
 }
 
 
-void string_append_cstr(String* str, const char* cstr)
+//  Modification
+
+void string_append_char(String* s, char c)
 {
-    CHECK_FATAL(!str, "str is null");
+    CHECK_FATAL(!s, "str is null");
+    MAYBE_GROW(s);
+    GET_STR_AT(s, s->size++) = c;
+}
+
+void string_append_cstr(String* s, const char* cstr)
+{
+    CHECK_FATAL(!s, "str is null");
     CHECK_FATAL(!cstr, "cstr is null");
 
     u64 len = cstr_len(cstr);
@@ -167,271 +275,379 @@ void string_append_cstr(String* str, const char* cstr)
         return;
     }
 
-    genVec_insert_multi(str, str->size, (const u8*)cstr, len);
+    ensure_capacity(s, s->size + len);
+    str_copy_n(GET_STR(s) + s->size, cstr, len);
+    s->size += len;
 }
 
-
-void string_append_string(String* str, const String* other)
+void string_append_string(String* s, const String* other)
 {
-    CHECK_FATAL(!str, "str is empty");
-    CHECK_FATAL(!other, "other is empty");
+    CHECK_FATAL(!s, "str is null");
+    CHECK_FATAL(!other, "other is null");
 
     if (other->size == 0) {
         return;
     }
 
-    genVec_insert_multi(str, str->size, other->data, other->size);
+    ensure_capacity(s, s->size + other->size);
+    str_copy_n(GET_STR(s) + s->size, GET_STR(other), other->size);
+    s->size += other->size;
 }
 
-
-void string_append_string_move(String* str, String** other)
+void string_append_string_move(String* s, String** other)
 {
-    CHECK_FATAL(!str, "str is null");
+    CHECK_FATAL(!s, "str is null");
     CHECK_FATAL(!other, "other ptr is null");
     CHECK_FATAL(!*other, "*other is null");
 
     if ((*other)->size > 0) {
-        genVec_insert_multi(str, str->size, (*other)->data, (*other)->size);
+        string_append_string(s, *other);
     }
 
     string_destroy(*other);
     *other = NULL;
 }
 
-
-void string_append_char(String* str, char c)
+char string_pop_char(String* s)
 {
-    CHECK_FATAL(!str, "str is null");
-    genVec_push(str, cast(c));
-}
+    CHECK_FATAL(!s, "str is null");
+    CHECK_FATAL(s->size == 0, "pop on empty string");
 
-
-char string_pop_char(String* str)
-{
-    CHECK_FATAL(!str, "str is null");
-
-    char c;
-    genVec_pop(str, cast(c));
-
+    char c = GET_STR_AT(s, --s->size);
+    MAYBE_SHRINK(s);
     return c;
 }
 
-
-void string_insert_char(String* str, u64 i, char c)
+void string_insert_char(String* s, u64 i, char c)
 {
-    CHECK_FATAL(!str, "str is null");
-    CHECK_FATAL(i > str->size, "index out of bounds");
+    CHECK_FATAL(!s, "str is null");
+    CHECK_FATAL(i > s->size, "index out of bounds");
 
-    genVec_insert(str, i, cast(c));
+    MAYBE_GROW(s);
+
+    char* buf = GET_STR(s);
+    // Shift right.
+    for (u64 j = s->size; j > i; j--) {
+        buf[j] = buf[j - 1];
+    }
+    buf[i] = c;
+    s->size++;
 }
 
-
-void string_insert_cstr(String* str, u64 i, const char* cstr)
+void string_insert_cstr(String* s, u64 i, const char* cstr)
 {
-    CHECK_FATAL(!str, "str is null");
+    CHECK_FATAL(!s, "str is null");
     CHECK_FATAL(!cstr, "cstr is null");
-    CHECK_FATAL(i > str->size, "index out of bounds");
+    CHECK_FATAL(i > s->size, "index out of bounds");
 
     u64 len = cstr_len(cstr);
     if (len == 0) {
         return;
     }
 
-    genVec_insert_multi(str, i, castptr(cstr), len);
+    ensure_capacity(s, s->size + len);
+
+    char* buf = GET_STR(s);
+    // Shift existing chars right by len positions.
+    for (u64 j = s->size; j > i; j--) {
+        buf[j + len - 1] = buf[j - 1];
+    }
+    str_copy_n(buf + i, cstr, len);
+    s->size += len;
 }
 
-
-void string_insert_string(String* str, u64 i, const String* other)
+void string_insert_string(String* s, u64 i, const String* other)
 {
-    CHECK_FATAL(!str, "str is null");
+    CHECK_FATAL(!s, "str is null");
     CHECK_FATAL(!other, "other is null");
-    CHECK_FATAL(i > str->size, "index out of bounds");
+    CHECK_FATAL(i > s->size, "index out of bounds");
 
     if (other->size == 0) {
         return;
     }
 
-    genVec_insert_multi(str, i, other->data, other->size);
-}
+    // If src == dest we need a snapshot to avoid aliasing after realloc.
+    if (s == other) {
+        char* snap = malloc(other->size);
+        CHECK_FATAL(!snap, "malloc failed");
+        str_copy_n(snap, GET_STR(other), other->size);
 
-
-void string_remove_char(String* str, u64 i)
-{
-    CHECK_FATAL(!str, "str is null");
-    CHECK_FATAL(i >= str->size, "index out of bounds");
-
-    genVec_remove(str, i, NULL);
-}
-
-
-void string_remove_range(String* str, u64 l, u64 r)
-{
-    CHECK_FATAL(!str, "str is null");
-    CHECK_FATAL(l >= str->size, "index out of bounds");
-    CHECK_FATAL(l > r, "invalid range");
-
-    genVec_remove_range(str, l, r);
-}
-
-
-void string_clear(String* str)
-{
-    CHECK_FATAL(!str, "str is null");
-    genVec_clear(str);
-}
-
-
-char string_char_at(const String* str, u64 i)
-{
-    CHECK_FATAL(!str, "str is null");
-    CHECK_FATAL(i >= str->size, "index out of bounds");
-
-    return ((char*)str->data)[i];
-}
-
-
-void string_set_char(String* str, u64 i, char c)
-{
-    CHECK_FATAL(!str, "str is null");
-    CHECK_FATAL(i >= str->size, "index out of bounds");
-
-    ((char*)str->data)[i] = c;
-}
-
-
-int string_compare(const String* str1, const String* str2)
-{
-    CHECK_FATAL(!str1, "str1 is null");
-    CHECK_FATAL(!str2, "str2 is null");
-
-    u64 min_len = str1->size < str2->size ? str1->size : str2->size;
-
-    int cmp = memcmp(str1->data, str2->data, min_len);
-
-    if (cmp != 0) {
-        return cmp;
+        ensure_capacity(s, s->size + other->size);
+        char* buf = GET_STR(s);
+        for (u64 j = s->size; j > i; j--) {
+            buf[j + other->size - 1] = buf[j - 1];
+        }
+        str_copy_n(buf + i, snap, other->size);
+        s->size += other->size;
+        free(snap);
+        return;
     }
 
-    if (str1->size < str2->size) {
+    u64 len = other->size;
+    ensure_capacity(s, s->size + len);
+
+    char* buf = GET_STR(s);
+    for (u64 j = s->size; j > i; j--) {
+        buf[j + len - 1] = buf[j - 1];
+    }
+    str_copy_n(buf + i, GET_STR(other), len);
+    s->size += len;
+}
+
+void string_remove_char(String* s, u64 i)
+{
+    CHECK_FATAL(!s, "str is null");
+    CHECK_FATAL(i >= s->size, "index out of bounds");
+
+    char* buf = GET_STR(s);
+    for (u64 j = i; j < s->size - 1; j++) {
+        buf[j] = buf[j + 1];
+    }
+    s->size--;
+    MAYBE_SHRINK(s);
+}
+
+void string_remove_range(String* s, u64 l, u64 r)
+{
+    CHECK_FATAL(!s, "str is null");
+    CHECK_FATAL(l >= s->size, "l out of bounds");
+    CHECK_FATAL(l > r, "invalid range: l > r");
+
+    if (r >= s->size) {
+        r = s->size - 1;
+    }
+
+    u64   count = r - l + 1;
+    char* buf   = GET_STR(s);
+
+    for (u64 j = l; j + count < s->size; j++) {
+        buf[j] = buf[j + count];
+    }
+    s->size -= count;
+    MAYBE_SHRINK(s);
+}
+
+void string_clear(String* s)
+{
+    CHECK_FATAL(!s, "str is null");
+    s->size = 0;
+}
+
+
+//  Access
+
+char string_char_at(const String* s, u64 i)
+{
+    CHECK_FATAL(!s, "str is null");
+    CHECK_FATAL(i >= s->size, "index out of bounds");
+    return GET_STR_AT(s, i);
+}
+
+void string_set_char(String* s, u64 i, char c)
+{
+    CHECK_FATAL(!s, "str is null");
+    CHECK_FATAL(i >= s->size, "index out of bounds");
+    GET_STR_AT(s, i) = c;
+}
+
+
+//  Comparison
+
+int string_compare(const String* s1, const String* s2)
+{
+    CHECK_FATAL(!s1, "str1 is null");
+    CHECK_FATAL(!s2, "str2 is null");
+
+    u64 min_len = s1->size < s2->size ? s1->size : s2->size;
+
+    if (min_len > 0) {
+        int cmp = memcmp(GET_STR(s1), GET_STR(s2), min_len);
+        if (cmp != 0) {
+            return cmp;
+        }
+    }
+
+    if (s1->size < s2->size) {
         return -1;
     }
-    if (str1->size > str2->size) {
+    if (s1->size > s2->size) {
         return 1;
     }
-
     return 0;
 }
 
-
-b8 string_equals(const String* str1, const String* str2)
+b8 string_equals(const String* s1, const String* s2)
 {
-    return string_compare(str1, str2) == 0;
+    return string_compare(s1, s2) == 0;
 }
 
-
-b8 string_equals_cstr(const String* str, const char* cstr)
+b8 string_equals_cstr(const String* s, const char* cstr)
 {
-    CHECK_FATAL(!str, "str is null");
+    CHECK_FATAL(!s, "str is null");
     CHECK_FATAL(!cstr, "cstr is null");
 
     u64 len = cstr_len(cstr);
 
-    if (str->size != len) {
+    if (s->size != len) {
         return false;
     }
     if (len == 0) {
         return true;
     }
 
-    return memcmp(str->data, cstr, len) == 0;
+    return memcmp(GET_STR(s), cstr, len) == 0;
 }
 
 
-u64 string_find_char(const String* str, char c)
-{
-    CHECK_FATAL(!str, "str is null");
+//  Search
 
-    for (u64 i = 0; i < str->size; i++) {
-        if (((char*)str->data)[i] == c) {
+u64 string_find_char(const String* s, char c)
+{
+    CHECK_FATAL(!s, "str is null");
+
+    const char* buf = GET_STR(s);
+    for (u64 i = 0; i < s->size; i++) {
+        if (buf[i] == c) {
             return i;
         }
     }
-
     return (u64)-1;
 }
 
-
-u64 string_find_cstr(const String* str, const char* substr)
+u64 string_find_cstr(const String* s, const char* substr)
 {
-    CHECK_FATAL(!str, "str is null");
+    CHECK_FATAL(!s, "str is null");
     CHECK_FATAL(!substr, "substr is null");
 
     u64 len = cstr_len(substr);
-
     if (len == 0) {
         return 0;
     }
-
-    if (len > str->size) {
+    if (len > s->size) {
         return (u64)-1;
     }
 
-    for (u64 i = 0; i <= str->size - len; i++) {
-        if (memcmp(str->data + i, substr, len) == 0) {
+    const char* buf = GET_STR(s);
+    for (u64 i = 0; i <= s->size - len; i++) {
+        if (memcmp(buf + i, substr, len) == 0) {
             return i;
         }
     }
-
     return (u64)-1;
 }
 
-
-String* string_substr(const String* str, u64 start, u64 length)
+String* string_substr(const String* s, u64 start, u64 length)
 {
-    CHECK_FATAL(!str, "str is null");
-    CHECK_FATAL(start >= str->size, "index out of bounds");
+    CHECK_FATAL(!s, "str is null");
+    CHECK_FATAL(start >= s->size, "start out of bounds");
 
-    String* result = string_create();
-
-    u64 end     = start + length;
-    u64 str_len = string_len(str);
-    if (end > str_len) {
-        end = str_len;
+    u64 end = start + length;
+    if (end > s->size) {
+        end = s->size;
     }
 
     u64 actual_len = end - start;
 
+    String* result = string_create();
     if (actual_len > 0) {
-        const char* csrc = string_data_ptr(str) + start;
-        genVec_insert_multi(result, 0, (const u8*)csrc, actual_len);
+        ensure_capacity(result, actual_len);
+        str_copy_n(GET_STR(result), GET_STR(s) + start, actual_len);
+        result->size = actual_len;
     }
 
     return result;
 }
 
 
-void string_print(const String* str)
-{
-    CHECK_FATAL(!str, "str is null");
+//  I/O
 
-    putchar('\"');
-    for (u64 i = 0; i < str->size; i++) {
-        putchar(((char*)str->data)[i]);
+void string_print(const String* s)
+{
+    CHECK_FATAL(!s, "str is null");
+
+    putchar('"');
+    const char* buf = GET_STR(s);
+    for (u64 i = 0; i < s->size; i++) {
+        putchar(buf[i]);
     }
-    putchar('\"');
+    putchar('"');
 }
 
 
-u64 cstr_len(const char* cstr)
-{
-    u64 len = 0;
-    u64 i   = 0;
 
+static u64 cstr_len(const char* cstr)
+{
+    u64 i = 0;
     while (cstr[i++] != '\0') {
-        len++;
     }
-
-    return len;
+    return i;
 }
 
+static void str_copy_n(char* dest, const char* src, u64 n)
+{
+    for (u64 i = 0; i < n; i++) {
+        dest[i] = src[i];
+    }
+}
 
+// Promote SSO buffer to heap allocation.
+static void stk_to_heap(String* s)
+{
+    u64 new_cap = (u64)((float)s->capacity * STRING_GROWTH);
+
+    char* new_data = malloc(new_cap);
+    CHECK_FATAL(!new_data, "malloc failed");
+
+    str_copy_n(new_data, s->stk, s->size);
+
+    s->heap     = new_data;
+    s->capacity = new_cap;
+}
+
+static void string_grow(String* s)
+{
+    u64 new_cap = (u64)((float)s->capacity * STRING_GROWTH);
+
+    char* new_data = realloc(s->heap, new_cap);
+    CHECK_FATAL(!new_data, "realloc failed");
+
+    s->heap     = new_data;
+    s->capacity = new_cap;
+}
+
+static void string_shrink(String* s)
+{
+    u64 new_cap = (u64)((float)s->capacity * STRING_SHRINK_BY);
+
+    char* new_data = realloc(s->heap, new_cap);
+    if (!new_data) {
+        WARN("shrink realloc failed — keeping current allocation");
+        return;
+    }
+
+    s->heap     = new_data;
+    s->capacity = new_cap;
+}
+
+// Grow (possibly multiple times) until capacity >= needed.
+static void ensure_capacity(String* s, u64 needed)
+{
+    if (needed <= s->capacity) {
+        return;
+    }
+
+    if (IS_SSO(s)) {
+        // Jump straight to heap with the required size.
+        char* new_data = malloc(needed);
+        CHECK_FATAL(!new_data, "malloc failed");
+        str_copy_n(new_data, s->stk, s->size);
+        s->heap     = new_data;
+        s->capacity = needed;
+    } else {
+        // realloc to exactly what we need (caller can overshoot via reserve).
+        char* new_data = realloc(s->heap, needed);
+        CHECK_FATAL(!new_data, "realloc failed");
+        s->heap     = new_data;
+        s->capacity = needed;
+    }
+}

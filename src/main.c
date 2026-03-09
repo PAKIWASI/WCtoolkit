@@ -1,25 +1,21 @@
-#include "new_str.h"
+#include "String.h"
+#include "common.h"
+#include <stdio.h>
 
 
 int main(void)
 {
-    str s;
-    str_create_stk(&s, "hello");
+    String* str = string_from_cstr("helllo");
 
-    str_print(&s);
-    printf("\n%d\n%lu\n", s.sso, sizeof(str));
-    print_hex(cast(s), sizeof(str), 8);
+    string_print(str);
+    printf("\n%lu\n%lu\n", str->size, str->capacity);
+    print_hex(castptr(str), sizeof(String), 8);
 
-    for (u64 i = 0; i < 100; i++) {
-        str_append_char(&s, 'a');
-    }
+    string_append_cstr(str, " what is up");
 
-    str_print(&s);
-    printf("\n%d\n%lu\n", s.sso, sizeof(str));
-    print_hex(cast(s), sizeof(str), 8);
+    string_print(str);
+    printf("\n%lu\n%lu\n", str->size, str->capacity);
+    print_hex(castptr(str), sizeof(String), 8);
 
-    str_destroy_stk(&s);
-
-
-    return 0;
+    string_destroy(str);
 }
