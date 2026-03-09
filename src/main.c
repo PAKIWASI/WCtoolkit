@@ -11,7 +11,24 @@ int main(void)
     printf("\n%lu\n%lu\n", str->size, str->capacity);
     print_hex(castptr(str), sizeof(String), 8);
 
-    string_append_cstr(str, " what is up");
+    string_append_cstr(str, " what is up whataaaa");
+    string_append_char(str, ' ');
+
+    string_print(str);
+    printf("\n%lu\n%lu\n", str->size, str->capacity);
+    print_hex(castptr(str), sizeof(String), 8);
+
+    string_pop_char(str);
+    string_pop_char(str);
+    string_pop_char(str);
+    string_pop_char(str);
+    string_pop_char(str);
+    string_pop_char(str);
+    string_pop_char(str);
+    string_pop_char(str);
+    string_pop_char(str);
+
+    string_shrink_to_fit(str);
 
     string_print(str);
     printf("\n%lu\n%lu\n", str->size, str->capacity);

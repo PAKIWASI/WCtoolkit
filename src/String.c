@@ -35,6 +35,7 @@
 static u64  cstr_len(const char* cstr);
 static void str_copy_n(char* dest, const char* src, u64 n);
 static void stk_to_heap(String* s);
+static void heap_to_stk(String* s);
 static void string_grow(String* s);
 static void string_shrink(String* s);
 // Ensure capacity >= needed (handles SSO → heap transition).
@@ -114,10 +115,12 @@ void string_destroy(String* s)
 void string_destroy_stk(String* s)
 {
     CHECK_FATAL(!s, "str is null");
+
     if (!IS_SSO(s)) {
         free(s->heap);
         s->heap = NULL;
     }
+
     s->size     = 0;
     s->capacity = 0;
 }
@@ -170,6 +173,7 @@ void string_copy(String* dest, const String* src)
 void string_reserve(String* s, u64 new_cap)
 {
     CHECK_FATAL(!s, "str is null");
+
     if (new_cap <= s->capacity) {
         return;
     }
@@ -210,11 +214,7 @@ void string_shrink_to_fit(String* s)
 
     if (s->size <= STR_SSO_SIZE) {
         // Bring back to SSO.
-        char tmp[STR_SSO_SIZE];
-        str_copy_n(tmp, s->heap, s->size);
-        free(s->heap);
-        str_copy_n(s->stk, tmp, s->size);
-        s->capacity = STR_SSO_SIZE;
+        heap_to_stk(s);
         return;
     }
 
@@ -265,6 +265,7 @@ void string_append_char(String* s, char c)
     GET_STR_AT(s, s->size++) = c;
 }
 
+// TODO: this always sets size = cap if size was not enough, no extra
 void string_append_cstr(String* s, const char* cstr)
 {
     CHECK_FATAL(!s, "str is null");
@@ -604,6 +605,15 @@ static void stk_to_heap(String* s)
     s->capacity = new_cap;
 }
 
+static void heap_to_stk(String* s)
+{
+    char tmp[STR_SSO_SIZE];
+    str_copy_n(tmp, s->heap, s->size);
+    free(s->heap);
+    str_copy_n(s->stk, tmp, s->size);
+    s->capacity = STR_SSO_SIZE;
+}
+
 static void string_grow(String* s)
 {
     u64 new_cap = (u64)((float)s->capacity * STRING_GROWTH);
@@ -615,9 +625,15 @@ static void string_grow(String* s)
     s->capacity = new_cap;
 }
 
+// TODO: move from heap to stk if cap too low?
 static void string_shrink(String* s)
 {
     u64 new_cap = (u64)((float)s->capacity * STRING_SHRINK_BY);
+
+    if (new_cap <= STR_SSO_SIZE) {
+        heap_to_stk(s);
+        return;
+    }
 
     char* new_data = realloc(s->heap, new_cap);
     if (!new_data) {
@@ -651,3 +667,5 @@ static void ensure_capacity(String* s, u64 needed)
         s->capacity = needed;
     }
 }
+
+

@@ -17,9 +17,6 @@
 #endif
 
 
-// SSO String — no genVec dependency.
-// Layout: 23 (union) + 1 (sso flag) + 8 (size) + 8 (capacity) = 40 bytes
-// (padding may push to 48 — use __attribute__((packed)) if exact size matters)
 typedef struct {
     union {
         char* heap;
