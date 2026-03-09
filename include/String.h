@@ -168,16 +168,16 @@ TEMP_CSTR_READ(s) {
 
 // TODO: remove genVec dependency ?
 // we only use a handfull of genVec funcs so we could write them specificly for str
-
-typedef struct {
-    union {
-        char* heap;
-        char stk[23];
-    }; 
-    b8 sso;
-    u64 size;
-    u64 capacity;
-} str;
+//
+// typedef struct {
+//     union {
+//         char* heap;
+//         char stk[23];
+//     }; 
+//     b8 sso;
+//     u64 size;
+//     u64 capacity;
+// } str;
 
 // 23 1 8 8 = 40
 

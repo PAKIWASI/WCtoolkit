@@ -204,8 +204,5 @@ static inline b8 genVec_empty(const genVec* vec)
 }
 
 
-// TODO: vector view
-
-
 
 #endif // GEN_VECTOR_H
