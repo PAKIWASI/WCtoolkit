@@ -1,16 +1,23 @@
 #include "new_str.h"
 #include "common.h"
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 
 
 #define GET_STR(str) ((str)->sso ? (str)->stk : (str)->heap)
+#define GET_STR_AT(str, i) ((str)->sso ? (str)->stk : (str)->heap)[i]
 
-#define MAYBE_GROW(str)                                                      \
-    do {                                                                     \
-        if (!str->sso && (!(str)->heap || (str)->size >= (str)->capacity)) { \
-            string_grow(str);                                                \
-        }                                                                    \
+#define MAYBE_GROW(str)                       \
+    do {                                      \
+        if ((str)->size >= (str)->capacity) { \
+            if ((str)->sso) {                 \
+                stk_to_heap(str);             \
+            } else {                          \
+                string_grow(str);             \
+            }                                 \
+        }                                     \
     } while (0)
 
 #define MAYBE_SHRINK(str)                                                                     \
@@ -21,6 +28,7 @@
     } while (0)
 
 static u64  cstr_len(const char* cstr);
+static void stk_to_heap(str* str);
 static void string_grow(str* str);
 static void string_shrink(str* str);
 
@@ -46,14 +54,16 @@ str* str_from_cstr(const char* cstr)
 
     u64 len = cstr_len(cstr);
     if (len > STR_SSO_SIZE) {
-        s->sso  = false;
         s->heap = malloc(len);
         CHECK_FATAL(!s->heap, "str heap malloc failed");
+        s->sso  = false;
+        s->capacity = len;
     } else {
         s->sso = true;
+        s->capacity = STR_SSO_SIZE;
     }
 
-    s->capacity = len;
+    s->size = len;
     memcpy(GET_STR(s), cstr, len);
 
     return s;
@@ -63,8 +73,62 @@ void str_create_stk(str* str, const char* cstr)
 {
     CHECK_FATAL(!str, "str is null");
     CHECK_FATAL(!cstr, "cstr is null");
+
+    u64 len = cstr_len(cstr);
+    if (len > STR_SSO_SIZE) {
+        str->heap = malloc(len);
+        CHECK_FATAL(!str->heap, "str heap malloc failed");
+        str->sso  = false;
+        str->capacity = len;
+    } else {
+        str->sso = true;
+        str->capacity = STR_SSO_SIZE;
+    }
+
+    str->size = len;
+    memcpy(GET_STR(str), cstr, len);
 }
 
+void str_destroy(str* str)
+{
+    CHECK_FATAL(!str, "str is null");
+
+    if (!str->sso) {
+        free(str->heap);
+    }
+
+    free(str);
+}
+
+void str_destroy_stk(str* str)
+{
+    CHECK_FATAL(!str, "str is null");
+
+    if (!str->sso) {
+        free(str->heap);
+    }
+}
+
+
+void str_append_char(str* str, char c)
+{
+    CHECK_FATAL(!str, "str is null");
+
+    MAYBE_GROW(str);
+
+    GET_STR_AT(str, str->size++) = c;
+}
+
+void str_print(const str* str)
+{
+    CHECK_FATAL(!str, "str is null");
+
+    putchar('"');
+    for (u64 i = 0; i < str->size; i++) {
+        putchar(GET_STR_AT(str, i));    
+    }
+    putchar('"');
+}
 
 
 static u64 cstr_len(const char* cstr)
@@ -75,44 +139,47 @@ static u64 cstr_len(const char* cstr)
     return i - 1;
 }
 
+// only called in sso mode
+static void stk_to_heap(str* str)
+{
+    u64   new_cap  = (u64)((float)str->capacity * STRING_GROWTH);
+    char* new_data = malloc(new_cap);
+    CHECK_FATAL(!new_data, "new data malloc failed");
 
+    memcpy(new_data, str->stk, str->size);
+
+    str->heap = new_data;
+    str->capacity = new_cap;
+    str->sso = false;
+}
+
+// only get here when in heap mode
 static void string_grow(str* str)
 {
-    CHECK_FATAL(!str, "str is null");
-
-    u64 new_cap;
-    if (str->capacity < STRING_MIN_CAPACITY) {
-        new_cap = str->capacity + 1;
-    } else {
-        new_cap = (u64)((float)str->capacity * GENVEC_GROWTH);
-        if (new_cap <= str->capacity) {
-            new_cap = str->capacity + 1;
-        }
-    }
-
-    u8* new_data = realloc(str->heap, new_cap);
+    u64 new_cap = (u64)((float)str->capacity * STRING_GROWTH);
+    char* new_data = realloc(str->heap, new_cap);
     CHECK_FATAL(!new_data, "data realloc failed");
 
     str->heap     = new_data;
     str->capacity = new_cap;
 }
 
-
+// only get here in heap mode
 static void string_shrink(str* str)
 {
-    CHECK_FATAL(!vec, "vec is null");
-
-    u64 reduced_cap = (u64)((float)vec->capacity * GENVEC_SHRINK_BY);
-    if (reduced_cap < vec->size || reduced_cap == 0) {
+    u64 reduced_cap = (u64)((float)str->capacity * STRING_SHRINK_BY);
+    if (reduced_cap < str->size || reduced_cap == 0) {
         return;
     }
 
-    u8* new_data = realloc(vec->data, GET_SCALED(vec, reduced_cap));
+    char* new_data = realloc(str->heap, reduced_cap);
     if (!new_data) {
         WARN("shrink realloc failed");
         return;
     }
 
-    vec->data     = new_data;
-    vec->capacity = reduced_cap;
+    str->heap     = new_data;
+    str->capacity = reduced_cap;
 }
+
+

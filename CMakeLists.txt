@@ -45,6 +45,7 @@ set(LIB_SOURCES
     src/random.c
     src/Stack.c
     src/String.c
+    src/new_str.c
     src/wc_errno.c      # defines _Thread_local wc_errno
 )
 

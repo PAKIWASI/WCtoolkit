@@ -27,6 +27,7 @@ typedef struct {
     u64 size;
     u64 capacity;
 } str;
+// 23 1 8 8 = 40
 
 
 str* str_create(void);
@@ -37,14 +38,14 @@ void str_destroy(str* str);
 void str_destroy_stk(str* str);
 
 
-void str_append_cstr(str* str, const char* cstr);
 void str_append_char(str* str, char c);
+void str_append_cstr(str* str, const char* cstr);
 
 char str_pop_char(str* str);
 
 char str_char_at(const str* str, u64 i);
 void str_set_char(str* str, u64 i, char c);
 
-void str_print(str* str);
+void str_print(const str* str);
 
 #endif // NEW_STR_H

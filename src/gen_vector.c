@@ -647,8 +647,6 @@ void genVec_move(genVec* dest, genVec** src)
 
 static void genVec_grow(genVec* vec)
 {
-    CHECK_FATAL(!vec, "vec is null");
-
     u64 new_cap;
     if (vec->capacity < GENVEC_MIN_CAPACITY) {
         new_cap = vec->capacity + 1;
@@ -669,8 +667,6 @@ static void genVec_grow(genVec* vec)
 
 static void genVec_shrink(genVec* vec)
 {
-    CHECK_FATAL(!vec, "vec is null");
-
     u64 reduced_cap = (u64)((float)vec->capacity * GENVEC_SHRINK_BY);
     if (reduced_cap < vec->size || reduced_cap == 0) {
         return;
