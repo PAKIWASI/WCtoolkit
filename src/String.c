@@ -122,7 +122,7 @@ void string_destroy_stk(String* s)
     }
 
     s->size     = 0;
-    s->capacity = 0;
+    s->capacity = STR_SSO_SIZE; // leave in valid SSO state, not capacity=0
 }
 
 void string_move(String* dest, String** src)
@@ -184,17 +184,23 @@ void string_reserve_char(String* s, u64 new_cap, char c)
 {
     CHECK_FATAL(!s, "str is null");
     if (new_cap <= s->capacity) {
+        // Fill from current size up to new_cap within existing allocation.
+        char* buf = GET_STR(s);
+        for (u64 i = s->size; i < new_cap; i++) {
+            buf[i] = c;
+        }
+        s->size = new_cap;
         return;
     }
 
-    u64 old_cap = s->capacity;
+    u64 old_size = s->size;
     ensure_capacity(s, new_cap);
 
-    // Fill newly available slots with c.
     char* buf = GET_STR(s);
-    for (u64 i = old_cap; i < new_cap; i++) {
+    for (u64 i = old_size; i < new_cap; i++) {
         buf[i] = c;
     }
+    s->size = new_cap;
 }
 
 void string_shrink_to_fit(String* s)
@@ -265,6 +271,7 @@ void string_append_char(String* s, char c)
     GET_STR_AT(s, s->size++) = c;
 }
 
+// TODO: this always sets size = cap if size was not enough, no extra
 void string_append_cstr(String* s, const char* cstr)
 {
     CHECK_FATAL(!s, "str is null");
@@ -578,9 +585,10 @@ void string_print(const String* s)
 static u64 cstr_len(const char* cstr)
 {
     u64 i = 0;
-    while (cstr[i++] != '\0') {
+    while (cstr[i] != '\0') {
+        i++;
     }
-    return i - 1;
+    return i;
 }
 
 static void str_copy_n(char* dest, const char* src, u64 n)
@@ -624,6 +632,7 @@ static void string_grow(String* s)
     s->capacity = new_cap;
 }
 
+// TODO: move from heap to stk if cap too low?
 static void string_shrink(String* s)
 {
     u64 new_cap = (u64)((float)s->capacity * STRING_SHRINK_BY);
@@ -669,5 +678,3 @@ static void ensure_capacity(String* s, u64 needed)
         s->capacity = new_cap;
     }
 }
-
-

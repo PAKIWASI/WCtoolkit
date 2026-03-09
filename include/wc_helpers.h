@@ -23,7 +23,9 @@
  *   copy_fn(u8* dest, const u8* src)
  *     dest  — raw bytes of the slot (uninitialised — treat as blank)
  *     src   — raw bytes of the source element
- *     job   — deep-copy all owned resources into dest; DO NOT free dest first
+ *     job   — deep-copy all owned resources into dest; DO NOT free dest first.
+ *             If delegating to a function that calls destroy internally (e.g.
+ *             string_copy), you MUST first init dest to a valid empty state.
  *
  *   move_fn(u8* dest, u8** src)
  *     dest  — raw bytes of the slot (uninitialised)
@@ -51,29 +53,35 @@
  */
 
 #include "String.h"
+#include "gen_vector.h"
 #include <string.h>
 
 
 /* ══════════════════════════════════════════════════════════════════════════
  * 1.  STRING BY VALUE
+ *
+ * String is SSO-based (no data_size / data fields).
+ * str_copy  — delegates to string_copy()  (handles SSO vs heap correctly)
+ * str_move  — memcpy the struct shell, free the source container
+ * str_del   — delegates to string_destroy_stk() (frees heap buf if any)
  * ══════════════════════════════════════════════════════════════════════════ */
 
 static inline void str_copy(u8* dest, const u8* src)
 {
-    const String* s = (const String*)src;
-    String*       d = (String*)dest;
-
-    memcpy(d, s, sizeof(String));       // copy all fields (data ptr too)
-
-    u64 n   = s->size * (u64)s->data_size;
-    d->data = malloc(n ? n : 1);
-    if (n) { memcpy(d->data, s->data, n); }
+    // dest is uninitialised raw slot memory — init to valid SSO state first
+    // so that string_copy's internal string_destroy_stk(dest) is safe.
+    String* d = (String*)dest;
+    d->size     = 0;
+    d->capacity = STR_SSO_SIZE;
+    string_copy(d, (const String*)src);
 }
 
 static inline void str_move(u8* dest, u8** src)
 {
-    memcpy(dest, *src, sizeof(String)); // copy all fields into slot
-    free(*src);                         // free heap container, not data
+    // *src is a heap-allocated String* — move its contents into the slot,
+    // then free the shell. Works for both SSO (copies stk[]) and heap mode.
+    memcpy(dest, *src, sizeof(String));
+    free(*src);
     *src = NULL;
 }
 
@@ -90,20 +98,15 @@ static inline void str_print(const u8* elm)
 
 /* ══════════════════════════════════════════════════════════════════════════
  * 2.  STRING BY POINTER
+ *
+ * str_copy_ptr — delegates to string_from_string() for a full heap copy
+ * str_move_ptr — pointer swap, nulls source
+ * str_del_ptr  — delegates to string_destroy() (frees buf + struct)
  * ══════════════════════════════════════════════════════════════════════════ */
 
 static inline void str_copy_ptr(u8* dest, const u8* src)
 {
-    const String* s = *(const String**)src;
-
-    String* d = malloc(sizeof(String));
-    memcpy(d, s, sizeof(String));
-
-    u64 n   = s->size * (u64)s->data_size;
-    d->data = malloc(n ? n : 1);
-    if (n) { memcpy(d->data, s->data, n); }
-
-    *(String**)dest = d;
+    *(String**)dest = string_from_string(*(const String**)src);
 }
 
 static inline void str_move_ptr(u8* dest, u8** src)

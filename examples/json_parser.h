@@ -25,6 +25,7 @@
 #define JSON_PARSER_H
 
 #include "String.h"
+#include "gen_vector.h"
 #include "hashmap.h"
 
 
