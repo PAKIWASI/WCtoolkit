@@ -1,8 +1,6 @@
-
-
-#include "common.h"
 #include "new_str.h"
-#include <stdio.h>
+
+
 int main(void)
 {
     str s;
