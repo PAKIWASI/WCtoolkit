@@ -31,23 +31,6 @@ genVec_destroy(vec);
 
 ---
 
-## Comparison with Similar C Libraries
-
-| Feature / Library | WCtoolkit | klib | stb_ds | GLib | ccontainers |
-|------------------|----------|------|--------|------|-------------|
-| Language | C11 (+ GNU ext) (removeable) | C89 | C89 | C89 | C99 |
-| Ownership model | **Explicit (copy / move / del)** | Implicit | Implicit | Implicit (ref-counted) | Semi-explicit |
-| Value semantics | **Yes** | Limited | No | No | Partial |
-| Move semantics | **Yes (manual, explicit)** | No | No | No | No |
-| Hidden allocations | **None** | Yes | Yes | Yes | Some |
-| Stable element addresses | Optional (by-pointer strategy) | No | No | Yes | Yes |
-| Type safety | Medium (macros + sizeof) | Low | Low | High | Medium |
-| Runtime overhead | **Zero** | Low | Low | High | Medium |
-| Single-header | **Yes (per utility)** | Yes | Yes | No | No |
-| Primary goal | **Explicit ownership & control** | Convenience | Header-only convenience | Safety & portability | STL-like containers |
-
----
-
 ## Table of Contents
 
 - [Design Philosophy](#design-philosophy)
@@ -88,7 +71,7 @@ Elements are stored **inline by value** inside containers. A `genVec` of `String
 │  genVec (by value)                                  │
 │  ┌──────────┬──────────┬──────────┬──────────┐      │
 │  │ String   │ String   │ String   │ String   │ ...  │
-│  │ {data, …}│ {data, …}│ {data, …}│ {data, …}│      │
+│  │ {stk/…}  │ {stk/…}  │ {stk/…}  │ {stk/…}  │      │
 │  └──────────┴──────────┴──────────┴──────────┘      │
 └─────────────────────────────────────────────────────┘
 ```
@@ -141,7 +124,7 @@ Stack variants reduce heap pressure and are useful in tight loops, embedded cont
 
 ### Separation of Concerns
 
-The library is layered deliberately. `common.h` defines primitive types and macros. `gen_vector` is the single workhorse container. Everything else — `String`, `Stack`, `Queue`, `bitVec` — is built on top of it, reusing its growth, shrink, insert, remove, and copy logic without duplicating it. The hash containers share `map_setup.h` for hashing, prime selection, and load factor logic.
+The library is layered deliberately. `common.h` defines primitive types and macros. `gen_vector` is the single workhorse container. `Stack`, `Queue`, and `bitVec` are built on top of it, reusing its growth, shrink, insert, remove, and copy logic without duplicating it. `String` is its own independent implementation — it does not depend on `gen_vector`. The hash containers share `map_setup.h` for hashing, prime selection, and load factor logic.
 
 ---
 
@@ -163,9 +146,9 @@ Pass `NULL` for any you don't need. For `int`, `float`, and flat structs without
 
 The key contract:
 
-- `copy_fn`: `dest` is **uninitialized raw memory** — never free it first. Write fresh allocations into it.
+- `copy_fn`: `dest` is **uninitialized raw memory** — never free it first. Write fresh allocations into it. If delegating to a function that calls `destroy` internally (e.g. `string_copy`), first init `dest` to a valid empty state.
 - `move_fn`: `*src` is a **heap pointer** to the source struct. Copy the struct fields into `dest`, then `free(*src)` and null it. Do **not** free the data buffer — it moves with the fields.
-- `delete_fn`: `elm` is **a slot in the container** — do not `free(elm)` itself. Only free resources the element owns (e.g. a `data` buffer).
+- `delete_fn`: `elm` is **a slot in the container** — do not `free(elm)` itself. Only free resources the element owns (e.g. a heap data buffer).
 
 For `genVec` and the adapters built on it, callbacks are passed as a `container_ops` vtable:
 
@@ -446,7 +429,7 @@ arena_release(arena);  // single cleanup for everything
 
 ### Generic Vector
 
-The foundation of the library. `String`, `Stack`, `Queue`, and `bitVec` are all built on top of it.
+The foundation of the library. `Stack`, `Queue`, and `bitVec` are all built on top of it.
 
 **Creating:**
 
@@ -560,21 +543,42 @@ genVec_print(v, my_print_fn);   // applies print_fn to each element
 
 ### String
 
-A dynamic, length-based string. No null terminator is stored internally. Implemented as `typedef genVec String`, so all `genVec` internals apply — growth, shrink, inline data, the works.
+A dynamic, length-based string with **Small String Optimisation (SSO)**. No null terminator is stored internally. Short strings (up to 24 bytes) live entirely inside the struct with no heap allocation. Longer strings spill to a heap buffer transparently. `String` is an independent type — it does **not** depend on `gen_vector`.
+
+**Layout (40 bytes):**
+
+```
+┌─────────────────────────────────────┐
+│  union { char* heap; char stk[24] } │  24 bytes — data in-place or heap ptr
+│  u64 size                           │   8 bytes
+│  u64 capacity                       │   8 bytes — equals 24 when in SSO mode
+└─────────────────────────────────────┘
+```
+
+When `capacity == 24` (= `STR_SSO_SIZE`), the string is in SSO mode and characters live in `stk[]`. When `capacity > 24`, `heap` is a valid pointer and the string is heap-allocated. The transition is automatic.
+
+**Growth behavior** — configurable before the include:
+
+```c
+#define STRING_GROWTH    1.5F   // capacity multiplier on grow (default)
+#define STRING_SHRINK_AT 0.25F  // shrink when size/capacity falls below this
+#define STRING_SHRINK_BY 0.5F   // multiply capacity by this on shrink
+#include "String.h"
+```
 
 **Creating:**
 
 ```c
-String* s = string_create();                 // empty, heap
-String* s = string_from_cstr("hello");       // from C literal, heap
-String* s = string_from_string(other);       // deep copy, heap
+String* s = string_create();                 // empty, heap struct
+String* s = string_from_cstr("hello");       // from C literal, heap struct
+String* s = string_from_string(other);       // deep copy, heap struct
 
 String s;
-string_create_stk(&s, "hello");              // stack struct, heap data
+string_create_stk(&s, "hello");              // stack struct
 string_create_stk(&s, NULL);                // empty, stack struct
 
-string_reserve(s, 64);                       // pre-allocate capacity
-string_reserve_char(s, 5, 'x');             // pre-allocate and fill with 'x'
+string_reserve(s, 64);                       // pre-allocate capacity (never shrinks)
+string_reserve_char(s, 5, 'x');             // resize to 5 and fill with 'x' — string_len becomes 5
 ```
 
 **Appending:**
@@ -605,7 +609,7 @@ string_clear(s);                     // size → 0, keep capacity
 char  c   = string_char_at(s, i);
 void      string_set_char(s, i, 'x');
 
-char* ptr = string_data_ptr(s);      // raw pointer, NO null terminator
+char* ptr = string_data_ptr(s);      // raw pointer into internal buffer, NO null terminator
 char* cs  = string_to_cstr(s);       // malloced, null-terminated copy — you free it
 
 u64 len = string_len(s);
@@ -641,8 +645,10 @@ TEMP_CSTR_READ(s) {
 string_copy(dest, src);      // deep copy into dest (frees dest's old data first)
 string_move(dest, &src);     // transfer ownership, src → NULL
 
-string_destroy(s);           // heap-allocated
-string_destroy_stk(&s);      // stack-allocated struct
+string_shrink_to_fit(s);     // reallocate to exact size; demotes to SSO if size <= 24
+
+string_destroy(s);           // heap-allocated struct
+string_destroy_stk(&s);      // stack-allocated struct — leaves struct in valid empty SSO state
 ```
 
 ---
@@ -818,6 +824,7 @@ b8  e = hashset_empty(s);
 
 hashset_clear(s);    // remove all elements, keep capacity
 hashset_reset(s);    // remove all elements, reset to initial capacity
+hashset_copy(dest, src);
 hashset_print(s, print_fn);
 hashset_destroy(s);
 ```
@@ -1009,9 +1016,9 @@ genVec* v = VEC_CX(String, 8, &wc_str_ops);
 ### For String, stored by value
 
 ```c
-str_copy    // copy_fn  — deep copies the String struct and its data buffer
+str_copy    // copy_fn  — inits dest to valid SSO state, then deep copies
 str_move    // move_fn  — moves fields into slot, frees heap container, nulls src
-str_del     // delete_fn — frees data buffer only (not the slot)
+str_del     // delete_fn — frees heap data buffer only (not the slot itself)
 str_print   // print_fn
 str_cmp     // compare_fn — wraps string_compare
 ```
@@ -1019,7 +1026,7 @@ str_cmp     // compare_fn — wraps string_compare
 ### For String*, stored by pointer
 
 ```c
-str_copy_ptr    // copy_fn  — allocs new String, deep copies
+str_copy_ptr    // copy_fn  — allocs new String, deep copies via string_from_string
 str_move_ptr    // move_fn  — transfers pointer into slot, nulls src
 str_del_ptr     // delete_fn — calls string_destroy (frees both data and struct)
 str_print_ptr   // print_fn
@@ -1159,7 +1166,7 @@ Each implementation block is guarded against duplicate emission, so combining se
 
 ```c
 #define WC_IMPLEMENTATION
-#include "String_single.h"     // inlines: common, gen_vector, String
+#include "String_single.h"     // inlines: common, String
 #include "hashmap_single.h"    // inlines: common, map_setup, hashmap
                                // common is NOT duplicated — guard prevents it
 ```
@@ -1174,7 +1181,7 @@ Each implementation block is guarded against duplicate emission, so combining se
 | `arena` | `common`, `wc_errno` |
 | `gen_vector` | `common`, `wc_errno` |
 | `bit_vector` | `gen_vector` |
-| `String` | `gen_vector` |
+| `String` | `common` |
 | `Stack` | `gen_vector` |
 | `Queue` | `gen_vector` |
 | `map_setup` | `String` |
@@ -1197,62 +1204,6 @@ These are documented bugs identified but not yet fixed.
 **`find_slot` sentinel** (`hashmap.c`, `hashset.c`): When the table is entirely tombstones and no `EMPTY` bucket is found, the function returns `0` as a fallback. `0` is a valid bucket index. Should return `(u64)-1` and callers should check for it.
 
 **Gaussian spare state** (`random.c`): `pcg32_rand_gaussian` caches its second Box-Muller output in a `static` variable. This state is invisible to callers and breaks correctness if multiple independent RNG instances are needed. Move `gaussian_spare` and `has_spare` into `pcg32_random_t`.
-
----
-
-## Type and Diagnostic Reference
-
-### Primitive types (`common.h`)
-
-```c
-typedef uint8_t  u8;
-typedef uint8_t  b8;    // boolean: false (0) / true (1)
-typedef uint16_t u16;
-typedef uint32_t u32;
-typedef uint64_t u64;
-
-#define false ((b8)0)
-#define true  ((b8)1)
-```
-
-### Size helpers
-
-```c
-nKB(n)   // n * 1024
-nMB(n)   // n * 1024 * 1024
-```
-
-### Casting helpers
-
-```c
-cast(x)     // (u8*)(&x)   — address of a local variable
-castptr(x)  // (u8*)(x)    — reinterpret a pointer as u8*
-```
-
-### Diagnostics
-
-```c
-FATAL(fmt, ...)                      // print to stderr, exit
-WARN(fmt, ...)                       // print to stdout, continue
-LOG(fmt, ...)                        // info print
-
-CHECK_FATAL(cond, fmt, ...)          // exit if cond is true (bugs)
-CHECK_WARN(cond, fmt, ...)           // warn if cond is true
-CHECK_WARN_RET(cond, ret, fmt, ...)  // warn and return ret if cond is true
-```
-
-All diagnostics print `[FATAL]`, `[WARN]`, or `[LOG]` in color, with file, line, and function name.
-
-### Function pointer typedefs (`common.h`)
-
-```c
-typedef void (*copy_fn)(u8* dest, const u8* src);
-typedef void (*move_fn)(u8* dest, u8** src);
-typedef void (*delete_fn)(u8* elm);
-typedef void (*print_fn)(const u8* elm);
-typedef int  (*compare_fn)(const u8* a, const u8* b, u64 size);
-typedef u64  (*custom_hash_fn)(const u8* key, u64 size);
-```
 
 ---
 
