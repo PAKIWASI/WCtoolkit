@@ -39,6 +39,8 @@
 #define COLOR_CYAN   "\033[1;36m"
 
 
+// TODO: warm paths ?
+
 #define WARN(fmt, ...)                                            \
     do {                                                          \
         printf(COLOR_YELLOW "[WARN]"                              \
