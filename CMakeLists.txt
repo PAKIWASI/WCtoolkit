@@ -79,13 +79,13 @@ enable_testing()
 add_test(NAME unit_tests COMMAND tests)
 
 
-# # Example programs
-# add_executable(examples
-#     examples/examples.c
-#     examples/json_parser.c
-#     ${LIB_SOURCES}
-# )
-# target_include_directories(examples PRIVATE include)
+# Example programs
+add_executable(examples
+    examples/examples.c
+    examples/json_parser.c
+    ${LIB_SOURCES}
+)
+target_include_directories(examples PRIVATE include)
 
 # ── Usage comments ───────────────────────────────────────────────────────
 # Debug build (default):
@@ -99,3 +99,5 @@ add_test(NAME unit_tests COMMAND tests)
 #
 # Run via CTest (shows pass/fail summary):
 #   ctest --test-dir build --output-on-failure
+
+

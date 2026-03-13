@@ -7,20 +7,20 @@
 #define STR_SSO_SIZE 24
 
 #ifndef STRING_GROWTH
-    #define STRING_GROWTH   1.5F    // capacity multiplier on grow
+    #define STRING_GROWTH    1.5F    // capacity multiplier on grow
 #endif
 #ifndef STRING_SHRINK_AT
-    #define STRING_SHRINK_AT 0.25F  // shrink when size/cap falls below this
+    #define STRING_SHRINK_AT 0.25F   // shrink when size/cap falls below this
 #endif
 #ifndef STRING_SHRINK_BY
-    #define STRING_SHRINK_BY 0.5F   // multiply capacity by this on shrink
+    #define STRING_SHRINK_BY 0.5F    // multiply capacity by this on shrink
 #endif
 
 
 typedef struct {
     union {
         char* heap;
-        char   stk[STR_SSO_SIZE];
+        char  stk[STR_SSO_SIZE];
     };
     // b8  sso;     // HACK: if cap is = STR_SSO_SIZE then we are in sso mode, if greater then heap mode
     u64 size;

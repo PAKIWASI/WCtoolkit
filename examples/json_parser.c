@@ -662,7 +662,7 @@ static void print_str_esc(const String* s)
 {
     putchar('"');
     for (u64 i = 0; i < s->size; i++) {
-        char c = ((const char*)s->data)[i];
+        char c = string_data_ptr(s)[i];
         switch (c) {
         case '"':  fputs("\\\"", stdout); break;
         case '\\': fputs("\\\\", stdout); break;
@@ -756,7 +756,7 @@ static void serialize_str_esc(const String* s, String* out)
 {
     string_append_char(out, '"');
     for (u64 i = 0; i < s->size; i++) {
-        char c = ((const char*)s->data)[i];
+        char c = string_data_ptr(s)[i];
         switch (c) {
         case '"':  string_append_cstr(out, "\\\""); break;
         case '\\': string_append_cstr(out, "\\\\"); break;
