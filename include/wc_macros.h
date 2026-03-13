@@ -6,6 +6,7 @@
  *   typeof  (__typeof__)  — GNU ext, available with Clang/GCC + -std=c11
  *   ({ })   statement expressions — GNU ext, Clang/GCC only
  */
+
 #define typeof __typeof__
 
 
@@ -35,7 +36,6 @@
 #define VEC_CX(T, cap, ops)  genVec_init((cap), sizeof(T), (ops))
 #define VEC_EMPTY_CX(T, ops) genVec_init(0, sizeof(T), (ops))
 
-// TODO: test
 #define VEC_MAKE_OPS(copy, move, del) \
     (container_ops)                   \
     {                                 \
@@ -62,21 +62,21 @@ Usage:
 
 // ── Push ───────────────────────────────────────────────────────────────────
 
-/* VEC_PUSH — push any POD value */
+// VEC_PUSH — push any POD value 
 #define VEC_PUSH(vec, val)                 \
     ({                                     \
         typeof(val) wvp_tmp = (val);       \
         genVec_push((vec), (u8*)&wvp_tmp); \
     })
 
-/* VEC_PUSH_COPY — deep copy for complex types. Source stays valid. */
+// VEC_PUSH_COPY — deep copy for complex types. Source stays valid. 
 #define VEC_PUSH_COPY(vec, val)            \
     ({                                     \
         typeof(val) wpc_tmp = (val);       \
         genVec_push((vec), (u8*)&wpc_tmp); \
     })
 
-/* VEC_PUSH_MOVE — transfer ownership. Source becomes NULL. */
+// VEC_PUSH_MOVE — transfer ownership. Source becomes NULL. 
 #define VEC_PUSH_MOVE(vec, ptr)                \
     ({                                         \
         typeof(ptr) wvm_p = (ptr);             \
@@ -84,7 +84,7 @@ Usage:
         (ptr) = wvm_p;                         \
     })
 
-/* VEC_PUSH_CSTR — allocate a heap String and move it in. */
+// VEC_PUSH_CSTR — allocate a heap String and move it in. 
 #define VEC_PUSH_CSTR(vec, cstr)                \
     ({                                          \
         String* wpc_s = string_from_cstr(cstr); \
