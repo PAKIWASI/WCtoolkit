@@ -39,6 +39,8 @@
 #define COLOR_CYAN   "\033[1;36m"
 
 
+// TODO: warm paths ?
+
 #define WARN(fmt, ...)                                            \
     do {                                                          \
         printf(COLOR_YELLOW "[WARN]"                              \
@@ -309,375 +311,170 @@ static inline void wc_perror(const char* prefix)
 
 #endif /* WC_WC_ERRNO_H */
 
-/* ===== gen_vector.h ===== */
-#ifndef WC_GEN_VECTOR_H
-#define WC_GEN_VECTOR_H
-
-/*          TLDR
- * genVec is a value-based generic vector.
- * Elements are stored inline and managed via user-supplied
- * copy/move/destructor callbacks.
- *
- * This avoids pointer ownership ambiguity and improves cache locality.
- *
- * Callbacks are grouped into a shared genVec_ops struct (vtable).
- * Define one static ops instance per type and share it across all
- * vectors of that type —  improves cache locality when many vectors of the same type exist.
- *
- * Example:
- *   static const genVec_ops string_ops = { str_copy, str_move, str_del };
- *   genVec* vec = genVec_init(8, sizeof(String), &string_ops);
- *
- * For POD types (int, float, flat structs) pass NULL for ops:
- *   genVec* vec = genVec_init(8, sizeof(int), NULL);
- */
-
-
-// genVec growth/shrink settings (user can change)
-
-#ifndef GENVEC_GROWTH
-    #define GENVEC_GROWTH 1.5F      // vec capacity multiplier
-#endif
-#ifndef GENVEC_SHRINK_AT
-    #define GENVEC_SHRINK_AT 0.25F  // % filled to shrink at (25% filled)
-#endif
-#ifndef GENVEC_SHRINK_BY
-    #define GENVEC_SHRINK_BY 0.5F   // capacity divisor (half)
-#endif
-
-
-// // Vtable: one instance shared across all vectors of the same type.
-// // Pass NULL for any callback not needed.
-// // For POD types, pass NULL for the whole ops pointer.
-// typedef struct {
-//     copy_fn   copy_fn; // Deep copy function for owned resources (or NULL)
-//     move_fn   move_fn; // Transfer ownership and null original (or NULL)
-//     delete_fn del_fn;  // Cleanup function for owned resources (or NULL)
-// } container_ops;
-
-
-// generic vector container
-typedef struct {
-    u8* data; // pointer to generic data
-
-    u64 size;      // Number of elements currently in vector
-    u64 capacity;  // Total allocated capacity (in elements)
-    u32 data_size; // Size of each element in bytes
-
-    // Pointer to shared type-ops vtable (or NULL for POD types)
-    const container_ops* ops;
-} genVec;
-
-// sizeof(genVec) == 48
-
-
-// Convenience: access ops callbacks safely
-#define VEC_COPY_FN(vec) ((vec)->ops ? (vec)->ops->copy_fn : NULL)
-#define VEC_MOVE_FN(vec) ((vec)->ops ? (vec)->ops->move_fn : NULL)
-#define VEC_DEL_FN(vec)  ((vec)->ops ? (vec)->ops->del_fn  : NULL)
-
-
-
-// Memory Management
-// ===========================
-
-// Initialize vector with capacity n.
-// ops: pointer to a shared genVec_ops vtable, or NULL for POD types.
-genVec* genVec_init(u64 n, u32 data_size, const container_ops* ops);
-
-// Initialize vector on stack (struct on stack, data on heap).
-void genVec_init_stk(u64 n, u32 data_size, const container_ops* ops, genVec* vec);
-
-// Initialize vector of size n with all elements set to val.
-genVec* genVec_init_val(u64 n, const u8* val, u32 data_size, const container_ops* ops);
-
-void genVec_init_val_stk(u64 n, const u8* val, u32 data_size, const container_ops* ops, genVec* vec);
-
-// Vector COMPLETELY on stack (can't grow in size).
-// You provide a stack-allocated array which becomes the internal array.
-// WARNING: crashes when size == capacity and you try to push.
-void genVec_init_arr(u64 n, u8* arr, u32 data_size, const container_ops* ops, genVec* vec);
-
-// Destroy heap-allocated vector and clean up all elements.
-void genVec_destroy(genVec* vec);
-
-// Destroy stack-allocated vector (cleans up data, but not vec itself).
-void genVec_destroy_stk(genVec* vec);
-
-// Remove all elements (calls del_fn on each), keep capacity.
-void genVec_clear(genVec* vec);
-
-// Remove all elements and free memory, shrink capacity to 0.
-void genVec_reset(genVec* vec);
-
-// Ensure vector has at least new_capacity space (never shrinks).
-void genVec_reserve(genVec* vec, u64 new_capacity);
-
-// Grow to new_capacity and fill new slots with val.
-void genVec_reserve_val(genVec* vec, u64 new_capacity, const u8* val);
-
-// Shrink vector to its size (reallocates).
-void genVec_shrink_to_fit(genVec* vec);
-
-
-
-// Operations
-// ===========================
-
-// Append element to end (makes deep copy if copy_fn provided).
-void genVec_push(genVec* vec, const u8* data);
-
-// Append element to end, transfer ownership (nulls original pointer).
-void genVec_push_move(genVec* vec, u8** data);
-
-// Remove element from end. If popped is provided, copies element before deletion.
-// Note: del_fn is called regardless to clean up owned resources.
-void genVec_pop(genVec* vec, u8* popped);
-
-// Copy element at index i into out buffer.
-void genVec_get(const genVec* vec, u64 i, u8* out);
-
-// Get pointer to element at index i.
-// Note: Pointer invalidated by push/insert/remove operations.
-const u8* genVec_get_ptr(const genVec* vec, u64 i);
-
-// Get MUTABLE pointer to element at index i.
-// Note: Pointer invalidated by push/insert/remove operations.
-u8* genVec_get_ptr_mut(const genVec* vec, u64 i);
-
-// Replace element at index i with data (cleans up old element).
-void genVec_replace(genVec* vec, u64 i, const u8* data);
-
-// Replace element at index i, transfer ownership (cleans up old element).
-void genVec_replace_move(genVec* vec, u64 i, u8** data);
-
-// Insert element at index i, shifting elements right.
-void genVec_insert(genVec* vec, u64 i, const u8* data);
-
-// Insert element at index i with ownership transfer, shifting elements right.
-void genVec_insert_move(genVec* vec, u64 i, u8** data);
-
-// Insert num_data elements from data array into vec at index i.
-void genVec_insert_multi(genVec* vec, u64 i, const u8* data, u64 num_data);
-
-// Insert (move) num_data elements from data starting at index i.
-void genVec_insert_multi_move(genVec* vec, u64 i, u8** data, u64 num_data);
-
-// Remove element at index i, optionally copy to out, shift elements left.
-void genVec_remove(genVec* vec, u64 i, u8* out);
-
-// Remove elements in range [l, r] inclusive.
-void genVec_remove_range(genVec* vec, u64 l, u64 r);
-
-// Get pointer to first element.
-const u8* genVec_front(const genVec* vec);
-
-// Get pointer to last element.
-const u8* genVec_back(const genVec* vec);
-
-
-// Utility
-// ===========================
-
-// Print all elements using provided print function.
-void genVec_print(const genVec* vec, print_fn fn);
-
-// Deep copy src vector into dest.
-// Note: cleans up dest (if already inited).
-void genVec_copy(genVec* dest, const genVec* src);
-
-// Transfer ownership from src to dest.
-// Note: src must be heap-allocated.
-void genVec_move(genVec* dest, genVec** src);
-
-
-// Get number of elements in vector.
-static inline u64 genVec_size(const genVec* vec)
-{
-    CHECK_FATAL(!vec, "vec is null");
-    return vec->size;
-}
-
-// Get total capacity of vector.
-static inline u64 genVec_capacity(const genVec* vec)
-{
-    CHECK_FATAL(!vec, "vec is null");
-    return vec->capacity;
-}
-
-// Check if vector is empty.
-static inline b8 genVec_empty(const genVec* vec)
-{
-    CHECK_FATAL(!vec, "vec is null");
-    return vec->size == 0;
-}
-
-#endif /* WC_GEN_VECTOR_H */
-
 /* ===== String.h ===== */
 #ifndef WC_STRING_H
 #define WC_STRING_H
 
-// ===== STRING =====
-// the string is just a genVec of char type (length based string - not cstr)
-typedef genVec String;
-// ==================
+#define STR_SSO_SIZE 24
+
+#ifndef STRING_GROWTH
+    #define STRING_GROWTH    1.5F    // capacity multiplier on grow
+#endif
+#ifndef STRING_SHRINK_AT
+    #define STRING_SHRINK_AT 0.25F   // shrink when size/cap falls below this
+#endif
+#ifndef STRING_SHRINK_BY
+    #define STRING_SHRINK_BY 0.5F    // multiply capacity by this on shrink
+#endif
 
 
-// Construction/Destruction
+typedef struct {
+    union {
+        char* heap;
+        char  stk[STR_SSO_SIZE];
+    };
+    // b8  sso;     // HACK: if cap is = STR_SSO_SIZE then we are in sso mode, if greater then heap mode
+    u64 size;
+    u64 capacity;
+} String;
 
-// create string on the heap
+// 24 8 8 = 40 bytes
+
+
+//  Construction / Destruction 
+
+// Create an empty string on the heap.
 String* string_create(void);
 
-// create string with struct on the stack and data on heap
-void string_create_stk(String* str, const char* cstr);
-
-// create string on heap from a cstr
+// Create a string on the heap from a cstr.
 String* string_from_cstr(const char* cstr);
 
-// get copy of a string (heap allocated)
+// Create a copy of another heap-allocated string.
 String* string_from_string(const String* other);
 
-// reserve a capacity for a string (must be greater than current cap)
-void string_reserve(String* str, u64 capacity);
+// Initialise a String whose struct lives on the stack (data may be on heap).
+void string_create_stk(String* str, const char* cstr);
 
-// reserve a capacity with a char
-void string_reserve_char(String* str, u64 capacity, char c);
-
-// destroy the heap allocated string
+// Destroy a heap-allocated String (frees struct + data).
 void string_destroy(String* str);
 
-// destroy only the data ptr of string struct (for stk created str)
+// Destroy only the internal data of a stack-allocated String.
 void string_destroy_stk(String* str);
 
-// move string contents (nulls source)
-// Note: src must be heap allocated
+// Move: transfer ownership from *src to dest, nulling *src.
+// *src must be heap-allocated.
 void string_move(String* dest, String** src);
 
-// make deep copy
+// Deep copy src into dest (dest is re-initialised).
 void string_copy(String* dest, const String* src);
 
-// get cstr as COPY ('\0' present)
-// cstr is MALLOCED and must be freed by user
+
+//  Capacity 
+
+// Ensure capacity >= new_cap (never shrinks).
+void string_reserve(String* str, u64 new_cap);
+
+// Reserve capacity and fill new slots with c.
+void string_reserve_char(String* str, u64 new_cap, char c);
+
+// Shrink allocation to exactly fit current size.
+void string_shrink_to_fit(String* str);
+
+
+//  Conversion 
+
+// Return a malloc'd NUL-terminated copy — caller must free().
 char* string_to_cstr(const String* str);
 
-// get ptr to the cstr buffer
-// Note: NO NULL TERMINATOR
+// Return a raw pointer into the internal buffer (no NUL terminator).
 char* string_data_ptr(const String* str);
 
 
-// Modification
+//  Modification 
 
-// append a cstr to the end of a string
+void string_append_char(String* str, char c);
 void string_append_cstr(String* str, const char* cstr);
-
-// append a string "other" to the end of a string "str"
 void string_append_string(String* str, const String* other);
-
-// Concatenate string "other" and destroy source "str"
+// Append other then destroy it (nulls *other).
 void string_append_string_move(String* str, String** other);
 
-// append a char to the end of a string
-void string_append_char(String* str, char c);
-
-// insert a char at index i of string
-void string_insert_char(String* str, u64 i, char c);
-
-// insert a cstr at index i
-void string_insert_cstr(String* str, u64 i, const char* cstr);
-
-// insert a string "str" at index i
-void string_insert_string(String* str, u64 i, const String* other);
-
-// remove char from end of a string
 char string_pop_char(String* str);
 
-// remove a char from index i of string
-void string_remove_char(String* str, u64 i);
+void string_insert_char(String* str, u64 i, char c);
+void string_insert_cstr(String* str, u64 i, const char* cstr);
+void string_insert_string(String* str, u64 i, const String* other);
 
-// remove elements from l to r (inclusive)
+void string_remove_char(String* str, u64 i);
+// Remove chars in range [l, r] inclusive.
 void string_remove_range(String* str, u64 l, u64 r);
 
-// remove all chars (keep memory)
+// Remove all chars (keep allocation).
 void string_clear(String* str);
 
 
-// Access
+//  Access 
 
-// return char at index i
 char string_char_at(const String* str, u64 i);
-
-// set the value of char at index i
 void string_set_char(String* str, u64 i, char c);
 
 
-// Comparison
+//  Comparison 
 
-// compare (c-style) two strings
-// 0 -> equal, negative -> str1 < str2, positive -> str1 > str2
-int string_compare(const String* str1, const String* str2);
-
-// return true if string's data matches
-b8 string_equals(const String* str1, const String* str2);
-
-// return true if a string's data matches a cstr
-b8 string_equals_cstr(const String* str, const char* cstr);
+// 0 == equal, <0 == str1 < str2, >0 == str1 > str2
+int string_compare(const String* s1, const String* s2);
+b8  string_equals(const String* s1, const String* s2);
+b8  string_equals_cstr(const String* str, const char* cstr);
 
 
-// Search
+//  Search 
 
-// return index of char c (UINT_MAX otherwise)
+// Returns index, or (u64)-1 if not found.
 u64 string_find_char(const String* str, char c);
-
-// return index of cstr "substr" (UINT_MAX otherwise)
 u64 string_find_cstr(const String* str, const char* substr);
 
-// Set a heap allocated string of a substring starting at index "start", upto length
+// Return a heap-allocated substring starting at `start` of `length` chars.
 String* string_substr(const String* str, u64 start, u64 length);
 
 
-// I/O
+//  I/O 
 
-// print the content of str
 void string_print(const String* str);
 
 
-// Basic properties
+//  Inline helpers 
 
-// get the current length of the string
 static inline u64 string_len(const String* str)
 {
     CHECK_FATAL(!str, "str is null");
     return str->size;
 }
 
-// get the capacity of the genVec container of string
 static inline u64 string_capacity(const String* str)
 {
+    CHECK_FATAL(!str, "str is null");
     return str->capacity;
 }
 
-// return true if str is empty
 static inline b8 string_empty(const String* str)
 {
-    return string_len(str) == 0;
+    CHECK_FATAL(!str, "str is null");
+    return str->size == 0;
 }
+
 
 /*
- Macro to create a temporary cstr for read ops.
- Note: Must not break or return in the block.
- Usage:
+ Macro to temporarily NUL-terminate a String for read-only C APIs.
+ Do NOT break/return/goto inside the block.
 
-TEMP_CSTR_READ(s) {
-    printf("%s\n", string_data_ptr(s));
-}
+ Usage:
+   TEMP_CSTR_READ(s) {
+       printf("%s\n", string_data_ptr(s));
+   }
 */
 #define TEMP_CSTR_READ(str) \
-    for (u8 _once = 0; (_once == 0) && (string_append_char((str), '\0'), 1); _once++, string_pop_char((str)))
-
-// TODO: how to do this??
-#define TEMP_CSTR_READ_NAMED(str, name) \
-    for (u8 _once = 0; (_once == 0) && (string_append_char((str), '\0'), 1); _once++, string_pop_char((str)))
+    for (u8 _once = 0; \
+         (_once == 0) && (string_append_char((str), '\0'), 1); \
+         _once++, string_pop_char((str)))
 
 #endif /* WC_STRING_H */
 
@@ -989,637 +786,139 @@ _Thread_local wc_err wc_errno = WC_OK;
 
 #endif /* WC_WC_ERRNO_IMPL */
 
-/* ===== gen_vector.c ===== */
-#ifndef WC_GEN_VECTOR_IMPL
-#define WC_GEN_VECTOR_IMPL
+/* ===== String.c ===== */
+#ifndef WC_STRING_IMPL
+#define WC_STRING_IMPL
 
 #include <string.h>
 
 
+//  Internal macros
 
-#define GENVEC_MIN_CAPACITY 4
+#define IS_SSO(s)        ((s)->capacity == STR_SSO_SIZE)
+#define GET_STR(s)       (IS_SSO(s) ? (s)->stk : (s)->heap)
+#define GET_STR_AT(s, i) (GET_STR(s)[i])
+#define STR_REMAINING(s) ((s)->capacity - (s)->size)
 
-
-// MACROS
-
-// get ptr to elm at index i
-#define GET_PTR(vec, i) ((vec->data) + ((u64)(i) * ((vec)->data_size)))
-// get total size in bytes for i elements
-#define GET_SCALED(vec, i) ((u64)(i) * ((vec)->data_size))
-
-#define MAYBE_GROW(vec)                                 \
-    do {                                                \
-        if (!vec->data || vec->size >= vec->capacity) { \
-            genVec_grow(vec);                           \
-        }                                               \
+// Grow if full.
+#define MAYBE_GROW(s)                     \
+    do {                                  \
+        if ((s)->size >= (s)->capacity) { \
+            if (IS_SSO(s)) {              \
+                stk_to_heap(s);           \
+            } else {                      \
+                string_grow(s);           \
+            }                             \
+        }                                 \
     } while (0)
 
-#define MAYBE_SHRINK(vec)                                                  \
-    do {                                                                   \
-        if (vec->size <= (u64)((float)vec->capacity * GENVEC_SHRINK_AT)) { \
-            genVec_shrink(vec);                                            \
-        }                                                                  \
+// Shrink heap string if very sparse.
+#define MAYBE_SHRINK(s)                                                                  \
+    do {                                                                                 \
+        if (!IS_SSO(s) && (s)->size <= (u64)((float)(s)->capacity * STRING_SHRINK_AT)) { \
+            string_shrink(s);                                                            \
+        }                                                                                \
     } while (0)
 
 
-// ops accessors (safe when ops is NULL)
-#define COPY_FN(vec) VEC_COPY_FN(vec)
-#define MOVE_FN(vec) VEC_MOVE_FN(vec)
-#define DEL_FN(vec)  VEC_DEL_FN(vec)
+//  Private helpers
+
+static u64  cstr_len(const char* cstr);
+static void str_copy_n(char* dest, const char* src, u64 n);
+static void stk_to_heap(String* s);
+static void heap_to_stk(String* s);
+static void string_grow(String* s);
+static void string_shrink(String* s);
+// Ensure capacity >= needed (handles SSO → heap transition).
+static void ensure_capacity(String* s, u64 needed);
 
 
-// private functions
 
-static void genVec_grow(genVec* vec);
-static void genVec_shrink(genVec* vec);
+//  Construction / Destruction
 
-
-// API Implementation
-
-genVec* genVec_init(u64 n, u32 data_size, const container_ops* ops)
+String* string_create(void)
 {
-    CHECK_FATAL(data_size == 0, "data_size can't be 0");
+    String* s = malloc(sizeof(String));
+    CHECK_FATAL(!s, "malloc failed");
 
-    genVec* vec = malloc(sizeof(genVec));
-    CHECK_FATAL(!vec, "vec init failed");
+    s->size     = 0;
+    s->capacity = STR_SSO_SIZE;
 
-    // Only allocate memory if n > 0, otherwise data can be NULL
-    vec->data = (n > 0) ? malloc(data_size * n) : NULL;
+    return s;
+}
 
-    if (n > 0 && !vec->data) {
-        free(vec);
-        FATAL("data init failed");
+String* string_from_cstr(const char* cstr)
+{
+    String* s = malloc(sizeof(String));
+    CHECK_FATAL(!s, "malloc failed");
+
+    string_create_stk(s, cstr);
+    return s;
+}
+
+String* string_from_string(const String* other)
+{
+    CHECK_FATAL(!other, "other is null");
+
+    String* s = malloc(sizeof(String));
+    CHECK_FATAL(!s, "malloc failed");
+
+    s->size     = 0;
+    s->capacity = STR_SSO_SIZE;
+
+    if (other->size > 0) {
+        ensure_capacity(s, other->size);
+        str_copy_n(GET_STR(s), GET_STR(other), other->size);
+        s->size = other->size;
     }
 
-    vec->size      = 0;
-    vec->capacity  = n;
-    vec->data_size = data_size;
-    vec->ops       = ops;
-
-    return vec;
+    return s;
 }
 
-
-void genVec_init_stk(u64 n, u32 data_size, const container_ops* ops, genVec* vec)
+void string_create_stk(String* s, const char* cstr)
 {
-    CHECK_FATAL(!vec, "vec is null");
-    CHECK_FATAL(data_size == 0, "data_size can't be 0");
+    CHECK_FATAL(!s, "str is null");
 
-    vec->data = (n > 0) ? malloc(data_size * n) : NULL;
-    CHECK_FATAL(n > 0 && !vec->data, "data init failed");
+    s->size     = 0;
+    s->capacity = STR_SSO_SIZE;
 
-    vec->size      = 0;
-    vec->capacity  = n;
-    vec->data_size = data_size;
-    vec->ops       = ops;
-}
-
-
-genVec* genVec_init_val(u64 n, const u8* val, u32 data_size, const container_ops* ops)
-{
-    CHECK_FATAL(!val, "val can't be null");
-    CHECK_FATAL(n == 0, "cant init with val if n = 0");
-
-    genVec* vec = genVec_init(n, data_size, ops);
-
-    vec->size = n; // capacity set to n in genVec_init
-
-    copy_fn copy = COPY_FN(vec);
-    for (u64 i = 0; i < n; i++) {
-        if (copy) {
-            copy(GET_PTR(vec, i), val);
-        } else {
-            memcpy(GET_PTR(vec, i), val, data_size);
-        }
-    }
-
-    return vec;
-}
-
-
-void genVec_init_val_stk(u64 n, const u8* val, u32 data_size, const container_ops* ops, genVec* vec)
-{
-    CHECK_FATAL(!val, "val can't be null");
-    CHECK_FATAL(n == 0, "cant init with val if n = 0");
-
-    genVec_init_stk(n, data_size, ops, vec);
-
-    vec->size = n;
-
-    copy_fn copy = COPY_FN(vec);
-    for (u64 i = 0; i < n; i++) {
-        if (copy) {
-            copy(GET_PTR(vec, i), val);
-        } else {
-            memcpy(GET_PTR(vec, i), val, data_size);
-        }
-    }
-}
-
-
-void genVec_init_arr(u64 n, u8* arr, u32 data_size, const container_ops* ops, genVec* vec)
-{
-    CHECK_FATAL(!arr, "arr is null");
-    CHECK_FATAL(!vec, "vec is null");
-    CHECK_FATAL(n == 0, "size of arr can't be 0");
-    CHECK_FATAL(data_size == 0, "data_size of arr can't be 0");
-
-    vec->data      = arr;
-    vec->size      = 0;
-    vec->capacity  = n;
-    vec->data_size = data_size;
-    vec->ops       = ops;
-}
-
-
-void genVec_destroy(genVec* vec)
-{
-    genVec_destroy_stk(vec);
-    free(vec);
-}
-
-
-void genVec_destroy_stk(genVec* vec)
-{
-    CHECK_FATAL(!vec, "vec is null");
-
-    if (!vec->data) {
+    if (!cstr) {
         return;
     }
 
-    delete_fn del = DEL_FN(vec);
-    if (del) {
-        for (u64 i = 0; i < vec->size; i++) {
-            del(GET_PTR(vec, i));
-        }
-    }
-
-    free(vec->data);
-    vec->data = NULL;
-}
-
-
-void genVec_clear(genVec* vec)
-{
-    CHECK_FATAL(!vec, "vec is null");
-
-    delete_fn del = DEL_FN(vec);
-    if (del) {
-        for (u64 i = 0; i < vec->size; i++) {
-            del(GET_PTR(vec, i));
-        }
-    }
-
-    vec->size = 0;
-}
-
-
-void genVec_reset(genVec* vec)
-{
-    CHECK_FATAL(!vec, "vec is null");
-
-    delete_fn del = DEL_FN(vec);
-    if (del) {
-        for (u64 i = 0; i < vec->size; i++) {
-            del(GET_PTR(vec, i));
-        }
-    }
-
-    free(vec->data);
-    vec->data     = NULL;
-    vec->size     = 0;
-    vec->capacity = 0;
-}
-
-
-void genVec_reserve(genVec* vec, u64 new_capacity)
-{
-    CHECK_FATAL(!vec, "vec is null");
-
-    if (new_capacity <= vec->capacity) {
+    u64 len = cstr_len(cstr);
+    if (len == 0) {
         return;
     }
 
-    u8* new_data = realloc(vec->data, GET_SCALED(vec, new_capacity));
-    CHECK_FATAL(!new_data, "realloc failed");
-
-    vec->data     = new_data;
-    vec->capacity = new_capacity;
+    ensure_capacity(s, len);
+    str_copy_n(GET_STR(s), cstr, len);
+    s->size = len;
 }
 
-
-void genVec_reserve_val(genVec* vec, u64 new_capacity, const u8* val)
+void string_destroy(String* s)
 {
-    CHECK_FATAL(!vec, "vec is null");
-    CHECK_FATAL(!val, "val is null");
-    CHECK_FATAL(new_capacity < vec->size, "new_capacity must be >= current size");
-
-    genVec_reserve(vec, new_capacity);
-
-    copy_fn copy = COPY_FN(vec);
-    for (u64 i = vec->size; i < new_capacity; i++) {
-        if (copy) {
-            copy(GET_PTR(vec, i), val);
-        } else {
-            memcpy(GET_PTR(vec, i), val, vec->data_size);
-        }
-    }
-    vec->size = new_capacity;
+    CHECK_FATAL(!s, "str is null");
+    string_destroy_stk(s);
+    free(s);
 }
 
-
-void genVec_shrink_to_fit(genVec* vec)
+void string_destroy_stk(String* s)
 {
-    CHECK_FATAL(!vec, "vec is null");
+    CHECK_FATAL(!s, "str is null");
 
-    u64 min_cap  = vec->size > GENVEC_MIN_CAPACITY ? vec->size : GENVEC_MIN_CAPACITY;
-    u64 curr_cap = vec->capacity;
-
-    if (curr_cap <= min_cap) {
-        return;
+    if (!IS_SSO(s)) {
+        free(s->heap);
+        s->heap = NULL;
     }
 
-    u8* new_data = realloc(vec->data, GET_SCALED(vec, min_cap));
-    CHECK_FATAL(!new_data, "data realloc failed");
-
-    vec->data     = new_data;
-    vec->capacity = min_cap;
+    s->size     = 0;
+    s->capacity = STR_SSO_SIZE; // leave in valid SSO state, not capacity=0
 }
 
-
-void genVec_push(genVec* vec, const u8* data)
+void string_move(String* dest, String** src)
 {
-    CHECK_FATAL(!vec, "vec is null");
-    CHECK_FATAL(!data, "data is null");
-
-    MAYBE_GROW(vec);
-
-    copy_fn copy = COPY_FN(vec);
-    if (copy) {
-        copy(GET_PTR(vec, vec->size), data);
-    } else {
-        memcpy(GET_PTR(vec, vec->size), data, vec->data_size);
-    }
-
-    vec->size++;
-}
-
-
-void genVec_push_move(genVec* vec, u8** data)
-{
-    CHECK_FATAL(!vec, "vec is null");
-    CHECK_FATAL(!data, "data is null");
-    CHECK_FATAL(!*data, "*data is null");
-
-    MAYBE_GROW(vec);
-
-    move_fn move = MOVE_FN(vec);
-    if (move) {
-        move(GET_PTR(vec, vec->size), data);
-    } else {
-        memcpy(GET_PTR(vec, vec->size), *data, vec->data_size);
-        *data = NULL;
-    }
-
-    vec->size++;
-}
-
-
-void genVec_pop(genVec* vec, u8* popped)
-{
-    CHECK_FATAL(!vec, "vec is null");
-
-    WC_SET_RET(WC_ERR_EMPTY, vec->size == 0, );
-
-    u8* last_elm = GET_PTR(vec, vec->size - 1);
-
-    if (popped) {
-        copy_fn copy = COPY_FN(vec);
-        if (copy) {
-            copy(popped, last_elm);
-        } else {
-            memcpy(popped, last_elm, vec->data_size);
-        }
-    }
-
-    delete_fn del = DEL_FN(vec);
-    if (del) {
-        del(last_elm);
-    }
-
-    vec->size--;
-
-    MAYBE_SHRINK(vec);
-}
-
-
-void genVec_get(const genVec* vec, u64 i, u8* out)
-{
-    CHECK_FATAL(!vec, "vec is null");
-    CHECK_FATAL(!out, "out is null");
-    CHECK_FATAL(i >= vec->size, "index out of bounds");
-
-    copy_fn copy = COPY_FN(vec);
-    if (copy) {
-        copy(out, GET_PTR(vec, i));
-    } else {
-        memcpy(out, GET_PTR(vec, i), vec->data_size);
-    }
-}
-
-
-const u8* genVec_get_ptr(const genVec* vec, u64 i)
-{
-    CHECK_FATAL(!vec, "vec is null");
-    CHECK_FATAL(i >= vec->size, "index out of bounds");
-
-    return GET_PTR(vec, i);
-}
-
-
-u8* genVec_get_ptr_mut(const genVec* vec, u64 i)
-{
-    CHECK_FATAL(!vec, "vec is null");
-    CHECK_FATAL(i >= vec->size, "index out of bounds");
-
-    return GET_PTR(vec, i);
-}
-
-
-void genVec_replace(genVec* vec, u64 i, const u8* data)
-{
-    CHECK_FATAL(!vec, "vec is null");
-    CHECK_FATAL(i >= vec->size, "index out of bounds");
-    CHECK_FATAL(!data, "data is null");
-
-    u8* to_replace = GET_PTR(vec, i);
-
-    delete_fn del = DEL_FN(vec);
-    if (del) {
-        del(to_replace);
-    }
-
-    copy_fn copy = COPY_FN(vec);
-    if (copy) {
-        copy(to_replace, data);
-    } else {
-        memcpy(to_replace, data, vec->data_size);
-    }
-}
-
-
-void genVec_replace_move(genVec* vec, u64 i, u8** data)
-{
-    CHECK_FATAL(!vec, "vec is null");
-    CHECK_FATAL(i >= vec->size, "index out of bounds");
-    CHECK_FATAL(!data, "need a valid data variable");
-    CHECK_FATAL(!*data, "need a valid *data variable");
-
-    u8* to_replace = GET_PTR(vec, i);
-
-    delete_fn del = DEL_FN(vec);
-    if (del) {
-        del(to_replace);
-    }
-
-    move_fn move = MOVE_FN(vec);
-    if (move) {
-        move(to_replace, data);
-    } else {
-        memcpy(to_replace, *data, vec->data_size);
-        *data = NULL;
-    }
-}
-
-
-void genVec_insert(genVec* vec, u64 i, const u8* data)
-{
-    CHECK_FATAL(!vec, "vec is null");
-    CHECK_FATAL(!data, "data is null");
-    CHECK_FATAL(i > vec->size, "index out of bounds");
-
-    u64 elements_to_shift = vec->size - i;
-
-    MAYBE_GROW(vec);
-
-    u8* src  = GET_PTR(vec, i);
-    u8* dest = GET_PTR(vec, i + 1);
-    memmove(dest, src, GET_SCALED(vec, elements_to_shift));
-
-    copy_fn copy = COPY_FN(vec);
-    if (copy) {
-        copy(src, data);
-    } else {
-        memcpy(src, data, vec->data_size);
-    }
-
-    vec->size++;
-}
-
-
-void genVec_insert_move(genVec* vec, u64 i, u8** data)
-{
-    CHECK_FATAL(!vec, "vec is null");
-    CHECK_FATAL(!data, "data ptr is null");
-    CHECK_FATAL(!*data, "*data is null");
-    CHECK_FATAL(i > vec->size, "index out of bounds");
-
-    u64 elements_to_shift = vec->size - i;
-
-    MAYBE_GROW(vec);
-
-    u8* src  = GET_PTR(vec, i);
-    u8* dest = GET_PTR(vec, i + 1);
-    memmove(dest, src, GET_SCALED(vec, elements_to_shift));
-
-    move_fn move = MOVE_FN(vec);
-    if (move) {
-        move(src, data);
-    } else {
-        memcpy(src, *data, vec->data_size);
-        *data = NULL;
-    }
-
-    vec->size++;
-}
-
-
-void genVec_insert_multi(genVec* vec, u64 i, const u8* data, u64 num_data)
-{
-    CHECK_FATAL(!vec, "vec is null");
-    CHECK_FATAL(!data, "data is null");
-    CHECK_FATAL(num_data == 0, "num_data can't be 0");
-    CHECK_FATAL(i > vec->size, "index out of bounds");
-
-    u64 elements_to_shift = vec->size - i;
-
-    vec->size += num_data;
-    genVec_reserve(vec, vec->size);
-
-    u8* src = GET_PTR(vec, i);
-    if (elements_to_shift > 0) {
-        u8* dest = GET_PTR(vec, i + num_data);
-        memmove(dest, src, GET_SCALED(vec, elements_to_shift));
-    }
-
-    copy_fn copy = COPY_FN(vec);
-    if (copy) {
-        for (u64 j = 0; j < num_data; j++) {
-            copy(GET_PTR(vec, j + i), data + (size_t)(j * vec->data_size));
-        }
-    } else {
-        memcpy(src, data, GET_SCALED(vec, num_data));
-    }
-}
-
-
-void genVec_insert_multi_move(genVec* vec, u64 i, u8** data, u64 num_data)
-{
-    CHECK_FATAL(!vec, "vec is null");
-    CHECK_FATAL(!data, "data is null");
-    CHECK_FATAL(!*data, "*data is null");
-    CHECK_FATAL(num_data == 0, "num_data can't be 0");
-    CHECK_FATAL(i > vec->size, "index out of bounds");
-
-    u64 elements_to_shift = vec->size - i;
-
-    vec->size += num_data;
-    genVec_reserve(vec, vec->size);
-
-    u8* src = GET_PTR(vec, i);
-    if (elements_to_shift > 0) {
-        u8* dest = GET_PTR(vec, i + num_data);
-        memmove(dest, src, GET_SCALED(vec, elements_to_shift));
-    }
-
-    memcpy(src, *data, GET_SCALED(vec, num_data));
-    *data = NULL;
-}
-
-
-void genVec_remove(genVec* vec, u64 i, u8* out)
-{
-    CHECK_FATAL(!vec, "vec is null");
-    CHECK_FATAL(i >= vec->size, "index out of bounds");
-
-    if (out) {
-        copy_fn copy = COPY_FN(vec);
-        if (copy) {
-            copy(out, GET_PTR(vec, i));
-        } else {
-            memcpy(out, GET_PTR(vec, i), vec->data_size);
-        }
-    }
-
-    delete_fn del = DEL_FN(vec);
-    if (del) {
-        del(GET_PTR(vec, i));
-    }
-
-    u64 elements_to_shift = vec->size - i - 1;
-    if (elements_to_shift > 0) {
-        u8* dest = GET_PTR(vec, i);
-        u8* src  = GET_PTR(vec, i + 1);
-        memmove(dest, src, GET_SCALED(vec, elements_to_shift));
-    }
-
-    vec->size--;
-
-    MAYBE_SHRINK(vec);
-}
-
-
-void genVec_remove_range(genVec* vec, u64 l, u64 r)
-{
-    CHECK_FATAL(!vec, "vec is null");
-    CHECK_FATAL(l >= vec->size, "index out of range");
-    CHECK_FATAL(l > r, "invalid range");
-
-    if (r >= vec->size) {
-        r = vec->size - 1;
-    }
-
-    delete_fn del = DEL_FN(vec);
-    if (del) {
-        for (u64 i = l; i <= r; i++) {
-            del(GET_PTR(vec, i));
-        }
-    }
-
-    u64 elms_to_shift = vec->size - (r + 1);
-
-    u8* dest = GET_PTR(vec, l);
-    u8* src  = GET_PTR(vec, r + 1);
-    memmove(dest, src, GET_SCALED(vec, elms_to_shift));
-
-    vec->size -= (r - l + 1);
-
-    MAYBE_SHRINK(vec);
-}
-
-
-const u8* genVec_front(const genVec* vec)
-{
-    CHECK_FATAL(!vec, "vec is null");
-    WC_SET_RET(WC_ERR_EMPTY, vec->size == 0, NULL);
-    return GET_PTR(vec, 0);
-}
-
-
-const u8* genVec_back(const genVec* vec)
-{
-    CHECK_FATAL(!vec, "vec is null");
-    WC_SET_RET(WC_ERR_EMPTY, vec->size == 0, NULL);
-    return GET_PTR(vec, vec->size - 1);
-}
-
-
-void genVec_print(const genVec* vec, print_fn print_fn)
-{
-    CHECK_FATAL(!vec, "vec is null");
-    CHECK_FATAL(!print_fn, "print func is null");
-
-    printf("[ ");
-    for (u64 i = 0; i < vec->size; i++) {
-        print_fn(GET_PTR(vec, i));
-        putchar(' ');
-    }
-    putchar(']');
-}
-
-
-void genVec_copy(genVec* dest, const genVec* src)
-{
-    CHECK_FATAL(!dest, "dest is null");
-    CHECK_FATAL(!src, "src is null");
-
-    if (dest == src) {
-        return;
-    }
-
-    genVec_destroy_stk(dest);
-
-    // Copy all fields (including ops pointer)
-    memcpy(dest, src, sizeof(genVec));
-
-    // TODO: fix for copying into uninited memory ?
-    dest->data = calloc(src->capacity, src->data_size);
-    CHECK_FATAL(!dest->data, "dest data calloc failed");
-
-    copy_fn copy = COPY_FN(src);
-    if (copy) {
-        for (u64 i = 0; i < src->size; i++) {
-            copy(GET_PTR(dest, i), GET_PTR(src, i));
-        }
-    } else {
-        memcpy(dest->data, src->data, GET_SCALED(src, src->size));
-    }
-}
-
-
-void genVec_move(genVec* dest, genVec** src)
-{
-    CHECK_FATAL(!src, "src is null");
+    CHECK_FATAL(!src, "src ptr is null");
     CHECK_FATAL(!*src, "*src is null");
     CHECK_FATAL(!dest, "dest is null");
 
@@ -1628,165 +927,15 @@ void genVec_move(genVec* dest, genVec** src)
         return;
     }
 
-    memcpy(dest, *src, sizeof(genVec));
-
-    (*src)->data = NULL;
-    free(*src);
-    *src = NULL;
-}
-
-
-static void genVec_grow(genVec* vec)
-{
-    CHECK_FATAL(!vec, "vec is null");
-
-    u64 new_cap;
-    if (vec->capacity < GENVEC_MIN_CAPACITY) {
-        new_cap = vec->capacity + 1;
-    } else {
-        new_cap = (u64)((float)vec->capacity * GENVEC_GROWTH);
-        if (new_cap <= vec->capacity) {
-            new_cap = vec->capacity + 1;
-        }
-    }
-
-    u8* new_data = realloc(vec->data, GET_SCALED(vec, new_cap));
-    CHECK_FATAL(!new_data, "data realloc failed");
-
-    vec->data     = new_data;
-    vec->capacity = new_cap;
-}
-
-
-static void genVec_shrink(genVec* vec)
-{
-    CHECK_FATAL(!vec, "vec is null");
-
-    u64 reduced_cap = (u64)((float)vec->capacity * GENVEC_SHRINK_BY);
-    if (reduced_cap < vec->size || reduced_cap == 0) {
-        return;
-    }
-
-    u8* new_data = realloc(vec->data, GET_SCALED(vec, reduced_cap));
-    if (!new_data) {
-        WARN("shrink realloc failed");
-        return;
-    }
-
-    vec->data     = new_data;
-    vec->capacity = reduced_cap;
-}
-
-#endif /* WC_GEN_VECTOR_IMPL */
-
-/* ===== String.c ===== */
-#ifndef WC_STRING_IMPL
-#define WC_STRING_IMPL
-
-#include <string.h>
-
-
-// private func
-u64 cstr_len(const char* cstr);
-
-
-
-String* string_create(void)
-{
-    // chars are POD — no ops needed
-    return (String*)genVec_init(0, sizeof(char), NULL);
-}
-
-
-void string_create_stk(String* str, const char* cstr)
-{
-    CHECK_FATAL(!str, "str is null");
-
-    u64 len = 0;
-    if (cstr) {
-        len = cstr_len(cstr);
-    }
-
-    genVec_init_stk(len, sizeof(char), NULL, str);
-
-    if (len != 0) {
-        genVec_insert_multi(str, 0, (const u8*)cstr, len);
-    }
-}
-
-
-String* string_from_cstr(const char* cstr)
-{
-    String* str = malloc(sizeof(String));
-    CHECK_FATAL(!str, "str malloc failed");
-
-    string_create_stk(str, cstr);
-    return str;
-}
-
-
-String* string_from_string(const String* other)
-{
-    CHECK_FATAL(!other, "other str is null");
-
-    String* str = malloc(sizeof(String));
-    CHECK_FATAL(!str, "str malloc failed");
-
-    genVec_init_stk(other->size, sizeof(char), NULL, str);
-
-    if (other->size != 0) {
-        genVec_insert_multi(str, 0, other->data, other->size);
-    }
-
-    return str;
-}
-
-
-void string_reserve(String* str, u64 capacity)
-{
-    genVec_reserve(str, capacity);
-}
-
-
-void string_reserve_char(String* str, u64 capacity, char c)
-{
-    genVec_reserve_val(str, capacity, cast(c));
-}
-
-
-void string_destroy(String* str)
-{
-    string_destroy_stk(str);
-    free(str);
-}
-
-
-void string_destroy_stk(String* str)
-{
-    genVec_destroy_stk(str);
-}
-
-
-void string_move(String* dest, String** src)
-{
-    CHECK_FATAL(!src, "src is null");
-    CHECK_FATAL(!*src, "src is null");
-    CHECK_FATAL(!dest, "dest is null");
-
-    if (dest == *src) {
-        *src = NULL;
-        return;
-    }
-
     string_destroy_stk(dest);
-
     memcpy(dest, *src, sizeof(String));
 
-    (*src)->data = NULL;
+    // Zero out src so its destructor is harmless, then free the struct
+    (*src)->size     = 0;
+    (*src)->capacity = STR_SSO_SIZE;
     free(*src);
     *src = NULL;
 }
-
 
 void string_copy(String* dest, const String* src)
 {
@@ -1799,50 +948,124 @@ void string_copy(String* dest, const String* src)
 
     string_destroy_stk(dest);
 
-    memcpy(dest, src, sizeof(String));
+    dest->size     = 0;
+    dest->capacity = STR_SSO_SIZE;
 
-    dest->data = malloc(src->capacity);
-
-    memcpy(dest->data, src->data, src->size);
+    if (src->size > 0) {
+        ensure_capacity(dest, src->size);
+        str_copy_n(GET_STR(dest), GET_STR(src), src->size);
+        dest->size = src->size;
+    }
 }
 
 
-char* string_to_cstr(const String* str)
-{
-    CHECK_FATAL(!str, "str is null");
+//  Capacity
 
-    if (str->size == 0) {
-        char* empty = malloc(1);
-        CHECK_FATAL(!empty, "malloc failed");
-        empty[0] = '\0';
-        return empty;
+void string_reserve(String* s, u64 new_cap)
+{
+    CHECK_FATAL(!s, "str is null");
+
+    if (new_cap <= s->capacity) {
+        return;
+    }
+    ensure_capacity(s, new_cap);
+}
+
+void string_reserve_char(String* s, u64 new_cap, char c)
+{
+    CHECK_FATAL(!s, "str is null");
+    if (new_cap <= s->capacity) {
+        // Fill from current size up to new_cap within existing allocation.
+        char* buf = GET_STR(s);
+        for (u64 i = s->size; i < new_cap; i++) {
+            buf[i] = c;
+        }
+        s->size = new_cap;
+        return;
     }
 
-    char* out = malloc(str->size + 1);
-    CHECK_FATAL(!out, "out str malloc failed");
+    u64 old_size = s->size;
+    ensure_capacity(s, new_cap);
 
-    memcpy(out, str->data, str->size);
-    out[str->size] = '\0';
+    char* buf = GET_STR(s);
+    for (u64 i = old_size; i < new_cap; i++) {
+        buf[i] = c;
+    }
+    s->size = new_cap;
+}
+
+void string_shrink_to_fit(String* s)
+{
+    CHECK_FATAL(!s, "str is null");
+
+    if (IS_SSO(s)) {
+        return;
+    } // already optimal
+
+    if (s->size == 0) {
+        free(s->heap);
+        s->heap     = NULL;
+        s->capacity = STR_SSO_SIZE;
+        return;
+    }
+
+    if (s->size <= STR_SSO_SIZE) {
+        // Bring back to SSO.
+        heap_to_stk(s);
+        return;
+    }
+
+    char* new_data = realloc(s->heap, s->size);
+    if (!new_data) {
+        WARN("shrink_to_fit realloc failed — keeping current allocation");
+        return;
+    }
+    s->heap     = new_data;
+    s->capacity = s->size;
+}
+
+
+//  Conversion
+
+char* string_to_cstr(const String* s)
+{
+    CHECK_FATAL(!s, "str is null");
+
+    char* out = malloc(s->size + 1);
+    CHECK_FATAL(!out, "malloc failed");
+
+    if (s->size > 0) {
+        str_copy_n(out, GET_STR(s), s->size);
+    }
+    out[s->size] = '\0';
 
     return out;
 }
 
-
-char* string_data_ptr(const String* str)
+char* string_data_ptr(const String* s)
 {
-    CHECK_FATAL(!str, "str is null");
-
-    if (str->size == 0) {
+    CHECK_FATAL(!s, "str is null");
+    if (s->size == 0) {
         return NULL;
     }
-
-    return (char*)str->data;
+    // Cast away const intentionally: caller may mutate via this pointer.
+    return (char*)(IS_SSO(s) ? s->stk : s->heap);
 }
 
 
-void string_append_cstr(String* str, const char* cstr)
+//  Modification
+
+void string_append_char(String* s, char c)
 {
-    CHECK_FATAL(!str, "str is null");
+    CHECK_FATAL(!s, "str is null");
+    MAYBE_GROW(s);
+    GET_STR_AT(s, s->size++) = c;
+}
+
+// TODO: this always sets size = cap if size was not enough, no extra
+void string_append_cstr(String* s, const char* cstr)
+{
+    CHECK_FATAL(!s, "str is null");
     CHECK_FATAL(!cstr, "cstr is null");
 
     u64 len = cstr_len(cstr);
@@ -1850,271 +1073,401 @@ void string_append_cstr(String* str, const char* cstr)
         return;
     }
 
-    genVec_insert_multi(str, str->size, (const u8*)cstr, len);
+    ensure_capacity(s, s->size + len);
+    str_copy_n(GET_STR(s) + s->size, cstr, len);
+    s->size += len;
 }
 
-
-void string_append_string(String* str, const String* other)
+void string_append_string(String* s, const String* other)
 {
-    CHECK_FATAL(!str, "str is empty");
-    CHECK_FATAL(!other, "other is empty");
+    CHECK_FATAL(!s, "str is null");
+    CHECK_FATAL(!other, "other is null");
 
     if (other->size == 0) {
         return;
     }
 
-    genVec_insert_multi(str, str->size, other->data, other->size);
+    ensure_capacity(s, s->size + other->size);
+    str_copy_n(GET_STR(s) + s->size, GET_STR(other), other->size);
+    s->size += other->size;
 }
 
-
-void string_append_string_move(String* str, String** other)
+void string_append_string_move(String* s, String** other)
 {
-    CHECK_FATAL(!str, "str is null");
+    CHECK_FATAL(!s, "str is null");
     CHECK_FATAL(!other, "other ptr is null");
     CHECK_FATAL(!*other, "*other is null");
 
     if ((*other)->size > 0) {
-        genVec_insert_multi(str, str->size, (*other)->data, (*other)->size);
+        string_append_string(s, *other);
     }
 
     string_destroy(*other);
     *other = NULL;
 }
 
-
-void string_append_char(String* str, char c)
+char string_pop_char(String* s)
 {
-    CHECK_FATAL(!str, "str is null");
-    genVec_push(str, cast(c));
-}
+    CHECK_FATAL(!s, "str is null");
+    WC_SET_RET(WC_ERR_EMPTY, s->size == 0, '\0');
 
-
-char string_pop_char(String* str)
-{
-    CHECK_FATAL(!str, "str is null");
-
-    char c;
-    genVec_pop(str, cast(c));
-
+    char c = GET_STR_AT(s, --s->size);
+    MAYBE_SHRINK(s);
     return c;
 }
 
-
-void string_insert_char(String* str, u64 i, char c)
+void string_insert_char(String* s, u64 i, char c)
 {
-    CHECK_FATAL(!str, "str is null");
-    CHECK_FATAL(i > str->size, "index out of bounds");
+    CHECK_FATAL(!s, "str is null");
+    CHECK_FATAL(i > s->size, "index out of bounds");
 
-    genVec_insert(str, i, cast(c));
+    MAYBE_GROW(s);
+
+    char* buf = GET_STR(s);
+    // Shift right.
+    for (u64 j = s->size; j > i; j--) {
+        buf[j] = buf[j - 1];
+    }
+    buf[i] = c;
+    s->size++;
 }
 
-
-void string_insert_cstr(String* str, u64 i, const char* cstr)
+void string_insert_cstr(String* s, u64 i, const char* cstr)
 {
-    CHECK_FATAL(!str, "str is null");
+    CHECK_FATAL(!s, "str is null");
     CHECK_FATAL(!cstr, "cstr is null");
-    CHECK_FATAL(i > str->size, "index out of bounds");
+    CHECK_FATAL(i > s->size, "index out of bounds");
 
     u64 len = cstr_len(cstr);
     if (len == 0) {
         return;
     }
 
-    genVec_insert_multi(str, i, castptr(cstr), len);
+    ensure_capacity(s, s->size + len);
+
+    char* buf = GET_STR(s);
+    // Shift existing chars right by len positions.
+    for (u64 j = s->size; j > i; j--) {
+        buf[j + len - 1] = buf[j - 1];
+    }
+    str_copy_n(buf + i, cstr, len);
+    s->size += len;
 }
 
-
-void string_insert_string(String* str, u64 i, const String* other)
+void string_insert_string(String* s, u64 i, const String* other)
 {
-    CHECK_FATAL(!str, "str is null");
+    CHECK_FATAL(!s, "str is null");
     CHECK_FATAL(!other, "other is null");
-    CHECK_FATAL(i > str->size, "index out of bounds");
+    CHECK_FATAL(i > s->size, "index out of bounds");
 
     if (other->size == 0) {
         return;
     }
 
-    genVec_insert_multi(str, i, other->data, other->size);
-}
+    // If src == dest we need a snapshot to avoid aliasing after realloc.
+    if (s == other) {
+        char* snap = malloc(other->size);
+        CHECK_FATAL(!snap, "malloc failed");
+        str_copy_n(snap, GET_STR(other), other->size);
 
-
-void string_remove_char(String* str, u64 i)
-{
-    CHECK_FATAL(!str, "str is null");
-    CHECK_FATAL(i >= str->size, "index out of bounds");
-
-    genVec_remove(str, i, NULL);
-}
-
-
-void string_remove_range(String* str, u64 l, u64 r)
-{
-    CHECK_FATAL(!str, "str is null");
-    CHECK_FATAL(l >= str->size, "index out of bounds");
-    CHECK_FATAL(l > r, "invalid range");
-
-    genVec_remove_range(str, l, r);
-}
-
-
-void string_clear(String* str)
-{
-    CHECK_FATAL(!str, "str is null");
-    genVec_clear(str);
-}
-
-
-char string_char_at(const String* str, u64 i)
-{
-    CHECK_FATAL(!str, "str is null");
-    CHECK_FATAL(i >= str->size, "index out of bounds");
-
-    return ((char*)str->data)[i];
-}
-
-
-void string_set_char(String* str, u64 i, char c)
-{
-    CHECK_FATAL(!str, "str is null");
-    CHECK_FATAL(i >= str->size, "index out of bounds");
-
-    ((char*)str->data)[i] = c;
-}
-
-
-int string_compare(const String* str1, const String* str2)
-{
-    CHECK_FATAL(!str1, "str1 is null");
-    CHECK_FATAL(!str2, "str2 is null");
-
-    u64 min_len = str1->size < str2->size ? str1->size : str2->size;
-
-    int cmp = memcmp(str1->data, str2->data, min_len);
-
-    if (cmp != 0) {
-        return cmp;
+        ensure_capacity(s, s->size + other->size);
+        char* buf = GET_STR(s);
+        for (u64 j = s->size; j > i; j--) {
+            buf[j + other->size - 1] = buf[j - 1];
+        }
+        str_copy_n(buf + i, snap, other->size);
+        s->size += other->size;
+        free(snap);
+        return;
     }
 
-    if (str1->size < str2->size) {
+    u64 len = other->size;
+    ensure_capacity(s, s->size + len);
+
+    char* buf = GET_STR(s);
+    for (u64 j = s->size; j > i; j--) {
+        buf[j + len - 1] = buf[j - 1];
+    }
+    str_copy_n(buf + i, GET_STR(other), len);
+    s->size += len;
+}
+
+void string_remove_char(String* s, u64 i)
+{
+    CHECK_FATAL(!s, "str is null");
+    CHECK_FATAL(i >= s->size, "index out of bounds");
+
+    char* buf = GET_STR(s);
+    for (u64 j = i; j < s->size - 1; j++) {
+        buf[j] = buf[j + 1];
+    }
+    s->size--;
+    MAYBE_SHRINK(s);
+}
+
+void string_remove_range(String* s, u64 l, u64 r)
+{
+    CHECK_FATAL(!s, "str is null");
+    CHECK_FATAL(l >= s->size, "l out of bounds");
+    CHECK_FATAL(l > r, "invalid range: l > r");
+
+    if (r >= s->size) {
+        r = s->size - 1;
+    }
+
+    u64   count = r - l + 1;
+    char* buf   = GET_STR(s);
+
+    for (u64 j = l; j + count < s->size; j++) {
+        buf[j] = buf[j + count];
+    }
+    s->size -= count;
+    MAYBE_SHRINK(s);
+}
+
+void string_clear(String* s)
+{
+    CHECK_FATAL(!s, "str is null");
+    s->size = 0;
+}
+
+
+//  Access
+
+char string_char_at(const String* s, u64 i)
+{
+    CHECK_FATAL(!s, "str is null");
+    CHECK_FATAL(i >= s->size, "index out of bounds");
+    return GET_STR_AT(s, i);
+}
+
+void string_set_char(String* s, u64 i, char c)
+{
+    CHECK_FATAL(!s, "str is null");
+    CHECK_FATAL(i >= s->size, "index out of bounds");
+    GET_STR_AT(s, i) = c;
+}
+
+
+//  Comparison
+
+int string_compare(const String* s1, const String* s2)
+{
+    CHECK_FATAL(!s1, "str1 is null");
+    CHECK_FATAL(!s2, "str2 is null");
+
+    u64 min_len = s1->size < s2->size ? s1->size : s2->size;
+
+    if (min_len > 0) {
+        int cmp = memcmp(GET_STR(s1), GET_STR(s2), min_len);
+        if (cmp != 0) {
+            return cmp;
+        }
+    }
+
+    if (s1->size < s2->size) {
         return -1;
     }
-    if (str1->size > str2->size) {
+    if (s1->size > s2->size) {
         return 1;
     }
-
     return 0;
 }
 
-
-b8 string_equals(const String* str1, const String* str2)
+b8 string_equals(const String* s1, const String* s2)
 {
-    return string_compare(str1, str2) == 0;
+    return string_compare(s1, s2) == 0;
 }
 
-
-b8 string_equals_cstr(const String* str, const char* cstr)
+b8 string_equals_cstr(const String* s, const char* cstr)
 {
-    CHECK_FATAL(!str, "str is null");
+    CHECK_FATAL(!s, "str is null");
     CHECK_FATAL(!cstr, "cstr is null");
 
     u64 len = cstr_len(cstr);
 
-    if (str->size != len) {
+    if (s->size != len) {
         return false;
     }
     if (len == 0) {
         return true;
     }
 
-    return memcmp(str->data, cstr, len) == 0;
+    return memcmp(GET_STR(s), cstr, len) == 0;
 }
 
 
-u64 string_find_char(const String* str, char c)
-{
-    CHECK_FATAL(!str, "str is null");
+//  Search
 
-    for (u64 i = 0; i < str->size; i++) {
-        if (((char*)str->data)[i] == c) {
+u64 string_find_char(const String* s, char c)
+{
+    CHECK_FATAL(!s, "str is null");
+
+    const char* buf = GET_STR(s);
+    for (u64 i = 0; i < s->size; i++) {
+        if (buf[i] == c) {
             return i;
         }
     }
-
     return (u64)-1;
 }
 
-
-u64 string_find_cstr(const String* str, const char* substr)
+u64 string_find_cstr(const String* s, const char* substr)
 {
-    CHECK_FATAL(!str, "str is null");
+    CHECK_FATAL(!s, "str is null");
     CHECK_FATAL(!substr, "substr is null");
 
     u64 len = cstr_len(substr);
-
     if (len == 0) {
         return 0;
     }
-
-    if (len > str->size) {
+    if (len > s->size) {
         return (u64)-1;
     }
 
-    for (u64 i = 0; i <= str->size - len; i++) {
-        if (memcmp(str->data + i, substr, len) == 0) {
+    const char* buf = GET_STR(s);
+    for (u64 i = 0; i <= s->size - len; i++) {
+        if (memcmp(buf + i, substr, len) == 0) {
             return i;
         }
     }
-
     return (u64)-1;
 }
 
-
-String* string_substr(const String* str, u64 start, u64 length)
+String* string_substr(const String* s, u64 start, u64 length)
 {
-    CHECK_FATAL(!str, "str is null");
-    CHECK_FATAL(start >= str->size, "index out of bounds");
+    CHECK_FATAL(!s, "str is null");
+    CHECK_FATAL(start >= s->size, "start out of bounds");
 
-    String* result = string_create();
-
-    u64 end     = start + length;
-    u64 str_len = string_len(str);
-    if (end > str_len) {
-        end = str_len;
+    u64 end = start + length;
+    if (end > s->size) {
+        end = s->size;
     }
 
     u64 actual_len = end - start;
 
+    String* result = string_create();
     if (actual_len > 0) {
-        const char* csrc = string_data_ptr(str) + start;
-        genVec_insert_multi(result, 0, (const u8*)csrc, actual_len);
+        ensure_capacity(result, actual_len);
+        str_copy_n(GET_STR(result), GET_STR(s) + start, actual_len);
+        result->size = actual_len;
     }
 
     return result;
 }
 
 
-void string_print(const String* str)
-{
-    CHECK_FATAL(!str, "str is null");
+//  I/O
 
-    putchar('\"');
-    for (u64 i = 0; i < str->size; i++) {
-        putchar(((char*)str->data)[i]);
+void string_print(const String* s)
+{
+    CHECK_FATAL(!s, "str is null");
+
+    putchar('"');
+    const char* buf = GET_STR(s);
+    for (u64 i = 0; i < s->size; i++) {
+        putchar(buf[i]);
     }
-    putchar('\"');
+    putchar('"');
 }
 
 
-u64 cstr_len(const char* cstr)
-{
-    u64 len = 0;
-    u64 i   = 0;
 
-    while (cstr[i++] != '\0') {
-        len++;
+static u64 cstr_len(const char* cstr)
+{
+    u64 i = 0;
+    while (cstr[i] != '\0') {
+        i++;
+    }
+    return i;
+}
+
+static void str_copy_n(char* dest, const char* src, u64 n)
+{
+    for (u64 i = 0; i < n; i++) {
+        dest[i] = src[i];
+    }
+}
+
+// Promote SSO buffer to heap allocation.
+static void stk_to_heap(String* s)
+{
+    u64 new_cap = (u64)((float)s->capacity * STRING_GROWTH);
+
+    char* new_data = malloc(new_cap);
+    CHECK_FATAL(!new_data, "malloc failed");
+
+    str_copy_n(new_data, s->stk, s->size);
+
+    s->heap     = new_data;
+    s->capacity = new_cap;
+}
+
+static void heap_to_stk(String* s)
+{
+    char tmp[STR_SSO_SIZE];
+    str_copy_n(tmp, s->heap, s->size);
+    free(s->heap);
+    str_copy_n(s->stk, tmp, s->size);
+    s->capacity = STR_SSO_SIZE;
+}
+
+static void string_grow(String* s)
+{
+    u64 new_cap = (u64)((float)s->capacity * STRING_GROWTH);
+
+    char* new_data = realloc(s->heap, new_cap);
+    CHECK_FATAL(!new_data, "realloc failed");
+
+    s->heap     = new_data;
+    s->capacity = new_cap;
+}
+
+// TODO: move from heap to stk if cap too low?
+static void string_shrink(String* s)
+{
+    u64 new_cap = (u64)((float)s->capacity * STRING_SHRINK_BY);
+
+    if (new_cap <= STR_SSO_SIZE) {
+        heap_to_stk(s);
+        return;
     }
 
-    return len;
+    char* new_data = realloc(s->heap, new_cap);
+    if (!new_data) {
+        WARN("shrink realloc failed — keeping current allocation");
+        return;
+    }
+
+    s->heap     = new_data;
+    s->capacity = new_cap;
+}
+
+// Grow (possibly multiple times) until capacity >= needed.
+static void ensure_capacity(String* s, u64 needed)
+{
+    if (needed <= s->capacity) {
+        return;
+    }
+
+    // Grow by at least STRING_GROWTH factor so we don't alloc on every push.
+    u64 new_cap = (u64)((float)s->capacity * STRING_GROWTH);
+    if (new_cap < needed) {
+        new_cap = needed;
+    }
+
+    if (IS_SSO(s)) {
+        char* new_data = malloc(new_cap);
+        CHECK_FATAL(!new_data, "malloc failed");
+        str_copy_n(new_data, s->stk, s->size);
+        s->heap     = new_data;
+        s->capacity = new_cap;
+    } else {
+        char* new_data = realloc(s->heap, new_cap);
+        CHECK_FATAL(!new_data, "realloc failed");
+        s->heap     = new_data;
+        s->capacity = new_cap;
+    }
 }
 
 #endif /* WC_STRING_IMPL */

@@ -1,4 +1,5 @@
 #include "String.h"
+#include "wc_errno.h"
 #include <string.h>
 
 
@@ -318,7 +319,7 @@ void string_append_string_move(String* s, String** other)
 char string_pop_char(String* s)
 {
     CHECK_FATAL(!s, "str is null");
-    CHECK_FATAL(s->size == 0, "pop on empty string");
+    WC_SET_RET(WC_ERR_EMPTY, s->size == 0, '\0');
 
     char c = GET_STR_AT(s, --s->size);
     MAYBE_SHRINK(s);

@@ -39,6 +39,8 @@
 #define COLOR_CYAN   "\033[1;36m"
 
 
+// TODO: warm paths ?
+
 #define WARN(fmt, ...)                                            \
     do {                                                          \
         printf(COLOR_YELLOW "[WARN]"                              \
@@ -346,36 +348,26 @@ static inline void wc_perror(const char* prefix)
 #endif
 
 
-// // Vtable: one instance shared across all vectors of the same type.
-// // Pass NULL for any callback not needed.
-// // For POD types, pass NULL for the whole ops pointer.
-// typedef struct {
-//     copy_fn   copy_fn; // Deep copy function for owned resources (or NULL)
-//     move_fn   move_fn; // Transfer ownership and null original (or NULL)
-//     delete_fn del_fn;  // Cleanup function for owned resources (or NULL)
-// } container_ops;
-
 
 // generic vector container
 typedef struct {
     u8* data; // pointer to generic data
 
-    u64 size;      // Number of elements currently in vector
-    u64 capacity;  // Total allocated capacity (in elements)
-    u32 data_size; // Size of each element in bytes
-
     // Pointer to shared type-ops vtable (or NULL for POD types)
     const container_ops* ops;
+
+    u64 size;       // Number of elements currently in vector
+    u64 capacity;   // Total allocated capacity (in elements)
+    u32 data_size;  // Size of each element in bytes
+
 } genVec;
 
-// sizeof(genVec) == 48
-
+// 8 8 8 8 4 '4'  = 40 bytes ? 
 
 // Convenience: access ops callbacks safely
 #define VEC_COPY_FN(vec) ((vec)->ops ? (vec)->ops->copy_fn : NULL)
 #define VEC_MOVE_FN(vec) ((vec)->ops ? (vec)->ops->move_fn : NULL)
 #define VEC_DEL_FN(vec)  ((vec)->ops ? (vec)->ops->del_fn  : NULL)
-
 
 
 // Memory Management
@@ -397,6 +389,7 @@ void genVec_init_val_stk(u64 n, const u8* val, u32 data_size, const container_op
 // You provide a stack-allocated array which becomes the internal array.
 // WARNING: crashes when size == capacity and you try to push.
 void genVec_init_arr(u64 n, u8* arr, u32 data_size, const container_ops* ops, genVec* vec);
+
 
 // Destroy heap-allocated vector and clean up all elements.
 void genVec_destroy(genVec* vec);
@@ -574,7 +567,7 @@ _Thread_local wc_err wc_errno = WC_OK;
 // get ptr to elm at index i
 #define GET_PTR(vec, i) ((vec->data) + ((u64)(i) * ((vec)->data_size)))
 // get total size in bytes for i elements
-#define GET_SCALED(vec, i) ((u64)(i) * ((vec)->data_size))
+#define GET_SCALED(vec, i) ((i) * ((vec)->data_size))
 
 #define MAYBE_GROW(vec)                                 \
     do {                                                \
@@ -1207,8 +1200,6 @@ void genVec_move(genVec* dest, genVec** src)
 
 static void genVec_grow(genVec* vec)
 {
-    CHECK_FATAL(!vec, "vec is null");
-
     u64 new_cap;
     if (vec->capacity < GENVEC_MIN_CAPACITY) {
         new_cap = vec->capacity + 1;
@@ -1229,8 +1220,6 @@ static void genVec_grow(genVec* vec)
 
 static void genVec_shrink(genVec* vec)
 {
-    CHECK_FATAL(!vec, "vec is null");
-
     u64 reduced_cap = (u64)((float)vec->capacity * GENVEC_SHRINK_BY);
     if (reduced_cap < vec->size || reduced_cap == 0) {
         return;
