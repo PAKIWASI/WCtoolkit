@@ -73,8 +73,10 @@ Need to test them
 - `genVec_filter(vec, predicate)` — in-place removal of elements where predicate returns false
 - `genVec_extend(vec, val, count)` — append N copies of a value
 - `genVec_view` — a non-owning slice into a vector (pointer + length, no copy)
+- *`genVec_swap_remove` - when order doesn't matter, swap the target element with 
+    the last one and pop. O(1) instead of O(n)*
 - Guard against push-past-capacity in `genVec_init_arr` mode — currently crashes silently.
-  Add an `ASSERT_FATAL` at the push site when the internal data pointer is stack-owned.
+    Add an `ASSERT_FATAL` at the push site when the internal data pointer is stack-owned.
 
 ---
 
@@ -198,4 +200,26 @@ Need to test them
 
 ---
 
+## Speed Improvement
+
+### hashmap
+    - three parallel arrays: states[], keys[] (each key_size bytes), vals[] (each val_size bytes), indexed together. 
+        One malloc for the whole table. This alone will bring your map from ~10x slower than std::unordered_map to competitive or faster
+    ```c
+        u8*    states;    // u8[] of EMPTY/FILLED/TOMBSTONE
+        u8*    keys;      // key_size * capacity bytes, inline
+        u8*    vals;      // val_size * capacity bytes, inline
+    ```
+    - Robin Hood hashing
+    - The reason you're using primes is to spread collisions when the hash function is weak. 
+        With a good hash (Murmur3, xxHash, or wyhash), power-of-2 is safe and eliminates the division entirely. 
+    - Hash function. Replace fnv1a_hash as default with wyhash or xxHash3
+
+### genvec
+    - Aggressive auto-shrinking is a problem. You shrink at 25% fill, and this fires inside pop
+    - MAYBE_GROW does a branch every push. (do the hot/cold thing?)
+    - restrict and inlining for genVec POD. For tight numerical loops, adding __restrict__ to the data pointer 
+        tells the compiler that data doesn't alias any other pointer, enabling auto-vectorisation. 
+
+---
 

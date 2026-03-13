@@ -154,21 +154,21 @@ Usage:
  * Map must have int key, String val, created with &wc_str_ops for val.
  */
 #define MAP_PUT_INT_STR(map, k, cstr_val)                         \
-    do {                                                          \
+    ({                                                          \
         String* _v = string_from_cstr(cstr_val);                  \
         hashmap_put_val_move((map), (u8*)&(int){(k)}, (u8**)&_v); \
-    } while (0)
+    })
 
 /*
  * MAP_PUT_STR_STR(map, cstr_key, cstr_val)
  * Map must use &wc_str_ops for both key and val.
  */
 #define MAP_PUT_STR_STR(map, cstr_key, cstr_val)       \
-    do {                                               \
+    ({                                               \
         String* _k = string_from_cstr(cstr_key);       \
         String* _v = string_from_cstr(cstr_val);       \
         hashmap_put_move((map), (u8**)&_k, (u8**)&_v); \
-    } while (0)
+    })
 
 
 // ── Put (COPY semantics) ──────────────────────────────────────────────────
@@ -228,8 +228,6 @@ Usage:
     for (u64 _mfv_i = 0; _mfv_i < (map)->capacity; _mfv_i++)                                                   \
         for (T* name = ((map)->buckets[_mfv_i].state == FILLED) ? (T*)(map)->buckets[_mfv_i].val : NULL; name; \
              name    = NULL)
-
-
 
 #define SET_FOREACH_BUCKET(set, name)                        \
     for (u64 _sfb_i = 0; _sfb_i < (set)->capacity; _sfb_i++) \

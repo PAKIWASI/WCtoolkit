@@ -4,6 +4,7 @@
 #include "map_setup.h"
 
 
+
 typedef struct {
     u8*   key;
     u8*   val;
@@ -31,6 +32,7 @@ typedef struct {
 #define MAP_COPY(ops) ((ops) ? (ops)->copy_fn : NULL)
 #define MAP_MOVE(ops) ((ops) ? (ops)->move_fn : NULL)
 #define MAP_DEL(ops)  ((ops) ? (ops)->del_fn  : NULL)
+
 
 
 // Create a new hashmap.

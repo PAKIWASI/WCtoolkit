@@ -31,7 +31,6 @@
 #include "wc_macros.h"
 
 #include "json_parser.h"
-#include "particle.h"
 
 
 // ── helpers ────────────────────────────────────────────────────────────
@@ -372,24 +371,20 @@ static void demo_config(void)
 
 
 
-// int main(void)
-// {
-//     printf("\033[1;32m");
-//     printf("  WCtoolkit JSON Parser — Ownership Showcase   \n");
-//     printf("\033[0m");
-//
-//     demo_parse();
-//     demo_build();
-//     demo_deep_copy();
-//     demo_errors();
-//     demo_config();
-//
-//     printf("\n\033[1;32m[All demos complete — no leaks, no double-frees]\033[0m\n\n");
-//     return 0;
-// }
-
 int main(void)
 {
-    particle_run();
+    printf("\033[1;32m");
+    printf("  WCtoolkit JSON Parser — Ownership Showcase   \n");
+    printf("\033[0m");
+
+    demo_parse();
+    demo_build();
+    demo_deep_copy();
+    demo_errors();
+    demo_config();
+
+    printf("\n\033[1;32m[All demos complete — no leaks, no double-frees]\033[0m\n\n");
     return 0;
 }
+
+

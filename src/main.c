@@ -1,38 +1,22 @@
 #include "String.h"
-#include "common.h"
-#include <stdio.h>
+#include "hashmap.h"
+#include "wc_helpers.h"
+#include "wc_macros.h"
+
 
 
 int main(void)
 {
-    String* str = string_from_cstr("helllo");
+    hashmap* map = hashmap_create(sizeof(int), sizeof(String), NULL, NULL, NULL, &wc_str_ops);
 
-    string_print(str);
-    printf("\n%lu\n%lu\n", str->size, str->capacity);
-    print_hex(castptr(str), sizeof(String), 8);
+    MAP_PUT_INT_STR(map, 1, "hello");
+    MAP_PUT_INT_STR(map, 2, "world");
 
-    string_append_cstr(str, " what is up whataaaa");
-    string_append_char(str, ' ');
+    hashmap_print(map, wc_print_int, str_print);
 
-    string_print(str);
-    printf("\n%lu\n%lu\n", str->size, str->capacity);
-    print_hex(castptr(str), sizeof(String), 8);
+    int o_key = 1;
+    int n_key = 3;
+    MAP_PUT(map, cast(n_key), hashmap_get_ptr(map, cast(o_key)));
 
-    string_pop_char(str);
-    string_pop_char(str);
-    string_pop_char(str);
-    string_pop_char(str);
-    string_pop_char(str);
-    string_pop_char(str);
-    string_pop_char(str);
-    string_pop_char(str);
-    string_pop_char(str);
-
-    string_shrink_to_fit(str);
-
-    string_print(str);
-    printf("\n%lu\n%lu\n", str->size, str->capacity);
-    print_hex(castptr(str), sizeof(String), 8);
-
-    string_destroy(str);
+    hashmap_destroy(map);
 }
