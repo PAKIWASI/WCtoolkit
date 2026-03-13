@@ -3,16 +3,14 @@
 
 #include "map_setup.h"
 
+/*  Generic Hashmap with Ownership Semantics
+  Robin Hood Hashing
+*/
 
 
 typedef struct {
-    u8*   key;
-    u8*   val;
-    STATE state;
-} KV;
-
-typedef struct {
-    KV*            buckets;
+    u8*            keys; // [psl|key, psl|key, psl|key, ...] (1 + key_size) each
+    u8*            vals; // [val, val, val, ...] (val_size) each
     u64            size;
     u64            capacity;
     u32            key_size;
@@ -38,8 +36,7 @@ typedef struct {
 // Create a new hashmap.
 // hash_fn and cmp_fn default to fnv1a_hash / default_compare if NULL.
 // key_ops / val_ops: pass NULL for POD types.
-hashmap* hashmap_create(u32 key_size, u32 val_size,
-                        custom_hash_fn hash_fn, compare_fn cmp_fn,
+hashmap* hashmap_create(u32 key_size, u32 val_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
                         const container_ops* key_ops, const container_ops* val_ops);
 
 void hashmap_destroy(hashmap* map);
@@ -61,12 +58,11 @@ b8 hashmap_put_key_move(hashmap* map, u8** key, const u8* val);
 // Get value for key — copies into val. Returns 1 if found, 0 if not.
 b8 hashmap_get(const hashmap* map, const u8* key, u8* val);
 
-// Get pointer to value — no copy.
-// WARNING: invalidated by put/del operations.
+// Get pointer to value
 u8* hashmap_get_ptr(hashmap* map, const u8* key);
 
 // Get raw bucket pointer at index i.
-KV* hashmap_get_bucket(hashmap* map, u64 i);
+// KV* hashmap_get_bucket(hashmap* map, u64 i);
 
 // Delete key. If out is provided, value is copied to it before deletion.
 // Returns 1 if found and deleted, 0 if not found.
@@ -85,9 +81,21 @@ void hashmap_clear(hashmap* map);
 void hashmap_copy(hashmap* dest, const hashmap* src);
 
 
-static inline u64 hashmap_size(const hashmap* map)     { CHECK_FATAL(!map, "map is null"); return map->size;      }
-static inline u64 hashmap_capacity(const hashmap* map) { CHECK_FATAL(!map, "map is null"); return map->capacity;  }
-static inline b8  hashmap_empty(const hashmap* map)    { CHECK_FATAL(!map, "map is null"); return map->size == 0; }
+static inline u64 hashmap_size(const hashmap* map)
+{
+    CHECK_FATAL(!map, "map is null");
+    return map->size;
+}
+static inline u64 hashmap_capacity(const hashmap* map)
+{
+    CHECK_FATAL(!map, "map is null");
+    return map->capacity;
+}
+static inline b8 hashmap_empty(const hashmap* map)
+{
+    CHECK_FATAL(!map, "map is null");
+    return map->size == 0;
+}
 
 
 #endif // HASHMAP_H

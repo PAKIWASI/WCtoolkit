@@ -24,6 +24,10 @@ typedef u64 (*custom_hash_fn)(const u8* key, u64 size);
 /*
 ====================DEFAULT FUNCTIONS====================
 */
+
+// TODO: use wyhash or xxHash3 as default ?
+//       add 64 bit version as well
+
 // 32-bit FNV-1a (default hash)
 static u64 fnv1a_hash(const u8* bytes, u64 size)
 {
