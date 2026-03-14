@@ -1,11 +1,15 @@
 #include "hashmap.h"
+#include "common.h"
+
+#include <stddef.h>
+#include <stdlib.h>
 
 
 
-#define GET_SLOT(map, i) (map->keys + ((1 + map->key_size) * (i))) // psl byte
-#define GET_PSL(map, i)  (GET_SLOT(map, i))                        // same — psl is byte 0
-#define GET_KEY(map, i)  (GET_SLOT(map, i) + 1)                    // key starts at byte 1
-#define GET_VAL(map, i)  (map->vals + ((map->val_size) * (i)))
+#define GET_SLOT(map, i) (map->keys + ((u64)(1 + map->key_size) * (i))) // psl byte
+#define GET_PSL(map, i)  (GET_SLOT(map, i))                             // same — psl is byte 0
+#define GET_KEY(map, i)  (GET_SLOT(map, i) + 1)                         // key starts at byte 1
+#define GET_VAL(map, i)  (map->vals + ((u64)(map->val_size) * (i)))
 
 // psl sentient val to indicate empty bucket
 #define BUCKET_EMPTY 0
@@ -17,12 +21,21 @@ typedef enum {
 } MAP_LOOKUP_RES;
 
 
+#define INIT_BUCKETS(map, start, num)                                        \
+    ({                                                                       \
+        memset(GET_SLOT(map, start), 0, ((u64)1 + (map)->key_size) * (num)); \
+        memset(GET_VAL(map, start), 0, ((u64)(map)->val_size) * (num));      \
+    })
+
+
 /*
 ====================PRIVATE DECLERATIONS====================
 */
 
 static inline void init_buckets(hashmap* map, u64 start, u64 num);
-static u64         map_lookup(const hashmap* map, const u8* key, MAP_LOOKUP_RES* res);
+
+static u64 map_lookup(const hashmap* map, const u8* key, MAP_LOOKUP_RES* res, u8* out_psl);
+
 static void        map_resize(hashmap* map, u64 new_capacity);
 static inline void map_maybe_resize(hashmap* map);
 
@@ -43,6 +56,9 @@ hashmap* hashmap_create(u32 key_size, u32 val_size, custom_hash_fn hash_fn, comp
     CHECK_FATAL(!map->keys, "keys malloc failed");
     map->vals = calloc(HASHMAP_INIT_CAPACITY, val_size);
     CHECK_FATAL(!map->vals, "vals malloc failed");
+
+    map->scratch = malloc(key_size + val_size);
+    CHECK_FATAL(!map->scratch, "scratch malloc failed");
 
     map->size     = 0;
     map->capacity = HASHMAP_INIT_CAPACITY;
@@ -88,32 +104,32 @@ void hashmap_destroy(hashmap* map)
 
 
 // copy semantics - deep copy key, val into hashmap
-b8 hashmap_put(hashmap* map, const u8* key, const u8* val) 
+b8 hashmap_put(hashmap* map, const u8* key, const u8* val)
 {
     CHECK_FATAL(!map, "map is null");
     CHECK_FATAL(!key, "key is null");
     CHECK_FATAL(!val, "val is null");
 
     MAP_LOOKUP_RES res;
-    u64 slot = map_lookup(map, key, &res);
+    u8  out_psl;
+    u64 slot = map_lookup(map, key, &res, &out_psl);
 
     switch (res) {
-        // key found - update the val, delete old one
-        case FOUND: {
+    // key found - update the val, delete old one
+    case FOUND: {
 
-            break;
-        }
-        // not found and slot empty - new key/val insert at slot
-        case NOT_FOUND: {
+        break;
+    }
+    // not found and slot empty - new key/val insert at slot
+    case NOT_FOUND: {
 
-            break;
-        }
-        // not found and slot occupied - do robin hood hashing
-        case ROBINHOOD_EXIT: {
+        break;
+    }
+    // not found and slot occupied - do robin hood hashing
+    case ROBINHOOD_EXIT: {
 
-            break;
-        }
-
+        break;
+    }
     }
 }
 
@@ -133,6 +149,7 @@ static inline void init_buckets(hashmap* map, u64 start, u64 num)
     memset(GET_SLOT(map, start), 0, (1 + map->key_size) * num);
     memset(GET_VAL(map, start), 0, (map->val_size) * num);
 }
+
 /*
 
 
@@ -144,32 +161,85 @@ f -> 1
 psl: 1 2 3 4 -> robinhood exit idx 4
 
 */
-static u64 map_lookup(const hashmap* map, const u8* key, MAP_LOOKUP_RES* res)
+static u64 map_lookup(const hashmap* map, const u8* key, MAP_LOOKUP_RES* res, u8* out_psl)
 {
     u64 idx = map->hash_fn(key, map->key_size) % map->capacity;
     u8  psl = 1; // stored value for PSL=0 is 1
 
-    for (u64 i = idx;; i = (i + 1) % map->capacity) {
+    for (u64 i = idx;; i = (i + 1) % map->capacity) 
+    {
         u8 slot_psl = *GET_PSL(map, i);
+        *out_psl = psl;
 
         if (slot_psl == 0) {
             *res = NOT_FOUND;
             return i; // empty — key not here
         }
+
         if (slot_psl < psl) {
             *res = ROBINHOOD_EXIT;
             return i; // Robin Hood early exit
         }
+
         if (map->cmp_fn(GET_KEY(map, i), key, map->key_size) == 0) {
             *res = FOUND;
             return i; // found
         }
+
         psl++;
     }
 }
 
-static void map_insert(hashmap* map, u8* key, u8* val, u8 psl)
+static void map_insert(hashmap* map, u8* key, u8* val, u64 idx, u8 psl)
 {
+    copy_fn k_copy = MAP_COPY(map->key_ops);
+    copy_fn v_copy = MAP_COPY(map->val_ops);
 
+    for (u64 i = idx;; i = (i + 1) % map->capacity)
+    {
+        u8 slot_psl = *GET_PSL(map, i);
+
+        // empty slot
+        if (slot_psl == 0) {
+            *GET_PSL(map, i) = psl;
+
+            if (k_copy) {
+                k_copy(GET_KEY(map, i), key);
+            } else {
+                memcpy(GET_KEY(map, i), key, map->key_size);
+            }
+
+            if (v_copy) {
+                v_copy(GET_VAL(map, i), val);
+            } else {
+                memcpy(GET_VAL(map, i), val, map->val_size);
+            }
+
+            map->size++;
+            return;
+        }
+
+        // Robin Hood — steal from the rich
+        if (slot_psl < psl) {
+            // save resident
+            memcpy(map->scratch, GET_KEY(map, i), map->key_size);
+            memcpy(map->scratch + map->key_size, GET_VAL(map, i), map->val_size);
+            u8 tmp_psl = slot_psl;
+
+            // place incoming
+            *GET_PSL(map, i) = psl;
+            memcpy(GET_KEY(map, i), key, map->key_size);
+            memcpy(GET_VAL(map, i), val, map->val_size);
+
+            // continue with displaced
+            key = map->scratch;
+            val = map->scratch + map->key_size;
+            psl = tmp_psl;
+        }
+
+        psl++;
+    }
 }
+
+
 

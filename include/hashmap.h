@@ -9,6 +9,7 @@
   - keys stores [psl|key] inline
   - PSL: probe sequence length - the distance from hashing location
   - we actuall store psl + 1 as psl = 0 means empty bucket
+  - Robin Hood Invarient: all keys that hash to i come before keys that hash to i + 1
   - vals store [val] inline
 */
 
@@ -20,6 +21,7 @@ typedef struct {
     u64            capacity;
     u32            key_size;
     u32            val_size;
+    u8*            scratch;  // key_size + val_size bytes - temp buffer for robin hood swaps
     custom_hash_fn hash_fn;
     compare_fn     cmp_fn;
 
