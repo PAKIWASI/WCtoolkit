@@ -455,7 +455,7 @@ static void test_map_str_str_macro(void)
 {
     hashmap* m = hashmap_create(
         sizeof(String), sizeof(String),
-        murmurhash3_str, str_cmp, &wc_str_ops, &wc_str_ops);
+        wyhash_str, str_cmp, &wc_str_ops, &wc_str_ops);
 
     MAP_PUT_STR_STR(m, "name",  "Alice");
     MAP_PUT_STR_STR(m, "city",  "Cairo");

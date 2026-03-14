@@ -39,7 +39,7 @@ set(LIB_SOURCES
     src/fast_math.c
     src/gen_vector.c
     src/hashmap.c
-    # src/hashset.c
+    src/hashset.c
     src/matrix.c
     src/Queue.c
     src/random.c
@@ -57,28 +57,28 @@ add_executable(main
 target_include_directories(main PRIVATE include)
 
 
-# # ── Test executable ───────────────────────────────────────────────────────
-# add_executable(tests
-#     tests/test_main.c
-#     tests/string_test.c
-#     tests/arena_test.c
-#     tests/gen_vector_test.c
-#     tests/hashmap_test.c
-#     tests/hashset_test.c
-#     tests/stack_queue_test.c
-#     tests/matrix_test.c
-#     tests/bit_vector_test.c
-#     tests/complex_test.c
-#     ${LIB_SOURCES}
-# )
-# target_include_directories(tests PRIVATE include tests)
-# target_link_libraries(tests)
-#
-# # Register with CTest so `ctest` works from the build directory
-# enable_testing()
-# add_test(NAME unit_tests COMMAND tests)
-#
-#
+# ── Test executable ───────────────────────────────────────────────────────
+add_executable(tests
+    tests/test_main.c
+    tests/string_test.c
+    tests/arena_test.c
+    tests/gen_vector_test.c
+    tests/hashmap_test.c
+    tests/hashset_test.c
+    tests/stack_queue_test.c
+    tests/matrix_test.c
+    tests/bit_vector_test.c
+    tests/complex_test.c
+    ${LIB_SOURCES}
+)
+target_include_directories(tests PRIVATE include tests)
+target_link_libraries(tests)
+
+# Register with CTest so `ctest` works from the build directory
+enable_testing()
+add_test(NAME unit_tests COMMAND tests)
+
+
 # # Example programs
 # add_executable(examples
 #     examples/examples.c

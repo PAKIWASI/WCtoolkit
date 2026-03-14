@@ -1,26 +1,28 @@
+#include "String.h"
 #include "hashmap.h"
+#include "wc_helpers.h"
 
-
-static inline void put(hashmap* map, int key, int val) {
-    hashmap_put(map, cast(key), cast(val));
-}
 
 
 int main(void)
 {
-    hashmap* map = hashmap_create(sizeof(int), sizeof(int), NULL, NULL, NULL, NULL);
+    hashmap* map = hashmap_create(sizeof(int), sizeof(String), NULL, NULL, NULL, &wc_str_ops);
 
-    put(map, 1, 1);
-    put(map, 2, 2);
-    put(map, 3, 3);
-    put(map, 4, 4);
+    int a = 1;
+    String* s = string_from_cstr("hello");
 
-    hashmap_print(map, wc_print_int, wc_print_int);
+    hashmap_put(map, cast(a), castptr(s));
+    a++;
+    hashmap_put(map, cast(a), castptr(s));
+    a++;
+    hashmap_put(map, cast(a), castptr(s));
+    a++;
+    hashmap_put(map, cast(a), castptr(s));
+    a++;
 
-    hashmap_del(map, (u8*)&(int){1}, NULL);
-
-    hashmap_print(map, wc_print_int, wc_print_int);
+    hashmap_print(map, wc_print_int, str_print);
+    printf("sizeof(String) = %zu\n", sizeof(String));
+    printf("sizeof(hashmap) = %zu\n", sizeof(hashmap));
 
     hashmap_destroy(map);
-    return 0;
 }

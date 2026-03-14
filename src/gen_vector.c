@@ -1,9 +1,9 @@
 #include "gen_vector.h"
-#include "common.h"
 #include "wc_errno.h"
 
 #include <string.h>
 
+// TODO: only do shrink manually ? remove auto shrink?
 
 
 #define GENVEC_MIN_CAPACITY 4
