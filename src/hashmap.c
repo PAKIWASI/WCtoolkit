@@ -21,20 +21,19 @@ typedef enum {
 } MAP_LOOKUP_RES;
 
 
-#define INIT_BUCKETS(map, start, num)                                        \
-    ({                                                                       \
-        memset(GET_SLOT(map, start), 0, ((u64)1 + (map)->key_size) * (num)); \
-        memset(GET_VAL(map, start), 0, ((u64)(map)->val_size) * (num));      \
-    })
 
 
 /*
 ====================PRIVATE DECLERATIONS====================
 */
 
-static inline void init_buckets(hashmap* map, u64 start, u64 num);
+#define INIT_BUCKETS(map, start, num)                                        \
+    ({                                                                       \
+        memset(GET_SLOT(map, start), 0, ((u64)1 + (map)->key_size) * (num)); \
+        memset(GET_VAL(map, start), 0, ((u64)(map)->val_size) * (num));      \
+    })
 
-static u64 map_lookup(const hashmap* map, const u8* key, MAP_LOOKUP_RES* res, u8* out_psl);
+static u64  map_lookup(const hashmap* map, const u8* key, MAP_LOOKUP_RES* res, u8* out_psl);
 static void map_insert(hashmap* map, u8* key, u8* val, u8 psl, u64 idx);
 
 static void        map_resize(hashmap* map, u64 new_capacity);
@@ -107,49 +106,97 @@ void hashmap_destroy(hashmap* map)
 // copy semantics - deep copy key, val into hashmap
 b8 hashmap_put(hashmap* map, const u8* key, const u8* val)
 {
-    CHECK_FATAL(!map, "map is null");
-    CHECK_FATAL(!key, "key is null");
-    CHECK_FATAL(!val, "val is null");
+    CHECK_FATAL(!map || !key || !val, "null arg");
+
+    map_maybe_resize(map);
+
+    MAP_LOOKUP_RES res;
+    u8             out_psl;
+    u64            slot = map_lookup(map, key, &res, &out_psl);
+
+    copy_fn   k_copy = MAP_COPY(map->key_ops);
+    copy_fn   v_copy = MAP_COPY(map->val_ops);
+    delete_fn v_del  = MAP_DEL(map->val_ops);
+
+    if (res == FOUND) {
+        // Update value in-place — delete old, copy new
+        if (v_del) {
+            v_del(GET_VAL(map, slot));
+        }
+
+        if (v_copy) {
+            v_copy(GET_VAL(map, slot), val);
+        } else {
+            memcpy(GET_VAL(map, slot), val, map->val_size);
+        }
+        return 1;
+    }
+
+    // New key — make a deep copy into scratch first, then insert
+    // map_insert will memcpy from these into the actual slots
+    u8* k_buf = map->scratch;
+    u8* v_buf = map->scratch + map->key_size;
+
+    if (k_copy) {
+        k_copy(k_buf, key);
+    } else {
+        memcpy(k_buf, key, map->key_size);
+    }
+
+    if (v_copy) {
+        v_copy(v_buf, val);
+    } else {
+        memcpy(v_buf, val, map->val_size);
+    }
+
+    map_insert(map, k_buf, v_buf, out_psl, slot);
+    return 0;
+}
+
+b8 hashmap_put_move(hashmap* map, u8** key, u8** val)
+{
+    CHECK_FATAL(!map || !key || !val, "null arg");
+
+    map_maybe_resize(map);
 
     MAP_LOOKUP_RES res;
     u8  out_psl;
-    u64 slot = map_lookup(map, key, &res, &out_psl);
+    u64 slot = map_lookup(map, *key, &res, &out_psl);
 
-    switch (res) {
-    // key found - update the val, delete old one
-    case FOUND: {
+    delete_fn v_del = MAP_DEL(map->val_ops);
 
-        break;
-    }
-    // not found and slot empty - new key/val insert at slot
-    case NOT_FOUND: {
+    if (res == FOUND) {
 
-        break;
-    }
-    // not found and slot occupied - do robin hood hashing
-    case ROBINHOOD_EXIT: {
+        if (v_del) { 
+            v_del(GET_VAL(map, slot));
+        }
 
-        break;
+        memcpy(GET_VAL(map, slot), *val, map->val_size);
+
+        // Also replace key bytes (same key value, caller owns old key)
+        delete_fn k_del = MAP_DEL(map->key_ops);
+        if (k_del) { 
+            k_del(GET_KEY(map, slot));
+        }
+
+        memcpy(GET_KEY(map, slot), *key, map->key_size);
+
+        *key = NULL;
+        *val = NULL;
+        return 1;
     }
-    }
+
+    // map_insert memcpy's from these — ownership transfers into the map
+    map_insert(map, *key, *val, out_psl, slot);
+    *key = NULL;
+    *val = NULL;
+    return 0;
 }
 
 
 /*
 ====================PRIVATE FUNCTIONS====================
 */
-
-/* 1 2 3 4 5 6 7 8 9
-  s = 1
-  n = 3
-     2 3 4
-*/
-static inline void init_buckets(hashmap* map, u64 start, u64 num)
-{
-    // psl val 0 indicates empty bucket
-    memset(GET_SLOT(map, start), 0, (1 + map->key_size) * num);
-    memset(GET_VAL(map, start), 0, (map->val_size) * num);
-}
 
 /*
 
@@ -167,10 +214,9 @@ static u64 map_lookup(const hashmap* map, const u8* key, MAP_LOOKUP_RES* res, u8
     u64 idx = map->hash_fn(key, map->key_size) % map->capacity;
     u8  psl = 1; // stored value for PSL=0 is 1
 
-    for (u64 i = idx;; i = (i + 1) % map->capacity) 
-    {
+    for (u64 i = idx;; i = (i + 1) % map->capacity) {
         u8 slot_psl = *GET_PSL(map, i);
-        *out_psl = psl;
+        *out_psl    = psl;
 
         if (slot_psl == 0) {
             *res = NOT_FOUND;
@@ -197,8 +243,7 @@ static void map_insert(hashmap* map, u8* key, u8* val, u8 psl, u64 idx)
     // either a fresh copy (put) or moved pointer (put_move)
     // We only memcpy-shuffle ownership between slots, no copy_fn needed here
 
-    for (u64 i = idx;; i = (i + 1) % map->capacity)
-    {
+    for (u64 i = idx;; i = (i + 1) % map->capacity) {
         u8 slot_psl = *GET_PSL(map, i);
 
         if (slot_psl == BUCKET_EMPTY) {
@@ -214,10 +259,10 @@ static void map_insert(hashmap* map, u8* key, u8* val, u8 psl, u64 idx)
         if (slot_psl < psl) {
             // Swap psl
             *GET_PSL(map, i) = psl;
-            psl = slot_psl;
+            psl              = slot_psl;
 
             // Swap key/val via scratch — pure ownership transfer, no copy_fn
-            memcpy(map->scratch,                 GET_KEY(map, i), map->key_size);
+            memcpy(map->scratch, GET_KEY(map, i), map->key_size);
             memcpy(map->scratch + map->key_size, GET_VAL(map, i), map->val_size);
 
             memcpy(GET_KEY(map, i), key, map->key_size);
