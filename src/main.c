@@ -21,8 +21,6 @@ int main(void)
     a++;
 
     hashmap_print(map, wc_print_int, str_print);
-    printf("sizeof(String) = %zu\n", sizeof(String));
-    printf("sizeof(hashmap) = %zu\n", sizeof(hashmap));
 
     hashmap_destroy(map);
 }

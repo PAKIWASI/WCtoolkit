@@ -21,10 +21,10 @@
 // They must NOT overlap because map_insert is called with a pointer INTO scratch.
 // scratch is therefore 2 * (key_size + val_size) bytes.
 #define STAGE_KEY(map) ((map)->scratch)
-#define STAGE_VAL(map) ((map)->scratch + (map)->key_size)
 #define SWAP_BUF(map)  ((map)->scratch + (map)->key_size + (map)->val_size)
-#define SWAP_KEY(map)  (SWAP_BUF(map))
-#define SWAP_VAL(map)  (SWAP_BUF(map) + (map)->key_size)
+#define STAGE_VAL(map)  ((map)->scratch + ALIGN8((map)->key_size))
+#define SWAP_KEY(map)   ((map)->scratch + ALIGN8((map)->key_size) + (map)->val_size)
+#define SWAP_VAL(map)   ((map)->scratch + ALIGN8((map)->key_size) + (map)->val_size + ALIGN8((map)->key_size))
 
 typedef enum {
     NOT_FOUND = 0,
@@ -63,7 +63,7 @@ hashmap* hashmap_create(u32 key_size, u32 val_size, custom_hash_fn hash_fn, comp
     CHECK_FATAL(!map->vals, "vals calloc failed");
 
     // 2 * (key_size + val_size): first half = staging, second half = RH swap buffer
-    map->scratch = malloc(2 * ((u64)key_size + val_size));
+    map->scratch = malloc(2 * (ALIGN8(key_size) + val_size));
     CHECK_FATAL(!map->scratch, "scratch malloc failed");
 
     map->size     = 0;

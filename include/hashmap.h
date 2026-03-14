@@ -69,9 +69,6 @@ b8 hashmap_get(const hashmap* map, const u8* key, u8* val);
 // Get pointer to value
 u8* hashmap_get_ptr(hashmap* map, const u8* key);
 
-// Get raw bucket pointer at index i.
-// KV* hashmap_get_bucket(hashmap* map, u64 i);
-
 // Delete key. If out is provided, value is copied to it before deletion.
 // Returns 1 if found and deleted, 0 if not found.
 b8 hashmap_del(hashmap* map, const u8* key, u8* out);

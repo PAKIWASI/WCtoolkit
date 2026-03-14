@@ -116,4 +116,7 @@ static u64 wyhash_str_ptr(const u8* key, u64 size)
     return wyhash((const u8*)string_data_ptr(str), string_len(str));
 }
 
+#define ALIGN8(size) (((u64)(size) + 7u) & ~7u)
+
+
 #endif // MAP_SETUP_H
