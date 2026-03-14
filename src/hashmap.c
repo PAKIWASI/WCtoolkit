@@ -1,15 +1,11 @@
 #include "hashmap.h"
-#include "common.h"
-
-#include <stddef.h>
-#include <stdlib.h>
+#include "map_setup.h"
 
 
 
-#define GET_SLOT(map, i) (map->keys + ((u64)(1 + map->key_size) * (i))) // psl byte
-#define GET_PSL(map, i)  (GET_SLOT(map, i))                             // same — psl is byte 0
-#define GET_KEY(map, i)  (GET_SLOT(map, i) + 1)                         // key starts at byte 1
-#define GET_VAL(map, i)  (map->vals + ((u64)(map->val_size) * (i)))
+#define GET_KEY(map, i) ((map)->keys + ((u64)(map)->key_size * i))
+#define GET_PSL(map, i) ((map)->psls + i)
+#define GET_VAL(map, i) ((map)->vals + ((u64)(map)->val_size * i))
 
 // psl sentient val to indicate empty bucket
 #define BUCKET_EMPTY 0
@@ -22,15 +18,15 @@ typedef enum {
 
 
 
-
 /*
 ====================PRIVATE DECLERATIONS====================
 */
 
-#define INIT_BUCKETS(map, start, num)                                        \
-    ({                                                                       \
-        memset(GET_SLOT(map, start), 0, ((u64)1 + (map)->key_size) * (num)); \
-        memset(GET_VAL(map, start), 0, ((u64)(map)->val_size) * (num));      \
+#define INIT_BUCKETS(map, start, num)                            \
+    ({                                                           \
+        memset(GET_KEY(map, start), 0, (u64)(map)->key_size * (num)); \
+        memset(GET_PSL(map, start), 0, num);                     \
+        memset(GET_VAL(map, start), 0, (u64)(map)->val_size * (num)); \
     })
 
 static u64  map_lookup(const hashmap* map, const u8* key, MAP_LOOKUP_RES* res, u8* out_psl);
@@ -52,8 +48,10 @@ hashmap* hashmap_create(u32 key_size, u32 val_size, custom_hash_fn hash_fn, comp
     hashmap* map = malloc(sizeof(hashmap));
     CHECK_FATAL(!map, "map malloc failed");
 
-    map->keys = calloc(HASHMAP_INIT_CAPACITY, 1 + key_size);
+    map->keys = calloc(HASHMAP_INIT_CAPACITY, key_size);
     CHECK_FATAL(!map->keys, "keys malloc failed");
+    map->psls = calloc(HASHMAP_INIT_CAPACITY, sizeof(u8));
+    CHECK_FATAL(!map->psls, "psls malloc failed");
     map->vals = calloc(HASHMAP_INIT_CAPACITY, val_size);
     CHECK_FATAL(!map->vals, "vals malloc failed");
 
@@ -98,6 +96,7 @@ void hashmap_destroy(hashmap* map)
     }
 
     free(map->keys);
+    free(map->psls);
     free(map->vals);
     free(map);
 }
@@ -160,14 +159,14 @@ b8 hashmap_put_move(hashmap* map, u8** key, u8** val)
     map_maybe_resize(map);
 
     MAP_LOOKUP_RES res;
-    u8  out_psl;
-    u64 slot = map_lookup(map, *key, &res, &out_psl);
+    u8             out_psl;
+    u64            slot = map_lookup(map, *key, &res, &out_psl);
 
     delete_fn v_del = MAP_DEL(map->val_ops);
 
     if (res == FOUND) {
 
-        if (v_del) { 
+        if (v_del) {
             v_del(GET_VAL(map, slot));
         }
 
@@ -175,7 +174,7 @@ b8 hashmap_put_move(hashmap* map, u8** key, u8** val)
 
         // Also replace key bytes (same key value, caller owns old key)
         delete_fn k_del = MAP_DEL(map->key_ops);
-        if (k_del) { 
+        if (k_del) {
             k_del(GET_KEY(map, slot));
         }
 
@@ -275,6 +274,3 @@ static void map_insert(hashmap* map, u8* key, u8* val, u8 psl, u64 idx)
         psl++;
     }
 }
-
-
-

@@ -5,8 +5,7 @@
 
 /* Generic Hashmap with Ownership Semantics
   - Robin Hood Hashing
-  - we have 2 arrays: keys and vals
-  - keys stores [psl|key] inline
+  - we have 3 arrays: keys, psls, and vals
   - PSL: probe sequence length - the distance from hashing location
   - we actuall store psl + 1 as psl = 0 means empty bucket
   - Robin Hood Invarient: all keys that hash to i come before keys that hash to i + 1
@@ -15,8 +14,9 @@
 
 
 typedef struct {
-    u8*            keys; // [psl|key, psl|key, psl|key, ...] (1 + key_size) each
-    u8*            vals; // [val, val, val, ...] (val_size) each
+    u8*            keys; 
+    u8*            psls;
+    u8*            vals;
     u64            size;
     u64            capacity;
     u32            key_size;

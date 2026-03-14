@@ -7,7 +7,7 @@
 
 typedef struct {
     u8*   elm;
-    STATE state;
+    // STATE state;
 } ELM;
 
 typedef struct {

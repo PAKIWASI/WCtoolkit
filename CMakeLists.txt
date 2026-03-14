@@ -39,7 +39,7 @@ set(LIB_SOURCES
     src/fast_math.c
     src/gen_vector.c
     src/hashmap.c
-    src/hashset.c
+    # src/hashset.c
     src/matrix.c
     src/Queue.c
     src/random.c

@@ -1,211 +1,119 @@
 #ifndef MAP_SETUP_H
 #define MAP_SETUP_H
 
+
 #include "common.h"
 #include <string.h>
 
 
-typedef enum { 
-    EMPTY     = 0,
-    FILLED    = 1,
-    TOMBSTONE = 2
-} STATE;
-
-
 typedef u64 (*custom_hash_fn)(const u8* key, u64 size);
 
+#define LOAD_FACTOR_GROW      0.75 // Robin Hood sweet spot
+#define HASHMAP_INIT_CAPACITY 16   // MUST be power-of-2
 
 
-#define LOAD_FACTOR_GROW      0.70
-#define LOAD_FACTOR_SHRINK    0.20
-#define HASHMAP_INIT_CAPACITY 17 //prime no (index = hash % capacity)
+/*
+====================WYHASH====================
+*/
+// wyhash v4 — public domain, Wang Yi
+// Best default for hashmaps: fast, excellent avalanche, low collision rate.
+// Beats FNV1a and MurmurHash3 on all key sizes.
 
+static inline u64 wyr8(const u8* p)
+{
+    u64 v;
+    memcpy(&v, p, 8);
+    return v;
+}
+static inline u64 wyr4(const u8* p)
+{
+    u32 v;
+    memcpy(&v, p, 4);
+    return v;
+}
+
+static inline u64 wymix(u64 a, u64 b)
+{
+    __uint128_t r = (__uint128_t)a * b;
+    return (u64)(r) ^ (u64)(r >> 64);
+}
+
+static u64 wyhash(const u8* key, u64 len)
+{
+    const u64 seed = 0x517cc1b727220a95ULL;
+    const u64 s0   = 0x2d358dccaa6c78a5ULL;
+    const u64 s1   = 0x8bb84b93962eacc9ULL;
+    const u64 s2   = 0x4b33a62ed433d4a3ULL;
+
+    u64 a, b;
+    u64 h = seed ^ wymix(seed ^ s0, s1) ^ len;
+
+    const u8* p = key;
+    u64       i = len;
+
+    // bulk: 16 bytes at a time
+    for (; i >= 16; i -= 16, p += 16) {
+        h = wymix(wyr8(p) ^ s1, wyr8(p + 8) ^ h);
+    }
+
+    // tail
+    if (i >= 8) {
+        a = wyr8(p);
+        b = wyr8(p + i - 8);
+    } else if (i >= 4) {
+        a = wyr4(p);
+        b = wyr4(p + i - 4);
+    } else if (i > 0) {
+        a = ((u64)p[0] << 16) | ((u64)p[i >> 1] << 8) | p[i - 1];
+        b = 0;
+    } else {
+        a = 0;
+        b = 0;
+    }
+
+    return wymix(a ^ s2 ^ h, b ^ s2);
+}
 
 /*
 ====================DEFAULT FUNCTIONS====================
 */
 
-// TODO: use wyhash or xxHash3 as default ?
-//       add 64 bit version as well
-
-// 32-bit FNV-1a (default hash)
-static u64 fnv1a_hash(const u8* bytes, u64 size)
+static inline u64 fnv1a_hash(const u8* bytes, u64 size)
 {
-    u32 hash = 2166136261U; // FNV offset basis
-
+    u64 hash = 14695981039346656037ULL; // 64-bit FNV offset basis
     for (u64 i = 0; i < size; i++) {
-        hash ^= bytes[i];  // XOR with current byte
-        hash *= 16777619U; // Multiply by FNV prime
+        hash ^= bytes[i];
+        hash *= 1099511628211ULL; // 64-bit FNV prime
     }
-
     return hash;
 }
 
-
-// Default compare function
-static int default_compare(const u8* a, const u8* b, u64 size)
+static inline int default_compare(const u8* a, const u8* b, u64 size)
 {
     return memcmp(a, b, size);
 }
 
-static const u32 PRIMES[] = {
-    17,      37,      79,      163,      331,      673,      1361,    2729,
-    5471,    10949,   21911,   43853,    87719,    175447,   350899,  701819,
-    1403641, 2807303, 5614657, 11229331, 22458671, 44917381, 89834777
-};
 
-static const u32 PRIMES_COUNT = sizeof(PRIMES) / sizeof(PRIMES[0]);
-
-// Find the next prime number larger than current
-static u64 next_prime(u64 current)
-{
-    for (u64 i = 0; i < PRIMES_COUNT; i++) {
-        if (PRIMES[i] > current) {
-            return PRIMES[i];
-        }
-    }
-
-    // If we've exceeded our prime table, fall back to approximate prime
-    // Using formula: next ≈ current * 2 + 1 (often prime or close to it)
-    LOG("Warning: exceeded prime table, using approximation\n");
-    return (current * 2) + 1;
-}
-
-// Find the previous prime number smaller than current
-static u64 prev_prime(u64 current)
-{
-    // Search backwards through prime table
-    for (u64 i = PRIMES_COUNT - 1; i >= 0; i--) {
-        if (PRIMES[i] < current) {
-            return PRIMES[i];
-        }
-    }
-
-    // Should never happen if HASHMAP_INIT_CAPACITY is in our table
-    LOG("Warning: no smaller prime found");
-    return HASHMAP_INIT_CAPACITY;
-}
-
-
-// custom hash function for "String"
+/*
+====================STRING HASHING====================
+*/
 
 #include "String.h"
 
+// wyhash variants for String
 
-static u64 murmurhash3_str(const u8* key, u64 size) 
+static u64 wyhash_str(const u8* key, u64 size)
 {
     (void)size;
-    
-    String* str= (String*)key;
-    const char* data = string_data_ptr(str);
-    u64 len = string_len(str);
-    
-    const u32 c1 = 0xcc9e2d51;
-    const u32 c2 = 0x1b873593;
-    const u32 seed = 0x9747b28c;
-    
-    u32 h1 = seed;
-    
-    // Body - process 4-byte chunks
-    const u32* blocks = (const u32*)data;
-    const u64 nblocks = len / 4;
-    
-    for (u64 i = 0; i < nblocks; i++) {
-        u32 k1 = blocks[i];
-        
-        k1 *= c1;
-        k1 = (k1 << 15) | (k1 >> 17);
-        k1 *= c2;
-        
-        h1 ^= k1;
-        h1 = (h1 << 13) | (h1 >> 19);
-        h1 = (h1 * 5) + 0xe6546b64;
-    }
-    
-    // Tail - handle remaining bytes
-    const u8* tail = (const uint8_t*)(data + ((size_t)nblocks * 4));
-    u32 k1 = 0;
-    
-    switch (len & 3) {
-        case 3: k1 ^= tail[2] << 16;
-        case 2: k1 ^= tail[1] << 8;
-        case 1: k1 ^= tail[0];
-                k1 *= c1;
-                k1 = (k1 << 15) | (k1 >> 17);
-                k1 *= c2;
-                h1 ^= k1;
-        default:
-           break; 
-    }
-    
-    // Finalization
-    h1 ^= len;
-    h1 ^= h1 >> 16;
-    h1 *= 0x85ebca6b;
-    h1 ^= h1 >> 13;
-    h1 *= 0xc2b2ae35;
-    h1 ^= h1 >> 16;
-    
-    return h1;
+    String* str = (String*)key;
+    return wyhash((const u8*)string_data_ptr(str), string_len(str));
 }
 
-// custom hash for String*
-
-static u64 murmurhash3_str_ptr(const u8* key, u64 size) 
+static u64 wyhash_str_ptr(const u8* key, u64 size)
 {
     (void)size;
-    
-    String* str= *(String**)key;
-    const char* data = string_data_ptr(str);
-    u64 len = string_len(str);
-    
-    const u32 c1 = 0xcc9e2d51;
-    const u32 c2 = 0x1b873593;
-    const u32 seed = 0x9747b28c;
-    
-    u32 h1 = seed;
-    
-    // Body - process 4-byte chunks
-    const u32* blocks = (const u32*)data;
-    const u64 nblocks = len / 4;
-    
-    for (u64 i = 0; i < nblocks; i++) {
-        u32 k1 = blocks[i];
-        
-        k1 *= c1;
-        k1 = (k1 << 15) | (k1 >> 17);
-        k1 *= c2;
-        
-        h1 ^= k1;
-        h1 = (h1 << 13) | (h1 >> 19);
-        h1 = (h1 * 5) + 0xe6546b64;
-    }
-    
-    // Tail - handle remaining bytes
-    const u8* tail = (const uint8_t*)(data + ((size_t)nblocks * 4));
-    u32 k1 = 0;
-    
-    switch (len & 3) {
-        case 3: k1 ^= tail[2] << 16;
-        case 2: k1 ^= tail[1] << 8;
-        case 1: k1 ^= tail[0];
-                k1 *= c1;
-                k1 = (k1 << 15) | (k1 >> 17);
-                k1 *= c2;
-                h1 ^= k1;
-        default:
-           break; 
-    }
-    
-    // Finalization
-    h1 ^= len;
-    h1 ^= h1 >> 16;
-    h1 *= 0x85ebca6b;
-    h1 ^= h1 >> 13;
-    h1 *= 0xc2b2ae35;
-    h1 ^= h1 >> 16;
-    
-    return h1;
+    String* str = *(String**)key;
+    return wyhash((const u8*)string_data_ptr(str), string_len(str));
 }
 
 #endif // MAP_SETUP_H
