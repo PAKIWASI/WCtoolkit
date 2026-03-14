@@ -26,7 +26,6 @@
 #define SWAP_KEY(map)  (SWAP_BUF(map))
 #define SWAP_VAL(map)  (SWAP_BUF(map) + (map)->key_size)
 
-
 typedef enum {
     NOT_FOUND = 0,
     FOUND,
@@ -132,10 +131,11 @@ b8 hashmap_put(hashmap* map, const u8* key, const u8* val)
         if (v_del) {
             v_del(GET_VAL(map, slot));
         }
-        if (v_copy)
+        if (v_copy) {
             v_copy(GET_VAL(map, slot), val);
-        else
+        } else {
             memcpy(GET_VAL(map, slot), val, map->val_size);
+        }
         return 1;
     }
 
@@ -144,15 +144,17 @@ b8 hashmap_put(hashmap* map, const u8* key, const u8* val)
     u8* k_buf = STAGE_KEY(map);
     u8* v_buf = STAGE_VAL(map);
 
-    if (k_copy)
+    if (k_copy) {
         k_copy(k_buf, key);
-    else
+    } else {
         memcpy(k_buf, key, map->key_size);
+    }
 
-    if (v_copy)
+    if (v_copy) {
         v_copy(v_buf, val);
-    else
+    } else {
         memcpy(v_buf, val, map->val_size);
+    }
 
     map_insert(map, k_buf, v_buf, out_psl, slot);
     return 0;
@@ -496,8 +498,9 @@ void hashmap_copy(hashmap* dest, const hashmap* src)
 static inline void map_maybe_resize(hashmap* map)
 {
     // integer multiply avoids float — equivalent to load > 0.75
-    if (map->size * 4 >= map->capacity * 3)
+    if (map->size * 4 >= map->capacity * 3) {
         map_resize(map, map->capacity * 2); // power-of-2 doubles stay power-of-2
+    }
 }
 
 
@@ -506,7 +509,8 @@ static u64 map_lookup(const hashmap* map, const u8* key, MAP_LOOKUP_RES* res, u8
     u64 idx = MAP_IDX(map, key);
     u8  psl = 1; // stored PSL=1 means real probe distance 0 (home slot)
 
-    for (u64 i = idx;; i = MAP_NEXT(map, i)) {
+    for (u64 i = idx;; i = MAP_NEXT(map, i)) 
+    {
         u8 slot_psl = *GET_PSL(map, i);
         *out_psl    = psl;
 
@@ -516,7 +520,7 @@ static u64 map_lookup(const hashmap* map, const u8* key, MAP_LOOKUP_RES* res, u8
         }
 
         if (slot_psl < psl) {
-            // The resident was inserted closer to home than we are —
+            // The resident was inserted closer to home than we are
             // our key can't be further ahead (Robin Hood invariant).
             *res = ROBINHOOD_EXIT;
             return i;
@@ -538,7 +542,8 @@ static void map_insert(hashmap* map, u8* key, u8* val, u8 psl, u64 idx)
     // This loop only shuffles ownership between slots — no copy_fn ever.
     // Uses SWAP_BUF (second half of scratch) to avoid aliasing the staged data.
 
-    for (u64 i = idx;; i = MAP_NEXT(map, i)) {
+    for (u64 i = idx;; i = MAP_NEXT(map, i)) 
+    {
         u8 slot_psl = *GET_PSL(map, i);
 
         if (slot_psl == BUCKET_EMPTY) {
@@ -574,8 +579,9 @@ static void map_insert(hashmap* map, u8* key, u8* val, u8 psl, u64 idx)
 
 static void map_resize(hashmap* map, u64 new_capacity)
 {
-    if (new_capacity < HASHMAP_INIT_CAPACITY)
+    if (new_capacity < HASHMAP_INIT_CAPACITY) {
         new_capacity = HASHMAP_INIT_CAPACITY;
+    }
 
     u8* old_keys = map->keys;
     u8* old_psls = map->psls;
@@ -596,11 +602,12 @@ static void map_resize(hashmap* map, u64 new_capacity)
 
     // Rehash — ownership transfers as-is, no copy/del callbacks
     for (u64 i = 0; i < old_cap; i++) {
-        if (old_psls[i] == BUCKET_EMPTY)
+        if (old_psls[i] == BUCKET_EMPTY) {
             continue;
+        }
 
-        u8* old_key = old_keys + (u64)map->key_size * i;
-        u8* old_val = old_vals + (u64)map->val_size * i;
+        u8* old_key = old_keys + ((u64)map->key_size * i);
+        u8* old_val = old_vals + ((u64)map->val_size * i);
 
         MAP_LOOKUP_RES res;
         u8             out_psl;
@@ -612,3 +619,5 @@ static void map_resize(hashmap* map, u64 new_capacity)
     free(old_psls);
     free(old_vals);
 }
+
+

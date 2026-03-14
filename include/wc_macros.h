@@ -147,6 +147,7 @@ Usage:
 #define VEC_PUSH_VEC_PTR(outer, inner_ptr) VEC_PUSH_MOVE((outer), (inner_ptr))
 
 
+// TODO: redo for new imp
 // ── Hashmap shorthands ───────────────────────────────────────────────────
 
 /*
