@@ -3,8 +3,12 @@
 
 #include "map_setup.h"
 
-/*  Generic Hashmap with Ownership Semantics
-  Robin Hood Hashing
+/* Generic Hashmap with Ownership Semantics
+  - Robin Hood Hashing
+  - we have 2 arrays: keys and vals
+  - keys stores [psl|key] inline
+  - we actuall store psl + 1 as psl = 0 means empty bucket
+  - vals store [val] inline
 */
 
 
