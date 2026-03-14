@@ -35,6 +35,7 @@ typedef enum {
 static inline void init_buckets(hashmap* map, u64 start, u64 num);
 
 static u64 map_lookup(const hashmap* map, const u8* key, MAP_LOOKUP_RES* res, u8* out_psl);
+static void map_insert(hashmap* map, u8* key, u8* val, u8 psl, u64 idx);
 
 static void        map_resize(hashmap* map, u64 new_capacity);
 static inline void map_maybe_resize(hashmap* map);
@@ -190,51 +191,40 @@ static u64 map_lookup(const hashmap* map, const u8* key, MAP_LOOKUP_RES* res, u8
     }
 }
 
-static void map_insert(hashmap* map, u8* key, u8* val, u64 idx, u8 psl)
+static void map_insert(hashmap* map, u8* key, u8* val, u8 psl, u64 idx)
 {
-    copy_fn k_copy = MAP_COPY(map->key_ops);
-    copy_fn v_copy = MAP_COPY(map->val_ops);
+    // key/val passed in are ALREADY owned by the caller
+    // either a fresh copy (put) or moved pointer (put_move)
+    // We only memcpy-shuffle ownership between slots, no copy_fn needed here
 
     for (u64 i = idx;; i = (i + 1) % map->capacity)
     {
         u8 slot_psl = *GET_PSL(map, i);
 
-        // empty slot
-        if (slot_psl == 0) {
+        if (slot_psl == BUCKET_EMPTY) {
+            // Empty slot — take it. Ownership transfers in.
             *GET_PSL(map, i) = psl;
-
-            if (k_copy) {
-                k_copy(GET_KEY(map, i), key);
-            } else {
-                memcpy(GET_KEY(map, i), key, map->key_size);
-            }
-
-            if (v_copy) {
-                v_copy(GET_VAL(map, i), val);
-            } else {
-                memcpy(GET_VAL(map, i), val, map->val_size);
-            }
-
+            memcpy(GET_KEY(map, i), key, map->key_size);
+            memcpy(GET_VAL(map, i), val, map->val_size);
             map->size++;
             return;
         }
 
-        // Robin Hood — steal from the rich
+        // Robin Hood: evict the "rich" resident
         if (slot_psl < psl) {
-            // save resident
-            memcpy(map->scratch, GET_KEY(map, i), map->key_size);
-            memcpy(map->scratch + map->key_size, GET_VAL(map, i), map->val_size);
-            u8 tmp_psl = slot_psl;
-
-            // place incoming
+            // Swap psl
             *GET_PSL(map, i) = psl;
+            psl = slot_psl;
+
+            // Swap key/val via scratch — pure ownership transfer, no copy_fn
+            memcpy(map->scratch,                 GET_KEY(map, i), map->key_size);
+            memcpy(map->scratch + map->key_size, GET_VAL(map, i), map->val_size);
+
             memcpy(GET_KEY(map, i), key, map->key_size);
             memcpy(GET_VAL(map, i), val, map->val_size);
 
-            // continue with displaced
             key = map->scratch;
             val = map->scratch + map->key_size;
-            psl = tmp_psl;
         }
 
         psl++;
