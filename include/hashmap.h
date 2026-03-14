@@ -7,6 +7,7 @@
   - Robin Hood Hashing
   - we have 2 arrays: keys and vals
   - keys stores [psl|key] inline
+  - PSL: probe sequence length - the distance from hashing location
   - we actuall store psl + 1 as psl = 0 means empty bucket
   - vals store [val] inline
 */
