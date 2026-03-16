@@ -283,6 +283,7 @@ void genVec_push_move(genVec* vec, u8** data)
     MAYBE_GROW(vec);
 
     move_fn move = MOVE_FN(vec);
+
     if (move) {
         move(GET_PTR(vec, vec->size), data);
     } else {

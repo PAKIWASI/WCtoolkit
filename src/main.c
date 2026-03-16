@@ -20,6 +20,11 @@ int main(void)
     hashmap_put(map, cast(a), castptr(s));
     a++;
 
+    string_append_cstr(s, " world");
+
+    int* b = &a;
+    hashmap_put_move(map, (u8**)cast(b), (u8**)cast(s));
+
     hashmap_print(map, wc_print_int, str_print);
 
     hashmap_destroy(map);
