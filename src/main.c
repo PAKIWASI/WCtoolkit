@@ -21,6 +21,7 @@ int main(void)
     m_put_cp_int_str(map, 10000, "hey");
     m_put_cp_int_str(map, -1, "what");
 
+    // BUG: multiple keys?
     for (int i = 0; i < 1000; i++) {
         m_put_cp_int_str(map, i, "hel");
     }

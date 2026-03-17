@@ -1,4 +1,6 @@
 #include "hashmap.h"
+#include "common.h"
+#include "wc_errno.h"
 #include <string.h>
 
 
@@ -160,13 +162,42 @@ b8 hashmap_put(hashmap* map, const u8* key, const u8* val)
     map_insert(map, STAGE_KEY(map), STAGE_VAL(map), out_psl, slot);
 
     map_maybe_resize(map);
-    return 0;   // not found, newly inserted
+    return 0; // not found, newly inserted
 }
 
 
 // Insert or update — MOVE semantics (key and val are u8**, both nulled on success).
 // Returns 1 if key existed (updated), 0 if new key inserted.
-b8 hashmap_put_move(hashmap* map, u8** key, u8** val) {}
+// NOTE: only works if key/val are complex, heap inited types
+b8 hashmap_put_move(hashmap* map, u8** key, u8** val)
+{
+    CHECK_FATAL(!map || !key || !val, "args null");
+
+    move_fn   k_mv  = MAP_MOVE(map->key_ops);
+    move_fn   v_mv  = MAP_MOVE(map->val_ops);
+    // mv func is must for this
+    CHECK_FATAL(!k_mv || !v_mv, "key/val move funcs required");
+    
+    delete_fn v_del = MAP_DEL(map->val_ops);
+
+    MAP_LOOKUP_RES res;
+    u8             out_psl;
+    u64            slot = map_lookup(map, *key, &res, &out_psl);
+
+    // key exists, delete old val and move the new one
+    if (res == FOUND) {
+        // delete prev val
+        if (v_del) {
+            v_del(GET_VAL(map, slot));
+        }
+        // move the value
+        v_mv(GET_VAL(map, slot), val);
+        return 1;
+    }
+
+    // key doesn't exist, move key/val into hashmap
+
+}
 
 
 // Mixed: key copied, val moved.
@@ -275,8 +306,9 @@ static inline void map_maybe_resize(hashmap* map)
 
 static u64 map_lookup(const hashmap* map, const u8* key, MAP_LOOKUP_RES* res, u8* out_psl)
 {
-    u64 idx = MAP_IDX(map, key);
-    u8  psl = 1; // stored PSL=1 means real probe distance 0 (home slot)
+    u64        idx = MAP_IDX(map, key);
+    u8         psl = 1; // stored PSL=1 means real probe distance 0 (home slot)
+    compare_fn cmp = map->cmp_fn;
 
     for (u64 i = idx;; i = MAP_NEXT(map, i)) {
         u8 slot_psl = *GET_PSL(map, i);
@@ -294,7 +326,7 @@ static u64 map_lookup(const hashmap* map, const u8* key, MAP_LOOKUP_RES* res, u8
             return i;
         }
 
-        if (map->cmp_fn(GET_KEY(map, i), key, map->key_size) == 0) {
+        if (cmp(GET_KEY(map, i), key, map->key_size) == 0) {
             *res = FOUND;
             return i;
         }
@@ -310,8 +342,7 @@ static void map_insert(hashmap* map, u8* key, u8* val, u8 psl, u64 idx)
     // This loop only shuffles ownership between slots — no copy/move fn
     // Uses SWAP_BUF (second half of scratch) to avoid aliasing the staged data.
 
-    for (u64 i = idx;; i = MAP_NEXT(map, i)) 
-    {
+    for (u64 i = idx;; i = MAP_NEXT(map, i)) {
         u8 slot_psl = *GET_PSL(map, i);
 
         if (slot_psl == BUCKET_EMPTY) {
@@ -386,5 +417,3 @@ static void map_resize(hashmap* map, u64 new_capacity)
     free(old_psls);
     free(old_vals);
 }
-
-
