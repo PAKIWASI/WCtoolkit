@@ -1,5 +1,4 @@
 #include "hashmap.h"
-#include "common.h"
 #include <string.h>
 
 
@@ -144,7 +143,23 @@ b8 hashmap_put(hashmap* map, const u8* key, const u8* val)
 
     // key doesn't exist, copy both key and val and insert into map
 
-    //
+    // stage the key/val, make copy and store in STAGE area of map->scratch
+
+    if (k_cp) {
+        k_cp(STAGE_KEY(map), key);
+    } else {
+        memcpy(STAGE_KEY(map), key, map->key_size);
+    }
+    if (v_cp) {
+        v_cp(STAGE_KEY(map), key);
+    } else {
+        memcpy(STAGE_KEY(map), key, map->val_size);
+    }
+
+    // insert the key/val
+    map_insert(map, STAGE_KEY(map), STAGE_VAL(map), out_psl, slot);
+
+    return 0;   // not found, newly inserted
 }
 
 
@@ -294,7 +309,8 @@ static void map_insert(hashmap* map, u8* key, u8* val, u8 psl, u64 idx)
     // This loop only shuffles ownership between slots — no copy/move fn
     // Uses SWAP_BUF (second half of scratch) to avoid aliasing the staged data.
 
-    for (u64 i = idx;; i = MAP_NEXT(map, i)) {
+    for (u64 i = idx;; i = MAP_NEXT(map, i)) 
+    {
         u8 slot_psl = *GET_PSL(map, i);
 
         if (slot_psl == BUCKET_EMPTY) {
@@ -369,3 +385,5 @@ static void map_resize(hashmap* map, u64 new_capacity)
     free(old_psls);
     free(old_vals);
 }
+
+

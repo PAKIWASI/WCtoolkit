@@ -22,7 +22,7 @@ typedef struct {
     u64            capacity;
     u32            key_size;
     u32            val_size;
-    u8*            scratch;  // key_size + val_size bytes - temp buffer for robin hood swaps
+    u8*            scratch;  // key_size + val_size bytes + alignment - temp buffer for robin hood swaps
     custom_hash_fn hash_fn;
     compare_fn     cmp_fn;
 
