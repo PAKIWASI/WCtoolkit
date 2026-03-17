@@ -1,4 +1,5 @@
 #include "hashmap.h"
+#include "common.h"
 
 
 
@@ -21,8 +22,8 @@
 // They must NOT overlap because map_insert is called with a pointer INTO scratch.
 // scratch is therefore 2 * (key_size + val_size) bytes.
 #define STAGE_KEY(map) ((map)->scratch)
-#define SWAP_BUF(map)  ((map)->scratch + (map)->key_size + (map)->val_size)
 #define STAGE_VAL(map)  ((map)->scratch + ALIGN8((map)->key_size))
+#define SWAP_BUF(map)  ((map)->scratch + (map)->key_size + (map)->val_size)
 #define SWAP_KEY(map)   ((map)->scratch + ALIGN8((map)->key_size) + (map)->val_size)
 #define SWAP_VAL(map)   ((map)->scratch + ALIGN8((map)->key_size) + (map)->val_size + ALIGN8((map)->key_size))
 
@@ -114,6 +115,8 @@ void hashmap_destroy(hashmap* map)
 // Returns 1 if key existed (updated), 0 if new key inserted.
 b8 hashmap_put(hashmap* map, const u8* key, const u8* val)
 {
+    CHECK_FATAL(!map || !key || !val, "args null");
+
 
 }
 
@@ -280,7 +283,7 @@ static u64 map_lookup(const hashmap* map, const u8* key, MAP_LOOKUP_RES* res, u8
 static void map_insert(hashmap* map, u8* key, u8* val, u8 psl, u64 idx)
 {
     // key/val are already owned (either staged copy or moved pointer).
-    // This loop only shuffles ownership between slots — no copy_fn ever.
+    // This loop only shuffles ownership between slots — no copy/move fn
     // Uses SWAP_BUF (second half of scratch) to avoid aliasing the staged data.
 
     for (u64 i = idx;; i = MAP_NEXT(map, i)) 
