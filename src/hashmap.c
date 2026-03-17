@@ -1,5 +1,6 @@
 #include "hashmap.h"
 #include "common.h"
+#include <string.h>
 
 
 
@@ -22,10 +23,10 @@
 // They must NOT overlap because map_insert is called with a pointer INTO scratch.
 // scratch is therefore 2 * (key_size + val_size) bytes.
 #define STAGE_KEY(map) ((map)->scratch)
-#define STAGE_VAL(map)  ((map)->scratch + ALIGN8((map)->key_size))
+#define STAGE_VAL(map) ((map)->scratch + ALIGN8((map)->key_size))
 #define SWAP_BUF(map)  ((map)->scratch + (map)->key_size + (map)->val_size)
-#define SWAP_KEY(map)   ((map)->scratch + ALIGN8((map)->key_size) + (map)->val_size)
-#define SWAP_VAL(map)   ((map)->scratch + ALIGN8((map)->key_size) + (map)->val_size + ALIGN8((map)->key_size))
+#define SWAP_KEY(map)  ((map)->scratch + ALIGN8((map)->key_size) + (map)->val_size)
+#define SWAP_VAL(map)  ((map)->scratch + ALIGN8((map)->key_size) + (map)->val_size + ALIGN8((map)->key_size))
 
 typedef enum {
     NOT_FOUND = 0,
@@ -117,30 +118,47 @@ b8 hashmap_put(hashmap* map, const u8* key, const u8* val)
 {
     CHECK_FATAL(!map || !key || !val, "args null");
 
+    copy_fn   k_cp  = MAP_COPY(map->key_ops);
+    copy_fn   v_cp  = MAP_COPY(map->val_ops);
+    delete_fn v_del = MAP_DEL(map->val_ops);
 
+    MAP_LOOKUP_RES res;
+    u8             out_psl;
+    u64            slot = map_lookup(map, key, &res, &out_psl);
+
+    // key exists, update val and delete prev val
+    if (res == FOUND) {
+        // del deletes owned resourses, not the buffer
+        if (v_del) {
+            v_del(GET_VAL(map, slot));
+        }
+        // update value (copy semantics)
+        if (v_cp) {
+            v_cp(GET_VAL(map, slot), val);
+        } else {
+            memcpy(GET_VAL(map, slot), val, map->val_size);
+        }
+
+        return 1; // found
+    }
+
+    // key doesn't exist, copy both key and val and insert into map
+
+    //
 }
 
 
 // Insert or update — MOVE semantics (key and val are u8**, both nulled on success).
 // Returns 1 if key existed (updated), 0 if new key inserted.
-b8 hashmap_put_move(hashmap* map, u8** key, u8** val)
-{
-
-}
+b8 hashmap_put_move(hashmap* map, u8** key, u8** val) {}
 
 
 // Mixed: key copied, val moved.
-b8 hashmap_put_val_move(hashmap* map, const u8* key, u8** val)
-{
-
-}
+b8 hashmap_put_val_move(hashmap* map, const u8* key, u8** val) {}
 
 
 // Mixed: key moved, val copied.
-b8 hashmap_put_key_move(hashmap* map, u8** key, const u8* val)
-{
-
-}
+b8 hashmap_put_key_move(hashmap* map, u8** key, const u8* val) {}
 
 
 // Get value for key — copies into val. Returns 1 if found, 0 if not.
@@ -181,10 +199,7 @@ u8* hashmap_get_ptr(hashmap* map, const u8* key)
 
 // Delete key. If out != NULL, value is copied into it before deletion.
 // Returns 1 if found and deleted, 0 if not found.
-b8 hashmap_del(hashmap* map, const u8* key, u8* out)
-{
-
-}
+b8 hashmap_del(hashmap* map, const u8* key, u8* out) {}
 
 
 // Check if key exists.
@@ -224,16 +239,10 @@ void hashmap_print(const hashmap* map, print_fn key_print, print_fn val_print)
 
 
 // Remove all elements, keep capacity.
-void hashmap_clear(hashmap* map)
-{
-
-}
+void hashmap_clear(hashmap* map) {}
 
 
-void hashmap_copy(hashmap* dest, const hashmap* src)
-{
-
-}
+void hashmap_copy(hashmap* dest, const hashmap* src) {}
 
 
 /*
@@ -253,8 +262,7 @@ static u64 map_lookup(const hashmap* map, const u8* key, MAP_LOOKUP_RES* res, u8
     u64 idx = MAP_IDX(map, key);
     u8  psl = 1; // stored PSL=1 means real probe distance 0 (home slot)
 
-    for (u64 i = idx;; i = MAP_NEXT(map, i)) 
-    {
+    for (u64 i = idx;; i = MAP_NEXT(map, i)) {
         u8 slot_psl = *GET_PSL(map, i);
         *out_psl    = psl;
 
@@ -286,8 +294,7 @@ static void map_insert(hashmap* map, u8* key, u8* val, u8 psl, u64 idx)
     // This loop only shuffles ownership between slots — no copy/move fn
     // Uses SWAP_BUF (second half of scratch) to avoid aliasing the staged data.
 
-    for (u64 i = idx;; i = MAP_NEXT(map, i)) 
-    {
+    for (u64 i = idx;; i = MAP_NEXT(map, i)) {
         u8 slot_psl = *GET_PSL(map, i);
 
         if (slot_psl == BUCKET_EMPTY) {
@@ -362,6 +369,3 @@ static void map_resize(hashmap* map, u64 new_capacity)
     free(old_psls);
     free(old_vals);
 }
-
-
-
