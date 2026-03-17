@@ -151,7 +151,7 @@ b8 hashmap_put(hashmap* map, const u8* key, const u8* val)
         memcpy(STAGE_KEY(map), key, map->key_size);
     }
     if (v_cp) {
-        v_cp(STAGE_KEY(map), key);
+        v_cp(STAGE_KEY(map), val);
     } else {
         memcpy(STAGE_KEY(map), key, map->val_size);
     }
@@ -159,6 +159,7 @@ b8 hashmap_put(hashmap* map, const u8* key, const u8* val)
     // insert the key/val
     map_insert(map, STAGE_KEY(map), STAGE_VAL(map), out_psl, slot);
 
+    map_maybe_resize(map);
     return 0;   // not found, newly inserted
 }
 

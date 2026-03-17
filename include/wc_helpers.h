@@ -54,6 +54,7 @@
 
 #include "String.h"
 #include "gen_vector.h"
+#include <stdlib.h>
 #include <string.h>
 
 
@@ -71,9 +72,20 @@ static inline void str_copy(u8* dest, const u8* src)
     // dest is uninitialised raw slot memory — init to valid SSO state first
     // so that string_copy's internal string_destroy_stk(dest) is safe.
     String* d = (String*)dest;
-    d->size     = 0;
-    d->capacity = STR_SSO_SIZE;
-    string_copy(d, (const String*)src);
+    // d->size     = 0;
+    // d->capacity = STR_SSO_SIZE;
+    // string_copy(d, (const String*)src);
+
+    String* s = (String*)src;
+    memcpy(d, s, sizeof(String));
+
+    if (s->capacity == STR_SSO_SIZE) {
+        return; // str stored inline, we have everything 
+    }
+
+    // src owns resources, copy them
+    d->heap = malloc(s->capacity);
+    memcpy(d->heap, s->heap, s->capacity);
 }
 
 static inline void str_move(u8* dest, u8** src)

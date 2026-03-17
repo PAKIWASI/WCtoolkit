@@ -6,11 +6,9 @@
 
 static void m_put_cp_int_str(hashmap* m, int key, const char* cstr)
 {
-    String* str = string_from_cstr(cstr);
-
-    hashmap_put(m, (u8*)&key, (u8*)str);
-
-    string_destroy(str);
+    String str;
+    string_create_stk(&str, cstr);
+    hashmap_put(m, (u8*)&key, (u8*)&str);
 }
 
 
