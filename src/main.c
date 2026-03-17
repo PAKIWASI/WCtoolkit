@@ -44,8 +44,6 @@ static int test1(void)
 
     hashmap_print(map, wc_print_int, str_print);
 
-    print_hex(map->psls, map->capacity, 8);
-
 
     hashmap_destroy(map);
     return 0;

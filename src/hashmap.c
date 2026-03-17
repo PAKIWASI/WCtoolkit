@@ -588,7 +588,7 @@ static void map_insert(hashmap* map, u8* key, u8* val, u8 psl, u64 idx)
         }
 
         // Robin Hood: evict the "rich" resident (smaller PSL = closer to home).
-        if (slot_psl <= psl) {  // TODO: is it <= ?
+        if (slot_psl < psl) {  // TODO: is it <= ?
             memcpy(SWAP_KEY(map), GET_KEY(map, i), map->key_size);
             memcpy(SWAP_VAL(map), GET_VAL(map, i), map->val_size);
             u8 tmp_psl = slot_psl;
