@@ -1,6 +1,5 @@
 #include "hashmap.h"
 #include "common.h"
-#include "wc_errno.h"
 #include <string.h>
 
 
@@ -17,15 +16,19 @@
 // PSL 0 == empty bucket; stored PSL is (real_psl + 1), starting at 1
 #define BUCKET_EMPTY 0
 
-// scratch layout: [0 .. key_size) = slot A,  [key_size .. key_size+val_size) = slot B
-// We need two independent regions:
-//   - "stage"  : where hashmap_put copies the incoming key/val before calling map_insert
-//   - "swap"   : where map_insert saves a displaced resident during Robin Hood eviction
-// They must NOT overlap because map_insert is called with a pointer INTO scratch.
-// scratch is therefore 2 * (key_size + val_size) bytes.
+// scratch layout:
+//   STAGE region (first half)  — used by hashmap_put to copy incoming key/val
+//     [0                         ..  ALIGN8(key_size))             = STAGE_KEY
+//     [ALIGN8(key_size)          ..  ALIGN8(key_size) + val_size)  = STAGE_VAL
+//   SWAP region (second half)  — used by map_insert for Robin Hood evictions
+//     [ALIGN8(key_size)+val_size ..  +ALIGN8(key_size))            = SWAP_KEY
+//     [+ALIGN8(key_size)         ..  +val_size)                    = SWAP_VAL
+//
+// The two regions must NOT overlap: map_insert is called with pointers INTO
+// the STAGE region, and it writes displaced residents into the SWAP region.
+// Total: 2 * (ALIGN8(key_size) + val_size) bytes.
 #define STAGE_KEY(map) ((map)->scratch)
 #define STAGE_VAL(map) ((map)->scratch + ALIGN8((map)->key_size))
-#define SWAP_BUF(map)  ((map)->scratch + (map)->key_size + (map)->val_size)
 #define SWAP_KEY(map)  ((map)->scratch + ALIGN8((map)->key_size) + (map)->val_size)
 #define SWAP_VAL(map)  ((map)->scratch + ALIGN8((map)->key_size) + (map)->val_size + ALIGN8((map)->key_size))
 
@@ -65,7 +68,6 @@ hashmap* hashmap_create(u32 key_size, u32 val_size, custom_hash_fn hash_fn, comp
     map->vals = calloc(HASHMAP_INIT_CAPACITY, val_size);
     CHECK_FATAL(!map->vals, "vals calloc failed");
 
-    // 2 * (key_size + val_size): first half = staging, second half = RH swap buffer
     map->scratch = malloc(2 * (ALIGN8(key_size) + val_size));
     CHECK_FATAL(!map->scratch, "scratch malloc failed");
 
@@ -114,6 +116,8 @@ void hashmap_destroy(hashmap* map)
 
 
 // Insert or update — COPY semantics.
+// Ownership: map takes a deep copy of key and val via ops->copy_fn (or memcpy for POD).
+// The caller retains ownership of its key/val and is responsible for freeing them.
 // Returns 1 if key existed (updated), 0 if new key inserted.
 b8 hashmap_put(hashmap* map, const u8* key, const u8* val)
 {
@@ -127,26 +131,23 @@ b8 hashmap_put(hashmap* map, const u8* key, const u8* val)
     u8             out_psl;
     u64            slot = map_lookup(map, key, &res, &out_psl);
 
-    // key exists, update val and delete prev val
     if (res == FOUND) {
-        // del deletes owned resourses, not the buffer
+        // Free the old value's owned resources, then overwrite with a copy of the new one.
+        // del_fn frees internal resources (e.g. heap buffer) but does NOT free the slot itself.
         if (v_del) {
             v_del(GET_VAL(map, slot));
         }
-        // update value (copy semantics)
         if (v_cp) {
             v_cp(GET_VAL(map, slot), val);
         } else {
             memcpy(GET_VAL(map, slot), val, map->val_size);
         }
-
-        return 1; // found
+        return 1;
     }
 
-    // key doesn't exist, copy both key and val and insert into map
-
-    // stage the key/val, make copy and store in STAGE area of map->scratch
-
+    // Stage a deep copy of key and val into scratch before calling map_insert.
+    // map_insert only does raw memcpy moves between slots — it never calls copy/del.
+    // The staged copy is what actually gets inserted into the map's arrays.
     if (k_cp) {
         k_cp(STAGE_KEY(map), key);
     } else {
@@ -158,57 +159,151 @@ b8 hashmap_put(hashmap* map, const u8* key, const u8* val)
         memcpy(STAGE_VAL(map), val, map->val_size);
     }
 
-    // insert the key/val
     map_insert(map, STAGE_KEY(map), STAGE_VAL(map), out_psl, slot);
-
     map_maybe_resize(map);
-    return 0; // not found, newly inserted
+    return 0;
 }
 
 
-// Insert or update — MOVE semantics (key and val are u8**, both nulled on success).
+// Insert or update — MOVE semantics.
+// Ownership: the map takes ownership of *key and *val directly (no copy made).
+// On success both pointers are nulled. Requires move_fn for both key and val.
 // Returns 1 if key existed (updated), 0 if new key inserted.
-// NOTE: only works if key/val are complex, heap inited types
 b8 hashmap_put_move(hashmap* map, u8** key, u8** val)
 {
-    CHECK_FATAL(!map || !key || !val, "args null");
+    CHECK_FATAL(!map || !key || !val || !*key || !*val, "args null");
 
     move_fn   k_mv  = MAP_MOVE(map->key_ops);
     move_fn   v_mv  = MAP_MOVE(map->val_ops);
-    // mv func is must for this
-    CHECK_FATAL(!k_mv || !v_mv, "key/val move funcs required");
-    
+    delete_fn k_del = MAP_DEL(map->key_ops);
     delete_fn v_del = MAP_DEL(map->val_ops);
+
+    // move_fn is mandatory: it must transfer the heap resource and null the source.
+    // For by-value types with no heap resources, use hashmap_put (copy semantics) instead.
+    CHECK_FATAL(!k_mv || !v_mv, "key/val move funcs required");
 
     MAP_LOOKUP_RES res;
     u8             out_psl;
     u64            slot = map_lookup(map, *key, &res, &out_psl);
 
-    // key exists, delete old val and move the new one
     if (res == FOUND) {
-        // delete prev val
+        // Free old value's resources, then move new value into slot.
         if (v_del) {
             v_del(GET_VAL(map, slot));
         }
-        // move the value
-        v_mv(GET_VAL(map, slot), val);
+        v_mv(GET_VAL(map, slot), val);  // nulls *val
+        // The incoming key is consumed (caller no longer needs it) — free it
+        // Use del_fn if available, otherwise just free the shell
+        if (k_del) {
+            k_del(*key);
+        }
+        free(*key);
+        *key = NULL;
         return 1;
     }
 
-    // key doesn't exist, move key/val into hashmap
+    // Stage: move key into STAGE_KEY, move val into STAGE_VAL.
+    // move_fn transfers the heap resource pointer into the dest slot and nulls src.
+    k_mv(STAGE_KEY(map), key);  // nulls *key
+    v_mv(STAGE_VAL(map), val);  // nulls *val
 
+    map_insert(map, STAGE_KEY(map), STAGE_VAL(map), out_psl, slot);
+    map_maybe_resize(map);
+    return 0;
 }
 
 
-// Mixed: key copied, val moved.
-b8 hashmap_put_val_move(hashmap* map, const u8* key, u8** val) {}
+// Insert or update — mixed: key is COPIED, val is MOVED.
+// Ownership: map deep-copies the key (caller retains it); map takes ownership of *val (*val nulled).
+// Returns 1 if key existed (updated), 0 if new key inserted.
+b8 hashmap_put_val_move(hashmap* map, const u8* key, u8** val)
+{
+    CHECK_FATAL(!map || !key || !val || !*val, "args null");
+
+    copy_fn   k_cp  = MAP_COPY(map->key_ops);
+    move_fn   v_mv  = MAP_MOVE(map->val_ops);
+    delete_fn v_del = MAP_DEL(map->val_ops);
+
+    CHECK_FATAL(!v_mv, "val move func required");
+
+    MAP_LOOKUP_RES res;
+    u8             out_psl;
+    u64            slot = map_lookup(map, key, &res, &out_psl);
+
+    if (res == FOUND) {
+        if (v_del) {
+            v_del(GET_VAL(map, slot));
+        }
+        v_mv(GET_VAL(map, slot), val);  // nulls *val
+        return 1;
+    }
+
+    // Stage key (copy) and val (move).
+    if (k_cp) {
+        k_cp(STAGE_KEY(map), key);
+    } else {
+        memcpy(STAGE_KEY(map), key, map->key_size);
+    }
+    v_mv(STAGE_VAL(map), val);  // nulls *val
+
+    map_insert(map, STAGE_KEY(map), STAGE_VAL(map), out_psl, slot);
+    map_maybe_resize(map);
+    return 0;
+}
 
 
-// Mixed: key moved, val copied.
-b8 hashmap_put_key_move(hashmap* map, u8** key, const u8* val) {}
+// Insert or update — mixed: key is MOVED, val is COPIED.
+// Ownership: map takes ownership of *key (*key nulled); map deep-copies val (caller retains it).
+// Returns 1 if key existed (updated), 0 if new key inserted.
+b8 hashmap_put_key_move(hashmap* map, u8** key, const u8* val)
+{
+    CHECK_FATAL(!map || !key || !*key || !val, "args null");
+
+    move_fn   k_mv  = MAP_MOVE(map->key_ops);
+    copy_fn   v_cp  = MAP_COPY(map->val_ops);
+    delete_fn v_del = MAP_DEL(map->val_ops);
+
+    CHECK_FATAL(!k_mv, "key move func required for hashmap_put_key_move");
+
+    MAP_LOOKUP_RES res;
+    u8             out_psl;
+    u64            slot = map_lookup(map, *key, &res, &out_psl);
+
+    if (res == FOUND) {
+        if (v_del) {
+            v_del(GET_VAL(map, slot));
+        }
+        if (v_cp) {
+            v_cp(GET_VAL(map, slot), val);
+        } else {
+            memcpy(GET_VAL(map, slot), val, map->val_size);
+        }
+        // Key already in map — consume (and discard) the incoming duplicate.
+        delete_fn k_del = MAP_DEL(map->key_ops);
+        if (k_del) {
+            k_del(*key);
+        }
+        free(*key);
+        *key = NULL;
+        return 1;
+    }
+
+    // Stage key (move) and val (copy).
+    k_mv(STAGE_KEY(map), key);  // nulls *key
+    if (v_cp) {
+        v_cp(STAGE_VAL(map), val);
+    } else {
+        memcpy(STAGE_VAL(map), val, map->val_size);
+    }
+
+    map_insert(map, STAGE_KEY(map), STAGE_VAL(map), out_psl, slot);
+    map_maybe_resize(map);
+    return 0;
+}
 
 
-// Get value for key — copies into val. Returns 1 if found, 0 if not.
+// Get value for key — COPIES into val. Returns 1 if found, 0 if not.
+// Caller owns the copy returned in val and must free it when done.
 b8 hashmap_get(const hashmap* map, const u8* key, u8* val)
 {
     CHECK_FATAL(!map || !key || !val, "null arg");
@@ -232,6 +327,8 @@ b8 hashmap_get(const hashmap* map, const u8* key, u8* val)
 
 
 // Get pointer to value in-place. Returns NULL if not found.
+// The pointer is valid until the next mutation (put/del/resize).
+// Do NOT free the returned pointer — the map owns it.
 u8* hashmap_get_ptr(hashmap* map, const u8* key)
 {
     CHECK_FATAL(!map || !key, "null arg");
@@ -244,9 +341,72 @@ u8* hashmap_get_ptr(hashmap* map, const u8* key)
 }
 
 
-// Delete key. If out != NULL, value is copied into it before deletion.
+// Delete key.
+// If out != NULL, the value is MOVED into it before deletion (caller takes ownership).
+// If out == NULL, the value is destroyed via del_fn (or simply discarded for POD).
 // Returns 1 if found and deleted, 0 if not found.
-b8 hashmap_del(hashmap* map, const u8* key, u8* out) {}
+//
+// Uses Robin Hood backward-shift deletion to maintain the probe-sequence invariant
+// without tombstones: after removing a slot, we shift subsequent entries back one
+// position as long as they have PSL > 1 (i.e. they are not sitting at their home slot).
+b8 hashmap_del(hashmap* map, const u8* key, u8* out)
+{
+    CHECK_FATAL(!map || !key, "null arg");
+
+    MAP_LOOKUP_RES res;
+    u8             out_psl;
+    u64            slot = map_lookup(map, key, &res, &out_psl);
+
+    if (res != FOUND) {
+        return 0;
+    }
+
+    delete_fn k_del = MAP_DEL(map->key_ops);
+    delete_fn v_del = MAP_DEL(map->val_ops);
+
+    // Hand the value to the caller or destroy it.
+    if (out) {
+        // Move value out: raw memcpy transfers ownership of the slot's bytes.
+        // The caller is responsible for freeing any heap resources in *out.
+        memcpy(out, GET_VAL(map, slot), map->val_size);
+        // Do NOT call v_del — ownership has transferred to caller.
+    } else {
+        if (v_del) {
+            v_del(GET_VAL(map, slot));
+        }
+        // POD vals: nothing to free, slot will be overwritten or zeroed below.
+    }
+
+    // Free the key's resources.
+    if (k_del) {
+        k_del(GET_KEY(map, slot));
+    }
+
+    // Backward-shift deletion: pull subsequent entries one slot back as long as
+    // they have PSL > 1.  Entries at their home slot (PSL == 1) must not move.
+    // This restores the Robin Hood invariant without tombstones.
+    u64 cur = slot;
+    for (;;) {
+        u64 next     = MAP_NEXT(map, cur);
+        u8  next_psl = *GET_PSL(map, next);
+
+        // Stop if next slot is empty or the next entry is already at its home slot.
+        if (next_psl <= 1) {
+            *GET_PSL(map, cur) = BUCKET_EMPTY;
+            break;
+        }
+
+        // Shift next entry one slot back; its PSL decreases by 1.
+        *GET_PSL(map, cur) = next_psl - 1;
+        memcpy(GET_KEY(map, cur), GET_KEY(map, next), map->key_size);
+        memcpy(GET_VAL(map, cur), GET_VAL(map, next), map->val_size);
+
+        cur = next;
+    }
+
+    map->size--;
+    return 1;
+}
 
 
 // Check if key exists.
@@ -286,10 +446,81 @@ void hashmap_print(const hashmap* map, print_fn key_print, print_fn val_print)
 
 
 // Remove all elements, keep capacity.
-void hashmap_clear(hashmap* map) {}
+// Destroys all keys and values via their del_fn callbacks, then zeroes the arrays.
+void hashmap_clear(hashmap* map)
+{
+    CHECK_FATAL(!map, "map is null");
+
+    delete_fn k_del = MAP_DEL(map->key_ops);
+    delete_fn v_del = MAP_DEL(map->val_ops);
+
+    for (u64 i = 0; i < map->capacity; i++) {
+        if (*GET_PSL(map, i) == BUCKET_EMPTY) {
+            continue;
+        }
+        if (k_del) {
+            k_del(GET_KEY(map, i));
+        }
+        if (v_del) {
+            v_del(GET_VAL(map, i));
+        }
+    }
+
+    memset(map->psls, 0, map->capacity * sizeof(u8));
+    map->size = 0;
+}
 
 
-void hashmap_copy(hashmap* dest, const hashmap* src) {}
+// Deep copy src into dest.
+// dest must be uninitialised or already destroyed — this function does not
+// call hashmap_destroy on dest first.
+// Ownership: dest gets independently owned copies of all keys and values.
+void hashmap_copy(hashmap* dest, const hashmap* src)
+{
+    CHECK_FATAL(!dest || !src, "null arg");
+
+    dest->keys = calloc(src->capacity, src->key_size);
+    CHECK_FATAL(!dest->keys, "copy keys calloc failed");
+    dest->psls = calloc(src->capacity, sizeof(u8));
+    CHECK_FATAL(!dest->psls, "copy psls calloc failed");
+    dest->vals = calloc(src->capacity, src->val_size);
+    CHECK_FATAL(!dest->vals, "copy vals calloc failed");
+    dest->scratch = malloc(2 * (ALIGN8(src->key_size) + src->val_size));
+    CHECK_FATAL(!dest->scratch, "copy scratch malloc failed");
+
+    dest->size     = src->size;
+    dest->capacity = src->capacity;
+    dest->key_size = src->key_size;
+    dest->val_size = src->val_size;
+    dest->hash_fn  = src->hash_fn;
+    dest->cmp_fn   = src->cmp_fn;
+    dest->key_ops  = src->key_ops;
+    dest->val_ops  = src->val_ops;
+
+    copy_fn k_cp = MAP_COPY(src->key_ops);
+    copy_fn v_cp = MAP_COPY(src->val_ops);
+
+    for (u64 i = 0; i < src->capacity; i++) {
+        u8 psl = *GET_PSL(src, i);
+        if (psl == BUCKET_EMPTY) {
+            continue;
+        }
+
+        *GET_PSL(dest, i) = psl;
+
+        if (k_cp) {
+            k_cp(GET_KEY(dest, i), GET_KEY(src, i));
+        } else {
+            memcpy(GET_KEY(dest, i), GET_KEY(src, i), src->key_size);
+        }
+
+        if (v_cp) {
+            v_cp(GET_VAL(dest, i), GET_VAL(src, i));
+        } else {
+            memcpy(GET_VAL(dest, i), GET_VAL(src, i), src->val_size);
+        }
+    }
+}
 
 
 /*
@@ -300,7 +531,7 @@ static inline void map_maybe_resize(hashmap* map)
 {
     // integer multiply avoids float — equivalent to load > 0.75
     if (map->size * 4 >= map->capacity * 3) {
-        map_resize(map, map->capacity * 2); // power-of-2 doubles stay power-of-2
+        map_resize(map, map->capacity * 2);
     }
 }
 
@@ -320,8 +551,9 @@ static u64 map_lookup(const hashmap* map, const u8* key, MAP_LOOKUP_RES* res, u8
         }
 
         if (slot_psl < psl) {
-            // The resident was inserted closer to home than we are
-            // our key can't be further ahead (Robin Hood invariant).
+            // The resident has a lower PSL — it's closer to its home than we are.
+            // Under Robin Hood, our key would have displaced this resident on insert,
+            // so our key cannot exist at or beyond this slot.
             *res = ROBINHOOD_EXIT;
             return i;
         }
@@ -336,13 +568,15 @@ static u64 map_lookup(const hashmap* map, const u8* key, MAP_LOOKUP_RES* res, u8
 }
 
 
+// Insert key/val with the given starting psl at slot idx.
+// key and val are already OWNED by the caller (staged copy or moved pointer).
+// This function never calls copy/del — it only shuffles raw bytes between slots.
+// Displaced residents are temporarily buffered in SWAP_KEY/SWAP_VAL (second half
+// of scratch), which is disjoint from the STAGE region where key/val came from.
 static void map_insert(hashmap* map, u8* key, u8* val, u8 psl, u64 idx)
 {
-    // key/val are already owned (either staged copy or moved pointer).
-    // This loop only shuffles ownership between slots — no copy/move fn
-    // Uses SWAP_BUF (second half of scratch) to avoid aliasing the staged data.
-
-    for (u64 i = idx;; i = MAP_NEXT(map, i)) {
+    for (u64 i = idx;; i = MAP_NEXT(map, i))
+    {
         u8 slot_psl = *GET_PSL(map, i);
 
         if (slot_psl == BUCKET_EMPTY) {
@@ -353,19 +587,16 @@ static void map_insert(hashmap* map, u8* key, u8* val, u8 psl, u64 idx)
             return;
         }
 
-        // Robin Hood: evict the "rich" resident (lower PSL = closer to home)
-        if (slot_psl < psl) {
-            // Save displaced resident into swap buffer
+        // Robin Hood: evict the "rich" resident (smaller PSL = closer to home).
+        if (slot_psl <= psl) {  // TODO: is it <= ?
             memcpy(SWAP_KEY(map), GET_KEY(map, i), map->key_size);
             memcpy(SWAP_VAL(map), GET_VAL(map, i), map->val_size);
             u8 tmp_psl = slot_psl;
 
-            // Place incoming element
             *GET_PSL(map, i) = psl;
             memcpy(GET_KEY(map, i), key, map->key_size);
             memcpy(GET_VAL(map, i), val, map->val_size);
 
-            // Continue inserting the displaced element
             key = SWAP_KEY(map);
             val = SWAP_VAL(map);
             psl = tmp_psl;
@@ -375,6 +606,9 @@ static void map_insert(hashmap* map, u8* key, u8* val, u8 psl, u64 idx)
     }
 }
 
+// Rehash into a new array of new_capacity (must be power-of-2).
+// Ownership transfers as raw bytes — no copy/del callbacks are invoked.
+// This is safe because the data itself doesn't move, only the slot positions.
 static void map_resize(hashmap* map, u64 new_capacity)
 {
     if (new_capacity < HASHMAP_INIT_CAPACITY) {
@@ -393,12 +627,9 @@ static void map_resize(hashmap* map, u64 new_capacity)
     map->vals = calloc(new_capacity, map->val_size);
     CHECK_FATAL(!map->vals, "resize vals calloc failed");
 
-    // Scratch size scales with key/val sizes but not capacity — no realloc needed.
-
     map->capacity = new_capacity;
     map->size     = 0;
 
-    // Rehash — ownership transfers as-is, no copy/del callbacks
     for (u64 i = 0; i < old_cap; i++) {
         if (old_psls[i] == BUCKET_EMPTY) {
             continue;
@@ -417,3 +648,5 @@ static void map_resize(hashmap* map, u64 new_capacity)
     free(old_psls);
     free(old_vals);
 }
+
+
