@@ -24,7 +24,7 @@
  */
 
 
-// genVec growth/shrink settings (user can change)
+// genVec growth settings (user can change)
 
 #ifndef GENVEC_GROWTH
     #define GENVEC_GROWTH 1.5F      // vec capacity multiplier

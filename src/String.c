@@ -393,6 +393,7 @@ void string_remove_char(String* s, u64 i)
 //       |    |
 // (3, 3)
 
+// BUG: wrong
 void string_remove_range(String* s, u64 start, u64 len)
 {
     CHECK_FATAL(!s, "str is null");

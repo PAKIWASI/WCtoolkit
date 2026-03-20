@@ -1,5 +1,4 @@
 #include "gen_vector.h"
-#include "common.h"
 #include "wc_errno.h"
 
 #include <string.h>
@@ -21,7 +20,6 @@
             genVec_grow(vec);                           \
         }                                               \
     } while (0)
-
 
 
 // ops accessors (safe when ops is NULL)
@@ -533,6 +531,7 @@ void genVec_remove(genVec* vec, u64 i, u8* out)
     end = 1 + 3 - 1 = 3
 */
 
+// BUG: wrong
 void genVec_remove_range(genVec* vec, u64 start, u64 len)
 {
     CHECK_FATAL(!vec, "vec is null");
@@ -594,6 +593,7 @@ u64 genVec_find(const genVec* vec, u8* elm, compare_fn cmp_fn)
 }
 
 
+// BUG: wrong
 genVec* genVec_subarr(const genVec* vec, u64 start, u64 len)
 {
     CHECK_FATAL(!vec, "vec is null");
@@ -702,3 +702,5 @@ static void genVec_grow(genVec* vec)
     vec->data     = new_data;
     vec->capacity = new_cap;
 }
+
+
