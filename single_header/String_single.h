@@ -251,15 +251,17 @@ typedef enum {
     WC_OK        = 0,
     WC_ERR_FULL,       // arena exhausted / container at capacity
     WC_ERR_EMPTY,      // pop or peek on empty container
+    WC_ERR_INVALID_OP, // call to a function with preconditions not met
 } wc_err;
 
 static inline const char* wc_strerror(wc_err e)
 {
     switch (e) {
-        case WC_OK:        return "ok";
-        case WC_ERR_FULL:  return "full";
-        case WC_ERR_EMPTY: return "empty";
-        default:           return "unknown";
+        case WC_OK:             return "ok";
+        case WC_ERR_FULL:       return "full";
+        case WC_ERR_EMPTY:      return "empty";
+        case WC_ERR_INVALID_OP: return "invalid op";
+        default:                return "unknown";
     }
 }
 
@@ -319,12 +321,6 @@ static inline void wc_perror(const char* prefix)
 
 #ifndef STRING_GROWTH
     #define STRING_GROWTH    1.5F    // capacity multiplier on grow
-#endif
-#ifndef STRING_SHRINK_AT
-    #define STRING_SHRINK_AT 0.25F   // shrink when size/cap falls below this
-#endif
-#ifndef STRING_SHRINK_BY
-    #define STRING_SHRINK_BY 0.5F    // multiply capacity by this on shrink
 #endif
 
 
@@ -461,10 +457,16 @@ static inline b8 string_empty(const String* str)
     return str->size == 0;
 }
 
+static inline b8 string_sso(const String* str)
+{
+    CHECK_FATAL(!str, "str is null");
+    return str->capacity == STR_SSO_SIZE;
+}
+
 
 /*
  Macro to temporarily NUL-terminate a String for read-only C APIs.
- Do NOT break/return/goto inside the block.
+Note: Do NOT break/return/goto inside the block.
 
  Usage:
    TEMP_CSTR_READ(s) {
@@ -518,13 +520,6 @@ _Thread_local wc_err wc_errno = WC_OK;
         }                                 \
     } while (0)
 
-// Shrink heap string if very sparse.
-#define MAYBE_SHRINK(s)                                                                  \
-    do {                                                                                 \
-        if (!IS_SSO(s) && (s)->size <= (u64)((float)(s)->capacity * STRING_SHRINK_AT)) { \
-            string_shrink(s);                                                            \
-        }                                                                                \
-    } while (0)
 
 
 //  Private helpers
@@ -534,8 +529,6 @@ static void str_copy_n(char* dest, const char* src, u64 n);
 static void stk_to_heap(String* s);
 static void heap_to_stk(String* s);
 static void string_grow(String* s);
-static void string_shrink(String* s);
-// Ensure capacity >= needed (handles SSO → heap transition).
 static void ensure_capacity(String* s, u64 needed);
 
 
@@ -723,7 +716,7 @@ void string_shrink_to_fit(String* s)
 
     char* new_data = realloc(s->heap, s->size);
     if (!new_data) {
-        WARN("shrink_to_fit realloc failed — keeping current allocation");
+        WARN("shrink_to_fit realloc failed");
         return;
     }
     s->heap     = new_data;
@@ -768,7 +761,6 @@ void string_append_char(String* s, char c)
     GET_STR_AT(s, s->size++) = c;
 }
 
-// TODO: this always sets size = cap if size was not enough, no extra
 void string_append_cstr(String* s, const char* cstr)
 {
     CHECK_FATAL(!s, "str is null");
@@ -818,7 +810,6 @@ char string_pop_char(String* s)
     WC_SET_RET(WC_ERR_EMPTY, s->size == 0, '\0');
 
     char c = GET_STR_AT(s, --s->size);
-    MAYBE_SHRINK(s);
     return c;
 }
 
@@ -870,22 +861,7 @@ void string_insert_string(String* s, u64 i, const String* other)
         return;
     }
 
-    // If src == dest we need a snapshot to avoid aliasing after realloc.
-    if (s == other) {
-        char* snap = malloc(other->size);
-        CHECK_FATAL(!snap, "malloc failed");
-        str_copy_n(snap, GET_STR(other), other->size);
-
-        ensure_capacity(s, s->size + other->size);
-        char* buf = GET_STR(s);
-        for (u64 j = s->size; j > i; j--) {
-            buf[j + other->size - 1] = buf[j - 1];
-        }
-        str_copy_n(buf + i, snap, other->size);
-        s->size += other->size;
-        free(snap);
-        return;
-    }
+    CHECK_WARN_RET(s == other, , "can't insert aliasing(same) strings");
 
     u64 len = other->size;
     ensure_capacity(s, s->size + len);
@@ -908,7 +884,6 @@ void string_remove_char(String* s, u64 i)
         buf[j] = buf[j + 1];
     }
     s->size--;
-    MAYBE_SHRINK(s);
 }
 
 void string_remove_range(String* s, u64 l, u64 r)
@@ -928,7 +903,6 @@ void string_remove_range(String* s, u64 l, u64 r)
         buf[j] = buf[j + count];
     }
     s->size -= count;
-    MAYBE_SHRINK(s);
 }
 
 void string_clear(String* s)
@@ -1129,27 +1103,6 @@ static void string_grow(String* s)
     s->capacity = new_cap;
 }
 
-// TODO: move from heap to stk if cap too low?
-static void string_shrink(String* s)
-{
-    u64 new_cap = (u64)((float)s->capacity * STRING_SHRINK_BY);
-
-    if (new_cap <= STR_SSO_SIZE) {
-        heap_to_stk(s);
-        return;
-    }
-
-    char* new_data = realloc(s->heap, new_cap);
-    if (!new_data) {
-        WARN("shrink realloc failed — keeping current allocation");
-        return;
-    }
-
-    s->heap     = new_data;
-    s->capacity = new_cap;
-}
-
-// Grow (possibly multiple times) until capacity >= needed.
 static void ensure_capacity(String* s, u64 needed)
 {
     if (needed <= s->capacity) {
@@ -1162,6 +1115,7 @@ static void ensure_capacity(String* s, u64 needed)
         new_cap = needed;
     }
 
+    // currently in sso but sso_cap is not enough
     if (IS_SSO(s)) {
         char* new_data = malloc(new_cap);
         CHECK_FATAL(!new_data, "malloc failed");

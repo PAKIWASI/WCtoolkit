@@ -251,15 +251,17 @@ typedef enum {
     WC_OK        = 0,
     WC_ERR_FULL,       // arena exhausted / container at capacity
     WC_ERR_EMPTY,      // pop or peek on empty container
+    WC_ERR_INVALID_OP, // call to a function with preconditions not met
 } wc_err;
 
 static inline const char* wc_strerror(wc_err e)
 {
     switch (e) {
-        case WC_OK:        return "ok";
-        case WC_ERR_FULL:  return "full";
-        case WC_ERR_EMPTY: return "empty";
-        default:           return "unknown";
+        case WC_OK:             return "ok";
+        case WC_ERR_FULL:       return "full";
+        case WC_ERR_EMPTY:      return "empty";
+        case WC_ERR_INVALID_OP: return "invalid op";
+        default:                return "unknown";
     }
 }
 
@@ -319,12 +321,6 @@ static inline void wc_perror(const char* prefix)
 
 #ifndef STRING_GROWTH
     #define STRING_GROWTH    1.5F    // capacity multiplier on grow
-#endif
-#ifndef STRING_SHRINK_AT
-    #define STRING_SHRINK_AT 0.25F   // shrink when size/cap falls below this
-#endif
-#ifndef STRING_SHRINK_BY
-    #define STRING_SHRINK_BY 0.5F    // multiply capacity by this on shrink
 #endif
 
 
@@ -461,10 +457,16 @@ static inline b8 string_empty(const String* str)
     return str->size == 0;
 }
 
+static inline b8 string_sso(const String* str)
+{
+    CHECK_FATAL(!str, "str is null");
+    return str->capacity == STR_SSO_SIZE;
+}
+
 
 /*
  Macro to temporarily NUL-terminate a String for read-only C APIs.
- Do NOT break/return/goto inside the block.
+Note: Do NOT break/return/goto inside the block.
 
  Usage:
    TEMP_CSTR_READ(s) {
@@ -485,201 +487,115 @@ static inline b8 string_empty(const String* str)
 #include <string.h>
 
 
-typedef enum { 
-    EMPTY     = 0,
-    FILLED    = 1,
-    TOMBSTONE = 2
-} STATE;
-
-
 typedef u64 (*custom_hash_fn)(const u8* key, u64 size);
 
+#define LOAD_FACTOR_GROW      0.75 // Robin Hood sweet spot
+#define HASHMAP_INIT_CAPACITY 16   // power-of-2 to avoid modulo
 
 
-#define LOAD_FACTOR_GROW      0.70
-#define LOAD_FACTOR_SHRINK    0.20
-#define HASHMAP_INIT_CAPACITY 17 //prime no (index = hash % capacity)
+/*
+====================WYHASH====================
+*/
+// wyhash v4 — public domain, Wang Yi
+// Best default for hashmaps: fast, excellent avalanche, low collision rate.
+// Beats FNV1a and MurmurHash3 on all key sizes.
 
+static inline u64 wyr8(const u8* p)
+{
+    u64 v;
+    memcpy(&v, p, 8);
+    return v;
+}
+static inline u64 wyr4(const u8* p)
+{
+    u32 v;
+    memcpy(&v, p, 4);
+    return v;
+}
+
+static inline u64 wymix(u64 a, u64 b)
+{
+    __uint128_t r = (__uint128_t)a * b;
+    return (u64)(r) ^ (u64)(r >> 64);
+}
+
+static u64 wyhash(const u8* key, u64 len)
+{
+    const u64 seed = 0x517cc1b727220a95ULL;
+    const u64 s0   = 0x2d358dccaa6c78a5ULL;
+    const u64 s1   = 0x8bb84b93962eacc9ULL;
+    const u64 s2   = 0x4b33a62ed433d4a3ULL;
+
+    u64 a, b;
+    u64 h = seed ^ wymix(seed ^ s0, s1) ^ len;
+
+    const u8* p = key;
+    u64       i = len;
+
+    // bulk: 16 bytes at a time
+    for (; i >= 16; i -= 16, p += 16) {
+        h = wymix(wyr8(p) ^ s1, wyr8(p + 8) ^ h);
+    }
+
+    // tail
+    if (i >= 8) {
+        a = wyr8(p);
+        b = wyr8(p + i - 8);
+    } else if (i >= 4) {
+        a = wyr4(p);
+        b = wyr4(p + i - 4);
+    } else if (i > 0) {
+        a = ((u64)p[0] << 16) | ((u64)p[i >> 1] << 8) | p[i - 1];
+        b = 0;
+    } else {
+        a = 0;
+        b = 0;
+    }
+
+    return wymix(a ^ s2 ^ h, b ^ s2);
+}
 
 /*
 ====================DEFAULT FUNCTIONS====================
 */
-// 32-bit FNV-1a (default hash)
-static u64 fnv1a_hash(const u8* bytes, u64 size)
+
+static inline u64 fnv1a_hash(const u8* bytes, u64 size)
 {
-    u32 hash = 2166136261U; // FNV offset basis
-
+    u64 hash = 14695981039346656037ULL; // 64-bit FNV offset basis
     for (u64 i = 0; i < size; i++) {
-        hash ^= bytes[i];  // XOR with current byte
-        hash *= 16777619U; // Multiply by FNV prime
+        hash ^= bytes[i];
+        hash *= 1099511628211ULL; // 64-bit FNV prime
     }
-
     return hash;
 }
 
-
-// Default compare function
-static int default_compare(const u8* a, const u8* b, u64 size)
+static inline int default_compare(const u8* a, const u8* b, u64 size)
 {
     return memcmp(a, b, size);
 }
 
-static const u32 PRIMES[] = {
-    17,      37,      79,      163,      331,      673,      1361,    2729,
-    5471,    10949,   21911,   43853,    87719,    175447,   350899,  701819,
-    1403641, 2807303, 5614657, 11229331, 22458671, 44917381, 89834777
-};
 
-static const u32 PRIMES_COUNT = sizeof(PRIMES) / sizeof(PRIMES[0]);
+/*
+====================STRING HASHING====================
+*/
 
-// Find the next prime number larger than current
-static u64 next_prime(u64 current)
-{
-    for (u64 i = 0; i < PRIMES_COUNT; i++) {
-        if (PRIMES[i] > current) {
-            return PRIMES[i];
-        }
-    }
+// wyhash variants for String
 
-    // If we've exceeded our prime table, fall back to approximate prime
-    // Using formula: next ≈ current * 2 + 1 (often prime or close to it)
-    LOG("Warning: exceeded prime table, using approximation\n");
-    return (current * 2) + 1;
-}
-
-// Find the previous prime number smaller than current
-static u64 prev_prime(u64 current)
-{
-    // Search backwards through prime table
-    for (u64 i = PRIMES_COUNT - 1; i >= 0; i--) {
-        if (PRIMES[i] < current) {
-            return PRIMES[i];
-        }
-    }
-
-    // Should never happen if HASHMAP_INIT_CAPACITY is in our table
-    LOG("Warning: no smaller prime found");
-    return HASHMAP_INIT_CAPACITY;
-}
-
-
-// custom hash function for "String"
-
-static u64 murmurhash3_str(const u8* key, u64 size) 
+static u64 wyhash_str(const u8* key, u64 size)
 {
     (void)size;
-    
-    String* str= (String*)key;
-    const char* data = string_data_ptr(str);
-    u64 len = string_len(str);
-    
-    const u32 c1 = 0xcc9e2d51;
-    const u32 c2 = 0x1b873593;
-    const u32 seed = 0x9747b28c;
-    
-    u32 h1 = seed;
-    
-    // Body - process 4-byte chunks
-    const u32* blocks = (const u32*)data;
-    const u64 nblocks = len / 4;
-    
-    for (u64 i = 0; i < nblocks; i++) {
-        u32 k1 = blocks[i];
-        
-        k1 *= c1;
-        k1 = (k1 << 15) | (k1 >> 17);
-        k1 *= c2;
-        
-        h1 ^= k1;
-        h1 = (h1 << 13) | (h1 >> 19);
-        h1 = (h1 * 5) + 0xe6546b64;
-    }
-    
-    // Tail - handle remaining bytes
-    const u8* tail = (const uint8_t*)(data + ((size_t)nblocks * 4));
-    u32 k1 = 0;
-    
-    switch (len & 3) {
-        case 3: k1 ^= tail[2] << 16;
-        case 2: k1 ^= tail[1] << 8;
-        case 1: k1 ^= tail[0];
-                k1 *= c1;
-                k1 = (k1 << 15) | (k1 >> 17);
-                k1 *= c2;
-                h1 ^= k1;
-        default:
-           break; 
-    }
-    
-    // Finalization
-    h1 ^= len;
-    h1 ^= h1 >> 16;
-    h1 *= 0x85ebca6b;
-    h1 ^= h1 >> 13;
-    h1 *= 0xc2b2ae35;
-    h1 ^= h1 >> 16;
-    
-    return h1;
+    String* str = (String*)key;
+    return wyhash((const u8*)string_data_ptr(str), string_len(str));
 }
 
-// custom hash for String*
-
-static u64 murmurhash3_str_ptr(const u8* key, u64 size) 
+static u64 wyhash_str_ptr(const u8* key, u64 size)
 {
     (void)size;
-    
-    String* str= *(String**)key;
-    const char* data = string_data_ptr(str);
-    u64 len = string_len(str);
-    
-    const u32 c1 = 0xcc9e2d51;
-    const u32 c2 = 0x1b873593;
-    const u32 seed = 0x9747b28c;
-    
-    u32 h1 = seed;
-    
-    // Body - process 4-byte chunks
-    const u32* blocks = (const u32*)data;
-    const u64 nblocks = len / 4;
-    
-    for (u64 i = 0; i < nblocks; i++) {
-        u32 k1 = blocks[i];
-        
-        k1 *= c1;
-        k1 = (k1 << 15) | (k1 >> 17);
-        k1 *= c2;
-        
-        h1 ^= k1;
-        h1 = (h1 << 13) | (h1 >> 19);
-        h1 = (h1 * 5) + 0xe6546b64;
-    }
-    
-    // Tail - handle remaining bytes
-    const u8* tail = (const uint8_t*)(data + ((size_t)nblocks * 4));
-    u32 k1 = 0;
-    
-    switch (len & 3) {
-        case 3: k1 ^= tail[2] << 16;
-        case 2: k1 ^= tail[1] << 8;
-        case 1: k1 ^= tail[0];
-                k1 *= c1;
-                k1 = (k1 << 15) | (k1 >> 17);
-                k1 *= c2;
-                h1 ^= k1;
-        default:
-           break; 
-    }
-    
-    // Finalization
-    h1 ^= len;
-    h1 ^= h1 >> 16;
-    h1 *= 0x85ebca6b;
-    h1 ^= h1 >> 13;
-    h1 *= 0xc2b2ae35;
-    h1 ^= h1 >> 16;
-    
-    return h1;
+    String* str = *(String**)key;
+    return wyhash((const u8*)string_data_ptr(str), string_len(str));
 }
+
+#define ALIGN8(size) (((u64)(size) + 7u) & ~7u)
 
 #endif /* WC_MAP_SETUP_H */
 
@@ -687,16 +603,23 @@ static u64 murmurhash3_str_ptr(const u8* key, u64 size)
 #ifndef WC_HASHSET_H
 #define WC_HASHSET_H
 
-typedef struct {
-    u8*   elm;
-    STATE state;
-} ELM;
+/* Generic Hashset with Ownership Semantics
+  - Robin Hood Hashing
+  - we have 2 arrays: elms, psls
+  - PSL: probe sequence length - the distance from hashing location
+  - we actually store psl + 1 as psl = 0 means empty bucket
+  - Robin Hood Invariant: all elms that hash to i come before elms that hash to i + 1
+  - elms stored inline
+*/
+
 
 typedef struct {
-    ELM*           buckets;
+    u8*            elms;
+    u8*            psls;
     u64            size;
     u64            capacity;
     u32            elm_size;
+    u8*            scratch;  // 2 * elm_size bytes — stage (first half) + RH swap (second half)
     custom_hash_fn hash_fn;
     compare_fn     cmp_fn;
 
@@ -706,8 +629,14 @@ typedef struct {
 } hashset;
 
 
+// Safely extract callbacks — always NULL-safe on ops itself.
+#define SET_COPY(ops) ((ops) ? (ops)->copy_fn : NULL)
+#define SET_MOVE(ops) ((ops) ? (ops)->move_fn : NULL)
+#define SET_DEL(ops)  ((ops) ? (ops)->del_fn  : NULL)
+
+
 // Create a new hashset.
-// hash_fn and cmp_fn default to fnv1a_hash / default_compare if NULL.
+// hash_fn and cmp_fn default to wyhash / default_compare if NULL.
 // ops: pass NULL for POD types.
 hashset* hashset_create(u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
                         const container_ops* ops);
@@ -728,23 +657,31 @@ b8 hashset_has(const hashset* set, const u8* elm);
 // Returns 1 if found and removed, 0 if not found.
 b8 hashset_remove(hashset* set, const u8* elm);
 
-// Get raw bucket pointer at index i.
-ELM* hashset_get_bucket(hashset* set, u64 i);
+// Print all elements.
+void hashset_print(const hashset* set, print_fn print);
 
 // Remove all elements, keep capacity.
 void hashset_clear(hashset* set);
 
-// Remove all elements and reset to initial capacity.
-void hashset_reset(hashset* set);
-
-void hashset_print(const hashset* set, print_fn print_fn);
-
 // Deep copy src into dest (dest must be uninitialised or already destroyed).
 void hashset_copy(hashset* dest, const hashset* src);
 
-static inline u64 hashset_size(const hashset* set)     { CHECK_FATAL(!set, "set is null"); return set->size;      }
-static inline u64 hashset_capacity(const hashset* set) { CHECK_FATAL(!set, "set is null"); return set->capacity;  }
-static inline b8  hashset_empty(const hashset* set)    { CHECK_FATAL(!set, "set is null"); return set->size == 0; }
+
+static inline u64 hashset_size(const hashset* set)
+{
+    CHECK_FATAL(!set, "set is null");
+    return set->size;
+}
+static inline u64 hashset_capacity(const hashset* set)
+{
+    CHECK_FATAL(!set, "set is null");
+    return set->capacity;
+}
+static inline b8 hashset_empty(const hashset* set)
+{
+    CHECK_FATAL(!set, "set is null");
+    return set->size == 0;
+}
 
 #endif /* WC_HASHSET_H */
 
@@ -788,13 +725,6 @@ _Thread_local wc_err wc_errno = WC_OK;
         }                                 \
     } while (0)
 
-// Shrink heap string if very sparse.
-#define MAYBE_SHRINK(s)                                                                  \
-    do {                                                                                 \
-        if (!IS_SSO(s) && (s)->size <= (u64)((float)(s)->capacity * STRING_SHRINK_AT)) { \
-            string_shrink(s);                                                            \
-        }                                                                                \
-    } while (0)
 
 
 //  Private helpers
@@ -804,8 +734,6 @@ static void str_copy_n(char* dest, const char* src, u64 n);
 static void stk_to_heap(String* s);
 static void heap_to_stk(String* s);
 static void string_grow(String* s);
-static void string_shrink(String* s);
-// Ensure capacity >= needed (handles SSO → heap transition).
 static void ensure_capacity(String* s, u64 needed);
 
 
@@ -993,7 +921,7 @@ void string_shrink_to_fit(String* s)
 
     char* new_data = realloc(s->heap, s->size);
     if (!new_data) {
-        WARN("shrink_to_fit realloc failed — keeping current allocation");
+        WARN("shrink_to_fit realloc failed");
         return;
     }
     s->heap     = new_data;
@@ -1038,7 +966,6 @@ void string_append_char(String* s, char c)
     GET_STR_AT(s, s->size++) = c;
 }
 
-// TODO: this always sets size = cap if size was not enough, no extra
 void string_append_cstr(String* s, const char* cstr)
 {
     CHECK_FATAL(!s, "str is null");
@@ -1088,7 +1015,6 @@ char string_pop_char(String* s)
     WC_SET_RET(WC_ERR_EMPTY, s->size == 0, '\0');
 
     char c = GET_STR_AT(s, --s->size);
-    MAYBE_SHRINK(s);
     return c;
 }
 
@@ -1140,22 +1066,7 @@ void string_insert_string(String* s, u64 i, const String* other)
         return;
     }
 
-    // If src == dest we need a snapshot to avoid aliasing after realloc.
-    if (s == other) {
-        char* snap = malloc(other->size);
-        CHECK_FATAL(!snap, "malloc failed");
-        str_copy_n(snap, GET_STR(other), other->size);
-
-        ensure_capacity(s, s->size + other->size);
-        char* buf = GET_STR(s);
-        for (u64 j = s->size; j > i; j--) {
-            buf[j + other->size - 1] = buf[j - 1];
-        }
-        str_copy_n(buf + i, snap, other->size);
-        s->size += other->size;
-        free(snap);
-        return;
-    }
+    CHECK_WARN_RET(s == other, , "can't insert aliasing(same) strings");
 
     u64 len = other->size;
     ensure_capacity(s, s->size + len);
@@ -1178,7 +1089,6 @@ void string_remove_char(String* s, u64 i)
         buf[j] = buf[j + 1];
     }
     s->size--;
-    MAYBE_SHRINK(s);
 }
 
 void string_remove_range(String* s, u64 l, u64 r)
@@ -1198,7 +1108,6 @@ void string_remove_range(String* s, u64 l, u64 r)
         buf[j] = buf[j + count];
     }
     s->size -= count;
-    MAYBE_SHRINK(s);
 }
 
 void string_clear(String* s)
@@ -1399,27 +1308,6 @@ static void string_grow(String* s)
     s->capacity = new_cap;
 }
 
-// TODO: move from heap to stk if cap too low?
-static void string_shrink(String* s)
-{
-    u64 new_cap = (u64)((float)s->capacity * STRING_SHRINK_BY);
-
-    if (new_cap <= STR_SSO_SIZE) {
-        heap_to_stk(s);
-        return;
-    }
-
-    char* new_data = realloc(s->heap, new_cap);
-    if (!new_data) {
-        WARN("shrink realloc failed — keeping current allocation");
-        return;
-    }
-
-    s->heap     = new_data;
-    s->capacity = new_cap;
-}
-
-// Grow (possibly multiple times) until capacity >= needed.
 static void ensure_capacity(String* s, u64 needed)
 {
     if (needed <= s->capacity) {
@@ -1432,6 +1320,7 @@ static void ensure_capacity(String* s, u64 needed)
         new_cap = needed;
     }
 
+    // currently in sso but sso_cap is not enough
     if (IS_SSO(s)) {
         char* new_data = malloc(new_cap);
         CHECK_FATAL(!new_data, "malloc failed");
@@ -1455,22 +1344,38 @@ static void ensure_capacity(String* s, u64 needed)
 #include <string.h>
 
 
+#define GET_ELM(set, i) ((set)->elms + ((u64)(set)->elm_size * (i)))
+#define GET_PSL(set, i) ((set)->psls + (i))
 
+// capacity is always power-of-2 — use bitmask instead of %
+#define SET_MASK(set)     ((set)->capacity - 1)
+#define SET_IDX(set, elm) ((set)->hash_fn((elm), (set)->elm_size) & SET_MASK(set))
+#define SET_NEXT(set, i)  (((i) + 1) & SET_MASK(set))
 
-#define GET_ELM(set, i) ((set)->buckets + (i))
+// PSL 0 == empty bucket; stored PSL is (real_psl + 1), starting at 1
+#define BUCKET_EMPTY 0
+
+// scratch layout: [0 .. elm_size) = stage,  [elm_size .. 2*elm_size) = swap
+// stage: where hashset_insert copies the incoming elm before calling set_insert
+// swap:  where set_insert saves a displaced resident during Robin Hood eviction
+#define STAGE_ELM(set) ((set)->scratch)
+#define SWAP_ELM(set)  ((set)->scratch + (set)->elm_size)
+
+typedef enum {
+    NOT_FOUND = 0,
+    FOUND,
+    ROBINHOOD_EXIT,
+} SET_LOOKUP_RES;
 
 
 /*
-====================PRIVATE FUNCTIONS====================
+====================PRIVATE DECLARATIONS====================
 */
 
-static void elm_destroy(const container_ops* ops, const ELM* elm);
-static void hashset_memset_buckets(ELM* buckets, u64 size);
-
-static u64 hashset_find_slot(const hashset* set, const u8* element, b8* found, int* tombstone);
-
-static void hashset_resize(hashset* set, u64 new_capacity);
-static void hashset_maybe_resize(hashset* set);
+static u64         set_lookup(const hashset* set, const u8* elm, SET_LOOKUP_RES* res, u8* out_psl);
+static void        set_insert(hashset* set, u8* elm, u8 psl, u64 idx);
+static void        set_resize(hashset* set, u64 new_capacity);
+static inline void set_maybe_resize(hashset* set);
 
 
 /*
@@ -1480,21 +1385,25 @@ static void hashset_maybe_resize(hashset* set);
 hashset* hashset_create(u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
                         const container_ops* ops)
 {
-    CHECK_FATAL(elm_size == 0, "elm size can't be 0");
+    CHECK_FATAL(elm_size == 0, "elm_size can't be 0");
 
     hashset* set = malloc(sizeof(hashset));
     CHECK_FATAL(!set, "set malloc failed");
 
-    set->buckets = malloc(HASHMAP_INIT_CAPACITY * sizeof(ELM));
-    CHECK_FATAL(!set->buckets, "set bucket init failed");
+    set->elms = calloc(HASHMAP_INIT_CAPACITY, elm_size);
+    CHECK_FATAL(!set->elms, "elms calloc failed");
+    set->psls = calloc(HASHMAP_INIT_CAPACITY, sizeof(u8));
+    CHECK_FATAL(!set->psls, "psls calloc failed");
 
-    hashset_memset_buckets(set->buckets, HASHMAP_INIT_CAPACITY);
+    // 2 * elm_size: first half = staging, second half = RH swap buffer
+    set->scratch = malloc(2 * (u64)elm_size);
+    CHECK_FATAL(!set->scratch, "scratch malloc failed");
 
-    set->capacity = HASHMAP_INIT_CAPACITY;
     set->size     = 0;
+    set->capacity = HASHMAP_INIT_CAPACITY;
     set->elm_size = elm_size;
 
-    set->hash_fn = hash_fn ? hash_fn : fnv1a_hash;
+    set->hash_fn = hash_fn ? hash_fn : wyhash;
     set->cmp_fn  = cmp_fn  ? cmp_fn  : default_compare;
 
     set->ops = ops;
@@ -1502,345 +1411,349 @@ hashset* hashset_create(u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
     return set;
 }
 
+
 void hashset_destroy(hashset* set)
 {
-    CHECK_FATAL(!set,          "set is null");
-    CHECK_FATAL(!set->buckets, "set buckets is null");
+    CHECK_FATAL(!set, "set is null");
 
-    SET_FOREACH_BUCKET(set, elm) {
-        elm_destroy(set->ops, elm);
+    delete_fn e_del = SET_DEL(set->ops);
+
+    if (e_del) {
+        for (u64 i = 0; i < set->capacity; i++) {
+            if (*GET_PSL(set, i) == BUCKET_EMPTY) {
+                continue;
+            }
+            e_del(GET_ELM(set, i));
+        }
     }
 
-    free(set->buckets);
+    free(set->elms);
+    free(set->psls);
+    free(set->scratch);
     free(set);
 }
 
-void hashset_clear(hashset* set)
-{
-    CHECK_FATAL(!set, "set is null");
 
-    for (u64 i = 0; i < set->capacity; i++) {
-        ELM* elm = GET_ELM(set, i);
-        if (elm->state == FILLED) {
-            elm_destroy(set->ops, elm);
-        }
-        elm->elm   = NULL;
-        elm->state = EMPTY;
-    }
-
-    set->size = 0;
-}
-
-void hashset_reset(hashset* set)
-{
-    CHECK_FATAL(!set, "set is null");
-
-    hashset_clear(set);
-
-    if (set->capacity > HASHMAP_INIT_CAPACITY) {
-        free(set->buckets);
-        set->buckets = malloc(HASHMAP_INIT_CAPACITY * sizeof(ELM));
-        CHECK_FATAL(!set->buckets, "reset malloc failed");
-        hashset_memset_buckets(set->buckets, HASHMAP_INIT_CAPACITY);
-        set->capacity = HASHMAP_INIT_CAPACITY;
-    }
-}
-
-// COPY semantics
+// Insert element — COPY semantics.
+// Returns 1 if already existed (no-op), 0 if newly inserted.
 b8 hashset_insert(hashset* set, const u8* elm)
 {
-    CHECK_FATAL(!set, "set is null");
-    CHECK_FATAL(!elm, "elm is null");
+    CHECK_FATAL(!set || !elm, "null arg");
 
-    hashset_maybe_resize(set);
+    set_maybe_resize(set);
 
-    b8  found     = 0;
-    int tombstone = -1;
-    u64 slot      = hashset_find_slot(set, elm, &found, &tombstone);
+    SET_LOOKUP_RES res;
+    u8             out_psl;
+    u64            slot = set_lookup(set, elm, &res, &out_psl);
 
-    if (found) {
-        return 1; // already exists
-    }
-
-    u8* new_elm = malloc(set->elm_size);
-    CHECK_FATAL(!new_elm, "elm malloc failed");
-
-    if (set->ops && set->ops->copy_fn) {
-        set->ops->copy_fn(new_elm, elm);
-    } else {
-        memcpy(new_elm, elm, set->elm_size);
-    }
-
-    ELM* elem   = GET_ELM(set, slot);
-    elem->elm   = new_elm;
-    elem->state = FILLED;
-
-    set->size++;
-
-    return 0;
-}
-
-// MOVE semantics
-b8 hashset_insert_move(hashset* set, u8** elm)
-{
-    CHECK_FATAL(!set,  "set is null");
-    CHECK_FATAL(!elm,  "elm is null");
-    CHECK_FATAL(!*elm, "*elm is null");
-
-    hashset_maybe_resize(set);
-
-    b8  found     = 0;
-    int tombstone = -1;
-    u64 slot      = hashset_find_slot(set, *elm, &found, &tombstone);
-
-    if (found) {
-        // Already exists — clean up the passed element
-        if (set->ops && set->ops->del_fn) {
-            set->ops->del_fn(*elm);
-        }
-        free(*elm);
-        *elm = NULL;
+    if (res == FOUND) {
         return 1;
     }
 
-    u8* new_elm = malloc(set->elm_size);
-    CHECK_FATAL(!new_elm, "elm malloc failed");
+    // New elm — stage a deep copy into the first half of scratch, then hand off
+    // to set_insert which uses the second half (SWAP_ELM) for Robin Hood evictions.
+    u8*     e_buf  = STAGE_ELM(set);
+    copy_fn e_copy = SET_COPY(set->ops);
 
-    if (set->ops && set->ops->move_fn) {
-        set->ops->move_fn(new_elm, elm);
+    if (e_copy) {
+        e_copy(e_buf, elm);
     } else {
-        memcpy(new_elm, *elm, set->elm_size);
-        *elm = NULL;
+        memcpy(e_buf, elm, set->elm_size);
     }
 
-    ELM* elem   = GET_ELM(set, slot);
-    elem->elm   = new_elm;
-    elem->state = FILLED;
-
-    set->size++;
-
+    set_insert(set, e_buf, out_psl, slot);
     return 0;
 }
 
+
+// Insert element — MOVE semantics (elm is nulled on insert, or freed if duplicate).
+// Returns 1 if already existed (elm freed), 0 if newly inserted.
+b8 hashset_insert_move(hashset* set, u8** elm)
+{
+    CHECK_FATAL(!set || !elm, "null arg");
+
+    set_maybe_resize(set);
+
+    SET_LOOKUP_RES res;
+    u8             out_psl;
+    u64            slot = set_lookup(set, *elm, &res, &out_psl);
+
+    if (res == FOUND) {
+        return 1;
+    }
+
+    // set_insert memcpy's these into slots — ownership transfers in
+    set_insert(set, *elm, out_psl, slot);
+    *elm = NULL;
+    return 0;
+}
+
+
+// Returns 1 if found, 0 if not.
+b8 hashset_has(const hashset* set, const u8* elm)
+{
+    CHECK_FATAL(!set || !elm, "null arg");
+
+    SET_LOOKUP_RES res;
+    u8             out_psl;
+    set_lookup(set, elm, &res, &out_psl);
+    return res == FOUND;
+}
+
+
+// Returns 1 if found and removed, 0 if not found.
 b8 hashset_remove(hashset* set, const u8* elm)
 {
-    CHECK_FATAL(!set, "set is null");
-    CHECK_FATAL(!elm, "elm is null");
+    CHECK_FATAL(!set || !elm, "null arg");
 
     if (set->size == 0) {
         return 0;
     }
 
-    b8  found     = 0;
-    int tombstone = -1;
-    u64 slot      = hashset_find_slot(set, elm, &found, &tombstone);
+    SET_LOOKUP_RES res;
+    u8             out_psl;
+    u64            slot = set_lookup(set, elm, &res, &out_psl);
 
-    if (found) {
-        ELM* elem = GET_ELM(set, slot);
-        elm_destroy(set->ops, elem);
-
-        elem->elm   = NULL;
-        elem->state = TOMBSTONE;
-
-        set->size--;
-
-        hashset_maybe_resize(set);
-        return 1;
+    if (res != FOUND) {
+        return 0;
     }
 
-    return 0;
+    delete_fn e_del = SET_DEL(set->ops);
+    if (e_del) {
+        e_del(GET_ELM(set, slot));
+    }
+
+    // Robin Hood backward shift deletion — no tombstones needed.
+    // Walk forward and pull each subsequent element back one slot
+    // as long as its PSL > 1 (it's not in its ideal slot).
+    for (;;) {
+        u64 next     = SET_NEXT(set, slot);
+        u8  next_psl = *GET_PSL(set, next);
+
+        // Stop if next slot is empty or already at its ideal position
+        if (next_psl <= 1) {
+            *GET_PSL(set, slot) = BUCKET_EMPTY;
+            break;
+        }
+
+        // Pull neighbour back one slot, reducing its PSL by 1
+        memcpy(GET_ELM(set, slot), GET_ELM(set, next), set->elm_size);
+        *GET_PSL(set, slot) = next_psl - 1;
+
+        slot = next;
+    }
+
+    set->size--;
+    return 1;
 }
 
-ELM* hashset_get_bucket(hashset* set, u64 i)
+
+// Print all elements.
+void hashset_print(const hashset* set, print_fn print)
 {
-    CHECK_FATAL(!set, "set is null");
-    CHECK_FATAL(i >= set->capacity, "index out of bounds");
-
-    return (set->buckets + i);
-}
-
-b8 hashset_has(const hashset* set, const u8* elm)
-{
-    CHECK_FATAL(!set, "set is null");
-    CHECK_FATAL(!elm, "elm is null");
-
-    b8  found     = 0;
-    int tombstone = -1;
-    hashset_find_slot(set, elm, &found, &tombstone);
-
-    return found;
-}
-
-void hashset_print(const hashset* set, print_fn print_fn)
-{
-    CHECK_FATAL(!set,      "set is null");
-    CHECK_FATAL(!print_fn, "print_fn is null");
+    CHECK_FATAL(!set || !print, "null arg");
 
     printf("\t=========\n");
     printf("\tSize: %lu / Capacity: %lu\n", set->size, set->capacity);
     printf("\t=========\n");
 
-    SET_FOREACH_BUCKET(set, elm) {
+    for (u64 i = 0; i < set->capacity; i++) {
+        if (*GET_PSL(set, i) == BUCKET_EMPTY) {
+            continue;
+        }
         printf("\t   ");
-        print_fn(elm->elm);
-        printf("\n");
+        print(GET_ELM(set, i));
+        putchar('\n');
     }
 
     printf("\t=========\n");
 }
 
+
+// Remove all elements, keep capacity.
+void hashset_clear(hashset* set)
+{
+    CHECK_FATAL(!set, "set is null");
+
+    delete_fn e_del = SET_DEL(set->ops);
+
+    for (u64 i = 0; i < set->capacity; i++) {
+        if (*GET_PSL(set, i) == BUCKET_EMPTY) {
+            continue;
+        }
+        if (e_del) {
+            e_del(GET_ELM(set, i));
+        }
+    }
+
+    memset(set->psls, 0, set->capacity);
+    memset(set->elms, 0, (u64)set->elm_size * set->capacity);
+
+    set->size = 0;
+}
+
+
 // Deep copy src into dest (dest must be uninitialised or already destroyed).
 void hashset_copy(hashset* dest, const hashset* src)
 {
-    CHECK_FATAL(!dest, "dest is null");
-    CHECK_FATAL(!src,  "src is null");
+    CHECK_FATAL(!dest || !src, "null arg");
 
-    copy_fn e_copy = src->ops ? src->ops->copy_fn : NULL;
+    copy_fn e_copy = SET_COPY(src->ops);
 
-    // Clear dest KVs (runs del callbacks, resets to EMPTY), keeps the bucket array.
-    hashset_clear(dest);
+    dest->elms = calloc(src->capacity, src->elm_size);
+    CHECK_FATAL(!dest->elms, "elms calloc failed");
+    dest->psls = calloc(src->capacity, sizeof(u8));
+    CHECK_FATAL(!dest->psls, "psls calloc failed");
+    dest->scratch = malloc(2 * (u64)src->elm_size);
+    CHECK_FATAL(!dest->scratch, "scratch malloc failed");
 
-    // Copy all scalar fields and fn/ops pointers from src, but preserve dest->buckets.
-    ELM* old_elm  = dest->buckets;
-    u64 old_capacity = dest->capacity;
-    memcpy(dest, src, sizeof(hashset));
-    dest->buckets = old_elm;
-    dest->size = 0;
+    dest->size     = 0;
+    dest->capacity = src->capacity;
+    dest->elm_size = src->elm_size;
+    dest->hash_fn  = src->hash_fn;
+    dest->cmp_fn   = src->cmp_fn;
+    dest->ops      = src->ops;
 
-    // If src is larger than dest's existing bucket array, grow it.
-    if (src->capacity > old_capacity) {
-        ELM* grown = realloc(dest->buckets, src->capacity * sizeof(ELM));
-        CHECK_FATAL(!grown, "bucket realloc failed");
-        hashset_memset_buckets(grown + old_capacity, src->capacity - old_capacity);
-        dest->buckets = grown;
-    }
+    for (u64 i = 0; i < src->capacity; i++) {
+        if (*GET_PSL(src, i) == BUCKET_EMPTY) {
+            continue;
+        }
 
-    SET_FOREACH_BUCKET(src, kv) {
-        b8  found     = 0;
-        int tombstone = -1;
-        u64 slot      = hashset_find_slot(dest, kv->elm, &found, &tombstone);
+        // Deep-copy elm into the staging region, then insert
+        u8* e_buf = STAGE_ELM(dest);
 
-        u8* e = malloc(src->elm_size);
-        CHECK_FATAL(!e, "elm malloc failed");
+        if (e_copy) {
+            e_copy(e_buf, GET_ELM(src, i));
+        } else {
+            memcpy(e_buf, GET_ELM(src, i), src->elm_size);
+        }
 
-        if (e_copy) { e_copy(e, kv->elm); }
-        else        { memcpy(e, kv->elm, src->elm_size); }
-
-        ELM* new_elm   = GET_ELM(dest, slot);
-        new_elm->elm   = e;
-        new_elm->state = FILLED;
-
-        dest->size++;
+        SET_LOOKUP_RES res;
+        u8             out_psl;
+        u64            slot = set_lookup(dest, e_buf, &res, &out_psl);
+        set_insert(dest, e_buf, out_psl, slot);
     }
 }
-
 
 
 /*
-====================PRIVATE FUNCTION IMPLEMENTATIONS====================
+====================PRIVATE FUNCTIONS====================
 */
 
-
-static void elm_destroy(const container_ops* ops, const ELM* elm)
+static inline void set_maybe_resize(hashset* set)
 {
-    CHECK_FATAL(!elm, "ELM is null");
-
-    if (elm->elm) {
-        if (ops && ops->del_fn) {
-            ops->del_fn(elm->elm);
-        }
-        free(elm->elm);
+    // integer multiply avoids float — equivalent to load > 0.75
+    if (set->size * 4 >= set->capacity * 3) {
+        set_resize(set, set->capacity * 2); // power-of-2 doubles stay power-of-2
     }
 }
 
-// memset gives: elm = NULL, state = EMPTY (= 0)
-static void hashset_memset_buckets(ELM* buckets, u64 size)
+
+static u64 set_lookup(const hashset* set, const u8* elm, SET_LOOKUP_RES* res, u8* out_psl)
 {
-    memset(buckets, 0, sizeof(ELM) * size);
-}
+    u64 idx = SET_IDX(set, elm);
+    u8  psl = 1; // stored PSL=1 means real probe distance 0 (home slot)
 
-static u64 hashset_find_slot(const hashset* set, const u8* element, b8* found, int* tombstone)
-{
-    u64 index = set->hash_fn(element, set->elm_size) % set->capacity;
+    for (u64 i = idx;; i = SET_NEXT(set, i))
+    {
+        u8 slot_psl = *GET_PSL(set, i);
+        *out_psl    = psl;
 
-    *found     = 0;
-    *tombstone = -1;
-
-    for (u64 x = 0; x < set->capacity; x++) {
-        u64        i   = (index + x) % set->capacity;
-        const ELM* elm = GET_ELM(set, i);
-
-        switch (elm->state) {
-            case EMPTY:
-                // Return tombstone slot if we passed one — reuse it
-                return (*tombstone != -1) ? (u64)*tombstone : i;
-            case FILLED:
-                if (set->cmp_fn(elm->elm, element, set->elm_size) == 0) {
-                    *found = 1;
-                    return i;
-                }
-                break;
-            case TOMBSTONE:
-                if (*tombstone == -1) {
-                    *tombstone = (int)i;
-                }
-                break;
+        if (slot_psl == BUCKET_EMPTY) {
+            *res = NOT_FOUND;
+            return i;
         }
-    }
 
-    return (*tombstone != -1) ? (u64)*tombstone : 0;
+        if (slot_psl < psl) {
+            // The resident was inserted closer to home than we are —
+            // our elm can't be further ahead (Robin Hood invariant).
+            *res = ROBINHOOD_EXIT;
+            return i;
+        }
+
+        if (set->cmp_fn(GET_ELM(set, i), elm, set->elm_size) == 0) {
+            *res = FOUND;
+            return i;
+        }
+
+        psl++;
+    }
 }
 
-static void hashset_resize(hashset* set, u64 new_capacity)
+
+static void set_insert(hashset* set, u8* elm, u8 psl, u64 idx)
+{
+    // elm is already owned (either staged copy or moved pointer).
+    // This loop only shuffles ownership between slots — no copy_fn ever.
+    // Uses SWAP_ELM (second half of scratch) to avoid aliasing the staged data.
+
+    for (u64 i = idx;; i = SET_NEXT(set, i))
+    {
+        u8 slot_psl = *GET_PSL(set, i);
+
+        if (slot_psl == BUCKET_EMPTY) {
+            *GET_PSL(set, i) = psl;
+            memcpy(GET_ELM(set, i), elm, set->elm_size);
+            set->size++;
+            return;
+        }
+
+        // Robin Hood: evict the "rich" resident (lower PSL = closer to home)
+        if (slot_psl < psl) {
+            // Save displaced resident into swap buffer
+            memcpy(SWAP_ELM(set), GET_ELM(set, i), set->elm_size);
+            u8 tmp_psl = slot_psl;
+
+            // Place incoming element
+            *GET_PSL(set, i) = psl;
+            memcpy(GET_ELM(set, i), elm, set->elm_size);
+
+            // Continue inserting the displaced element
+            elm = SWAP_ELM(set);
+            psl = tmp_psl;
+        }
+
+        psl++;
+    }
+}
+
+
+static void set_resize(hashset* set, u64 new_capacity)
 {
     if (new_capacity < HASHMAP_INIT_CAPACITY) {
         new_capacity = HASHMAP_INIT_CAPACITY;
     }
 
-    ELM* old_buckets = set->buckets;
-    u64 old_cap     = set->capacity;
+    u8* old_elms = set->elms;
+    u8* old_psls = set->psls;
+    u64 old_cap  = set->capacity;
 
-    set->buckets = malloc(new_capacity * sizeof(ELM));
-    CHECK_FATAL(!set->buckets, "resize malloc failed");
-    hashset_memset_buckets(set->buckets, new_capacity);
+    set->elms = calloc(new_capacity, set->elm_size);
+    CHECK_FATAL(!set->elms, "resize elms calloc failed");
+    set->psls = calloc(new_capacity, sizeof(u8));
+    CHECK_FATAL(!set->psls, "resize psls calloc failed");
+
+    // Scratch size scales with elm_size only — no realloc needed.
 
     set->capacity = new_capacity;
     set->size     = 0;
 
-    // Rehash — pointers are moved as-is, no copy/del needed
+    // Rehash — ownership transfers as-is, no copy/del callbacks
     for (u64 i = 0; i < old_cap; i++) {
-        const ELM* old_elm = old_buckets + i;
-
-        if (old_elm->state == FILLED) {
-            b8  found     = 0;
-            int tombstone = -1;
-            u64 slot      = hashset_find_slot(set, old_elm->elm, &found, &tombstone);
-
-            ELM* new_elm   = GET_ELM(set, slot);
-            new_elm->elm   = old_elm->elm;
-            new_elm->state = FILLED;
-
-            set->size++;
+        if (old_psls[i] == BUCKET_EMPTY) {
+            continue;
         }
+
+        u8* old_elm = old_elms + ((u64)set->elm_size * i);
+
+        SET_LOOKUP_RES res;
+        u8             out_psl;
+        u64            slot = set_lookup(set, old_elm, &res, &out_psl);
+        set_insert(set, old_elm, out_psl, slot);
     }
 
-    free(old_buckets);
-}
-
-static void hashset_maybe_resize(hashset* set)
-{
-    CHECK_FATAL(!set, "set is null");
-
-    double load = (double)set->size / (double)set->capacity;
-
-    if (load > LOAD_FACTOR_GROW) {
-        hashset_resize(set, next_prime(set->capacity));
-    } else if (load < LOAD_FACTOR_SHRINK && set->capacity > HASHMAP_INIT_CAPACITY) {
-        u64 new_cap = prev_prime(set->capacity);
-        if (new_cap >= HASHMAP_INIT_CAPACITY) {
-            hashset_resize(set, new_cap);
-        }
-    }
+    free(old_elms);
+    free(old_psls);
 }
 
 #endif /* WC_HASHSET_IMPL */

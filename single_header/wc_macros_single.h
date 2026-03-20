@@ -77,21 +77,21 @@ Usage:
 
 // ── Push ───────────────────────────────────────────────────────────────────
 
-// VEC_PUSH — push any POD value 
+// VEC_PUSH — push any POD value
 #define VEC_PUSH(vec, val)                 \
     ({                                     \
         typeof(val) wvp_tmp = (val);       \
         genVec_push((vec), (u8*)&wvp_tmp); \
     })
 
-// VEC_PUSH_COPY — deep copy for complex types. Source stays valid. 
+// VEC_PUSH_COPY — deep copy for complex types. Source stays valid.
 #define VEC_PUSH_COPY(vec, val)            \
     ({                                     \
         typeof(val) wpc_tmp = (val);       \
         genVec_push((vec), (u8*)&wpc_tmp); \
     })
 
-// VEC_PUSH_MOVE — transfer ownership. Source becomes NULL. 
+// VEC_PUSH_MOVE — transfer ownership. Source becomes NULL.
 #define VEC_PUSH_MOVE(vec, ptr)                \
     ({                                         \
         typeof(ptr) wvm_p = (ptr);             \
@@ -99,7 +99,7 @@ Usage:
         (ptr) = wvm_p;                         \
     })
 
-// VEC_PUSH_CSTR — allocate a heap String and move it in. 
+// VEC_PUSH_CSTR — allocate a heap String and move it in.
 #define VEC_PUSH_CSTR(vec, cstr)                \
     ({                                          \
         String* wpc_s = string_from_cstr(cstr); \
@@ -169,21 +169,21 @@ Usage:
  * Map must have int key, String val, created with &wc_str_ops for val.
  */
 #define MAP_PUT_INT_STR(map, k, cstr_val)                         \
-    do {                                                          \
+    ({                                                            \
         String* _v = string_from_cstr(cstr_val);                  \
         hashmap_put_val_move((map), (u8*)&(int){(k)}, (u8**)&_v); \
-    } while (0)
+    })
 
 /*
  * MAP_PUT_STR_STR(map, cstr_key, cstr_val)
  * Map must use &wc_str_ops for both key and val.
  */
 #define MAP_PUT_STR_STR(map, cstr_key, cstr_val)       \
-    do {                                               \
+    ({                                                 \
         String* _k = string_from_cstr(cstr_key);       \
         String* _v = string_from_cstr(cstr_val);       \
         hashmap_put_move((map), (u8**)&_k, (u8**)&_v); \
-    } while (0)
+    })
 
 
 // ── Put (COPY semantics) ──────────────────────────────────────────────────
@@ -232,23 +232,28 @@ Usage:
 
 
 
-// Iterate over every FILLED bucket.
-// name is a KV* pointing to each filled bucket in turn.
-#define MAP_FOREACH_BUCKET(map, name)                        \
-    for (u64 _mfb_i = 0; _mfb_i < (map)->capacity; _mfb_i++) \
-        for (KV* name = ((map)->buckets[_mfb_i].state == FILLED) ? &(map)->buckets[_mfb_i] : NULL; name; name = NULL)
+// ── Iterate ────────────────────────────────────────────────────────────────
 
-// Iterate over the val of every FILLED bucket, typed as T*.
-#define MAP_FOREACH_VAL(map, T, name)                                                                          \
-    for (u64 _mfv_i = 0; _mfv_i < (map)->capacity; _mfv_i++)                                                   \
-        for (T* name = ((map)->buckets[_mfv_i].state == FILLED) ? (T*)(map)->buckets[_mfv_i].val : NULL; name; \
-             name    = NULL)
+// Iterate over every filled slot in the map.
+// 'ki' is a u8* to the key, 'vi' is a u8* to the val.
+#define MAP_FOREACH(map, ki, vi)                                                                               \
+    for (u64 _mf_i = 0; _mf_i < (map)->capacity; _mf_i++)                                                      \
+        for (u8* ki = (*((map)->psls + _mf_i) != 0) ? ((map)->keys + (u64)(map)->key_size * _mf_i) : NULL; ki; \
+             ki     = NULL)                                                                                    \
+            for (u8* vi = (map)->vals + (u64)(map)->val_size * _mf_i; vi; vi = NULL)
 
+// Iterate over every filled slot, val typed as T*.
+#define MAP_FOREACH_VAL(map, T, name)                                                                                \
+    for (u64 _mfv_i = 0; _mfv_i < (map)->capacity; _mfv_i++)                                                         \
+        for (T* name    = (*((map)->psls + _mfv_i) != 0) ? (T*)((map)->vals + (u64)(map)->val_size * _mfv_i) : NULL; \
+             name; name = NULL)
 
-
-#define SET_FOREACH_BUCKET(set, name)                        \
-    for (u64 _sfb_i = 0; _sfb_i < (set)->capacity; _sfb_i++) \
-        for (ELM* name = ((set)->buckets[_sfb_i].state == FILLED) ? &(set)->buckets[_sfb_i] : NULL; name; name = NULL)
+// Iterate over every filled slot in the set.
+// 'ei' is a u8* to the element.
+#define SET_FOREACH(set, ei)                                                                                   \
+    for (u64 _sf_i = 0; _sf_i < (set)->capacity; _sf_i++)                                                      \
+        for (u8* ei = (*((set)->psls + _sf_i) != 0) ? ((set)->elms + (u64)(set)->elm_size * _sf_i) : NULL; ei; \
+             ei     = NULL)
 
 #endif /* WC_WC_MACROS_H */
 

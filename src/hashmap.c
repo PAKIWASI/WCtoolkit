@@ -588,7 +588,7 @@ static void map_insert(hashmap* map, u8* key, u8* val, u8 psl, u64 idx)
         }
 
         // Robin Hood: evict the "rich" resident (smaller PSL = closer to home).
-        if (slot_psl < psl) {  // TODO: is it <= ?
+        if (slot_psl < psl) {
             memcpy(SWAP_KEY(map), GET_KEY(map, i), map->key_size);
             memcpy(SWAP_VAL(map), GET_VAL(map, i), map->val_size);
             u8 tmp_psl = slot_psl;
@@ -609,6 +609,7 @@ static void map_insert(hashmap* map, u8* key, u8* val, u8 psl, u64 idx)
 // Rehash into a new array of new_capacity (must be power-of-2).
 // Ownership transfers as raw bytes — no copy/del callbacks are invoked.
 // This is safe because the data itself doesn't move, only the slot positions.
+// BUG: when map grows, we see duplicate keys
 static void map_resize(hashmap* map, u64 new_capacity)
 {
     if (new_capacity < HASHMAP_INIT_CAPACITY) {

@@ -1,6 +1,6 @@
 #include "String.h"
-#include "common.h"
 #include "wc_errno.h"
+
 #include <string.h>
 
 
