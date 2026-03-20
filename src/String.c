@@ -22,13 +22,6 @@
         }                                 \
     } while (0)
 
-// Shrink heap string if very sparse.
-// #define MAYBE_SHRINK(s)                                                                  \
-//     do {                                                                                 \
-//         if (!IS_SSO(s) && (s)->size <= (u64)((float)(s)->capacity * STRING_SHRINK_AT)) { \
-//             string_shrink(s);                                                            \
-//         }                                                                                \
-//     } while (0)
 
 
 //  Private helpers
@@ -38,7 +31,6 @@ static void str_copy_n(char* dest, const char* src, u64 n);
 static void stk_to_heap(String* s);
 static void heap_to_stk(String* s);
 static void string_grow(String* s);
-// static void string_shrink(String* s);
 // Ensure capacity >= needed (handles SSO → heap transition).
 static void ensure_capacity(String* s, u64 needed);
 
@@ -321,7 +313,6 @@ char string_pop_char(String* s)
     WC_SET_RET(WC_ERR_EMPTY, s->size == 0, '\0');
 
     char c = GET_STR_AT(s, --s->size);
-    // MAYBE_SHRINK(s);
     return c;
 }
 
@@ -412,7 +403,6 @@ void string_remove_char(String* s, u64 i)
         buf[j] = buf[j + 1];
     }
     s->size--;
-    // MAYBE_SHRINK(s);
 }
 
 void string_remove_range(String* s, u64 l, u64 r)
@@ -432,7 +422,6 @@ void string_remove_range(String* s, u64 l, u64 r)
         buf[j] = buf[j + count];
     }
     s->size -= count;
-    // MAYBE_SHRINK(s);
 }
 
 void string_clear(String* s)
@@ -633,24 +622,6 @@ static void string_grow(String* s)
     s->capacity = new_cap;
 }
 
-// static void string_shrink(String* s)
-// {
-//     u64 new_cap = (u64)((float)s->capacity * STRING_SHRINK_BY);
-//
-//     if (new_cap <= STR_SSO_SIZE) {
-//         heap_to_stk(s);
-//         return;
-//     }
-//
-//     char* new_data = realloc(s->heap, new_cap);
-//     if (!new_data) {
-//         WARN("shrink realloc failed — keeping current allocation");
-//         return;
-//     }
-//
-//     s->heap     = new_data;
-//     s->capacity = new_cap;
-// }
 
 // Grow (possibly multiple times) until capacity >= needed.
 static void ensure_capacity(String* s, u64 needed)

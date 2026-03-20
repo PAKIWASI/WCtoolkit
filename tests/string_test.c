@@ -2,6 +2,9 @@
 #include "String.h"
 
 
+// TODO: test SSO
+
+
 /* ── Construction ────────────────────────────────────────────────────────── */
 
 static void test_create_empty(void)
@@ -292,6 +295,44 @@ static void test_growth(void)
     string_destroy(s);
 }
 
+// test manual strinkage
+static void test_shrink(void)
+{
+    String* s = string_create();
+
+    // grow within sso (current sso = 24)
+    for (int i = 0; i < 20; i++) {
+        string_append_char(s, 'a');
+    }
+    WC_ASSERT_EQ_U64(string_len(s), 20);
+    WC_ASSERT_EQ_U64(string_capacity(s), STR_SSO_SIZE);
+    WC_ASSERT_FALSE(!string_sso(s));
+
+    // grow over sso
+
+    for (int i = 0; i < 10; i++) {
+        string_append_char(s, 'b');
+    }
+    WC_ASSERT_EQ_U64(string_len(s), 30);
+    WC_ASSERT_FALSE(string_sso(s));
+
+    // remove 10 (within sso range but no auto shrinkage)
+    for (int i = 0; i < 10; i++) {
+        string_pop_char(s);
+    }
+    WC_ASSERT_EQ_U64(string_len(s), 20);
+    WC_ASSERT_FALSE(string_sso(s));
+
+    // do the manual shrink
+    string_shrink_to_fit(s);
+    WC_ASSERT_EQ_U64(string_len(s), 20);
+    WC_ASSERT_EQ_U64(string_capacity(s), STR_SSO_SIZE);
+    WC_ASSERT_FALSE(!string_sso(s));
+
+
+    string_destroy(s);
+}
+
 
 /* ── Suite entry point ───────────────────────────────────────────────────── */
 
@@ -340,4 +381,5 @@ void string_suite(void)
     WC_RUN(test_reserve_char);
     WC_RUN(test_to_cstr);
     WC_RUN(test_growth);
+    WC_RUN(test_shrink);
 }

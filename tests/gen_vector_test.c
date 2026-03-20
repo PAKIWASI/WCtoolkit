@@ -1,5 +1,7 @@
+#include "String.h"
 #include "gen_vector.h"
 #include "wc_errno.h"
+#include "wc_helpers.h"
 #include "wc_macros.h"
 #include "wc_test.h"
 

@@ -32,7 +32,6 @@
 // private functions
 
 static void genVec_grow(genVec* vec);
-// static void genVec_shrink(genVec* vec);
 
 
 // API Implementation
@@ -651,3 +650,5 @@ static void genVec_grow(genVec* vec)
     vec->data     = new_data;
     vec->capacity = new_cap;
 }
+
+
