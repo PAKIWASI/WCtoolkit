@@ -317,11 +317,11 @@ static inline void wc_perror(const char* prefix)
 #ifndef WC_STRING_H
 #define WC_STRING_H
 
-#define STR_SSO_SIZE 24
-
 #ifndef STRING_GROWTH
     #define STRING_GROWTH    1.5F    // capacity multiplier on grow
 #endif
+
+#define STR_SSO_SIZE 24
 
 
 typedef struct {
@@ -329,12 +329,12 @@ typedef struct {
         char* heap;
         char  stk[STR_SSO_SIZE];
     };
-    // b8  sso;     // HACK: if cap is = STR_SSO_SIZE then we are in sso mode, if greater then heap mode
+    // b8  sso;     // if cap is = STR_SSO_SIZE then we are in sso mode, if greater then heap mode
     u64 size;
     u64 capacity;
 } String;
 
-// 24 8 8 = 40 bytes
+// 24 8 8 = 40 bytes (same as genVec)
 
 
 //  Construction / Destruction 
