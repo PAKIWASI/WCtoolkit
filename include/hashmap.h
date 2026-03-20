@@ -82,7 +82,8 @@ void hashmap_print(const hashmap* map, print_fn key_print, print_fn val_print);
 // Remove all elements, keep capacity.
 void hashmap_clear(hashmap* map);
 
-// Deep copy src into dest (dest must be uninitialised or already destroyed).
+// Deep copy src into dest
+// dest should be pre-inited, it will be freed
 void hashmap_copy(hashmap* dest, const hashmap* src);
 
 

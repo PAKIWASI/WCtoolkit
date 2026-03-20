@@ -16,21 +16,17 @@
 // scratch layout: [0 .. elm_size) = stage,  [elm_size .. 2*elm_size) = swap
 // stage: where hashset_insert copies the incoming elm before calling set_insert
 // swap:  where set_insert saves a displaced resident during Robin Hood eviction
+// The two halves are alternated each eviction to avoid aliasing (elm pointer
+// is always in the half that set_insert is NOT currently writing into).
 #define STAGE_ELM(set) ((set)->scratch)
 #define SWAP_ELM(set)  ((set)->scratch + (set)->elm_size)
-
-typedef enum {
-    NOT_FOUND = 0,
-    FOUND,
-    ROBINHOOD_EXIT,
-} SET_LOOKUP_RES;
 
 
 /*
 ====================PRIVATE DECLARATIONS====================
 */
 
-static u64         set_lookup(const hashset* set, const u8* elm, SET_LOOKUP_RES* res, u8* out_psl);
+static u64         set_lookup(const hashset* set, const u8* elm, LOOKUP_RES* res, u8* out_psl);
 static void        set_insert(hashset* set, u8* elm, u8 psl, u64 idx);
 static void        set_resize(hashset* set, u64 new_capacity);
 static inline void set_maybe_resize(hashset* set);
@@ -48,7 +44,7 @@ hashset* hashset_create(u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
     hashset* set = malloc(sizeof(hashset));
     CHECK_FATAL(!set, "set malloc failed");
 
-    set->elms = calloc(HASHMAP_INIT_CAPACITY, elm_size);
+    set->elms = malloc((u64)HASHMAP_INIT_CAPACITY * elm_size);
     CHECK_FATAL(!set->elms, "elms calloc failed");
     set->psls = calloc(HASHMAP_INIT_CAPACITY, sizeof(u8));
     CHECK_FATAL(!set->psls, "psls calloc failed");
@@ -91,16 +87,36 @@ void hashset_destroy(hashset* set)
     free(set);
 }
 
+void hashset_destroy_stk(hashset* set)
+{
+    CHECK_FATAL(!set, "set is null");
+
+    delete_fn e_del = SET_DEL(set->ops);
+
+    if (e_del) {
+        for (u64 i = 0; i < set->capacity; i++) {
+            if (*GET_PSL(set, i) == BUCKET_EMPTY) {
+                continue;
+            }
+            e_del(GET_ELM(set, i));
+        }
+    }
+
+    free(set->elms);
+    free(set->psls);
+    free(set->scratch);
+}
+
 
 // Insert element — COPY semantics.
 // Returns 1 if already existed (no-op), 0 if newly inserted.
 b8 hashset_insert(hashset* set, const u8* elm)
 {
-    CHECK_FATAL(!set || !elm, "null arg");
+    CHECK_FATAL(!set || !elm, "args null");
 
-    set_maybe_resize(set);
+    copy_fn e_cp = SET_COPY(set->ops);
 
-    SET_LOOKUP_RES res;
+    LOOKUP_RES res;
     u8             out_psl;
     u64            slot = set_lookup(set, elm, &res, &out_psl);
 
@@ -108,18 +124,16 @@ b8 hashset_insert(hashset* set, const u8* elm)
         return 1;
     }
 
-    // New elm — stage a deep copy into the first half of scratch, then hand off
-    // to set_insert which uses the second half (SWAP_ELM) for Robin Hood evictions.
-    u8*     e_buf  = STAGE_ELM(set);
-    copy_fn e_copy = SET_COPY(set->ops);
-
-    if (e_copy) {
-        e_copy(e_buf, elm);
+    // Stage a deep copy into scratch before calling set_insert.
+    // set_insert only does raw memcpy moves between slots — it never calls copy/del.
+    if (e_cp) {
+        e_cp(STAGE_ELM(set), elm);
     } else {
-        memcpy(e_buf, elm, set->elm_size);
+        memcpy(STAGE_ELM(set), elm, set->elm_size);
     }
 
-    set_insert(set, e_buf, out_psl, slot);
+    set_insert(set, STAGE_ELM(set), out_psl, slot);
+    set_maybe_resize(set);
     return 0;
 }
 
@@ -128,21 +142,32 @@ b8 hashset_insert(hashset* set, const u8* elm)
 // Returns 1 if already existed (elm freed), 0 if newly inserted.
 b8 hashset_insert_move(hashset* set, u8** elm)
 {
-    CHECK_FATAL(!set || !elm, "null arg");
+    CHECK_FATAL(!set || !elm || !*elm, "args null");
 
-    set_maybe_resize(set);
+    move_fn   e_mv  = SET_MOVE(set->ops);
+    delete_fn e_del = SET_DEL(set->ops);
 
-    SET_LOOKUP_RES res;
+    CHECK_FATAL(!e_mv, "elm move func required");
+
+    LOOKUP_RES res;
     u8             out_psl;
     u64            slot = set_lookup(set, *elm, &res, &out_psl);
 
     if (res == FOUND) {
+        // Already exists — consume (destroy) the incoming duplicate.
+        if (e_del) {
+            e_del(*elm);
+        }
+        free(*elm);
+        *elm = NULL;
         return 1;
     }
 
-    // set_insert memcpy's these into slots — ownership transfers in
-    set_insert(set, *elm, out_psl, slot);
-    *elm = NULL;
+    // Stage: move elm into STAGE_ELM — transfers heap resource, nulls *elm.
+    e_mv(STAGE_ELM(set), elm);
+
+    set_insert(set, STAGE_ELM(set), out_psl, slot);
+    set_maybe_resize(set);
     return 0;
 }
 
@@ -152,7 +177,7 @@ b8 hashset_has(const hashset* set, const u8* elm)
 {
     CHECK_FATAL(!set || !elm, "null arg");
 
-    SET_LOOKUP_RES res;
+    LOOKUP_RES res;
     u8             out_psl;
     set_lookup(set, elm, &res, &out_psl);
     return res == FOUND;
@@ -160,15 +185,14 @@ b8 hashset_has(const hashset* set, const u8* elm)
 
 
 // Returns 1 if found and removed, 0 if not found.
+// Uses Robin Hood backward-shift deletion to maintain the probe-sequence invariant
+// without tombstones: after removing a slot, shift subsequent entries back one
+// position as long as they have PSL > 1 (i.e. they are not at their home slot).
 b8 hashset_remove(hashset* set, const u8* elm)
 {
     CHECK_FATAL(!set || !elm, "null arg");
 
-    if (set->size == 0) {
-        return 0;
-    }
-
-    SET_LOOKUP_RES res;
+    LOOKUP_RES res;
     u8             out_psl;
     u64            slot = set_lookup(set, elm, &res, &out_psl);
 
@@ -177,28 +201,27 @@ b8 hashset_remove(hashset* set, const u8* elm)
     }
 
     delete_fn e_del = SET_DEL(set->ops);
+
     if (e_del) {
         e_del(GET_ELM(set, slot));
     }
 
-    // Robin Hood backward shift deletion — no tombstones needed.
-    // Walk forward and pull each subsequent element back one slot
-    // as long as its PSL > 1 (it's not in its ideal slot).
+    // Backward-shift: pull subsequent entries one slot back as long as
+    // they have PSL > 1. Entries at their home slot (PSL == 1) must not move.
+    u64 cur = slot;
     for (;;) {
-        u64 next     = SET_NEXT(set, slot);
+        u64 next     = SET_NEXT(set, cur);
         u8  next_psl = *GET_PSL(set, next);
 
-        // Stop if next slot is empty or already at its ideal position
         if (next_psl <= 1) {
-            *GET_PSL(set, slot) = BUCKET_EMPTY;
+            *GET_PSL(set, cur) = BUCKET_EMPTY;
             break;
         }
 
-        // Pull neighbour back one slot, reducing its PSL by 1
-        memcpy(GET_ELM(set, slot), GET_ELM(set, next), set->elm_size);
-        *GET_PSL(set, slot) = next_psl - 1;
+        *GET_PSL(set, cur) = next_psl - 1;
+        memcpy(GET_ELM(set, cur), GET_ELM(set, next), set->elm_size);
 
-        slot = next;
+        cur = next;
     }
 
     set->size--;
@@ -219,7 +242,7 @@ void hashset_print(const hashset* set, print_fn print)
         if (*GET_PSL(set, i) == BUCKET_EMPTY) {
             continue;
         }
-        printf("\t   ");
+        putchar('\t');
         print(GET_ELM(set, i));
         putchar('\n');
     }
@@ -244,52 +267,48 @@ void hashset_clear(hashset* set)
         }
     }
 
-    memset(set->psls, 0, set->capacity);
-    memset(set->elms, 0, (u64)set->elm_size * set->capacity);
-
+    memset(set->psls, 0, set->capacity * sizeof(u8));
     set->size = 0;
 }
 
 
-// Deep copy src into dest (dest must be uninitialised or already destroyed).
+// Deep copy src into dest
+// Ownership: dest gets independently owned copies of all elements.
 void hashset_copy(hashset* dest, const hashset* src)
 {
     CHECK_FATAL(!dest || !src, "null arg");
 
-    copy_fn e_copy = SET_COPY(src->ops);
+    hashset_destroy_stk(dest);
 
     dest->elms = calloc(src->capacity, src->elm_size);
-    CHECK_FATAL(!dest->elms, "elms calloc failed");
+    CHECK_FATAL(!dest->elms, "copy elms calloc failed");
     dest->psls = calloc(src->capacity, sizeof(u8));
-    CHECK_FATAL(!dest->psls, "psls calloc failed");
+    CHECK_FATAL(!dest->psls, "copy psls calloc failed");
     dest->scratch = malloc(2 * (u64)src->elm_size);
-    CHECK_FATAL(!dest->scratch, "scratch malloc failed");
+    CHECK_FATAL(!dest->scratch, "copy scratch malloc failed");
 
-    dest->size     = 0;
+    dest->size     = src->size;
     dest->capacity = src->capacity;
     dest->elm_size = src->elm_size;
     dest->hash_fn  = src->hash_fn;
     dest->cmp_fn   = src->cmp_fn;
     dest->ops      = src->ops;
 
+    copy_fn e_cp = SET_COPY(src->ops);
+
     for (u64 i = 0; i < src->capacity; i++) {
-        if (*GET_PSL(src, i) == BUCKET_EMPTY) {
+        u8 psl = *GET_PSL(src, i);
+        if (psl == BUCKET_EMPTY) {
             continue;
         }
 
-        // Deep-copy elm into the staging region, then insert
-        u8* e_buf = STAGE_ELM(dest);
+        *GET_PSL(dest, i) = psl;
 
-        if (e_copy) {
-            e_copy(e_buf, GET_ELM(src, i));
+        if (e_cp) {
+            e_cp(GET_ELM(dest, i), GET_ELM(src, i));
         } else {
-            memcpy(e_buf, GET_ELM(src, i), src->elm_size);
+            memcpy(GET_ELM(dest, i), GET_ELM(src, i), src->elm_size);
         }
-
-        SET_LOOKUP_RES res;
-        u8             out_psl;
-        u64            slot = set_lookup(dest, e_buf, &res, &out_psl);
-        set_insert(dest, e_buf, out_psl, slot);
     }
 }
 
@@ -302,12 +321,12 @@ static inline void set_maybe_resize(hashset* set)
 {
     // integer multiply avoids float — equivalent to load > 0.75
     if (set->size * 4 >= set->capacity * 3) {
-        set_resize(set, set->capacity * 2); // power-of-2 doubles stay power-of-2
+        set_resize(set, set->capacity * 2);
     }
 }
 
 
-static u64 set_lookup(const hashset* set, const u8* elm, SET_LOOKUP_RES* res, u8* out_psl)
+static u64 set_lookup(const hashset* set, const u8* elm, LOOKUP_RES* res, u8* out_psl)
 {
     u64 idx = SET_IDX(set, elm);
     u8  psl = 1; // stored PSL=1 means real probe distance 0 (home slot)
@@ -342,8 +361,16 @@ static u64 set_lookup(const hashset* set, const u8* elm, SET_LOOKUP_RES* res, u8
 static void set_insert(hashset* set, u8* elm, u8 psl, u64 idx)
 {
     // elm is already owned (either staged copy or moved pointer).
-    // This loop only shuffles ownership between slots — no copy_fn ever.
-    // Uses SWAP_ELM (second half of scratch) to avoid aliasing the staged data.
+    // Alternates between the two scratch halves on each Robin Hood eviction
+    // so that elm never aliases the buffer being written into.
+    u8* cur = STAGE_ELM(set);
+    u8* swp = SWAP_ELM(set);
+
+    // elm may already be STAGE_ELM (called from hashset_insert/insert_move);
+    // only copy if it isn't already there.
+    if (elm != cur) {
+        memcpy(cur, elm, set->elm_size);
+    }
 
     for (u64 i = idx;; i = SET_NEXT(set, i))
     {
@@ -351,24 +378,27 @@ static void set_insert(hashset* set, u8* elm, u8 psl, u64 idx)
 
         if (slot_psl == BUCKET_EMPTY) {
             *GET_PSL(set, i) = psl;
-            memcpy(GET_ELM(set, i), elm, set->elm_size);
+            memcpy(GET_ELM(set, i), cur, set->elm_size);
             set->size++;
             return;
         }
 
-        // Robin Hood: evict the "rich" resident (lower PSL = closer to home)
+        // Robin Hood: evict the "rich" resident (lower PSL = closer to home).
         if (slot_psl < psl) {
-            // Save displaced resident into swap buffer
-            memcpy(SWAP_ELM(set), GET_ELM(set, i), set->elm_size);
             u8 tmp_psl = slot_psl;
 
-            // Place incoming element
-            *GET_PSL(set, i) = psl;
-            memcpy(GET_ELM(set, i), elm, set->elm_size);
+            // Save displaced resident into swp (disjoint from cur).
+            memcpy(swp, GET_ELM(set, i), set->elm_size);
 
-            // Continue inserting the displaced element
-            elm = SWAP_ELM(set);
-            psl = tmp_psl;
+            // Place incoming element into slot.
+            *GET_PSL(set, i) = psl;
+            memcpy(GET_ELM(set, i), cur, set->elm_size);
+
+            // The evicted entry is now in swp; swap roles so cur always
+            // points to the element being placed and swp is the free buffer.
+            u8* tmp = cur; cur = swp; swp = tmp;
+            psl = tmp_psl + 1; // +1: evicted entry moves one slot further from home
+            continue;          // skip the unconditional psl++ below
         }
 
         psl++;
@@ -391,12 +421,9 @@ static void set_resize(hashset* set, u64 new_capacity)
     set->psls = calloc(new_capacity, sizeof(u8));
     CHECK_FATAL(!set->psls, "resize psls calloc failed");
 
-    // Scratch size scales with elm_size only — no realloc needed.
-
     set->capacity = new_capacity;
     set->size     = 0;
 
-    // Rehash — ownership transfers as-is, no copy/del callbacks
     for (u64 i = 0; i < old_cap; i++) {
         if (old_psls[i] == BUCKET_EMPTY) {
             continue;
@@ -404,10 +431,14 @@ static void set_resize(hashset* set, u64 new_capacity)
 
         u8* old_elm = old_elms + ((u64)set->elm_size * i);
 
-        SET_LOOKUP_RES res;
+        // Stage each entry before inserting — set_insert uses SWAP_ELM (second
+        // half of scratch) as its eviction buffer, so old_elm must not alias it.
+        memcpy(STAGE_ELM(set), old_elm, set->elm_size);
+
+        LOOKUP_RES res;
         u8             out_psl;
-        u64            slot = set_lookup(set, old_elm, &res, &out_psl);
-        set_insert(set, old_elm, out_psl, slot);
+        u64            slot = set_lookup(set, STAGE_ELM(set), &res, &out_psl);
+        set_insert(set, STAGE_ELM(set), out_psl, slot);
     }
 
     free(old_elms);

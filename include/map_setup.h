@@ -11,6 +11,11 @@ typedef u64 (*custom_hash_fn)(const u8* key, u64 size);
 #define LOAD_FACTOR_GROW      0.75 // Robin Hood sweet spot
 #define HASHMAP_INIT_CAPACITY 16   // power-of-2 to avoid modulo
 
+typedef enum {
+    NOT_FOUND = 0,
+    FOUND,
+    ROBINHOOD_EXIT,
+} LOOKUP_RES;
 
 /*
 ====================WYHASH====================

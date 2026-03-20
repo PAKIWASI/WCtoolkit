@@ -64,7 +64,8 @@ void hashset_print(const hashset* set, print_fn print);
 // Remove all elements, keep capacity.
 void hashset_clear(hashset* set);
 
-// Deep copy src into dest (dest must be uninitialised or already destroyed).
+// Deep copy src into dest
+// dest should be pre-inited, it will be freed
 void hashset_copy(hashset* dest, const hashset* src);
 
 
