@@ -88,8 +88,10 @@ void string_insert_cstr(String* str, u64 i, const char* cstr);
 void string_insert_string(String* str, u64 i, const String* other);
 
 void string_remove_char(String* str, u64 i);
-// Remove chars in range [l, r] inclusive.
-void string_remove_range(String* str, u64 l, u64 r);
+
+// TODO: test
+// Remove chars in range [start, start + len)
+void string_remove_range(String* str, u64 start, u64 len);
 
 // Remove all chars (keep allocation).
 void string_clear(String* str);

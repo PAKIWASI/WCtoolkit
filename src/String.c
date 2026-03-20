@@ -389,23 +389,25 @@ void string_remove_char(String* s, u64 i)
     s->size--;
 }
 
-void string_remove_range(String* s, u64 l, u64 r)
+// 1 2 3 4 5
+//       |    |
+// (3, 3)
+
+void string_remove_range(String* s, u64 start, u64 len)
 {
     CHECK_FATAL(!s, "str is null");
-    CHECK_FATAL(l >= s->size, "l out of bounds");
-    CHECK_FATAL(l > r, "invalid range: l > r");
+    CHECK_FATAL(start >= s->size, "l out of bounds");
 
-    if (r >= s->size) {
-        r = s->size - 1;
+    if (start + len >= s->size) {
+        len = s->size - start;
     }
 
-    u64   count = r - l + 1;
-    char* buf   = GET_STR(s);
+    char* buf = GET_STR(s);
 
-    for (u64 j = l; j + count < s->size; j++) {
-        buf[j] = buf[j + count];
+    for (u64 j = start; j < len; j++) {
+        buf[j] = buf[j + len];
     }
-    s->size -= count;
+    s->size -= len;
 }
 
 void string_clear(String* s)
@@ -632,5 +634,3 @@ static void ensure_capacity(String* s, u64 needed)
         s->capacity = new_cap;
     }
 }
-
-

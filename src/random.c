@@ -1,18 +1,18 @@
 #include "random.h"
-#include <time.h>
 #include "fast_math.h"
 
+#include <time.h>
 
 
-void pcg32_rand_seed_r(pcg32_random_t* rng, u64 seed, u64 seq);
-u32 pcg32_rand_r(pcg32_random_t* rng);
-u32 pcg32_rand_bounded_r(pcg32_random_t* rng, u32 bound);
+
+static void pcg32_rand_seed_r(pcg32_random_t* rng, u64 seed, u64 seq);
+static u32 pcg32_rand_r(pcg32_random_t* rng);
+static u32 pcg32_rand_bounded_r(pcg32_random_t* rng, u32 bound);
 
 
 
 // Initialize global state
-pcg32_random_t global_rng = PCG32_INITIALIZER;
-
+static pcg32_random_t global_rng = PCG32_INITIALIZER;
 
 
 void pcg32_rand_seed_r(pcg32_random_t* rng, u64 seed, u64 seq)
@@ -143,7 +143,7 @@ double pcg32_rand_double(void)
     
     // Combine into 53-bit value and scale to [0, 1)
     // 0x1.0p-53 is the double literal for 2^-53
-    return ((double)a * 67108864.0 + (double)b) * 0x1.0p-53;
+    return (((double)a * 67108864.0) + (double)b) * 0x1.0p-53;
 }
 
 // Generate a float in range [min, max)

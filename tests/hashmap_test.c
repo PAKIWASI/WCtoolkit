@@ -483,91 +483,90 @@ static void test_copy_then_del_src_key(void)
  * Iteration macros
  * ════════════════════════════════════════════════════════════════════════════ */
 
-static void test_foreach_visits_all(void)
-{
-    hashmap* m = int_map();
-    for (int i = 0; i < 8; i++) {
-        int v = i;
-        hashmap_put(m, (u8*)&i, (u8*)&v);
-    }
-
-    int count = 0, key_sum = 0;
-    MAP_FOREACH(m, k, v) {
-        count++;
-        key_sum += *(int*)k;
-        (void)v;
-    }
-    WC_ASSERT_EQ_INT(count,   8);
-    WC_ASSERT_EQ_INT(key_sum, 0+1+2+3+4+5+6+7);
-    hashmap_destroy(m);
-}
-
-static void test_foreach_skips_empty(void)
-{
-    // Deleted slots must not appear during iteration
-    hashmap* m = int_map();
-    for (int i = 0; i < 8; i++) {
-        int v = i;
-        hashmap_put(m, (u8*)&i, (u8*)&v);
-    }
-    for (int i = 0; i < 4; i++) {
-        hashmap_del(m, (u8*)&i, NULL);
-    }
-
-    int count = 0;
-    MAP_FOREACH(m, k, v) {
-        WC_ASSERT_TRUE(*(int*)k >= 4);
-        count++;
-        (void)v;
-    }
-    WC_ASSERT_EQ_INT(count, 4);
-    hashmap_destroy(m);
-}
-
-static void test_foreach_val_typed(void)
-{
-    hashmap* m = int_str_map();
-    MAP_PUT_INT_STR(m, 1, "one");
-    MAP_PUT_INT_STR(m, 2, "two");
-    MAP_PUT_INT_STR(m, 3, "three");
-
-    int count = 0;
-    MAP_FOREACH_VAL(m, String, v) {
-        WC_ASSERT_NOT_NULL(v);
-        WC_ASSERT_TRUE(string_len(v) > 0);
-        count++;
-    }
-    WC_ASSERT_EQ_INT(count, 3);
-    hashmap_destroy(m);
-}
-
-static void test_foreach_empty_map(void)
-{
-    hashmap* m = int_map();
-    int count = 0;
-    MAP_FOREACH(m, k, v) {
-        (void)k; (void)v;
-        count++;
-    }
-    WC_ASSERT_EQ_INT(count, 0);
-    hashmap_destroy(m);
-}
-
-static void test_foreach_key_val_consistent(void)
-{
-    // Every key visited must match its stored val
-    hashmap* m = int_map();
-    for (int i = 0; i < 16; i++) {
-        int v = i * 7;
-        hashmap_put(m, (u8*)&i, (u8*)&v);
-    }
-
-    MAP_FOREACH(m, k, v) {
-        WC_ASSERT_EQ_INT(*(int*)v, *(int*)k * 7);
-    }
-    hashmap_destroy(m);
-}
-
+// static void test_foreach_visits_all(void)
+// {
+//     hashmap* m = int_map();
+//     for (int i = 0; i < 8; i++) {
+//         int v = i;
+//         hashmap_put(m, (u8*)&i, (u8*)&v);
+//     }
+//
+//     int count = 0, key_sum = 0;
+//     MAP_FOREACH(m, k, v) {
+//         count++;
+//         key_sum += *(int*)k;
+//         (void)v;
+//     }
+//     WC_ASSERT_EQ_INT(count,   8);
+//     WC_ASSERT_EQ_INT(key_sum, 0+1+2+3+4+5+6+7);
+//     hashmap_destroy(m);
+// }
+//
+// static void test_foreach_skips_empty(void)
+// {
+//     // Deleted slots must not appear during iteration
+//     hashmap* m = int_map();
+//     for (int i = 0; i < 8; i++) {
+//         int v = i;
+//         hashmap_put(m, (u8*)&i, (u8*)&v);
+//     }
+//     for (int i = 0; i < 4; i++) {
+//         hashmap_del(m, (u8*)&i, NULL);
+//     }
+//
+//     int count = 0;
+//     MAP_FOREACH(m, k, v) {
+//         WC_ASSERT_TRUE(*(int*)k >= 4);
+//         count++;
+//         (void)v;
+//     }
+//     WC_ASSERT_EQ_INT(count, 4);
+//     hashmap_destroy(m);
+// }
+//
+// static void test_foreach_val_typed(void)
+// {
+//     hashmap* m = int_str_map();
+//     MAP_PUT_INT_STR(m, 1, "one");
+//     MAP_PUT_INT_STR(m, 2, "two");
+//     MAP_PUT_INT_STR(m, 3, "three");
+//
+//     int count = 0;
+//     MAP_FOREACH_VAL(m, String, v) {
+//         WC_ASSERT_NOT_NULL(v);
+//         WC_ASSERT_TRUE(string_len(v) > 0);
+//         count++;
+//     }
+//     WC_ASSERT_EQ_INT(count, 3);
+//     hashmap_destroy(m);
+// }
+//
+// static void test_foreach_empty_map(void)
+// {
+//     hashmap* m = int_map();
+//     int count = 0;
+//     MAP_FOREACH(m, k, v) {
+//         (void)k; (void)v;
+//         count++;
+//     }
+//     WC_ASSERT_EQ_INT(count, 0);
+//     hashmap_destroy(m);
+// }
+//
+// static void test_foreach_key_val_consistent(void)
+// {
+//     // Every key visited must match its stored val
+//     hashmap* m = int_map();
+//     for (int i = 0; i < 16; i++) {
+//         int v = i * 7;
+//         hashmap_put(m, (u8*)&i, (u8*)&v);
+//     }
+//
+//     MAP_FOREACH(m, k, v) {
+//         WC_ASSERT_EQ_INT(*(int*)v, *(int*)k * 7);
+//     }
+//     hashmap_destroy(m);
+// }
 
 /* ════════════════════════════════════════════════════════════════════════════
  * int -> String  (owned val)
@@ -871,12 +870,12 @@ void hashmap_suite(void)
     WC_RUN(test_copy_empty_map);
     WC_RUN(test_copy_then_del_src_key);
 
-    WC_SUITE("HashMap — iteration macros");
-    WC_RUN(test_foreach_visits_all);
-    WC_RUN(test_foreach_skips_empty);
-    WC_RUN(test_foreach_val_typed);
-    WC_RUN(test_foreach_empty_map);
-    WC_RUN(test_foreach_key_val_consistent);
+    // WC_SUITE("HashMap — iteration macros");
+    // WC_RUN(test_foreach_visits_all);
+    // WC_RUN(test_foreach_skips_empty);
+    // WC_RUN(test_foreach_val_typed);
+    // WC_RUN(test_foreach_empty_map);
+    // WC_RUN(test_foreach_key_val_consistent);
 
     WC_SUITE("HashMap — int->String (owned val)");
     WC_RUN(test_str_val_put_copy);

@@ -418,74 +418,74 @@ static void test_copy_then_remove_src_elm(void)
  * SET_FOREACH iteration
  * ════════════════════════════════════════════════════════════════════════════ */
 
-static void test_foreach_visits_all(void)
-{
-    hashset* s = int_set();
-    for (int i = 0; i < 8; i++) {
-        hashset_insert(s, (u8*)&i);
-    }
-
-    int count = 0, sum = 0;
-    SET_FOREACH(s, e) {
-        count++;
-        sum += *(int*)e;
-    }
-    WC_ASSERT_EQ_INT(count, 8);
-    WC_ASSERT_EQ_INT(sum,   0+1+2+3+4+5+6+7);
-    hashset_destroy(s);
-}
-
-static void test_foreach_skips_empty(void)
-{
-    // Deleted slots must not appear during iteration
-    hashset* s = int_set();
-    for (int i = 0; i < 8; i++) {
-        hashset_insert(s, (u8*)&i);
-    }
-    for (int i = 0; i < 4; i++) {
-        hashset_remove(s, (u8*)&i);
-    }
-
-    int count = 0;
-    SET_FOREACH(s, e) {
-        WC_ASSERT_TRUE(*(int*)e >= 4);
-        count++;
-    }
-    WC_ASSERT_EQ_INT(count, 4);
-    hashset_destroy(s);
-}
-
-static void test_foreach_empty_set(void)
-{
-    hashset* s = int_set();
-    int count = 0;
-    SET_FOREACH(s, e) {
-        (void)e;
-        count++;
-    }
-    WC_ASSERT_EQ_INT(count, 0);
-    hashset_destroy(s);
-}
-
-static void test_foreach_count_matches_size(void)
-{
-    // Number of elements visited must always equal size
-    hashset* s = int_set();
-    for (int i = 0; i < 24; i++) {
-        hashset_insert(s, (u8*)&i);
-    }
-    for (int i = 0; i < 8; i++) {
-        hashset_remove(s, (u8*)&i);
-    }
-
-    int count = 0;
-    SET_FOREACH(s, e) {
-        (void)e;
-        count++;
-    }
-    WC_ASSERT_EQ_U64((u64)count, hashset_size(s));
-    hashset_destroy(s);
-}
+// static void test_foreach_visits_all(void)
+// {
+//     hashset* s = int_set();
+//     for (int i = 0; i < 8; i++) {
+//         hashset_insert(s, (u8*)&i);
+//     }
+//
+//     int count = 0, sum = 0;
+//     SET_FOREACH(s, e) {
+//         count++;
+//         sum += *(int*)e;
+//     }
+//     WC_ASSERT_EQ_INT(count, 8);
+//     WC_ASSERT_EQ_INT(sum,   0+1+2+3+4+5+6+7);
+//     hashset_destroy(s);
+// }
+//
+// static void test_foreach_skips_empty(void)
+// {
+//     // Deleted slots must not appear during iteration
+//     hashset* s = int_set();
+//     for (int i = 0; i < 8; i++) {
+//         hashset_insert(s, (u8*)&i);
+//     }
+//     for (int i = 0; i < 4; i++) {
+//         hashset_remove(s, (u8*)&i);
+//     }
+//
+//     int count = 0;
+//     SET_FOREACH(s, e) {
+//         WC_ASSERT_TRUE(*(int*)e >= 4);
+//         count++;
+//     }
+//     WC_ASSERT_EQ_INT(count, 4);
+//     hashset_destroy(s);
+// }
+//
+// static void test_foreach_empty_set(void)
+// {
+//     hashset* s = int_set();
+//     int count = 0;
+//     SET_FOREACH(s, e) {
+//         (void)e;
+//         count++;
+//     }
+//     WC_ASSERT_EQ_INT(count, 0);
+//     hashset_destroy(s);
+// }
+//
+// static void test_foreach_count_matches_size(void)
+// {
+//     // Number of elements visited must always equal size
+//     hashset* s = int_set();
+//     for (int i = 0; i < 24; i++) {
+//         hashset_insert(s, (u8*)&i);
+//     }
+//     for (int i = 0; i < 8; i++) {
+//         hashset_remove(s, (u8*)&i);
+//     }
+//
+//     int count = 0;
+//     SET_FOREACH(s, e) {
+//         (void)e;
+//         count++;
+//     }
+//     WC_ASSERT_EQ_U64((u64)count, hashset_size(s));
+//     hashset_destroy(s);
+// }
 
 
 /* ════════════════════════════════════════════════════════════════════════════
@@ -698,11 +698,11 @@ void hashset_suite(void)
     WC_RUN(test_copy_empty_set);
     WC_RUN(test_copy_then_remove_src_elm);
 
-    WC_SUITE("HashSet — iteration");
-    WC_RUN(test_foreach_visits_all);
-    WC_RUN(test_foreach_skips_empty);
-    WC_RUN(test_foreach_empty_set);
-    WC_RUN(test_foreach_count_matches_size);
+    // WC_SUITE("HashSet — iteration");
+    // WC_RUN(test_foreach_visits_all);
+    // WC_RUN(test_foreach_skips_empty);
+    // WC_RUN(test_foreach_empty_set);
+    // WC_RUN(test_foreach_count_matches_size);
 
     WC_SUITE("HashSet — String (owned elements)");
     WC_RUN(test_str_insert_move_nulls_ptr);

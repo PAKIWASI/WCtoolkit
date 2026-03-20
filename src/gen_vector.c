@@ -1,4 +1,5 @@
 #include "gen_vector.h"
+#include "common.h"
 #include "wc_errno.h"
 
 #include <string.h>
@@ -525,31 +526,34 @@ void genVec_remove(genVec* vec, u64 i, u8* out)
     vec->size--;
 }
 
+/*
+    0 1 2 3 4 5, (1, 3) -> [1, 4)
+    start = 1 
+    len = 3
+    end = 1 + 3 - 1 = 3
+*/
 
-void genVec_remove_range(genVec* vec, u64 l, u64 r)
+void genVec_remove_range(genVec* vec, u64 start, u64 len)
 {
     CHECK_FATAL(!vec, "vec is null");
-    CHECK_FATAL(l >= vec->size, "index out of range");
-    CHECK_FATAL(l > r, "invalid range");
+    CHECK_FATAL(start >= vec->size, "index out of range");
 
-    if (r >= vec->size) {
-        r = vec->size - 1;
+    if (start + len >= vec->size) {
+        len = vec->size - start;
     }
 
     delete_fn del = DEL_FN(vec);
     if (del) {
-        for (u64 i = l; i <= r; i++) {
-            del(GET_PTR(vec, i));
+        for (u64 i = 0; i < len; i++) {
+            del(GET_PTR(vec, start + i));
         }
     }
 
-    u64 elms_to_shift = vec->size - (r + 1);
+    u8* dest = GET_PTR(vec, start);
+    u8* src  = GET_PTR(vec, start + len);
+    memmove(dest, src, GET_SCALED(vec, len));
 
-    u8* dest = GET_PTR(vec, l);
-    u8* src  = GET_PTR(vec, r + 1);
-    memmove(dest, src, GET_SCALED(vec, elms_to_shift));
-
-    vec->size -= (r - l + 1);
+    vec->size -= len;
 }
 
 
@@ -566,6 +570,34 @@ const u8* genVec_back(const genVec* vec)
     CHECK_FATAL(!vec, "vec is null");
     WC_SET_RET(WC_ERR_EMPTY, vec->size == 0, NULL);
     return GET_PTR(vec, vec->size - 1);
+}
+
+
+u64 genVec_find(const genVec* vec, u8* elm, compare_fn cmp_fn)
+{
+    CHECK_FATAL(!vec, "vec is null");
+    CHECK_FATAL(!elm, "elm is null");
+
+    for (u64 i = 0; i < vec->size; i++) {
+        if (cmp_fn) {
+            if (cmp_fn(GET_PTR(vec, i), elm, vec->data_size) == 0) {
+                return i;
+            }
+        } else {
+            if (memcmp(GET_PTR(vec, i), elm, vec->data_size) == 0) {
+                return i;
+            }
+        }
+    }
+
+    return (u64)-1;
+}
+
+
+genVec* genVec_subarr(const genVec* vec, u64 start, u64 len)
+{
+    CHECK_FATAL(!vec, "vec is null");
+    CHECK_FATAL(start + len >= vec->size, "out of bounds");
 }
 
 
@@ -650,5 +682,3 @@ static void genVec_grow(genVec* vec)
     vec->data     = new_data;
     vec->capacity = new_cap;
 }
-
-

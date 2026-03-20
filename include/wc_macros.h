@@ -207,6 +207,7 @@ Usage:
 
 // ── Get ───────────────────────────────────────────────────────────────────
 
+// V - Type of the value
 #define MAP_GET(map, V, key)                             \
     ({                                                   \
         V           _out;                                \
@@ -219,26 +220,16 @@ Usage:
 
 // ── Iterate ────────────────────────────────────────────────────────────────
 
-// Iterate over every filled slot in the map.
-// 'ki' is a u8* to the key, 'vi' is a u8* to the val.
-#define MAP_FOREACH(map, ki, vi)                                                                               \
-    for (u64 _mf_i = 0; _mf_i < (map)->capacity; _mf_i++)                                                      \
-        for (u8* ki = (*((map)->psls + _mf_i) != 0) ? ((map)->keys + (u64)(map)->key_size * _mf_i) : NULL; ki; \
-             ki     = NULL)                                                                                    \
-            for (u8* vi = (map)->vals + (u64)(map)->val_size * _mf_i; vi; vi = NULL)
+// TODO: map/set for each
 
-// Iterate over every filled slot, val typed as T*.
-#define MAP_FOREACH_VAL(map, T, name)                                                                                \
-    for (u64 _mfv_i = 0; _mfv_i < (map)->capacity; _mfv_i++)                                                         \
-        for (T* name    = (*((map)->psls + _mfv_i) != 0) ? (T*)((map)->vals + (u64)(map)->val_size * _mfv_i) : NULL; \
-             name; name = NULL)
+#define MAP_FOREACH_VAL(map, T, name)                        \
+    for (u64 _i = 0; _i < (map)->capacity; _i++) \
+        for (T* name = (map)->vals + (_i * (map)->val_size); name; name = NULL)
 
-// Iterate over every filled slot in the set.
-// 'ei' is a u8* to the element.
-#define SET_FOREACH(set, ei)                                                                                   \
-    for (u64 _sf_i = 0; _sf_i < (set)->capacity; _sf_i++)                                                      \
-        for (u8* ei = (*((set)->psls + _sf_i) != 0) ? ((set)->elms + (u64)(set)->elm_size * _sf_i) : NULL; ei; \
-             ei     = NULL)
+#define SET_FOREACH(map, T, name)                        \
+    for (u64 _i = 0; _i < (map)->capacity; _i++) \
+        for (T* name = (T*)(map)->elms + _i; name; name = NULL)
+
 
 
 #endif // WC_MACROS_H
