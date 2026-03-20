@@ -29,13 +29,6 @@
 #ifndef GENVEC_GROWTH
     #define GENVEC_GROWTH 1.5F      // vec capacity multiplier
 #endif
-#ifndef GENVEC_SHRINK_AT
-    #define GENVEC_SHRINK_AT 0.25F  // % filled to shrink at (25% filled)
-#endif
-#ifndef GENVEC_SHRINK_BY
-    #define GENVEC_SHRINK_BY 0.5F   // capacity divisor (half)
-#endif
-
 
 
 // generic vector container

@@ -3,8 +3,6 @@
 
 #include <string.h>
 
-// TODO: only do shrink manually ? remove auto shrink?
-
 
 #define GENVEC_MIN_CAPACITY 4
 
@@ -23,12 +21,6 @@
         }                                               \
     } while (0)
 
-#define MAYBE_SHRINK(vec)                                                  \
-    do {                                                                   \
-        if (vec->size <= (u64)((float)vec->capacity * GENVEC_SHRINK_AT)) { \
-            genVec_shrink(vec);                                            \
-        }                                                                  \
-    } while (0)
 
 
 // ops accessors (safe when ops is NULL)
@@ -40,7 +32,7 @@
 // private functions
 
 static void genVec_grow(genVec* vec);
-static void genVec_shrink(genVec* vec);
+// static void genVec_shrink(genVec* vec);
 
 
 // API Implementation
@@ -318,8 +310,6 @@ void genVec_pop(genVec* vec, u8* popped)
     }
 
     vec->size--;
-
-    MAYBE_SHRINK(vec);
 }
 
 
@@ -534,8 +524,6 @@ void genVec_remove(genVec* vec, u64 i, u8* out)
     }
 
     vec->size--;
-
-    MAYBE_SHRINK(vec);
 }
 
 
@@ -563,8 +551,6 @@ void genVec_remove_range(genVec* vec, u64 l, u64 r)
     memmove(dest, src, GET_SCALED(vec, elms_to_shift));
 
     vec->size -= (r - l + 1);
-
-    MAYBE_SHRINK(vec);
 }
 
 
@@ -613,7 +599,8 @@ void genVec_copy(genVec* dest, const genVec* src)
     memcpy(dest, src, sizeof(genVec));
 
     // TODO: fix for copying into uninited memory ?
-    dest->data = calloc(src->capacity, src->data_size);
+    // dest->data = calloc(src->capacity, src->data_size);
+    dest->data = malloc(GET_SCALED(src, src->capacity));
     CHECK_FATAL(!dest->data, "dest data calloc failed");
 
     copy_fn copy = COPY_FN(src);
@@ -664,23 +651,3 @@ static void genVec_grow(genVec* vec)
     vec->data     = new_data;
     vec->capacity = new_cap;
 }
-
-
-static void genVec_shrink(genVec* vec)
-{
-    u64 reduced_cap = (u64)((float)vec->capacity * GENVEC_SHRINK_BY);
-    if (reduced_cap < vec->size || reduced_cap == 0) {
-        return;
-    }
-
-    u8* new_data = realloc(vec->data, GET_SCALED(vec, reduced_cap));
-    if (!new_data) {
-        WARN("shrink realloc failed");
-        return;
-    }
-
-    vec->data     = new_data;
-    vec->capacity = reduced_cap;
-}
-
-

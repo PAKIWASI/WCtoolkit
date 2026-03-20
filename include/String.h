@@ -9,12 +9,12 @@
 #ifndef STRING_GROWTH
     #define STRING_GROWTH    1.5F    // capacity multiplier on grow
 #endif
-#ifndef STRING_SHRINK_AT
-    #define STRING_SHRINK_AT 0.25F   // shrink when size/cap falls below this
-#endif
-#ifndef STRING_SHRINK_BY
-    #define STRING_SHRINK_BY 0.5F    // multiply capacity by this on shrink
-#endif
+// #ifndef STRING_SHRINK_AT
+//     #define STRING_SHRINK_AT 0.25F   // shrink when size/cap falls below this
+// #endif
+// #ifndef STRING_SHRINK_BY
+//     #define STRING_SHRINK_BY 0.5F    // multiply capacity by this on shrink
+// #endif
 
 
 typedef struct {
