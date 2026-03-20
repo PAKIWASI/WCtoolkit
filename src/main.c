@@ -1,5 +1,5 @@
 #include "String.h"
-#include "hashset.h"
+#include "gen_vector.h"
 #include "wc_helpers.h"
 #include "wc_macros.h"
 
@@ -8,44 +8,22 @@
 
 int main(void)
 {
-    hashset* set = hashset_create(sizeof(String), wyhash_str, str_cmp, &wc_str_ops);
+    genVec* vec = genVec_init(10, sizeof(String), &wc_str_ptr_ops);
 
-    String* s = string_from_cstr("hello");
-    // u64 s_mark = string_len(s);
-    // char buff[3] = {0};
-    // buff[0] = '0';
-    // buff[2] = '\0';
-    // for (int i = 0; i < 100; i++) {
-    //
-    //     int j = i;
-    //     int k = 0;
-    //     while (j > 0) {
-    //         buff[k] = (char)('1' + (j % 10));
-    //         j /= 10;
-    //         k++;
-    //     }
-    //
-    //     string_append_cstr(s, buff);
-    //
-    //     hashset_insert(set, (u8*)s);
-    //
-    //     string_remove_range(s, s_mark, string_capacity(s));
-    // }
+    VEC_PUSH_CSTR(vec, "hello0");
+    VEC_PUSH_CSTR(vec, "hello1");
+    VEC_PUSH_CSTR(vec, "hello2");
+    VEC_PUSH_CSTR(vec, "hello3");
+    VEC_PUSH_CSTR(vec, "hello4");
+    VEC_PUSH_CSTR(vec, "hello5");
 
-    hashset_insert(set, (u8*)s);
-    hashset_insert(set, (u8*)s);
-    hashset_insert(set, (u8*)s);
+    genVec_print(vec, str_print); putchar('\n');
 
+    String* s = string_from_cstr("hello3");
 
-    hashset_print(set, str_print);
-
-    for (u64 _i = 0; _i < (set)->capacity; _i++)
-        for (String* str = (String*)(set)->elms + _i; str; str = ((void*)0)) {
-            string_print(str);
-        }
+    printf("%lu\n", genVec_find(vec, (u8*)s, str_cmp));
 
     string_destroy(s);
-    hashset_destroy(set);
-    return 0;
+    genVec_destroy(vec);
 }
 

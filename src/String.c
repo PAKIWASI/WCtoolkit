@@ -396,7 +396,7 @@ void string_remove_char(String* s, u64 i)
 void string_remove_range(String* s, u64 start, u64 len)
 {
     CHECK_FATAL(!s, "str is null");
-    CHECK_FATAL(start >= s->size, "l out of bounds");
+    CHECK_FATAL(start >= s->size, "start out of bounds");
 
     if (start + len >= s->size) {
         len = s->size - start;
@@ -524,18 +524,16 @@ String* string_substr(const String* s, u64 start, u64 length)
     CHECK_FATAL(!s, "str is null");
     CHECK_FATAL(start >= s->size, "start out of bounds");
 
-    u64 end = start + length;
-    if (end > s->size) {
-        end = s->size;
+    if (start + length > s->size) {
+        length = s->size - start;
     }
 
-    u64 actual_len = end - start;
-
     String* result = string_create();
-    if (actual_len > 0) {
-        ensure_capacity(result, actual_len);
-        str_copy_n(GET_STR(result), GET_STR(s) + start, actual_len);
-        result->size = actual_len;
+
+    if (length > 0) {
+        ensure_capacity(result, length);
+        str_copy_n(GET_STR(result), GET_STR(s) + start, length);
+        result->size = length;
     }
 
     return result;

@@ -536,7 +536,7 @@ void genVec_remove(genVec* vec, u64 i, u8* out)
 void genVec_remove_range(genVec* vec, u64 start, u64 len)
 {
     CHECK_FATAL(!vec, "vec is null");
-    CHECK_FATAL(start >= vec->size, "index out of range");
+    CHECK_FATAL(start >= vec->size, "start out of range");
 
     if (start + len >= vec->size) {
         len = vec->size - start;
@@ -597,7 +597,27 @@ u64 genVec_find(const genVec* vec, u8* elm, compare_fn cmp_fn)
 genVec* genVec_subarr(const genVec* vec, u64 start, u64 len)
 {
     CHECK_FATAL(!vec, "vec is null");
-    CHECK_FATAL(start + len >= vec->size, "out of bounds");
+    CHECK_FATAL(start >= vec->size, "out of bounds");
+
+    copy_fn copy = COPY_FN(vec);
+
+    if (start + len >= vec->size) {
+        len = vec->size - start;
+    }
+
+    genVec* v = genVec_init(len, vec->data_size, vec->ops);
+
+    if (len > 0) {
+        if (copy) {
+            for (u64 i = 0; i < len; i++) {
+                copy(GET_PTR(v, i), GET_PTR(vec, i + start));
+            }
+        } else {
+            memcpy(GET_PTR(v, 0), GET_PTR(vec, start), len * vec->data_size);
+        }
+    }
+
+    return v;
 }
 
 
