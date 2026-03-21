@@ -6,10 +6,11 @@
 
 //  Internal macros
 
-#define IS_SSO(s)        ((s)->capacity == STR_SSO_SIZE)
-#define GET_STR(s)       (IS_SSO(s) ? (s)->stk : (s)->heap)
-#define GET_STR_AT(s, i) (GET_STR(s)[i])
-#define STR_REMAINING(s) ((s)->capacity - (s)->size)
+#define IS_SSO(s)          ((s)->capacity == STR_SSO_SIZE)
+#define GET_STR(s)         (IS_SSO(s) ? (s)->stk : (s)->heap)
+#define GET_STR_PTR(s, i)  (GET_STR(s) + i)
+#define GET_STR_CHAR(s, i) (GET_STR(s)[i])
+#define STR_REMAINING(s)   ((s)->capacity - (s)->size)
 
 // Grow if full.
 #define MAYBE_GROW(s)                     \
@@ -261,7 +262,7 @@ void string_append_char(String* s, char c)
 {
     CHECK_FATAL(!s, "str is null");
     MAYBE_GROW(s);
-    GET_STR_AT(s, s->size++) = c;
+    GET_STR_CHAR(s, s->size++) = c;
 }
 
 void string_append_cstr(String* s, const char* cstr)
@@ -312,7 +313,7 @@ char string_pop_char(String* s)
     CHECK_FATAL(!s, "str is null");
     WC_SET_RET(WC_ERR_EMPTY, s->size == 0, '\0');
 
-    char c = GET_STR_AT(s, --s->size);
+    char c = GET_STR_CHAR(s, --s->size);
     return c;
 }
 
@@ -398,7 +399,6 @@ void string_remove_char(String* s, u64 i)
 
 */
 
-// BUG: wrong
 void string_remove_range(String* s, u64 start, u64 len)
 {
     CHECK_FATAL(!s, "str is null");
@@ -410,11 +410,8 @@ void string_remove_range(String* s, u64 start, u64 len)
         len = s->size - start;
     }
 
-    char* buf = GET_STR(s);
+    memmove(GET_STR_PTR(s, start), GET_STR_PTR(s, start + len), s->size - len);
 
-    for (u64 j = start; j < len; j++) {
-        buf[j] = buf[j + len];
-    }
     s->size -= len;
 }
 
@@ -431,14 +428,14 @@ char string_char_at(const String* s, u64 i)
 {
     CHECK_FATAL(!s, "str is null");
     CHECK_FATAL(i >= s->size, "index out of bounds");
-    return GET_STR_AT(s, i);
+    return GET_STR_CHAR(s, i);
 }
 
 void string_set_char(String* s, u64 i, char c)
 {
     CHECK_FATAL(!s, "str is null");
     CHECK_FATAL(i >= s->size, "index out of bounds");
-    GET_STR_AT(s, i) = c;
+    *GET_STR_PTR(s, i) = c; // TODO: test this
 }
 
 

@@ -592,7 +592,6 @@ u64 genVec_find(const genVec* vec, u8* elm, compare_fn cmp_fn)
 }
 
 
-// BUG: wrong
 genVec* genVec_subarr(const genVec* vec, u64 start, u64 len)
 {
     CHECK_FATAL(!vec, "vec is null");
@@ -614,6 +613,8 @@ genVec* genVec_subarr(const genVec* vec, u64 start, u64 len)
         } else {
             memcpy(GET_PTR(v, 0), GET_PTR(vec, start), len * vec->data_size);
         }
+
+        v->size = len;
     }
 
     return v;

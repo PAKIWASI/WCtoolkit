@@ -31,8 +31,8 @@ int main(void)
 
     genVec_destroy(vec);
 
-    // run_string();
-    run_genVec_subarr();
+    run_string();
+    // run_genVec_subarr();
 }
 
 
@@ -42,14 +42,12 @@ int run_string(void)
 
     string_print(s); putchar('\n');
 
-    string_remove_range(s, 1, 2);
+    String* s2 = string_substr(s, 1, 4);
 
-    printf("%lu\n", string_find_char(s, 'e'));
-
-    // BUG: 
-    string_print(s); putchar('\n');
+    string_print(s2);
 
     string_destroy(s);
+    string_destroy(s2);
     return 0;
 }
 
