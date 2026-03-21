@@ -44,12 +44,14 @@ typedef struct {
 
 } genVec;
 
-// 8 8 8 8 4 '4'  = 40 bytes ? 
+// 8 8 8 8 4 '4'  = 40 bytes
+
 
 // Convenience: access ops callbacks safely
 #define VEC_COPY_FN(vec) ((vec)->ops ? (vec)->ops->copy_fn : NULL)
 #define VEC_MOVE_FN(vec) ((vec)->ops ? (vec)->ops->move_fn : NULL)
 #define VEC_DEL_FN(vec)  ((vec)->ops ? (vec)->ops->del_fn  : NULL)
+
 
 
 // Memory Management

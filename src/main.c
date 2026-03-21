@@ -4,26 +4,26 @@
 #include "wc_macros.h"
 
 
-int run_string(void);
-int run_genVec_subarr(void);
+static int run_string(void);
+static int run_genVec_subarr(void);
 
 
 int main(void)
 {
     genVec* vec = genVec_init(10, sizeof(String), &wc_str_ops);
 
-    VEC_PUSH_CSTR(vec, "hello-0");
-    VEC_PUSH_CSTR(vec, "hello-1");
-    VEC_PUSH_CSTR(vec, "hello-2");
-    VEC_PUSH_CSTR(vec, "hello-3");
-    VEC_PUSH_CSTR(vec, "hello-4");
-    VEC_PUSH_CSTR(vec, "hello-5");
+    VEC_PUSH_CSTR(vec, "0hello");
+    VEC_PUSH_CSTR(vec, "1hello");
+    VEC_PUSH_CSTR(vec, "2hello");
+    VEC_PUSH_CSTR(vec, "3hello");
+    VEC_PUSH_CSTR(vec, "4hello");
+    VEC_PUSH_CSTR(vec, "5hello");
 
     genVec_print(vec, str_print); putchar('\n');
 
-    genVec_remove_range(vec, 3, 1);
+    genVec_remove_range(vec, 1, 3);
 
-    String* s = string_from_cstr("hello-3");
+    String* s = string_from_cstr("2hello");
     printf("%lu\n", genVec_find(vec, (u8*)s, str_cmp));
     string_destroy(s);
 
@@ -31,22 +31,22 @@ int main(void)
 
     genVec_destroy(vec);
 
-    run_string();
-
+    // run_string();
     run_genVec_subarr();
 }
 
 
 int run_string(void)
 {
-    String* s = string_from_cstr("hello");
+    String* s = string_from_cstr("012345");
 
     string_print(s); putchar('\n');
 
-    string_remove_range(s, 1, 1);
+    string_remove_range(s, 1, 2);
 
     printf("%lu\n", string_find_char(s, 'e'));
 
+    // BUG: 
     string_print(s); putchar('\n');
 
     string_destroy(s);
@@ -57,12 +57,12 @@ int run_genVec_subarr(void)
 {
     genVec* v = genVec_init(10, sizeof(String), &wc_str_ops);
 
-    VEC_PUSH_CSTR(v, "hello-0");
-    VEC_PUSH_CSTR(v, "hello-1");
-    VEC_PUSH_CSTR(v, "hello-2");
-    VEC_PUSH_CSTR(v, "hello-3");
-    VEC_PUSH_CSTR(v, "hello-4");
-    VEC_PUSH_CSTR(v, "hello-5");
+    VEC_PUSH_CSTR(v, "0hello");
+    VEC_PUSH_CSTR(v, "1hello");
+    VEC_PUSH_CSTR(v, "2hello");
+    VEC_PUSH_CSTR(v, "3hello");
+    VEC_PUSH_CSTR(v, "4hello");
+    VEC_PUSH_CSTR(v, "5hello");
 
     genVec_print(v, str_print); putchar('\n');
 

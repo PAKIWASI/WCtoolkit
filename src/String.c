@@ -389,15 +389,22 @@ void string_remove_char(String* s, u64 i)
     s->size--;
 }
 
-// 1 2 3 4 5
-//       |    |
-// (3, 3)
+/*
+    0 1 2 3 4 5  (1, 2)
+      ^ ^ 
+    start = 1
+    len = 2
+    end = 2
+
+*/
 
 // BUG: wrong
 void string_remove_range(String* s, u64 start, u64 len)
 {
     CHECK_FATAL(!s, "str is null");
     CHECK_FATAL(start >= s->size, "start out of bounds");
+
+    if (len == 0) { return; }
 
     if (start + len >= s->size) {
         len = s->size - start;

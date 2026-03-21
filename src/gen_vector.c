@@ -530,11 +530,10 @@ void genVec_remove(genVec* vec, u64 i, u8* out)
     len = 3
     end = 1 + 3 - 1 = 3
 */
-
-// BUG: wrong
 void genVec_remove_range(genVec* vec, u64 start, u64 len)
 {
     CHECK_FATAL(!vec, "vec is null");
+    if (len == 0) { return; }
     CHECK_FATAL(start >= vec->size, "start out of range");
 
     if (start + len >= vec->size) {
@@ -550,7 +549,7 @@ void genVec_remove_range(genVec* vec, u64 start, u64 len)
 
     u8* dest = GET_PTR(vec, start);
     u8* src  = GET_PTR(vec, start + len);
-    memmove(dest, src, GET_SCALED(vec, len));
+    memmove(dest, src, GET_SCALED(vec, vec->size - len));
 
     vec->size -= len;
 }
