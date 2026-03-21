@@ -222,13 +222,11 @@ Usage:
 
 // TODO: map/set for each
 
-#define MAP_FOREACH_VAL(map, T, name)                        \
-    for (u64 _i = 0; _i < (map)->capacity; _i++) \
-        for (T* name = (map)->vals + (_i * (map)->val_size); name; name = NULL)
+#define MAP_FOREACH_KEY(map, T, name)                       
 
-#define SET_FOREACH(map, T, name)                        \
-    for (u64 _i = 0; _i < (map)->capacity; _i++) \
-        for (T* name = (T*)(map)->elms + _i; name; name = NULL)
+#define MAP_FOREACH_VAL(map, T, name)                        
+
+#define SET_FOREACH(map, T, name)
 
 
 

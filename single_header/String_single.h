@@ -401,8 +401,10 @@ void string_insert_cstr(String* str, u64 i, const char* cstr);
 void string_insert_string(String* str, u64 i, const String* other);
 
 void string_remove_char(String* str, u64 i);
-// Remove chars in range [l, r] inclusive.
-void string_remove_range(String* str, u64 l, u64 r);
+
+// TODO: test
+// Remove chars in range [start, start + len)
+void string_remove_range(String* str, u64 start, u64 len);
 
 // Remove all chars (keep allocation).
 void string_clear(String* str);
@@ -503,10 +505,11 @@ _Thread_local wc_err wc_errno = WC_OK;
 
 //  Internal macros
 
-#define IS_SSO(s)        ((s)->capacity == STR_SSO_SIZE)
-#define GET_STR(s)       (IS_SSO(s) ? (s)->stk : (s)->heap)
-#define GET_STR_AT(s, i) (GET_STR(s)[i])
-#define STR_REMAINING(s) ((s)->capacity - (s)->size)
+#define IS_SSO(s)          ((s)->capacity == STR_SSO_SIZE)
+#define GET_STR(s)         (IS_SSO(s) ? (s)->stk : (s)->heap)
+#define GET_STR_PTR(s, i)  (GET_STR(s) + i)
+#define GET_STR_CHAR(s, i) (GET_STR(s)[i])
+#define STR_REMAINING(s)   ((s)->capacity - (s)->size)
 
 // Grow if full.
 #define MAYBE_GROW(s)                     \
@@ -758,7 +761,7 @@ void string_append_char(String* s, char c)
 {
     CHECK_FATAL(!s, "str is null");
     MAYBE_GROW(s);
-    GET_STR_AT(s, s->size++) = c;
+    GET_STR_CHAR(s, s->size++) = c;
 }
 
 void string_append_cstr(String* s, const char* cstr)
@@ -809,7 +812,7 @@ char string_pop_char(String* s)
     CHECK_FATAL(!s, "str is null");
     WC_SET_RET(WC_ERR_EMPTY, s->size == 0, '\0');
 
-    char c = GET_STR_AT(s, --s->size);
+    char c = GET_STR_CHAR(s, --s->size);
     return c;
 }
 
@@ -886,23 +889,29 @@ void string_remove_char(String* s, u64 i)
     s->size--;
 }
 
-void string_remove_range(String* s, u64 l, u64 r)
+/*
+    0 1 2 3 4 5  (1, 2)
+      ^ ^ 
+    start = 1
+    len = 2
+    end = 2
+
+*/
+
+void string_remove_range(String* s, u64 start, u64 len)
 {
     CHECK_FATAL(!s, "str is null");
-    CHECK_FATAL(l >= s->size, "l out of bounds");
-    CHECK_FATAL(l > r, "invalid range: l > r");
+    CHECK_FATAL(start >= s->size, "start out of bounds");
 
-    if (r >= s->size) {
-        r = s->size - 1;
+    if (len == 0) { return; }
+
+    if (start + len >= s->size) {
+        len = s->size - start;
     }
 
-    u64   count = r - l + 1;
-    char* buf   = GET_STR(s);
+    memmove(GET_STR_PTR(s, start), GET_STR_PTR(s, start + len), s->size - len);
 
-    for (u64 j = l; j + count < s->size; j++) {
-        buf[j] = buf[j + count];
-    }
-    s->size -= count;
+    s->size -= len;
 }
 
 void string_clear(String* s)
@@ -918,14 +927,14 @@ char string_char_at(const String* s, u64 i)
 {
     CHECK_FATAL(!s, "str is null");
     CHECK_FATAL(i >= s->size, "index out of bounds");
-    return GET_STR_AT(s, i);
+    return GET_STR_CHAR(s, i);
 }
 
 void string_set_char(String* s, u64 i, char c)
 {
     CHECK_FATAL(!s, "str is null");
     CHECK_FATAL(i >= s->size, "index out of bounds");
-    GET_STR_AT(s, i) = c;
+    *GET_STR_PTR(s, i) = c; // TODO: test this
 }
 
 
@@ -1019,18 +1028,16 @@ String* string_substr(const String* s, u64 start, u64 length)
     CHECK_FATAL(!s, "str is null");
     CHECK_FATAL(start >= s->size, "start out of bounds");
 
-    u64 end = start + length;
-    if (end > s->size) {
-        end = s->size;
+    if (start + length > s->size) {
+        length = s->size - start;
     }
 
-    u64 actual_len = end - start;
-
     String* result = string_create();
-    if (actual_len > 0) {
-        ensure_capacity(result, actual_len);
-        str_copy_n(GET_STR(result), GET_STR(s) + start, actual_len);
-        result->size = actual_len;
+
+    if (length > 0) {
+        ensure_capacity(result, length);
+        str_copy_n(GET_STR(result), GET_STR(s) + start, length);
+        result->size = length;
     }
 
     return result;

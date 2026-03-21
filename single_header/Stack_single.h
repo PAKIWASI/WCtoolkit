@@ -337,7 +337,7 @@ static inline void wc_perror(const char* prefix)
  */
 
 
-// genVec growth/shrink settings (user can change)
+// genVec growth settings (user can change)
 
 #ifndef GENVEC_GROWTH
     #define GENVEC_GROWTH 1.5F      // vec capacity multiplier
@@ -357,12 +357,14 @@ typedef struct {
 
 } genVec;
 
-// 8 8 8 8 4 '4'  = 40 bytes ? 
+// 8 8 8 8 4 '4'  = 40 bytes
+
 
 // Convenience: access ops callbacks safely
 #define VEC_COPY_FN(vec) ((vec)->ops ? (vec)->ops->copy_fn : NULL)
 #define VEC_MOVE_FN(vec) ((vec)->ops ? (vec)->ops->move_fn : NULL)
 #define VEC_DEL_FN(vec)  ((vec)->ops ? (vec)->ops->del_fn  : NULL)
+
 
 
 // Memory Management
@@ -382,9 +384,9 @@ void genVec_init_val_stk(u64 n, const u8* val, u32 data_size, const container_op
 
 // Vector COMPLETELY on stack (can't grow in size).
 // You provide a stack-allocated array which becomes the internal array.
+// should only use if you need genVec operations on C array
 // WARNING: crashes when size == capacity and you try to push.
 void genVec_init_arr(u64 n, u8* arr, u32 data_size, const container_ops* ops, genVec* vec);
-
 
 // Destroy heap-allocated vector and clean up all elements.
 void genVec_destroy(genVec* vec);
@@ -454,14 +456,25 @@ void genVec_insert_multi_move(genVec* vec, u64 i, u8** data, u64 num_data);
 // Remove element at index i, optionally copy to out, shift elements left.
 void genVec_remove(genVec* vec, u64 i, u8* out);
 
-// Remove elements in range [l, r] inclusive.
-void genVec_remove_range(genVec* vec, u64 l, u64 r);
+// TODO: test
+// Remove elements in range [start, start + len)
+void genVec_remove_range(genVec* vec, u64 start, u64 len);
 
 // Get pointer to first element.
 const u8* genVec_front(const genVec* vec);
 
 // Get pointer to last element.
 const u8* genVec_back(const genVec* vec);
+
+// Search
+// ===========================
+
+// TODO: 
+// if cmp_fn = NULL, then use memcmp
+u64 genVec_find(const genVec* vec, u8* elm, compare_fn cmp_fn);
+
+// TODO: 
+genVec* genVec_subarr(const genVec* vec, u64 start, u64 len);
 
 
 // Utility
@@ -568,7 +581,6 @@ _Thread_local wc_err wc_errno = WC_OK;
             genVec_grow(vec);                           \
         }                                               \
     } while (0)
-
 
 
 // ops accessors (safe when ops is NULL)
@@ -1073,31 +1085,34 @@ void genVec_remove(genVec* vec, u64 i, u8* out)
     vec->size--;
 }
 
-
-void genVec_remove_range(genVec* vec, u64 l, u64 r)
+/*
+    0 1 2 3 4 5, (1, 3) -> [1, 4)
+    start = 1 
+    len = 3
+    end = 1 + 3 - 1 = 3
+*/
+void genVec_remove_range(genVec* vec, u64 start, u64 len)
 {
     CHECK_FATAL(!vec, "vec is null");
-    CHECK_FATAL(l >= vec->size, "index out of range");
-    CHECK_FATAL(l > r, "invalid range");
+    if (len == 0) { return; }
+    CHECK_FATAL(start >= vec->size, "start out of range");
 
-    if (r >= vec->size) {
-        r = vec->size - 1;
+    if (start + len >= vec->size) {
+        len = vec->size - start;
     }
 
     delete_fn del = DEL_FN(vec);
     if (del) {
-        for (u64 i = l; i <= r; i++) {
-            del(GET_PTR(vec, i));
+        for (u64 i = 0; i < len; i++) {
+            del(GET_PTR(vec, start + i));
         }
     }
 
-    u64 elms_to_shift = vec->size - (r + 1);
+    u8* dest = GET_PTR(vec, start);
+    u8* src  = GET_PTR(vec, start + len);
+    memmove(dest, src, GET_SCALED(vec, vec->size - len));
 
-    u8* dest = GET_PTR(vec, l);
-    u8* src  = GET_PTR(vec, r + 1);
-    memmove(dest, src, GET_SCALED(vec, elms_to_shift));
-
-    vec->size -= (r - l + 1);
+    vec->size -= len;
 }
 
 
@@ -1114,6 +1129,56 @@ const u8* genVec_back(const genVec* vec)
     CHECK_FATAL(!vec, "vec is null");
     WC_SET_RET(WC_ERR_EMPTY, vec->size == 0, NULL);
     return GET_PTR(vec, vec->size - 1);
+}
+
+
+u64 genVec_find(const genVec* vec, u8* elm, compare_fn cmp_fn)
+{
+    CHECK_FATAL(!vec, "vec is null");
+    CHECK_FATAL(!elm, "elm is null");
+
+    for (u64 i = 0; i < vec->size; i++) {
+        if (cmp_fn) {
+            if (cmp_fn(GET_PTR(vec, i), elm, vec->data_size) == 0) {
+                return i;
+            }
+        } else {
+            if (memcmp(GET_PTR(vec, i), elm, vec->data_size) == 0) {
+                return i;
+            }
+        }
+    }
+
+    return (u64)-1;
+}
+
+
+genVec* genVec_subarr(const genVec* vec, u64 start, u64 len)
+{
+    CHECK_FATAL(!vec, "vec is null");
+    CHECK_FATAL(start >= vec->size, "out of bounds");
+
+    copy_fn copy = COPY_FN(vec);
+
+    if (start + len >= vec->size) {
+        len = vec->size - start;
+    }
+
+    genVec* v = genVec_init(len, vec->data_size, vec->ops);
+
+    if (len > 0) {
+        if (copy) {
+            for (u64 i = 0; i < len; i++) {
+                copy(GET_PTR(v, i), GET_PTR(vec, i + start));
+            }
+        } else {
+            memcpy(GET_PTR(v, 0), GET_PTR(vec, start), len * vec->data_size);
+        }
+
+        v->size = len;
+    }
+
+    return v;
 }
 
 
