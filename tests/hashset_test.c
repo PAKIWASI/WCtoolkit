@@ -1,4 +1,3 @@
-#include "wc_macros.h"
 #include "wc_test.h"
 #include "hashset.h"
 #include "wc_helpers.h"
@@ -716,3 +715,5 @@ void hashset_suite(void)
     WC_RUN(test_str_remove_frees_elm);
     WC_RUN(test_str_clear_then_reuse);
 }
+
+

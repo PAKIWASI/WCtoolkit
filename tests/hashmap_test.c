@@ -895,3 +895,5 @@ void hashmap_suite(void)
     WC_RUN(test_str_str_del_frees_both);
     WC_RUN(test_str_str_clear_frees_all);
 }
+
+

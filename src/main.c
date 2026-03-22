@@ -1,31 +1,27 @@
-#include "gen_vector.h"
+#include "String.h"
+#include "hashmap.h"
 #include "wc_helpers.h"
-
-#include <net/ethernet.h>
+#include "wc_macros.h"
+#include <string.h>
 
 
 int main(void)
 {
-    genVec* vec = genVec_init(10, sizeof(String), &wc_str_ops);
+    hashmap* map = hashmap_create(sizeof(int), sizeof(String), NULL, NULL, NULL, &wc_str_ops);
 
-    String* s = string_create();
+    MAP_PUT_INT_STR(map, 1, "hefd");
+    MAP_PUT_INT_STR(map, 3, "hefd");
+    MAP_PUT_INT_STR(map, 5, "hefd");
+    MAP_PUT_INT_STR(map, 7, "hefd");
+    MAP_PUT_INT_STR(map, 9, "hefd");
 
-    for (int i = 0; i < 1000; i++) {
-        for (int j = i; j > 0; j--) {
-            string_append_char(s, 'a');
-        } 
+    hashmap_print(map, wc_print_int, str_print);
 
-        genVec_push(vec, (u8*)s);
+    MAP_FOREACH_KEY(map, String, s) {
+        string_print(s);
     }
 
-    // VEC_FOREACH(vec, String, str) {
-    //     string_print(str); putchar('\n');
-    // }
-
-    print_hex(vec->data, vec->capacity * sizeof(String), 32);
-
-    string_destroy(s);
-    genVec_destroy(vec);
+    hashmap_destroy(map);
 }
 
 
