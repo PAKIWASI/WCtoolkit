@@ -1415,11 +1415,11 @@ static inline void map_maybe_resize(hashmap* map);
 static void        map_resize(hashmap* map, u64 new_capacity);
 
 
-    /*
+/*
 ====================PUBLIC FUNCTIONS====================
 */
 
-    hashmap* hashmap_create(u32 key_size, u32 val_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
+hashmap* hashmap_create(u32 key_size, u32 val_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
                             const container_ops* key_ops, const container_ops* val_ops)
 {
     CHECK_FATAL(key_size == 0 || val_size == 0, "key/val size can't be 0");
@@ -1482,7 +1482,7 @@ void hashmap_destroy(hashmap* map)
     free(map);
 }
 
-void hashmap_destroy_stk(hashmap* map)
+static void hashmap_destroy_stk(hashmap* map)
 {
     CHECK_FATAL(!map, "map is null");
 

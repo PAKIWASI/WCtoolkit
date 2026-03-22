@@ -537,7 +537,6 @@ Note: Do NOT break/return/goto inside the block.
  *           → call string_destroy / genVec_destroy etc.
  */
 
-#include <stdlib.h>
 #include <string.h>
 
 
