@@ -1,6 +1,5 @@
 #include "wc_test.h"
 #include "hashmap.h"
-#include "String.h"
 #include "wc_helpers.h"
 #include "wc_macros.h"
 
