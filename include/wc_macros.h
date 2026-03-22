@@ -220,20 +220,58 @@ Usage:
 
 // ── Iterate ────────────────────────────────────────────────────────────────
 
-// TODO: map/set for each
 
-
-#define MAP_FOREACH_KEY(map, T, name) \
+// WARN: don't modify the key !!!
+#define MAP_FOREACH_KEY(map, T, name)            \
     for (u64 _i = 0; _i < (map)->capacity; _i++) \
-        for (T* name = (T*)((map)->keys + (_i * (map)->key_size)); name != NULL; name = NULL)
+        for (const T* name = (const T*)((map)->keys + (_i * (map)->key_size)); name && (map)->psls[_i]; name = NULL)
 
-#define MAP_FOREACH_VAL(map, T, name) \
+#define MAP_FOREACH_VAL(map, T, name)            \
     for (u64 _i = 0; _i < (map)->capacity; _i++) \
-        for (T* name = (T*)((map)->vals + (_i * (map)->val_size)); name != NULL; name = NULL)
+        for (T* name = (T*)((map)->vals + (_i * (map)->val_size)); name && (map)->psls[_i]; name = NULL)
 
-#define SET_FOREACH(set, T, name) \
+
+// ── Hashset shorthands ───────────────────────────────────────────────────
+
+#define SET_FROM_VEC(vec, hash_fn, cmp_fn)                                             \
+    ({                                                                                 \
+        hashset* _set = hashset_create((vec)->data_size, hash_fn, cmp_fn, (vec)->ops); \
+        for (u64 i = 0; i < (vec)->size; i++) {                                        \
+            hashset_insert(_set, genVec_get_ptr((vec), i));                            \
+        }                                                                              \
+        _set;                                                                          \
+    })
+
+#define SET_INSERT(set, elm)                  \
+    ({                                        \
+        typeof(elm) _temp = (elm);            \
+        hashset_insert((set), (u8*)&(_temp)); \
+    })
+
+#define SET_INSERT_COPY(set, elm)             \
+    ({                                        \
+        typeof(elm) _temp = (elm);            \
+        hashset_insert((set), (u8*)&(_temp)); \
+    })
+
+#define SET_INSERT_MOVE(set, ptr)                  \
+    ({                                             \
+        typeof(ptr) _ptr = (ptr);                  \
+        hashset_insert_move((vec), (u8**)&(_ptr)); \
+        (ptr) = _ptr;                              \
+    })
+
+#define SET_INSERT_CSTR(set, cstr)               \
+    ({                                           \
+        String* _s = string_from_cstr(cstr);     \
+        hashset_insert_move((set), (u8**)&(_s)); \
+    })
+
+
+// WARN: don't modify the elm !!!
+#define SET_FOREACH(set, T, name)                \
     for (u64 _i = 0; _i < (set)->capacity; _i++) \
-        for (T* name = (T*)((set)->elms + (_i * (set)->val_size)); name != NULL; name = NULL)
+        for (const T* name = (const T*)((set)->elms + (_i * (set)->elm_size)); name && (set)->psls[_i]; name = NULL)
 
 
 

@@ -1,27 +1,39 @@
 #include "String.h"
-#include "hashmap.h"
+#include "gen_vector.h"
+#include "hashset.h"
 #include "wc_helpers.h"
 #include "wc_macros.h"
-#include <string.h>
 
 
 int main(void)
 {
-    hashmap* map = hashmap_create(sizeof(int), sizeof(String), NULL, NULL, NULL, &wc_str_ops);
+    // hashset* set = hashset_create(sizeof(String), wyhash_str, str_cmp, &wc_str_ops);
 
-    MAP_PUT_INT_STR(map, 1, "hefd");
-    MAP_PUT_INT_STR(map, 3, "hefd");
-    MAP_PUT_INT_STR(map, 5, "hefd");
-    MAP_PUT_INT_STR(map, 7, "hefd");
-    MAP_PUT_INT_STR(map, 9, "hefd");
+    genVec* vec = genVec_init(10, sizeof(String), &wc_str_ops);
+    VEC_PUSH_CSTR(vec, "hello0");
+    VEC_PUSH_CSTR(vec, "hello1");
+    VEC_PUSH_CSTR(vec, "hello2");
+    VEC_PUSH_CSTR(vec, "hello3");
+    VEC_PUSH_CSTR(vec, "hello4");
+    genVec_print(vec, str_print); putchar('\n');
 
-    hashmap_print(map, wc_print_int, str_print);
+    hashset* set = SET_FROM_VEC(vec, wyhash_str, str_cmp);
+    hashset_print(set, str_print);
 
-    MAP_FOREACH_KEY(map, String, s) {
-        string_print(s);
+    if (SET_INSERT_CSTR(set, "hello5")) {
+        printf("already exist - not inserted\n");
+    } else {
+        printf("not exist - inserted\n");
     }
 
-    hashmap_destroy(map);
+    String str; 
+    string_create_stk(&str, "fkdjfkdj");
+    SET_INSERT(set, str);
+    hashset_print(set, str_print);
+
+    genVec_destroy(vec);
+    hashset_destroy(set);
+    return 0;
 }
 
 

@@ -23,7 +23,7 @@ endif()
 
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 
-# Debug: sanitizers + no optimisation
+# Debug: sanitizers + no optimisation TODO: use -fsanitize=memory ?
 set(CMAKE_C_FLAGS_DEBUG   "-g -O0 -fno-omit-frame-pointer -fsanitize=address -fsanitize=undefined")
 set(CMAKE_EXE_LINKER_FLAGS_DEBUG   "-fsanitize=address -fsanitize=undefined")
 

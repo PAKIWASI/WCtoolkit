@@ -65,7 +65,7 @@ void hashset_print(const hashset* set, print_fn print);
 void hashset_clear(hashset* set);
 
 // Deep copy src into dest
-// dest should be pre-inited, it will be freed
+// dest should be pre-inited
 void hashset_copy(hashset* dest, const hashset* src);
 
 
@@ -74,11 +74,13 @@ static inline u64 hashset_size(const hashset* set)
     CHECK_FATAL(!set, "set is null");
     return set->size;
 }
+
 static inline u64 hashset_capacity(const hashset* set)
 {
     CHECK_FATAL(!set, "set is null");
     return set->capacity;
 }
+
 static inline b8 hashset_empty(const hashset* set)
 {
     CHECK_FATAL(!set, "set is null");
