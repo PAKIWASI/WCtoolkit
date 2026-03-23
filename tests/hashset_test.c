@@ -1,3 +1,4 @@
+#include "wc_macros.h"
 #include "wc_test.h"
 #include "hashset.h"
 #include "wc_helpers.h"
@@ -413,9 +414,42 @@ static void test_copy_then_remove_src_elm(void)
 }
 
 
+// TODO: properly test all macros
 /* ════════════════════════════════════════════════════════════════════════════
- * SET_FOREACH iteration
+ * macros test
  * ════════════════════════════════════════════════════════════════════════════ */
+
+static void test_macors(void)
+{
+
+    // hashset* set = hashset_create(sizeof(String), wyhash_str, str_cmp, &wc_str_ops);
+
+    genVec* vec = genVec_init(10, sizeof(String), &wc_str_ops);
+    VEC_PUSH_CSTR(vec, "hello0");
+    VEC_PUSH_CSTR(vec, "hello1");
+    VEC_PUSH_CSTR(vec, "hello2");
+    VEC_PUSH_CSTR(vec, "hello3");
+    VEC_PUSH_CSTR(vec, "hello4");
+    genVec_print(vec, str_print); putchar('\n');
+
+    hashset* set = SET_FROM_VEC(vec, wyhash_str, str_cmp);
+    hashset_print(set, str_print);
+
+    if (SET_INSERT_CSTR(set, "hello5")) {
+        printf("already exist - not inserted\n");
+    } else {
+        printf("not exist - inserted\n");
+    }
+
+    String str; 
+    string_create_stk(&str, "fkdjfkdj");
+    SET_INSERT(set, str);
+    hashset_print(set, str_print);
+
+    string_destroy_stk(&str);
+    genVec_destroy(vec);
+    hashset_destroy(set);
+}
 
 // static void test_foreach_visits_all(void)
 // {
@@ -697,7 +731,8 @@ void hashset_suite(void)
     WC_RUN(test_copy_empty_set);
     WC_RUN(test_copy_then_remove_src_elm);
 
-    // WC_SUITE("HashSet — iteration");
+    WC_SUITE("HashSet — Macros");
+    test_macors();
     // WC_RUN(test_foreach_visits_all);
     // WC_RUN(test_foreach_skips_empty);
     // WC_RUN(test_foreach_empty_set);

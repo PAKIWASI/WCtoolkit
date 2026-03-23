@@ -69,6 +69,8 @@ void string_shrink_to_fit(String* str);
 // Return a malloc'd NUL-terminated copy — caller must free().
 char* string_to_cstr(const String* str);
 
+void string_to_cstr_buf(const String* str, char* buff, u64 n);
+
 // Return a raw pointer into the internal buffer (no NUL terminator).
 char* string_data_ptr(const String* str);
 

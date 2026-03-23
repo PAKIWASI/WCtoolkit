@@ -6,15 +6,11 @@
 
 ## Immediate
 
-- Make Hashmap optimal (SIMD, load factor)
-
-
 
 ---
 
 ## Testing
 
-some genVec functions are not tested 
 
 ---
 
@@ -25,9 +21,6 @@ some genVec functions are not tested
 
 ## Library
 
-How to package this as a library ?
-I have sinle header version but as a whole?
-make a binary?
 
 ---
 
@@ -46,35 +39,15 @@ Need to test them
 
 ## Bug Fixes
 
-- **`ARENA_PUSH_ARRAY` macro** (`arena.h`): `(T)* _dst` is a syntax error, should be `T* _dst`
-
-- **`prev_prime` underflow** (`map_setup.h`): the loop iterates `u64 i = PRIMES_COUNT - 1; i >= 0`
-  which never exits because `u64` wraps around. Change loop index to `i32` or iterate differently.
-
-- **`find_slot` sentinel** (`hashmap.c`, `hashset.c`): returns `0` as a fallback when the table
-  is entirely tombstones and no EMPTY bucket is found. `0` is a valid bucket index. Should return
-  `(u64)-1` and callers should check for it.
-
-- **`str_setup.h` multiple-definition** (`str_setup.h`): `murmurhash3_str` is a non-`static`
-  function defined in a header. Including it in more than one translation unit causes linker errors.
-  Mark it `static` or move it to a `.c` file.
-
-- **`common.c` bitwise OR** (`common.c`): `if (ptr == NULL | size == 0 | bytes_per_line == 0)`
-  uses `|` instead of `||`, evaluating all three operands even when `ptr` is null.
 
 ---
 
 ## gen_vector
 
 - Add iterator / cursor support — right now the only way to loop is manual index arithmetic
-- `genVec_swap(vec, i, j)` — swap two elements in place
-- `genVec_find(vec, elm, cmp_fn)` — linear search, returns index or `(u64)-1`
 - `genVec_reverse(vec)` — in-place reversal
 - `genVec_filter(vec, predicate)` — in-place removal of elements where predicate returns false
-- `genVec_extend(vec, val, count)` — append N copies of a value
 - `genVec_view` — a non-owning slice into a vector (pointer + length, no copy)
-- *`genVec_swap_remove` - when order doesn't matter, swap the target element with 
-    the last one and pop. O(1) instead of O(n)*
 - Guard against push-past-capacity in `genVec_init_arr` mode — currently crashes silently.
     Add an `ASSERT_FATAL` at the push site when the internal data pointer is stack-owned.
 
@@ -82,7 +55,6 @@ Need to test them
 
 ## String
 
-- `string_to_cstr_buf(str, buf, buf_size)` — write into caller-provided buffer, no malloc
 - `string_split(str, delim, &out_count)` — split by delimiter, returns `String**`
 - `string_join(strings, count, sep)` — join array of strings with separator
 - `string_trim(str)` — remove leading and trailing whitespace
@@ -92,7 +64,6 @@ Need to test them
 - `string_format(str, fmt, ...)` / `string_format_new(fmt, ...)` — sprintf-style building
 - `string_reverse(str)`
 - `string_starts_with(str, prefix)`, `string_ends_with(str, suffix)`
-- `string_contains(str, substr)`
 - `string_count_char(str, c)` — count occurrences of a character
 - `string_repeat(str, times)` — returns a new repeated string
 - **String view** — zero-copy slice, no ownership:
@@ -110,13 +81,11 @@ Need to test them
 - `hashmap_update(map, key, val)` — update value only if key exists, return false if not found
 - `hashmap_keys(map)` — returns a `genVec*` of all keys
 - `hashmap_values(map)` — returns a `genVec*` of all values
-- Iterator / `hashmap_for_each(map, fn)` — currently the only traversal is `hashmap_print`
 
 ---
 
 ## HashSet
 
-- Iterator / `hashset_for_each(set, fn)` — same gap as HashMap
 - Set operations: `hashset_union`, `hashset_intersect`, `hashset_difference`
 
 ---
@@ -203,21 +172,8 @@ Need to test them
 ## Speed Improvement
 
 ### hashmap
-    - three parallel arrays: states[], keys[] (each key_size bytes), vals[] (each val_size bytes), indexed together. 
-        One malloc for the whole table. This alone will bring your map from ~10x slower than std::unordered_map to competitive or faster
-    ```c
-        u8*    states;    // u8[] of EMPTY/FILLED/TOMBSTONE
-        u8*    keys;      // key_size * capacity bytes, inline
-        u8*    vals;      // val_size * capacity bytes, inline
-    ```
-    - Robin Hood hashing
-    - The reason you're using primes is to spread collisions when the hash function is weak. 
-        With a good hash (Murmur3, xxHash, or wyhash), power-of-2 is safe and eliminates the division entirely. 
-    - Hash function. Replace fnv1a_hash as default with wyhash or xxHash3
 
 ### genvec
-    - Aggressive auto-shrinking is a problem. You shrink at 25% fill, and this fires inside pop
-    - MAYBE_GROW does a branch every push. (do the hot/cold thing?)
     - restrict and inlining for genVec POD. For tight numerical loops, adding __restrict__ to the data pointer 
         tells the compiler that data doesn't alias any other pointer, enabling auto-vectorisation. 
 

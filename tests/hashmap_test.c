@@ -478,8 +478,9 @@ static void test_copy_then_del_src_key(void)
 }
 
 
+// TODO: test macros properly
 /* ════════════════════════════════════════════════════════════════════════════
- * Iteration macros
+ * macros
  * ════════════════════════════════════════════════════════════════════════════ */
 
 // static void test_foreach_visits_all(void)
@@ -869,7 +870,7 @@ void hashmap_suite(void)
     WC_RUN(test_copy_empty_map);
     WC_RUN(test_copy_then_del_src_key);
 
-    // WC_SUITE("HashMap — iteration macros");
+    WC_SUITE("HashMap — Macros");
     // WC_RUN(test_foreach_visits_all);
     // WC_RUN(test_foreach_skips_empty);
     // WC_RUN(test_foreach_val_typed);

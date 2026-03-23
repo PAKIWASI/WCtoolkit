@@ -245,6 +245,18 @@ char* string_to_cstr(const String* s)
     return out;
 }
 
+void string_to_cstr_buf(const String* str, char* buff, u64 n)
+{
+    CHECK_FATAL(!str, "str is null");
+    CHECK_FATAL(!buff, "buff is null");
+    CHECK_FATAL(n < str->size + 1, "buffer not enough");
+
+    if (str->size > 0) {
+        str_copy_n(buff, GET_STR(str), str->size);
+    }
+    buff[n - 1] = '\0'; 
+}
+
 char* string_data_ptr(const String* s)
 {
     CHECK_FATAL(!s, "str is null");

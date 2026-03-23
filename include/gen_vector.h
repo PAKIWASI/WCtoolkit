@@ -111,6 +111,12 @@ void genVec_push_move(genVec* vec, u8** data);
 // Note: del_fn is called regardless to clean up owned resources.
 void genVec_pop(genVec* vec, u8* popped);
 
+// If order doesn't matter, O(1) deletion from middle
+void genVec_swap_pop(genVec* vec, u64 i, u8* out);
+
+// swap element at i with element at j
+void genVec_swap(genVec* vec, u64 i, u64 j);
+
 // Copy element at index i into out buffer.
 void genVec_get(const genVec* vec, u64 i, u8* out);
 
@@ -143,7 +149,6 @@ void genVec_insert_multi_move(genVec* vec, u64 i, u8** data, u64 num_data);
 // Remove element at index i, optionally copy to out, shift elements left.
 void genVec_remove(genVec* vec, u64 i, u8* out);
 
-// TODO: test
 // Remove elements in range [start, start + len)
 void genVec_remove_range(genVec* vec, u64 start, u64 len);
 
@@ -156,11 +161,9 @@ const u8* genVec_back(const genVec* vec);
 // Search
 // ===========================
 
-// TODO: 
 // if cmp_fn = NULL, then use memcmp
 u64 genVec_find(const genVec* vec, u8* elm, compare_fn cmp_fn);
 
-// TODO: 
 genVec* genVec_subarr(const genVec* vec, u64 start, u64 len);
 
 

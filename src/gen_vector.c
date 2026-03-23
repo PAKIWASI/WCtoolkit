@@ -1,4 +1,5 @@
 #include "gen_vector.h"
+#include "common.h"
 #include "wc_errno.h"
 
 #include <string.h>
@@ -310,6 +311,51 @@ void genVec_pop(genVec* vec, u8* popped)
     vec->size--;
 }
 
+void genVec_swap_pop(genVec* vec, u64 i, u8* out)
+{
+    CHECK_FATAL(!vec, "vec is null");
+    CHECK_FATAL(i >= vec->size, "index out of bounds");
+
+    if (out) {
+        copy_fn copy = COPY_FN(vec);
+        if (copy) {
+            copy(out, GET_PTR(vec, i)); 
+        } else {
+            memcpy(out, GET_PTR(vec, i), vec->data_size);
+        }
+    }
+
+    delete_fn del = DEL_FN(vec);
+    if (del) {
+        del(GET_PTR(vec, i));
+    }
+
+    // swap the last container with the removed one
+    // if owns memory elsewhere, those are still valid, only container location changes 
+    memcpy(GET_PTR(vec, i), GET_PTR(vec, vec->size-1), vec->data_size);
+    vec->size--;
+}
+
+void genVec_swap(genVec* vec, u64 i, u64 j)
+{
+    CHECK_FATAL(!vec, "vec is null");
+    CHECK_FATAL(i >= vec->size || j >= vec->size, "index out of bounds");
+
+    if (i == j) { return; }
+
+    // we need one empty container as temp space for swap
+    MAYBE_GROW(vec);
+
+    // shallow copy of the jth container to temp space
+    memcpy(GET_PTR(vec, vec->size), GET_PTR(vec, j), vec->data_size);
+    // shallow copy into jth container
+    memcpy(GET_PTR(vec, j), GET_PTR(vec, i), vec->data_size);
+    // shallow copy from temp space into ith container
+    memcpy(GET_PTR(vec, i), GET_PTR(vec, vec->size), vec->data_size);
+
+    // temp container will be over written on next push 
+}
+
 
 void genVec_get(const genVec* vec, u64 i, u8* out)
 {
@@ -318,6 +364,7 @@ void genVec_get(const genVec* vec, u64 i, u8* out)
     CHECK_FATAL(i >= vec->size, "index out of bounds");
 
     copy_fn copy = COPY_FN(vec);
+
     if (copy) {
         copy(out, GET_PTR(vec, i));
     } else {
