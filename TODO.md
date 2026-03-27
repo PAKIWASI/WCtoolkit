@@ -88,6 +88,7 @@ Need to test them
 ## HashSet
 
 - Set operations: `hashset_union`, `hashset_intersect`, `hashset_difference`
+- Union-Find data structure ?
 
 ---
 
