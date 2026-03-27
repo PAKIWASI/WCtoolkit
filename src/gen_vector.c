@@ -84,10 +84,12 @@ genVec* genVec_init_val(u64 n, const u8* val, u32 data_size, const container_ops
     vec->size = n; // capacity set to n in genVec_init
 
     copy_fn copy = COPY_FN(vec);
-    for (u64 i = 0; i < n; i++) {
-        if (copy) {
+    if (copy) {
+        for (u64 i = 0; i < n; i++) {
             copy(GET_PTR(vec, i), val);
-        } else {
+        }
+    } else {
+        for (u64 i = 0; i < n; i++) {
             memcpy(GET_PTR(vec, i), val, data_size);
         }
     }
@@ -106,10 +108,12 @@ void genVec_init_val_stk(u64 n, const u8* val, u32 data_size, const container_op
     vec->size = n;
 
     copy_fn copy = COPY_FN(vec);
-    for (u64 i = 0; i < n; i++) {
-        if (copy) {
+    if (copy) {
+        for (u64 i = 0; i < n; i++) {
             copy(GET_PTR(vec, i), val);
-        } else {
+        }
+    } else {
+        for (u64 i = 0; i < n; i++) {
             memcpy(GET_PTR(vec, i), val, data_size);
         }
     }
@@ -216,10 +220,12 @@ void genVec_reserve_val(genVec* vec, u64 new_capacity, const u8* val)
     genVec_reserve(vec, new_capacity);
 
     copy_fn copy = COPY_FN(vec);
-    for (u64 i = vec->size; i < new_capacity; i++) {
-        if (copy) {
+    if (copy) {
+        for (u64 i = vec->size; i < new_capacity; i++) {
             copy(GET_PTR(vec, i), val);
-        } else {
+        }
+    } else {
+        for (u64 i = vec->size; i < new_capacity; i++) {
             memcpy(GET_PTR(vec, i), val, vec->data_size);
         }
     }
@@ -748,5 +754,3 @@ static void genVec_grow(genVec* vec)
     vec->data     = new_data;
     vec->capacity = new_cap;
 }
-
-

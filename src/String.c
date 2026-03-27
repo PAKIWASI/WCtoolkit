@@ -505,13 +505,10 @@ u64 string_find_char(const String* s, char c)
 {
     CHECK_FATAL(!s, "str is null");
 
+    if (s->size == 0) { return (u64)-1; }
     const char* buf = GET_STR(s);
-    for (u64 i = 0; i < s->size; i++) {
-        if (buf[i] == c) {
-            return i;
-        }
-    }
-    return (u64)-1;
+    const char* p   = memchr(buf, (unsigned char)c, s->size);
+    return p ? (u64)(p - buf) : (u64)-1;
 }
 
 u64 string_find_cstr(const String* s, const char* substr)
@@ -572,21 +569,16 @@ void string_print(const String* s)
 }
 
 
-
+// TODO: remove this and do ray strlen
 static u64 cstr_len(const char* cstr)
 {
-    u64 i = 0;
-    while (cstr[i] != '\0') {
-        i++;
-    }
-    return i;
+    return (u64)strlen(cstr);
 }
 
+// TODO: remove this and do normal memcpy
 static void str_copy_n(char* dest, const char* src, u64 n)
 {
-    for (u64 i = 0; i < n; i++) {
-        dest[i] = src[i];
-    }
+    memcpy(dest, src, n);
 }
 
 // Promote SSO buffer to heap allocation.

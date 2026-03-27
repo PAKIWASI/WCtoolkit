@@ -59,21 +59,21 @@ float matrix_get_elm(Matrixf* mat, u64 i, u64 j);
 // ============================================================================
 
 // Matrix addition: out = a + b
-// out may alias a and/or b (safe to do: matrix_add(a, a, b))
-void matrix_add(Matrixf* out, const Matrixf* a, const Matrixf* b);
+// out must NOT alias a or b (restrict enables auto-vectorization)
+void matrix_add(Matrixf* restrict out, const Matrixf* restrict a, const Matrixf* restrict b);
 
 // Matrix subtraction: out = a - b
-// out may alias a and/or b (safe to do: matrix_sub(a, a, b))
-void matrix_sub(Matrixf* out, const Matrixf* a, const Matrixf* b);
+// out must NOT alias a or b (restrict enables auto-vectorization)
+void matrix_sub(Matrixf* restrict out, const Matrixf* restrict a, const Matrixf* restrict b);
 
 // Scalar multiplication: mat = mat * val
-void matrix_scale(Matrixf* mat, float val);
+void matrix_scale(Matrixf* restrict mat, float val);
 
-// Element wise divistion
-void matrix_div(Matrixf* mat, float val);
+// Element wise division
+void matrix_div(Matrixf* restrict mat, float val);
 
 // Matrix copy: dest = src
-void matrix_copy(Matrixf* dest, const Matrixf* src);
+void matrix_copy(Matrixf* restrict dest, const Matrixf* restrict src);
 
 
 // MATRIX MULTIPLICATION
@@ -81,15 +81,15 @@ void matrix_copy(Matrixf* dest, const Matrixf* src);
 
 // Matrix multiplication: out = a × b
 // (m×k) * (k×n) = (m×n)
-// out may NOT alias a or b
+// out must NOT alias a or b
 // Uses blocked ikj multiplication for cache efficiency (good for small-medium matrices)
-void matrix_xply(Matrixf* out, const Matrixf* a, const Matrixf* b);
+void matrix_xply(Matrixf* restrict out, const Matrixf* restrict a, const Matrixf* restrict b);
 
 // Matrix multiplication variant 2: out = a × b
 // Transposes b internally for better cache locality
 // Takes more memory but can be faster for large matrices
-// out may NOT alias a or b
-void matrix_xply_2(Matrixf* out, const Matrixf* a, const Matrixf* b);
+// out must NOT alias a or b
+void matrix_xply_2(Matrixf* restrict out, const Matrixf* restrict a, const Matrixf* restrict b);
 
 
 
@@ -97,12 +97,12 @@ void matrix_xply_2(Matrixf* out, const Matrixf* a, const Matrixf* b);
 // ============================================================================
 
 // Transpose: out = mat^T
-// out may NOT alias mat
-void matrix_T(Matrixf* out, const Matrixf* mat);
+// out must NOT alias mat
+void matrix_T(Matrixf* restrict out, const Matrixf* restrict mat);
 
 // LU Decomposition: mat = L × U
 // Decomposes square matrix into Lower and Upper triangular matrices
-void matrix_LU_Decomp(Matrixf* L, Matrixf* U, const Matrixf* mat);
+void matrix_LU_Decomp(Matrixf* restrict L, Matrixf* restrict U, const Matrixf* restrict mat);
 
 // Calculate determinant using LU decomposition
 float matrix_det(const Matrixf* mat);
