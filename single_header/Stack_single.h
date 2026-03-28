@@ -424,6 +424,12 @@ void genVec_push_move(genVec* vec, u8** data);
 // Note: del_fn is called regardless to clean up owned resources.
 void genVec_pop(genVec* vec, u8* popped);
 
+// If order doesn't matter, O(1) deletion from middle
+void genVec_swap_pop(genVec* vec, u64 i, u8* out);
+
+// swap element at i with element at j
+void genVec_swap(genVec* vec, u64 i, u64 j);
+
 // Copy element at index i into out buffer.
 void genVec_get(const genVec* vec, u64 i, u8* out);
 
@@ -456,7 +462,6 @@ void genVec_insert_multi_move(genVec* vec, u64 i, u8** data, u64 num_data);
 // Remove element at index i, optionally copy to out, shift elements left.
 void genVec_remove(genVec* vec, u64 i, u8* out);
 
-// TODO: test
 // Remove elements in range [start, start + len)
 void genVec_remove_range(genVec* vec, u64 start, u64 len);
 
@@ -469,11 +474,9 @@ const u8* genVec_back(const genVec* vec);
 // Search
 // ===========================
 
-// TODO: 
 // if cmp_fn = NULL, then use memcmp
 u64 genVec_find(const genVec* vec, u8* elm, compare_fn cmp_fn);
 
-// TODO: 
 genVec* genVec_subarr(const genVec* vec, u64 start, u64 len);
 
 
@@ -645,10 +648,12 @@ genVec* genVec_init_val(u64 n, const u8* val, u32 data_size, const container_ops
     vec->size = n; // capacity set to n in genVec_init
 
     copy_fn copy = COPY_FN(vec);
-    for (u64 i = 0; i < n; i++) {
-        if (copy) {
+    if (copy) {
+        for (u64 i = 0; i < n; i++) {
             copy(GET_PTR(vec, i), val);
-        } else {
+        }
+    } else {
+        for (u64 i = 0; i < n; i++) {
             memcpy(GET_PTR(vec, i), val, data_size);
         }
     }
@@ -667,10 +672,12 @@ void genVec_init_val_stk(u64 n, const u8* val, u32 data_size, const container_op
     vec->size = n;
 
     copy_fn copy = COPY_FN(vec);
-    for (u64 i = 0; i < n; i++) {
-        if (copy) {
+    if (copy) {
+        for (u64 i = 0; i < n; i++) {
             copy(GET_PTR(vec, i), val);
-        } else {
+        }
+    } else {
+        for (u64 i = 0; i < n; i++) {
             memcpy(GET_PTR(vec, i), val, data_size);
         }
     }
@@ -777,10 +784,12 @@ void genVec_reserve_val(genVec* vec, u64 new_capacity, const u8* val)
     genVec_reserve(vec, new_capacity);
 
     copy_fn copy = COPY_FN(vec);
-    for (u64 i = vec->size; i < new_capacity; i++) {
-        if (copy) {
+    if (copy) {
+        for (u64 i = vec->size; i < new_capacity; i++) {
             copy(GET_PTR(vec, i), val);
-        } else {
+        }
+    } else {
+        for (u64 i = vec->size; i < new_capacity; i++) {
             memcpy(GET_PTR(vec, i), val, vec->data_size);
         }
     }
@@ -871,6 +880,51 @@ void genVec_pop(genVec* vec, u8* popped)
     vec->size--;
 }
 
+void genVec_swap_pop(genVec* vec, u64 i, u8* out)
+{
+    CHECK_FATAL(!vec, "vec is null");
+    CHECK_FATAL(i >= vec->size, "index out of bounds");
+
+    if (out) {
+        copy_fn copy = COPY_FN(vec);
+        if (copy) {
+            copy(out, GET_PTR(vec, i)); 
+        } else {
+            memcpy(out, GET_PTR(vec, i), vec->data_size);
+        }
+    }
+
+    delete_fn del = DEL_FN(vec);
+    if (del) {
+        del(GET_PTR(vec, i));
+    }
+
+    // swap the last container with the removed one
+    // if owns memory elsewhere, those are still valid, only container location changes 
+    memcpy(GET_PTR(vec, i), GET_PTR(vec, vec->size-1), vec->data_size);
+    vec->size--;
+}
+
+void genVec_swap(genVec* vec, u64 i, u64 j)
+{
+    CHECK_FATAL(!vec, "vec is null");
+    CHECK_FATAL(i >= vec->size || j >= vec->size, "index out of bounds");
+
+    if (i == j) { return; }
+
+    // we need one empty container as temp space for swap
+    MAYBE_GROW(vec);
+
+    // shallow copy of the jth container to temp space
+    memcpy(GET_PTR(vec, vec->size), GET_PTR(vec, j), vec->data_size);
+    // shallow copy into jth container
+    memcpy(GET_PTR(vec, j), GET_PTR(vec, i), vec->data_size);
+    // shallow copy from temp space into ith container
+    memcpy(GET_PTR(vec, i), GET_PTR(vec, vec->size), vec->data_size);
+
+    // temp container will be over written on next push 
+}
+
 
 void genVec_get(const genVec* vec, u64 i, u8* out)
 {
@@ -879,6 +933,7 @@ void genVec_get(const genVec* vec, u64 i, u8* out)
     CHECK_FATAL(i >= vec->size, "index out of bounds");
 
     copy_fn copy = COPY_FN(vec);
+
     if (copy) {
         copy(out, GET_PTR(vec, i));
     } else {
