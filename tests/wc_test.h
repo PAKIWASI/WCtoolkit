@@ -33,14 +33,14 @@
  *
  * ASSERT MACROS
  * -------------
- *   WC_ASSERT(cond)              — generic condition
+ *   WC_ASSERT(cond)             — generic condition
  *   WC_ASSERT_EQ_INT(a, b)      — integer equality, prints values on fail
  *   WC_ASSERT_EQ_U64(a, b)      — u64 equality
  *   WC_ASSERT_EQ_STR(a, b)      — cstr equality (strcmp)
- *   WC_ASSERT_NULL(p)            — pointer is NULL
- *   WC_ASSERT_NOT_NULL(p)        — pointer is not NULL
- *   WC_ASSERT_TRUE(cond)         — alias for WC_ASSERT
- *   WC_ASSERT_FALSE(cond)        — asserts condition is false
+ *   WC_ASSERT_NULL(p)           — pointer is NULL
+ *   WC_ASSERT_NOT_NULL(p)       — pointer is not NULL
+ *   WC_ASSERT_TRUE(cond)        — alias for WC_ASSERT
+ *   WC_ASSERT_FALSE(cond)       — asserts condition is false
  *
  * RULES
  * -----
@@ -55,28 +55,18 @@
 #include <string.h>
 
 
-/* ── Internal state ──────────────────────────────────────────────────────── */
-
-// static int wc_total  = 0;
-// static int wc_passed = 0;
-// static int wc_failed = 0;
-//
-// /* Per-test tracking: reset at the start of each WC_RUN */
-// static int wc_test_failed = 0;
-
-
 #ifdef WC_TEST_MAIN
-    /* Defined exactly once, in the file that #define WC_TEST_MAIN */
-    int wc_total       = 0;
-    int wc_passed      = 0;
-    int wc_failed      = 0;
-    int wc_test_failed = 0;
+/* Defined exactly once, in the file that #define WC_TEST_MAIN */
+int wc_total       = 0;
+int wc_passed      = 0;
+int wc_failed      = 0;
+int wc_test_failed = 0;
 #else
-    /* All other translation units: just extern declarations */
-    extern int wc_total;
-    extern int wc_passed;
-    extern int wc_failed;
-    extern int wc_test_failed;
+/* All other translation units: just extern declarations */
+extern int wc_total;
+extern int wc_passed;
+extern int wc_failed;
+extern int wc_test_failed;
 #endif
 
 /* ANSI colours (same palette as common.h) */
@@ -87,7 +77,7 @@
 #define WC_RESET  "\033[0m"
 
 
-/* ── Core assert ─────────────────────────────────────────────────────────── */
+// Core assert 
 
 /* All asserts funnel through this so failure tracking is in one place */
 #define WC_ASSERT_CORE(cond, msg)                         \
@@ -161,7 +151,7 @@
     } while (0)
 
 
-/* ── Suite and runner macros ─────────────────────────────────────────────── */
+// Suite and runner macros 
 
 /* Print a suite header */
 #define WC_SUITE(name) printf("\n" WC_CYAN "══ %s ══" WC_RESET "\n", (name))
