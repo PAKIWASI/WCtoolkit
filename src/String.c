@@ -1,14 +1,16 @@
 #include "String.h"
 #include "wc_errno.h"
+
 #include <string.h>
 
 
 //  Internal macros
 
-#define IS_SSO(s)        ((s)->capacity == STR_SSO_SIZE)
-#define GET_STR(s)       (IS_SSO(s) ? (s)->stk : (s)->heap)
-#define GET_STR_AT(s, i) (GET_STR(s)[i])
-#define STR_REMAINING(s) ((s)->capacity - (s)->size)
+#define IS_SSO(s)          ((s)->capacity == STR_SSO_SIZE)
+#define GET_STR(s)         (IS_SSO(s) ? (s)->stk : (s)->heap)
+#define GET_STR_PTR(s, i)  (GET_STR(s) + i)
+#define GET_STR_CHAR(s, i) (GET_STR(s)[i])
+#define STR_REMAINING(s)   ((s)->capacity - (s)->size)
 
 // Grow if full.
 #define MAYBE_GROW(s)                     \
@@ -22,13 +24,6 @@
         }                                 \
     } while (0)
 
-// Shrink heap string if very sparse.
-#define MAYBE_SHRINK(s)                                                                  \
-    do {                                                                                 \
-        if (!IS_SSO(s) && (s)->size <= (u64)((float)(s)->capacity * STRING_SHRINK_AT)) { \
-            string_shrink(s);                                                            \
-        }                                                                                \
-    } while (0)
 
 
 //  Private helpers
@@ -38,8 +33,6 @@ static void str_copy_n(char* dest, const char* src, u64 n);
 static void stk_to_heap(String* s);
 static void heap_to_stk(String* s);
 static void string_grow(String* s);
-static void string_shrink(String* s);
-// Ensure capacity >= needed (handles SSO → heap transition).
 static void ensure_capacity(String* s, u64 needed);
 
 
@@ -227,7 +220,7 @@ void string_shrink_to_fit(String* s)
 
     char* new_data = realloc(s->heap, s->size);
     if (!new_data) {
-        WARN("shrink_to_fit realloc failed — keeping current allocation");
+        WARN("shrink_to_fit realloc failed");
         return;
     }
     s->heap     = new_data;
@@ -252,6 +245,18 @@ char* string_to_cstr(const String* s)
     return out;
 }
 
+void string_to_cstr_buf(const String* str, char* buff, u64 n)
+{
+    CHECK_FATAL(!str, "str is null");
+    CHECK_FATAL(!buff, "buff is null");
+    CHECK_FATAL(n < str->size + 1, "buffer not enough");
+
+    if (str->size > 0) {
+        str_copy_n(buff, GET_STR(str), str->size);
+    }
+    buff[n - 1] = '\0'; 
+}
+
 char* string_data_ptr(const String* s)
 {
     CHECK_FATAL(!s, "str is null");
@@ -269,10 +274,9 @@ void string_append_char(String* s, char c)
 {
     CHECK_FATAL(!s, "str is null");
     MAYBE_GROW(s);
-    GET_STR_AT(s, s->size++) = c;
+    GET_STR_CHAR(s, s->size++) = c;
 }
 
-// TODO: this always sets size = cap if size was not enough, no extra
 void string_append_cstr(String* s, const char* cstr)
 {
     CHECK_FATAL(!s, "str is null");
@@ -321,8 +325,7 @@ char string_pop_char(String* s)
     CHECK_FATAL(!s, "str is null");
     WC_SET_RET(WC_ERR_EMPTY, s->size == 0, '\0');
 
-    char c = GET_STR_AT(s, --s->size);
-    MAYBE_SHRINK(s);
+    char c = GET_STR_CHAR(s, --s->size);
     return c;
 }
 
@@ -374,22 +377,7 @@ void string_insert_string(String* s, u64 i, const String* other)
         return;
     }
 
-    // If src == dest we need a snapshot to avoid aliasing after realloc.
-    if (s == other) {
-        char* snap = malloc(other->size);
-        CHECK_FATAL(!snap, "malloc failed");
-        str_copy_n(snap, GET_STR(other), other->size);
-
-        ensure_capacity(s, s->size + other->size);
-        char* buf = GET_STR(s);
-        for (u64 j = s->size; j > i; j--) {
-            buf[j + other->size - 1] = buf[j - 1];
-        }
-        str_copy_n(buf + i, snap, other->size);
-        s->size += other->size;
-        free(snap);
-        return;
-    }
+    CHECK_WARN_RET(s == other, , "can't insert aliasing(same) strings");
 
     u64 len = other->size;
     ensure_capacity(s, s->size + len);
@@ -412,27 +400,31 @@ void string_remove_char(String* s, u64 i)
         buf[j] = buf[j + 1];
     }
     s->size--;
-    MAYBE_SHRINK(s);
 }
 
-void string_remove_range(String* s, u64 l, u64 r)
+/*
+    0 1 2 3 4 5  (1, 2)
+      ^ ^ 
+    start = 1
+    len = 2
+    end = 2
+
+*/
+
+void string_remove_range(String* s, u64 start, u64 len)
 {
     CHECK_FATAL(!s, "str is null");
-    CHECK_FATAL(l >= s->size, "l out of bounds");
-    CHECK_FATAL(l > r, "invalid range: l > r");
+    CHECK_FATAL(start >= s->size, "start out of bounds");
 
-    if (r >= s->size) {
-        r = s->size - 1;
+    if (len == 0) { return; }
+
+    if (start + len >= s->size) {
+        len = s->size - start;
     }
 
-    u64   count = r - l + 1;
-    char* buf   = GET_STR(s);
+    memmove(GET_STR_PTR(s, start), GET_STR_PTR(s, start + len), s->size - len);
 
-    for (u64 j = l; j + count < s->size; j++) {
-        buf[j] = buf[j + count];
-    }
-    s->size -= count;
-    MAYBE_SHRINK(s);
+    s->size -= len;
 }
 
 void string_clear(String* s)
@@ -448,14 +440,14 @@ char string_char_at(const String* s, u64 i)
 {
     CHECK_FATAL(!s, "str is null");
     CHECK_FATAL(i >= s->size, "index out of bounds");
-    return GET_STR_AT(s, i);
+    return GET_STR_CHAR(s, i);
 }
 
 void string_set_char(String* s, u64 i, char c)
 {
     CHECK_FATAL(!s, "str is null");
     CHECK_FATAL(i >= s->size, "index out of bounds");
-    GET_STR_AT(s, i) = c;
+    *GET_STR_PTR(s, i) = c; // TODO: test this
 }
 
 
@@ -513,13 +505,10 @@ u64 string_find_char(const String* s, char c)
 {
     CHECK_FATAL(!s, "str is null");
 
+    if (s->size == 0) { return (u64)-1; }
     const char* buf = GET_STR(s);
-    for (u64 i = 0; i < s->size; i++) {
-        if (buf[i] == c) {
-            return i;
-        }
-    }
-    return (u64)-1;
+    const char* p   = memchr(buf, (unsigned char)c, s->size);
+    return p ? (u64)(p - buf) : (u64)-1;
 }
 
 u64 string_find_cstr(const String* s, const char* substr)
@@ -549,18 +538,16 @@ String* string_substr(const String* s, u64 start, u64 length)
     CHECK_FATAL(!s, "str is null");
     CHECK_FATAL(start >= s->size, "start out of bounds");
 
-    u64 end = start + length;
-    if (end > s->size) {
-        end = s->size;
+    if (start + length > s->size) {
+        length = s->size - start;
     }
 
-    u64 actual_len = end - start;
-
     String* result = string_create();
-    if (actual_len > 0) {
-        ensure_capacity(result, actual_len);
-        str_copy_n(GET_STR(result), GET_STR(s) + start, actual_len);
-        result->size = actual_len;
+
+    if (length > 0) {
+        ensure_capacity(result, length);
+        str_copy_n(GET_STR(result), GET_STR(s) + start, length);
+        result->size = length;
     }
 
     return result;
@@ -582,21 +569,16 @@ void string_print(const String* s)
 }
 
 
-
+// TODO: remove this and do ray strlen
 static u64 cstr_len(const char* cstr)
 {
-    u64 i = 0;
-    while (cstr[i] != '\0') {
-        i++;
-    }
-    return i;
+    return (u64)strlen(cstr);
 }
 
+// TODO: remove this and do normal memcpy
 static void str_copy_n(char* dest, const char* src, u64 n)
 {
-    for (u64 i = 0; i < n; i++) {
-        dest[i] = src[i];
-    }
+    memcpy(dest, src, n);
 }
 
 // Promote SSO buffer to heap allocation.
@@ -633,27 +615,6 @@ static void string_grow(String* s)
     s->capacity = new_cap;
 }
 
-// TODO: move from heap to stk if cap too low?
-static void string_shrink(String* s)
-{
-    u64 new_cap = (u64)((float)s->capacity * STRING_SHRINK_BY);
-
-    if (new_cap <= STR_SSO_SIZE) {
-        heap_to_stk(s);
-        return;
-    }
-
-    char* new_data = realloc(s->heap, new_cap);
-    if (!new_data) {
-        WARN("shrink realloc failed — keeping current allocation");
-        return;
-    }
-
-    s->heap     = new_data;
-    s->capacity = new_cap;
-}
-
-// Grow (possibly multiple times) until capacity >= needed.
 static void ensure_capacity(String* s, u64 needed)
 {
     if (needed <= s->capacity) {
@@ -666,6 +627,7 @@ static void ensure_capacity(String* s, u64 needed)
         new_cap = needed;
     }
 
+    // currently in sso but sso_cap is not enough
     if (IS_SSO(s)) {
         char* new_data = malloc(new_cap);
         CHECK_FATAL(!new_data, "malloc failed");

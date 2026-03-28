@@ -32,7 +32,8 @@ Diagnostics:
       - readability-avoid-const-params-in-decls
       - readability-isolate-declaration
       - readability-non-const-parameter
-      
+      - readability-avoid-nested-conditional-operator
+
       - bugprone-easily-swappable-parameters
       - bugprone-assignment-in-if-condition
 

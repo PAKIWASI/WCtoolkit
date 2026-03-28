@@ -24,18 +24,11 @@
  */
 
 
-// genVec growth/shrink settings (user can change)
+// genVec growth settings (user can change)
 
 #ifndef GENVEC_GROWTH
     #define GENVEC_GROWTH 1.5F      // vec capacity multiplier
 #endif
-#ifndef GENVEC_SHRINK_AT
-    #define GENVEC_SHRINK_AT 0.25F  // % filled to shrink at (25% filled)
-#endif
-#ifndef GENVEC_SHRINK_BY
-    #define GENVEC_SHRINK_BY 0.5F   // capacity divisor (half)
-#endif
-
 
 
 // generic vector container
@@ -51,12 +44,14 @@ typedef struct {
 
 } genVec;
 
-// 8 8 8 8 4 '4'  = 40 bytes ? 
+// 8 8 8 8 4 '4'  = 40 bytes
+
 
 // Convenience: access ops callbacks safely
 #define VEC_COPY_FN(vec) ((vec)->ops ? (vec)->ops->copy_fn : NULL)
 #define VEC_MOVE_FN(vec) ((vec)->ops ? (vec)->ops->move_fn : NULL)
 #define VEC_DEL_FN(vec)  ((vec)->ops ? (vec)->ops->del_fn  : NULL)
+
 
 
 // Memory Management
@@ -76,9 +71,9 @@ void genVec_init_val_stk(u64 n, const u8* val, u32 data_size, const container_op
 
 // Vector COMPLETELY on stack (can't grow in size).
 // You provide a stack-allocated array which becomes the internal array.
+// should only use if you need genVec operations on C array
 // WARNING: crashes when size == capacity and you try to push.
 void genVec_init_arr(u64 n, u8* arr, u32 data_size, const container_ops* ops, genVec* vec);
-
 
 // Destroy heap-allocated vector and clean up all elements.
 void genVec_destroy(genVec* vec);
@@ -116,6 +111,12 @@ void genVec_push_move(genVec* vec, u8** data);
 // Note: del_fn is called regardless to clean up owned resources.
 void genVec_pop(genVec* vec, u8* popped);
 
+// If order doesn't matter, O(1) deletion from middle
+void genVec_swap_pop(genVec* vec, u64 i, u8* out);
+
+// swap element at i with element at j
+void genVec_swap(genVec* vec, u64 i, u64 j);
+
 // Copy element at index i into out buffer.
 void genVec_get(const genVec* vec, u64 i, u8* out);
 
@@ -148,14 +149,22 @@ void genVec_insert_multi_move(genVec* vec, u64 i, u8** data, u64 num_data);
 // Remove element at index i, optionally copy to out, shift elements left.
 void genVec_remove(genVec* vec, u64 i, u8* out);
 
-// Remove elements in range [l, r] inclusive.
-void genVec_remove_range(genVec* vec, u64 l, u64 r);
+// Remove elements in range [start, start + len)
+void genVec_remove_range(genVec* vec, u64 start, u64 len);
 
 // Get pointer to first element.
 const u8* genVec_front(const genVec* vec);
 
 // Get pointer to last element.
 const u8* genVec_back(const genVec* vec);
+
+// Search
+// ===========================
+
+// if cmp_fn = NULL, then use memcmp
+u64 genVec_find(const genVec* vec, u8* elm, compare_fn cmp_fn);
+
+genVec* genVec_subarr(const genVec* vec, u64 start, u64 len);
 
 
 // Utility

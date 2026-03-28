@@ -28,9 +28,9 @@
  */
 
 
-#include "json_parser.h"
 #include "wc_macros.h"
-#include <stdio.h>
+
+#include "json_parser.h"
 
 
 // ── helpers ────────────────────────────────────────────────────────────

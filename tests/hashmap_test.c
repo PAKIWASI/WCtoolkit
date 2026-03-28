@@ -1,23 +1,25 @@
 #include "wc_test.h"
 #include "hashmap.h"
-#include "String.h"
 #include "wc_helpers.h"
 #include "wc_macros.h"
 
 
 /* ── Map constructors ────────────────────────────────────────────────────── */
 
-static hashmap* int_map(void) {
+static hashmap* int_map(void)
+{
     return hashmap_create(sizeof(int), sizeof(int), NULL, NULL, NULL, NULL);
 }
 
-static hashmap* int_str_map(void) {
+static hashmap* int_str_map(void)
+{
     return hashmap_create(sizeof(int), sizeof(String), NULL, NULL, NULL, &wc_str_ops);
 }
 
-static hashmap* str_str_map(void) {
+static hashmap* str_str_map(void)
+{
     return hashmap_create(sizeof(String), sizeof(String),
-                          murmurhash3_str, str_cmp, &wc_str_ops, &wc_str_ops);
+                          wyhash_str, str_cmp, &wc_str_ops, &wc_str_ops);
 }
 
 
@@ -109,7 +111,7 @@ static void test_get_ptr(void)
     WC_ASSERT_NOT_NULL(ptr);
     WC_ASSERT_EQ_INT(*ptr, 55);
 
-    /* mutate through ptr — must be visible via get */
+    // Mutate through ptr — must be visible via get
     *ptr = 66;
     int out = 0;
     hashmap_get(m, (u8*)&k, (u8*)&out);
@@ -164,24 +166,20 @@ static void test_resize_preserves_data(void)
     hashmap_destroy(m);
 }
 
-static void test_shrink_on_delete(void)
+// Robin Hood + backward-shift delete doesn't shrink — no LOAD_FACTOR_SHRINK.
+// Verify correctness after heavy deletion instead.
+static void test_del_correctness_after_many_deletes(void)
 {
-    /* Insert enough to grow, delete most — capacity should shrink back */
-    hashmap* m    = int_map();
-    u64      cap0 = hashmap_capacity(m);
-
+    hashmap* m = int_map();
     for (int i = 0; i < 50; i++) {
         int v = i;
         hashmap_put(m, (u8*)&i, (u8*)&v);
     }
-    WC_ASSERT_TRUE(hashmap_capacity(m) > cap0);
-
     for (int i = 0; i < 48; i++) {
         hashmap_del(m, (u8*)&i, NULL);
     }
-    WC_ASSERT_TRUE(hashmap_capacity(m) < 50);
+    WC_ASSERT_EQ_U64(hashmap_size(m), 2);
 
-    /* Remaining keys must still be readable */
     for (int i = 48; i < 50; i++) {
         int out = 0;
         WC_ASSERT_TRUE(hashmap_get(m, (u8*)&i, (u8*)&out));
@@ -191,11 +189,13 @@ static void test_shrink_on_delete(void)
 }
 
 
-/* ── Tombstone correctness ───────────────────────────────────────────────── */
+/* ════════════════════════════════════════════════════════════════════════════
+ * delete correctness  (backward-shift, no tombstones)
+ * ════════════════════════════════════════════════════════════════════════════ */
 
-static void test_tombstone_reinsert(void)
+static void test_del_reinsert(void)
 {
-    /* Delete a key then reinsert it — must succeed and be findable */
+    // Delete a key then reinsert it — must succeed and be findable
     hashmap* m = int_map();
     int k = 42, v1 = 1, v2 = 2;
     hashmap_put(m, (u8*)&k, (u8*)&v1);
@@ -210,12 +210,11 @@ static void test_tombstone_reinsert(void)
     hashmap_destroy(m);
 }
 
-static void test_tombstone_probe_chain(void)
+static void test_del_mid_chain(void)
 {
-    /*
-     * Insert keys that will chain during probing, delete one mid-chain,
-     * then verify all remaining keys are still reachable through the tombstone.
-     */
+    // Insert keys that will chain during probing, delete one mid-chain,
+    // then verify all remaining keys are still reachable.
+    // Backward-shift delete keeps the Robin Hood invariant intact.
     hashmap* m = int_map();
     for (int i = 0; i < 20; i++) {
         int v = i * 10;
@@ -226,7 +225,9 @@ static void test_tombstone_probe_chain(void)
     hashmap_del(m, (u8*)&mid, NULL);
 
     for (int i = 0; i < 20; i++) {
-        if (i == mid) { continue; }
+        if (i == mid) {
+            continue;
+        }
         int out = 0;
         WC_ASSERT_TRUE(hashmap_get(m, (u8*)&i, (u8*)&out));
         WC_ASSERT_EQ_INT(out, i * 10);
@@ -236,7 +237,7 @@ static void test_tombstone_probe_chain(void)
 
 static void test_delete_reinsert_cycle(void)
 {
-    /* Repeated delete+reinsert must not corrupt or leak */
+    // Repeated delete+reinsert must not corrupt or leak
     hashmap* m = int_map();
     int k = 7;
     for (int cycle = 0; cycle < 20; cycle++) {
@@ -251,8 +252,57 @@ static void test_delete_reinsert_cycle(void)
     hashmap_destroy(m);
 }
 
+static void test_del_first_in_chain(void)
+{
+    // Deleting the head of a probe chain must leave the rest reachable
+    hashmap* m = int_map();
+    for (int i = 0; i < 15; i++) {
+        int v = i;
+        hashmap_put(m, (u8*)&i, (u8*)&v);
+    }
+    int head = 0;
+    hashmap_del(m, (u8*)&head, NULL);
+    WC_ASSERT_FALSE(hashmap_has(m, (u8*)&head));
 
-/* ── hashmap_clear ───────────────────────────────────────────────────────── */
+    for (int i = 1; i < 15; i++) {
+        int out = 0;
+        WC_ASSERT_TRUE(hashmap_get(m, (u8*)&i, (u8*)&out));
+        WC_ASSERT_EQ_INT(out, i);
+    }
+    hashmap_destroy(m);
+}
+
+static void test_del_all_then_reinsert(void)
+{
+    // Delete every key then reinsert — map must be fully functional
+    hashmap* m = int_map();
+    for (int i = 0; i < 20; i++) {
+        int v = i;
+        hashmap_put(m, (u8*)&i, (u8*)&v);
+    }
+    for (int i = 0; i < 20; i++) {
+        hashmap_del(m, (u8*)&i, NULL);
+    }
+    WC_ASSERT_EQ_U64(hashmap_size(m), 0);
+    WC_ASSERT_TRUE(hashmap_empty(m));
+
+    for (int i = 0; i < 20; i++) {
+        int v = i * 3;
+        hashmap_put(m, (u8*)&i, (u8*)&v);
+    }
+    WC_ASSERT_EQ_U64(hashmap_size(m), 20);
+    for (int i = 0; i < 20; i++) {
+        int out = 0;
+        WC_ASSERT_TRUE(hashmap_get(m, (u8*)&i, (u8*)&out));
+        WC_ASSERT_EQ_INT(out, i * 3);
+    }
+    hashmap_destroy(m);
+}
+
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * hashmap_clear
+ * ════════════════════════════════════════════════════════════════════════════ */
 
 static void test_clear_empties_map(void)
 {
@@ -261,10 +311,12 @@ static void test_clear_empties_map(void)
         int v = i;
         hashmap_put(m, (u8*)&i, (u8*)&v);
     }
+    u64 cap_before = hashmap_capacity(m);
     hashmap_clear(m);
 
     WC_ASSERT_EQ_U64(hashmap_size(m), 0);
     WC_ASSERT_TRUE(hashmap_empty(m));
+    WC_ASSERT_EQ_U64(hashmap_capacity(m), cap_before); // capacity unchanged
     for (int i = 0; i < 10; i++) {
         WC_ASSERT_FALSE(hashmap_has(m, (u8*)&i));
     }
@@ -280,7 +332,6 @@ static void test_clear_then_reuse(void)
     }
     hashmap_clear(m);
 
-    /* Re-insert after clear — map must be fully functional */
     for (int i = 100; i < 110; i++) {
         int v = i * 2;
         hashmap_put(m, (u8*)&i, (u8*)&v);
@@ -296,7 +347,7 @@ static void test_clear_then_reuse(void)
 
 static void test_clear_frees_string_vals(void)
 {
-    /* clear must properly call del on owned String resources */
+    // clear must properly call del on owned String resources
     hashmap* m = int_str_map();
     for (int i = 0; i < 5; i++) {
         String* v = string_from_cstr("owned");
@@ -305,7 +356,7 @@ static void test_clear_frees_string_vals(void)
     hashmap_clear(m);
     WC_ASSERT_EQ_U64(hashmap_size(m), 0);
 
-    /* Map must still be usable after clearing owned-resource entries */
+    // Map must still be usable after clearing owned-resource entries
     int k = 99;
     String* v = string_from_cstr("after_clear");
     hashmap_put_val_move(m, (u8*)&k, (u8**)&v);
@@ -313,8 +364,19 @@ static void test_clear_frees_string_vals(void)
     hashmap_destroy(m);
 }
 
+static void test_clear_empty_map(void)
+{
+    // clear on an already-empty map must be a safe no-op
+    hashmap* m = int_map();
+    hashmap_clear(m);
+    WC_ASSERT_EQ_U64(hashmap_size(m), 0);
+    hashmap_destroy(m);
+}
 
-/* ── hashmap_copy ────────────────────────────────────────────────────────── */
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * hashmap_copy
+ * ════════════════════════════════════════════════════════════════════════════ */
 
 static void test_copy_int_map(void)
 {
@@ -324,6 +386,7 @@ static void test_copy_int_map(void)
         hashmap_put(src, (u8*)&i, (u8*)&v);
     }
 
+    // dest must be uninitialised — hashmap_copy allocates everything
     hashmap* dest = int_map();
     hashmap_copy(dest, src);
     WC_ASSERT_EQ_U64(hashmap_size(dest), hashmap_size(src));
@@ -340,7 +403,7 @@ static void test_copy_int_map(void)
 
 static void test_copy_independence(void)
 {
-    /* Mutating dest must not affect src, and vice versa */
+    // Mutating dest must not affect src
     hashmap* src = int_map();
     int k = 1, v = 10;
     hashmap_put(src, (u8*)&k, (u8*)&v);
@@ -363,17 +426,17 @@ static void test_copy_independence(void)
 
 static void test_copy_str_str_map(void)
 {
-    /* Deep copy: destroying src must not corrupt dest's String data */
+    // Deep copy: destroying src must not corrupt dest's String data
     hashmap* src = str_str_map();
     MAP_PUT_STR_STR(src, "name",  "Alice");
     MAP_PUT_STR_STR(src, "city",  "London");
     MAP_PUT_STR_STR(src, "color", "blue");
 
-    hashmap* dest = int_map();
+    hashmap* dest = str_str_map();
     hashmap_copy(dest, src);
     WC_ASSERT_EQ_U64(hashmap_size(dest), 3);
 
-    hashmap_destroy(src);
+    hashmap_destroy(src); // src gone — dest must still be intact
 
     String k;
     string_create_stk(&k, "city");
@@ -385,76 +448,129 @@ static void test_copy_str_str_map(void)
     hashmap_destroy(dest);
 }
 
-
-/* ── MAP_FOREACH_BUCKET / MAP_FOREACH_VAL ───────────────────────────────── */
-
-static void test_foreach_bucket_visits_all(void)
+static void test_copy_empty_map(void)
 {
-    hashmap* m = int_map();
-    for (int i = 0; i < 8; i++) {
-        int v = i;
-        hashmap_put(m, (u8*)&i, (u8*)&v);
-    }
-
-    int count = 0, key_sum = 0;
-    MAP_FOREACH_BUCKET(m, kv) {
-        count++;
-        key_sum += *(int*)kv->key;
-    }
-    WC_ASSERT_EQ_INT(count,   8);
-    WC_ASSERT_EQ_INT(key_sum, 0+1+2+3+4+5+6+7);
-    hashmap_destroy(m);
+    hashmap* src = int_map();
+    hashmap* dest = int_map();
+    hashmap_copy(dest, src);
+    WC_ASSERT_EQ_U64(hashmap_size(dest), 0);
+    WC_ASSERT_EQ_U64(hashmap_capacity(dest), hashmap_capacity(src));
+    hashmap_destroy(src);
+    hashmap_destroy(dest);
 }
 
-static void test_foreach_bucket_skips_tombstones(void)
+static void test_copy_then_del_src_key(void)
 {
-    /* Deleted slots (tombstones) must not appear during iteration */
-    hashmap* m = int_map();
-    for (int i = 0; i < 8; i++) {
-        int v = i;
-        hashmap_put(m, (u8*)&i, (u8*)&v);
-    }
-    for (int i = 0; i < 4; i++) {
-        hashmap_del(m, (u8*)&i, NULL);
-    }
+    // Deleting from src after copy must not affect dest
+    hashmap* src = int_map();
+    int k = 5, v = 50;
+    hashmap_put(src, (u8*)&k, (u8*)&v);
 
-    int count = 0;
-    MAP_FOREACH_BUCKET(m, kv) {
-        WC_ASSERT_TRUE(*(int*)kv->key >= 4);
-        count++;
-    }
-    WC_ASSERT_EQ_INT(count, 4);
-    hashmap_destroy(m);
-}
+    hashmap* dest = int_map();
+    hashmap_copy(dest, src);
 
-static void test_foreach_val_typed(void)
-{
-    hashmap* m = int_str_map();
-    MAP_PUT_INT_STR(m, 1, "one");
-    MAP_PUT_INT_STR(m, 2, "two");
-    MAP_PUT_INT_STR(m, 3, "three");
+    hashmap_del(src, (u8*)&k, NULL);
+    WC_ASSERT_FALSE(hashmap_has(src,   (u8*)&k));
+    WC_ASSERT_TRUE(hashmap_has(dest, (u8*)&k));
 
-    int count = 0;
-    MAP_FOREACH_VAL(m, String, v) {
-        WC_ASSERT_NOT_NULL(v);
-        WC_ASSERT_TRUE(string_len(v) > 0);
-        count++;
-    }
-    WC_ASSERT_EQ_INT(count, 3);
-    hashmap_destroy(m);
-}
-
-static void test_foreach_empty_map(void)
-{
-    hashmap* m = int_map();
-    int count = 0;
-    MAP_FOREACH_BUCKET(m, kv) { (void)kv; count++; }
-    WC_ASSERT_EQ_INT(count, 0);
-    hashmap_destroy(m);
+    hashmap_destroy(src);
+    hashmap_destroy(dest);
 }
 
 
-/* ── int -> String  (owned val) ─────────────────────────────────────────── */
+// TODO: test macros properly
+/* ════════════════════════════════════════════════════════════════════════════
+ * macros
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+// static void test_foreach_visits_all(void)
+// {
+//     hashmap* m = int_map();
+//     for (int i = 0; i < 8; i++) {
+//         int v = i;
+//         hashmap_put(m, (u8*)&i, (u8*)&v);
+//     }
+//
+//     int count = 0, key_sum = 0;
+//     MAP_FOREACH(m, k, v) {
+//         count++;
+//         key_sum += *(int*)k;
+//         (void)v;
+//     }
+//     WC_ASSERT_EQ_INT(count,   8);
+//     WC_ASSERT_EQ_INT(key_sum, 0+1+2+3+4+5+6+7);
+//     hashmap_destroy(m);
+// }
+//
+// static void test_foreach_skips_empty(void)
+// {
+//     // Deleted slots must not appear during iteration
+//     hashmap* m = int_map();
+//     for (int i = 0; i < 8; i++) {
+//         int v = i;
+//         hashmap_put(m, (u8*)&i, (u8*)&v);
+//     }
+//     for (int i = 0; i < 4; i++) {
+//         hashmap_del(m, (u8*)&i, NULL);
+//     }
+//
+//     int count = 0;
+//     MAP_FOREACH(m, k, v) {
+//         WC_ASSERT_TRUE(*(int*)k >= 4);
+//         count++;
+//         (void)v;
+//     }
+//     WC_ASSERT_EQ_INT(count, 4);
+//     hashmap_destroy(m);
+// }
+//
+// static void test_foreach_val_typed(void)
+// {
+//     hashmap* m = int_str_map();
+//     MAP_PUT_INT_STR(m, 1, "one");
+//     MAP_PUT_INT_STR(m, 2, "two");
+//     MAP_PUT_INT_STR(m, 3, "three");
+//
+//     int count = 0;
+//     MAP_FOREACH_VAL(m, String, v) {
+//         WC_ASSERT_NOT_NULL(v);
+//         WC_ASSERT_TRUE(string_len(v) > 0);
+//         count++;
+//     }
+//     WC_ASSERT_EQ_INT(count, 3);
+//     hashmap_destroy(m);
+// }
+//
+// static void test_foreach_empty_map(void)
+// {
+//     hashmap* m = int_map();
+//     int count = 0;
+//     MAP_FOREACH(m, k, v) {
+//         (void)k; (void)v;
+//         count++;
+//     }
+//     WC_ASSERT_EQ_INT(count, 0);
+//     hashmap_destroy(m);
+// }
+//
+// static void test_foreach_key_val_consistent(void)
+// {
+//     // Every key visited must match its stored val
+//     hashmap* m = int_map();
+//     for (int i = 0; i < 16; i++) {
+//         int v = i * 7;
+//         hashmap_put(m, (u8*)&i, (u8*)&v);
+//     }
+//
+//     MAP_FOREACH(m, k, v) {
+//         WC_ASSERT_EQ_INT(*(int*)v, *(int*)k * 7);
+//     }
+//     hashmap_destroy(m);
+// }
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * int -> String  (owned val)
+ * ════════════════════════════════════════════════════════════════════════════ */
 
 static void test_str_val_put_copy(void)
 {
@@ -474,7 +590,7 @@ static void test_str_val_put_copy(void)
 
 static void test_str_val_independence(void)
 {
-    /* Mutating source after put must not affect stored copy */
+    // Mutating source after put must not affect stored copy
     hashmap* m = int_str_map();
     int k = 1;
     String sv;
@@ -504,7 +620,7 @@ static void test_str_val_move(void)
 
 static void test_str_val_update_frees_old(void)
 {
-    /* Updating a String val must not leak the old heap buffer */
+    // Updating a String val must not leak the old heap buffer
     hashmap* m = int_str_map();
     int k = 1;
     MAP_PUT_INT_STR(m, k, "first");
@@ -518,7 +634,7 @@ static void test_str_val_update_frees_old(void)
 
 static void test_str_val_move_updates_existing(void)
 {
-    /* put_val_move on an existing key must free old val and store new one */
+    // put_val_move on an existing key must free old val and store new one
     hashmap* m = int_str_map();
     int k = 5;
     MAP_PUT_INT_STR(m, k, "old");
@@ -535,7 +651,7 @@ static void test_str_val_move_updates_existing(void)
 
 static void test_str_val_del_with_out(void)
 {
-    /* del with non-null out must copy the String before destroying it */
+    // del with non-null out must copy the String before destroying it
     hashmap* m = int_str_map();
     int k = 3;
     MAP_PUT_INT_STR(m, k, "goodbye");
@@ -549,8 +665,30 @@ static void test_str_val_del_with_out(void)
     hashmap_destroy(m);
 }
 
+static void test_str_val_many_inserts_and_gets(void)
+{
+    // Stress: many int->String pairs across multiple resizes
+    hashmap* m = int_str_map();
+    char buf[32];
+    for (int i = 0; i < 60; i++) {
+        snprintf(buf, sizeof(buf), "value_%d", i);
+        String* v = string_from_cstr(buf);
+        hashmap_put_val_move(m, (u8*)&i, (u8**)&v);
+    }
+    WC_ASSERT_EQ_U64(hashmap_size(m), 60);
+    for (int i = 0; i < 60; i++) {
+        snprintf(buf, sizeof(buf), "value_%d", i);
+        String* stored = (String*)hashmap_get_ptr(m, (u8*)&i);
+        WC_ASSERT_NOT_NULL(stored);
+        WC_ASSERT_TRUE(string_equals_cstr(stored, buf));
+    }
+    hashmap_destroy(m);
+}
 
-/* ── String -> String  (owned key+val) ──────────────────────────────────── */
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * String -> String  (owned key + val)
+ * ════════════════════════════════════════════════════════════════════════════ */
 
 static void test_str_key_lookup(void)
 {
@@ -584,7 +722,7 @@ static void test_str_key_miss(void)
 
 static void test_str_key_update_discards_dup_key(void)
 {
-    /* put_move on an existing key: incoming key freed, new val stored */
+    // put_move on an existing key: incoming key freed, new val stored
     hashmap* m = str_str_map();
     MAP_PUT_STR_STR(m, "lang", "C");
     MAP_PUT_STR_STR(m, "lang", "C11");
@@ -614,7 +752,7 @@ static void test_str_key_del(void)
 
 static void test_str_key_put_key_move(void)
 {
-    /* put_key_move: key is moved in (nulled), val is copied */
+    // put_key_move: key is moved in (nulled), val is copied
     hashmap* m = str_str_map();
     String*  k = string_from_cstr("animal");
     String   v;
@@ -658,6 +796,40 @@ static void test_str_str_resize_preserves_data(void)
     hashmap_destroy(m);
 }
 
+static void test_str_str_del_frees_both(void)
+{
+    // del on a str->str entry must free both key and val heap buffers
+    hashmap* m = str_str_map();
+    MAP_PUT_STR_STR(m, "x", "y");
+
+    String k;
+    string_create_stk(&k, "x");
+    WC_ASSERT_TRUE(hashmap_del(m, (u8*)&k, NULL));
+    WC_ASSERT_EQ_U64(hashmap_size(m), 0);
+    string_destroy_stk(&k);
+    hashmap_destroy(m);
+}
+
+static void test_str_str_clear_frees_all(void)
+{
+    hashmap* m = str_str_map();
+    for (int i = 0; i < 10; i++) {
+        char buf[16];
+        snprintf(buf, sizeof(buf), "k%d", i);
+        MAP_PUT_STR_STR(m, buf, "v");
+    }
+    hashmap_clear(m);
+    WC_ASSERT_EQ_U64(hashmap_size(m), 0);
+
+    // Usable after clear
+    MAP_PUT_STR_STR(m, "after", "clear");
+    String k;
+    string_create_stk(&k, "after");
+    WC_ASSERT_TRUE(hashmap_has(m, (u8*)&k));
+    string_destroy_stk(&k);
+    hashmap_destroy(m);
+}
+
 
 /* ── Suite entry point ───────────────────────────────────────────────────── */
 
@@ -676,28 +848,34 @@ void hashmap_suite(void)
     WC_RUN(test_get_missing_returns_false);
     WC_RUN(test_size_tracks_inserts);
     WC_RUN(test_resize_preserves_data);
-    WC_RUN(test_shrink_on_delete);
+    WC_RUN(test_del_correctness_after_many_deletes);
 
-    WC_SUITE("HashMap — tombstone correctness");
-    WC_RUN(test_tombstone_reinsert);
-    WC_RUN(test_tombstone_probe_chain);
+    WC_SUITE("HashMap — delete correctness");
+    WC_RUN(test_del_reinsert);
+    WC_RUN(test_del_mid_chain);
     WC_RUN(test_delete_reinsert_cycle);
+    WC_RUN(test_del_first_in_chain);
+    WC_RUN(test_del_all_then_reinsert);
 
     WC_SUITE("HashMap — clear");
     WC_RUN(test_clear_empties_map);
     WC_RUN(test_clear_then_reuse);
     WC_RUN(test_clear_frees_string_vals);
+    WC_RUN(test_clear_empty_map);
 
     WC_SUITE("HashMap — copy");
     WC_RUN(test_copy_int_map);
     WC_RUN(test_copy_independence);
     WC_RUN(test_copy_str_str_map);
+    WC_RUN(test_copy_empty_map);
+    WC_RUN(test_copy_then_del_src_key);
 
-    WC_SUITE("HashMap — iteration macros");
-    WC_RUN(test_foreach_bucket_visits_all);
-    WC_RUN(test_foreach_bucket_skips_tombstones);
-    WC_RUN(test_foreach_val_typed);
-    WC_RUN(test_foreach_empty_map);
+    WC_SUITE("HashMap — Macros");
+    // WC_RUN(test_foreach_visits_all);
+    // WC_RUN(test_foreach_skips_empty);
+    // WC_RUN(test_foreach_val_typed);
+    // WC_RUN(test_foreach_empty_map);
+    // WC_RUN(test_foreach_key_val_consistent);
 
     WC_SUITE("HashMap — int->String (owned val)");
     WC_RUN(test_str_val_put_copy);
@@ -706,6 +884,7 @@ void hashmap_suite(void)
     WC_RUN(test_str_val_update_frees_old);
     WC_RUN(test_str_val_move_updates_existing);
     WC_RUN(test_str_val_del_with_out);
+    WC_RUN(test_str_val_many_inserts_and_gets);
 
     WC_SUITE("HashMap — String->String (owned key+val)");
     WC_RUN(test_str_key_lookup);
@@ -714,5 +893,8 @@ void hashmap_suite(void)
     WC_RUN(test_str_key_del);
     WC_RUN(test_str_key_put_key_move);
     WC_RUN(test_str_str_resize_preserves_data);
+    WC_RUN(test_str_str_del_frees_both);
+    WC_RUN(test_str_str_clear_frees_all);
 }
+
 

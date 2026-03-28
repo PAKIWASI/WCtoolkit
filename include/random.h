@@ -34,8 +34,6 @@
 
 
 
-
-
 /*
    PCG32 Random Number Generator State
    
@@ -50,7 +48,7 @@
 typedef struct {
     u64 state;    // RNG state - advances with each random number generated
     u64 inc;      // Sequence selector - must be odd (ensures full period LCG)
-} pcg32_random_t; // Private Internal RNG State
+} pcg32_random_t;
 
 
 // Default initializer with pre-chosen values for state and increment.

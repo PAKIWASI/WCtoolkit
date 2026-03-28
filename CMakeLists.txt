@@ -24,11 +24,11 @@ endif()
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 
 # Debug: sanitizers + no optimisation
-set(CMAKE_C_FLAGS_DEBUG   "-g -O0 -fno-omit-frame-pointer -fsanitize=address -fsanitize=undefined")
+set(CMAKE_C_FLAGS_DEBUG   "-g -O0 -fno-omit-frame-pointer -fsanitize=address -fsanitize=undefined -march=native -Rpass=loop-vectorize")
 set(CMAKE_EXE_LINKER_FLAGS_DEBUG   "-fsanitize=address -fsanitize=undefined")
 
 # Release: full optimisation
-set(CMAKE_C_FLAGS_RELEASE   "-O3 -DNDEBUG")
+set(CMAKE_C_FLAGS_RELEASE   "-O3 -DNDEBUG -march=native -Rpass=loop-vectorize")
 set(CMAKE_EXE_LINKER_FLAGS_RELEASE "")
 
 
@@ -79,13 +79,13 @@ enable_testing()
 add_test(NAME unit_tests COMMAND tests)
 
 
-# Example programs
-add_executable(examples
-    examples/examples.c
-    examples/json_parser.c
-    ${LIB_SOURCES}
-)
-target_include_directories(examples PRIVATE include)
+# # Example programs
+# add_executable(examples
+#     examples/examples.c
+#     examples/json_parser.c
+#     ${LIB_SOURCES}
+# )
+# target_include_directories(examples PRIVATE include)
 
 # ── Usage comments ───────────────────────────────────────────────────────
 # Debug build (default):

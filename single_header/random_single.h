@@ -297,8 +297,6 @@ Compute e^(fraction) using Taylor series
 
 
 
-
-
 /*
    PCG32 Random Number Generator State
    
@@ -313,7 +311,7 @@ Compute e^(fraction) using Taylor series
 typedef struct {
     u64 state;    // RNG state - advances with each random number generated
     u64 inc;      // Sequence selector - must be odd (ensures full period LCG)
-} pcg32_random_t; // Private Internal RNG State
+} pcg32_random_t;
 
 
 // Default initializer with pre-chosen values for state and increment.
@@ -681,15 +679,17 @@ float fast_ceil(float x)
 #define WC_RANDOM_IMPL
 
 #include <time.h>
-void pcg32_rand_seed_r(pcg32_random_t* rng, u64 seed, u64 seq);
-u32 pcg32_rand_r(pcg32_random_t* rng);
-u32 pcg32_rand_bounded_r(pcg32_random_t* rng, u32 bound);
+
+
+
+static void pcg32_rand_seed_r(pcg32_random_t* rng, u64 seed, u64 seq);
+static u32 pcg32_rand_r(pcg32_random_t* rng);
+static u32 pcg32_rand_bounded_r(pcg32_random_t* rng, u32 bound);
 
 
 
 // Initialize global state
-pcg32_random_t global_rng = PCG32_INITIALIZER;
-
+static pcg32_random_t global_rng = PCG32_INITIALIZER;
 
 
 void pcg32_rand_seed_r(pcg32_random_t* rng, u64 seed, u64 seq)
@@ -820,7 +820,7 @@ double pcg32_rand_double(void)
     
     // Combine into 53-bit value and scale to [0, 1)
     // 0x1.0p-53 is the double literal for 2^-53
-    return ((double)a * 67108864.0 + (double)b) * 0x1.0p-53;
+    return (((double)a * 67108864.0) + (double)b) * 0x1.0p-53;
 }
 
 // Generate a float in range [min, max)

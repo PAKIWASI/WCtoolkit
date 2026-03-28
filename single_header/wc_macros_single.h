@@ -77,21 +77,21 @@ Usage:
 
 // ── Push ───────────────────────────────────────────────────────────────────
 
-// VEC_PUSH — push any POD value 
+// VEC_PUSH — push any POD value
 #define VEC_PUSH(vec, val)                 \
     ({                                     \
         typeof(val) wvp_tmp = (val);       \
         genVec_push((vec), (u8*)&wvp_tmp); \
     })
 
-// VEC_PUSH_COPY — deep copy for complex types. Source stays valid. 
+// VEC_PUSH_COPY — deep copy for complex types. Source stays valid.
 #define VEC_PUSH_COPY(vec, val)            \
     ({                                     \
         typeof(val) wpc_tmp = (val);       \
         genVec_push((vec), (u8*)&wpc_tmp); \
     })
 
-// VEC_PUSH_MOVE — transfer ownership. Source becomes NULL. 
+// VEC_PUSH_MOVE — transfer ownership. Source becomes NULL.
 #define VEC_PUSH_MOVE(vec, ptr)                \
     ({                                         \
         typeof(ptr) wvm_p = (ptr);             \
@@ -99,7 +99,7 @@ Usage:
         (ptr) = wvm_p;                         \
     })
 
-// VEC_PUSH_CSTR — allocate a heap String and move it in. 
+// VEC_PUSH_CSTR — allocate a heap String and move it in.
 #define VEC_PUSH_CSTR(vec, cstr)                \
     ({                                          \
         String* wpc_s = string_from_cstr(cstr); \
@@ -169,21 +169,21 @@ Usage:
  * Map must have int key, String val, created with &wc_str_ops for val.
  */
 #define MAP_PUT_INT_STR(map, k, cstr_val)                         \
-    do {                                                          \
+    ({                                                            \
         String* _v = string_from_cstr(cstr_val);                  \
         hashmap_put_val_move((map), (u8*)&(int){(k)}, (u8**)&_v); \
-    } while (0)
+    })
 
 /*
  * MAP_PUT_STR_STR(map, cstr_key, cstr_val)
  * Map must use &wc_str_ops for both key and val.
  */
 #define MAP_PUT_STR_STR(map, cstr_key, cstr_val)       \
-    do {                                               \
+    ({                                                 \
         String* _k = string_from_cstr(cstr_key);       \
         String* _v = string_from_cstr(cstr_val);       \
         hashmap_put_move((map), (u8**)&_k, (u8**)&_v); \
-    } while (0)
+    })
 
 
 // ── Put (COPY semantics) ──────────────────────────────────────────────────
@@ -222,6 +222,7 @@ Usage:
 
 // ── Get ───────────────────────────────────────────────────────────────────
 
+// V - Type of the value
 #define MAP_GET(map, V, key)                             \
     ({                                                   \
         V           _out;                                \
@@ -232,23 +233,60 @@ Usage:
 
 
 
-// Iterate over every FILLED bucket.
-// name is a KV* pointing to each filled bucket in turn.
-#define MAP_FOREACH_BUCKET(map, name)                        \
-    for (u64 _mfb_i = 0; _mfb_i < (map)->capacity; _mfb_i++) \
-        for (KV* name = ((map)->buckets[_mfb_i].state == FILLED) ? &(map)->buckets[_mfb_i] : NULL; name; name = NULL)
-
-// Iterate over the val of every FILLED bucket, typed as T*.
-#define MAP_FOREACH_VAL(map, T, name)                                                                          \
-    for (u64 _mfv_i = 0; _mfv_i < (map)->capacity; _mfv_i++)                                                   \
-        for (T* name = ((map)->buckets[_mfv_i].state == FILLED) ? (T*)(map)->buckets[_mfv_i].val : NULL; name; \
-             name    = NULL)
+// ── Iterate ────────────────────────────────────────────────────────────────
 
 
+// WARN: don't modify the key !!!
+#define MAP_FOREACH_KEY(map, T, name)            \
+    for (u64 _i = 0; _i < (map)->capacity; _i++) \
+        for (const T* name = (const T*)((map)->keys + (_i * (map)->key_size)); name && (map)->psls[_i]; name = NULL)
 
-#define SET_FOREACH_BUCKET(set, name)                        \
-    for (u64 _sfb_i = 0; _sfb_i < (set)->capacity; _sfb_i++) \
-        for (ELM* name = ((set)->buckets[_sfb_i].state == FILLED) ? &(set)->buckets[_sfb_i] : NULL; name; name = NULL)
+#define MAP_FOREACH_VAL(map, T, name)            \
+    for (u64 _i = 0; _i < (map)->capacity; _i++) \
+        for (T* name = (T*)((map)->vals + (_i * (map)->val_size)); name && (map)->psls[_i]; name = NULL)
+
+
+// ── Hashset shorthands ───────────────────────────────────────────────────
+
+#define SET_FROM_VEC(vec, hash_fn, cmp_fn)                                             \
+    ({                                                                                 \
+        hashset* _set = hashset_create((vec)->data_size, hash_fn, cmp_fn, (vec)->ops); \
+        for (u64 i = 0; i < (vec)->size; i++) {                                        \
+            hashset_insert(_set, genVec_get_ptr((vec), i));                            \
+        }                                                                              \
+        _set;                                                                          \
+    })
+
+#define SET_INSERT(set, elm)                  \
+    ({                                        \
+        typeof(elm) _temp = (elm);            \
+        hashset_insert((set), (u8*)&(_temp)); \
+    })
+
+#define SET_INSERT_COPY(set, elm)             \
+    ({                                        \
+        typeof(elm) _temp = (elm);            \
+        hashset_insert((set), (u8*)&(_temp)); \
+    })
+
+#define SET_INSERT_MOVE(set, ptr)                  \
+    ({                                             \
+        typeof(ptr) _ptr = (ptr);                  \
+        hashset_insert_move((vec), (u8**)&(_ptr)); \
+        (ptr) = _ptr;                              \
+    })
+
+#define SET_INSERT_CSTR(set, cstr)               \
+    ({                                           \
+        String* _s = string_from_cstr(cstr);     \
+        hashset_insert_move((set), (u8**)&(_s)); \
+    })
+
+
+// WARN: don't modify the elm !!!
+#define SET_FOREACH(set, T, name)                \
+    for (u64 _i = 0; _i < (set)->capacity; _i++) \
+        for (const T* name = (const T*)((set)->elms + (_i * (set)->elm_size)); name && (set)->psls[_i]; name = NULL)
 
 #endif /* WC_WC_MACROS_H */
 

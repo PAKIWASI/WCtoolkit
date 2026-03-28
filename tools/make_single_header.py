@@ -98,7 +98,7 @@ def read_file(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def strip_include_guards(src: str, component: str) -> str:
+def strip_include_guards(src: str) -> str:
     """Remove the outermost #ifndef / #define / #endif include-guard pair."""
     # Match  #ifndef FOO_H  /  #define FOO_H  at the very start (ignoring blank lines)
     src = re.sub(
@@ -212,7 +212,7 @@ def build_single_header(
 
         dep_guard = guard_name(dep)
         h_src = strip_pragma_once(h_src)
-        h_src = strip_include_guards(h_src, dep)
+        h_src = strip_include_guards(h_src)
         h_src = remove_local_includes(h_src, all_component_names)
         h_src = h_src.strip()
 
@@ -379,3 +379,5 @@ Available components:
 
 if __name__ == "__main__":
     main()
+
+

@@ -6,12 +6,14 @@
 
 /* ── Set constructors ────────────────────────────────────────────────────── */
 
-static hashset* int_set(void) {
+static hashset* int_set(void)
+{
     return hashset_create(sizeof(int), NULL, NULL, NULL);
 }
 
-static hashset* str_set(void) {
-    return hashset_create(sizeof(String), murmurhash3_str, str_cmp, &wc_str_ops);
+static hashset* str_set(void)
+{
+    return hashset_create(sizeof(String), wyhash_str, str_cmp, &wc_str_ops);
 }
 
 
@@ -35,8 +37,8 @@ static void test_insert_returns_existed(void)
     int x = 5;
     b8 first  = hashset_insert(s, (u8*)&x);
     b8 second = hashset_insert(s, (u8*)&x);
-    WC_ASSERT_FALSE(first);   // new insert
-    WC_ASSERT_TRUE(second);   // already existed
+    WC_ASSERT_FALSE(first);  // new insert
+    WC_ASSERT_TRUE(second);  // already existed
     hashset_destroy(s);
 }
 
@@ -124,23 +126,19 @@ static void test_resize_preserves_membership(void)
     hashset_destroy(s);
 }
 
-static void test_shrink_on_remove(void)
+// Robin Hood + backward-shift delete doesn't shrink — no LOAD_FACTOR_SHRINK.
+// Verify correctness after heavy removal instead.
+static void test_remove_correctness_after_many_removes(void)
 {
-    // Insert enough to grow, remove most — capacity should shrink back 
-    hashset* s    = int_set();
-    u64      cap0 = hashset_capacity(s);
-
+    hashset* s = int_set();
     for (int i = 0; i < 50; i++) {
         hashset_insert(s, (u8*)&i);
     }
-    WC_ASSERT_TRUE(hashset_capacity(s) > cap0);
-
     for (int i = 0; i < 48; i++) {
         hashset_remove(s, (u8*)&i);
     }
-    WC_ASSERT_TRUE(hashset_capacity(s) < 50);
+    WC_ASSERT_EQ_U64(hashset_size(s), 2);
 
-    // Remaining elements must still be reachable 
     for (int i = 48; i < 50; i++) {
         WC_ASSERT_TRUE(hashset_has(s, (u8*)&i));
     }
@@ -148,11 +146,13 @@ static void test_shrink_on_remove(void)
 }
 
 
-/* ── Tombstone correctness ───────────────────────────────────────────────── */
+/* ════════════════════════════════════════════════════════════════════════════
+ * delete correctness  (backward-shift, no tombstones)
+ * ════════════════════════════════════════════════════════════════════════════ */
 
-static void test_tombstone_reinsert(void)
+static void test_remove_reinsert(void)
 {
-    /* Remove an element then re-insert it — must succeed and be findable */
+    // Remove an element then re-insert it — must succeed and be findable
     hashset* s = int_set();
     int x = 42;
     hashset_insert(s, (u8*)&x);
@@ -165,12 +165,10 @@ static void test_tombstone_reinsert(void)
     hashset_destroy(s);
 }
 
-static void test_tombstone_probe_chain(void)
+static void test_remove_mid_chain(void)
 {
-    /*
-     * Insert elements that chain during probing, remove one mid-chain,
-     * then verify all remaining elements are still reachable through the tombstone.
-     */
+    // Insert elements that chain during probing, remove one mid-chain,
+    // then verify all remaining elements are still reachable.
     hashset* s = int_set();
     for (int i = 0; i < 20; i++) {
         hashset_insert(s, (u8*)&i);
@@ -180,7 +178,9 @@ static void test_tombstone_probe_chain(void)
     hashset_remove(s, (u8*)&mid);
 
     for (int i = 0; i < 20; i++) {
-        if (i == mid) { continue; }
+        if (i == mid) {
+            continue;
+        }
         WC_ASSERT_TRUE(hashset_has(s, (u8*)&i));
     }
     hashset_destroy(s);
@@ -188,7 +188,7 @@ static void test_tombstone_probe_chain(void)
 
 static void test_remove_reinsert_cycle(void)
 {
-    /* Repeated remove+insert must not corrupt or leak */
+    // Repeated remove+insert must not corrupt or leak
     hashset* s = int_set();
     int x = 7;
     for (int cycle = 0; cycle < 20; cycle++) {
@@ -200,8 +200,50 @@ static void test_remove_reinsert_cycle(void)
     hashset_destroy(s);
 }
 
+static void test_remove_first_in_chain(void)
+{
+    // Removing the head of a probe chain must leave the rest reachable
+    hashset* s = int_set();
+    for (int i = 0; i < 15; i++) {
+        hashset_insert(s, (u8*)&i);
+    }
+    int head = 0;
+    hashset_remove(s, (u8*)&head);
+    WC_ASSERT_FALSE(hashset_has(s, (u8*)&head));
 
-/* ── hashset_clear ───────────────────────────────────────────────────────── */
+    for (int i = 1; i < 15; i++) {
+        WC_ASSERT_TRUE(hashset_has(s, (u8*)&i));
+    }
+    hashset_destroy(s);
+}
+
+static void test_remove_all_then_reinsert(void)
+{
+    // Remove every element then reinsert — set must be fully functional
+    hashset* s = int_set();
+    for (int i = 0; i < 20; i++) {
+        hashset_insert(s, (u8*)&i);
+    }
+    for (int i = 0; i < 20; i++) {
+        hashset_remove(s, (u8*)&i);
+    }
+    WC_ASSERT_EQ_U64(hashset_size(s), 0);
+    WC_ASSERT_TRUE(hashset_empty(s));
+
+    for (int i = 0; i < 20; i++) {
+        hashset_insert(s, (u8*)&i);
+    }
+    WC_ASSERT_EQ_U64(hashset_size(s), 20);
+    for (int i = 0; i < 20; i++) {
+        WC_ASSERT_TRUE(hashset_has(s, (u8*)&i));
+    }
+    hashset_destroy(s);
+}
+
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * hashset_clear
+ * ════════════════════════════════════════════════════════════════════════════ */
 
 static void test_clear_empties_set(void)
 {
@@ -214,7 +256,7 @@ static void test_clear_empties_set(void)
 
     WC_ASSERT_EQ_U64(hashset_size(s), 0);
     WC_ASSERT_TRUE(hashset_empty(s));
-    WC_ASSERT_EQ_U64(hashset_capacity(s), cap_before); /* capacity unchanged */
+    WC_ASSERT_EQ_U64(hashset_capacity(s), cap_before); // capacity unchanged
     for (int i = 0; i < 10; i++) {
         WC_ASSERT_FALSE(hashset_has(s, (u8*)&i));
     }
@@ -229,7 +271,6 @@ static void test_clear_then_reuse(void)
     }
     hashset_clear(s);
 
-    /* Re-insert after clear — set must be fully functional */
     for (int i = 100; i < 110; i++) {
         hashset_insert(s, (u8*)&i);
     }
@@ -242,7 +283,7 @@ static void test_clear_then_reuse(void)
 
 static void test_clear_frees_string_elms(void)
 {
-    /* clear must properly call del on owned String resources */
+    // clear must properly call del on owned String resources
     hashset* s = str_set();
     for (int i = 0; i < 5; i++) {
         char buf[16];
@@ -253,48 +294,26 @@ static void test_clear_frees_string_elms(void)
     hashset_clear(s);
     WC_ASSERT_EQ_U64(hashset_size(s), 0);
 
-    /* Set must still be usable after clearing owned-resource entries */
+    // Set must still be usable after clearing owned-resource entries
     String* v = string_from_cstr("after_clear");
     hashset_insert_move(s, (u8**)&v);
     WC_ASSERT_EQ_U64(hashset_size(s), 1);
     hashset_destroy(s);
 }
 
-
-/* ── hashset_reset ───────────────────────────────────────────────────────── */
-
-static void test_reset(void)
+static void test_clear_empty_set(void)
 {
+    // clear on an already-empty set must be a safe no-op
     hashset* s = int_set();
-    for (int i = 0; i < 30; i++) {
-        hashset_insert(s, (u8*)&i);
-    }
-    hashset_reset(s);
+    hashset_clear(s);
     WC_ASSERT_EQ_U64(hashset_size(s), 0);
-    WC_ASSERT_EQ_U64(hashset_capacity(s), HASHMAP_INIT_CAPACITY);
-    hashset_destroy(s);
-}
-
-static void test_reset_then_reuse(void)
-{
-    hashset* s = int_set();
-    for (int i = 0; i < 30; i++) {
-        hashset_insert(s, (u8*)&i);
-    }
-    hashset_reset(s);
-
-    for (int i = 200; i < 210; i++) {
-        hashset_insert(s, (u8*)&i);
-    }
-    WC_ASSERT_EQ_U64(hashset_size(s), 10);
-    for (int i = 200; i < 210; i++) {
-        WC_ASSERT_TRUE(hashset_has(s, (u8*)&i));
-    }
     hashset_destroy(s);
 }
 
 
-/* ── hashset_copy ────────────────────────────────────────────────────────── */
+/* ════════════════════════════════════════════════════════════════════════════
+ * hashset_copy
+ * ════════════════════════════════════════════════════════════════════════════ */
 
 static void test_copy_int_set(void)
 {
@@ -303,6 +322,7 @@ static void test_copy_int_set(void)
         hashset_insert(src, (u8*)&i);
     }
 
+    // dest must be uninitialised — hashset_copy allocates everything
     hashset* dest = int_set();
     hashset_copy(dest, src);
     WC_ASSERT_EQ_U64(hashset_size(dest), hashset_size(src));
@@ -317,7 +337,7 @@ static void test_copy_int_set(void)
 
 static void test_copy_independence(void)
 {
-    /* Inserting into dest must not affect src, and vice versa */
+    // Inserting into dest must not affect src
     hashset* src = int_set();
     int x = 1;
     hashset_insert(src, (u8*)&x);
@@ -328,9 +348,9 @@ static void test_copy_independence(void)
     int y = 99;
     hashset_insert(dest, (u8*)&y);
 
-    WC_ASSERT_FALSE(hashset_has(src,   (u8*)&y)); /* src unaffected */
-    WC_ASSERT_TRUE(hashset_has(dest,  (u8*)&x)); /* dest has original */
-    WC_ASSERT_TRUE(hashset_has(dest,  (u8*)&y)); /* dest has new */
+    WC_ASSERT_FALSE(hashset_has(src,   (u8*)&y)); // src unaffected
+    WC_ASSERT_TRUE(hashset_has(dest,  (u8*)&x)); // dest has original
+    WC_ASSERT_TRUE(hashset_has(dest,  (u8*)&y)); // dest has new
 
     hashset_destroy(src);
     hashset_destroy(dest);
@@ -338,7 +358,7 @@ static void test_copy_independence(void)
 
 static void test_copy_str_set(void)
 {
-    /* Deep copy: destroying src must not corrupt dest's String data */
+    // Deep copy: destroying src must not corrupt dest's String data
     hashset* src = str_set();
     const char* words[] = { "alpha", "beta", "gamma" };
     for (int i = 0; i < 3; i++) {
@@ -348,11 +368,11 @@ static void test_copy_str_set(void)
         string_destroy_stk(&sv);
     }
 
-    hashset* dest = int_set();
+    hashset* dest = str_set();
     hashset_copy(dest, src);
     WC_ASSERT_EQ_U64(hashset_size(dest), 3);
 
-    hashset_destroy(src); /* src gone — dest must still be intact */
+    hashset_destroy(src); // src gone — dest must still be intact
 
     String probe;
     string_create_stk(&probe, "beta");
@@ -375,64 +395,142 @@ static void test_copy_empty_set(void)
     hashset_destroy(dest);
 }
 
-
-/* ── SET_FOREACH_BUCKET iteration ───────────────────────────────────────── */
-
-static void test_foreach_visits_all(void)
+static void test_copy_then_remove_src_elm(void)
 {
-    hashset* s = int_set();
-    for (int i = 0; i < 8; i++) {
-        hashset_insert(s, (u8*)&i);
-    }
+    // Removing from src after copy must not affect dest
+    hashset* src = int_set();
+    int x = 5;
+    hashset_insert(src, (u8*)&x);
 
-    int count = 0, sum = 0;
-    SET_FOREACH_BUCKET(s, elm) {
-        count++;
-        sum += *(int*)elm->elm;
-    }
-    WC_ASSERT_EQ_INT(count, 8);
-    WC_ASSERT_EQ_INT(sum,   0+1+2+3+4+5+6+7);
-    hashset_destroy(s);
-}
+    hashset* dest = int_set();
+    hashset_copy(dest, src);
 
-static void test_foreach_skips_tombstones(void)
-{
-    /* Removed slots (tombstones) must not appear during iteration */
-    hashset* s = int_set();
-    for (int i = 0; i < 8; i++) {
-        hashset_insert(s, (u8*)&i);
-    }
-    for (int i = 0; i < 4; i++) {
-        hashset_remove(s, (u8*)&i);
-    }
+    hashset_remove(src, (u8*)&x);
+    WC_ASSERT_FALSE(hashset_has(src,   (u8*)&x));
+    WC_ASSERT_TRUE(hashset_has(dest, (u8*)&x));
 
-    int count = 0;
-    SET_FOREACH_BUCKET(s, elm) {
-        WC_ASSERT_TRUE(*(int*)elm->elm >= 4);
-        count++;
-    }
-    WC_ASSERT_EQ_INT(count, 4);
-    hashset_destroy(s);
-}
-
-static void test_foreach_empty_set(void)
-{
-    hashset* s = int_set();
-    int count = 0;
-    SET_FOREACH_BUCKET(s, elm) { (void)elm; count++; }
-    WC_ASSERT_EQ_INT(count, 0);
-    hashset_destroy(s);
+    hashset_destroy(src);
+    hashset_destroy(dest);
 }
 
 
-/* ── String set (owns heap memory) ──────────────────────────────────────── */
+// TODO: properly test all macros
+/* ════════════════════════════════════════════════════════════════════════════
+ * macros test
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+static void test_macors(void)
+{
+
+    // hashset* set = hashset_create(sizeof(String), wyhash_str, str_cmp, &wc_str_ops);
+
+    genVec* vec = genVec_init(10, sizeof(String), &wc_str_ops);
+    VEC_PUSH_CSTR(vec, "hello0");
+    VEC_PUSH_CSTR(vec, "hello1");
+    VEC_PUSH_CSTR(vec, "hello2");
+    VEC_PUSH_CSTR(vec, "hello3");
+    VEC_PUSH_CSTR(vec, "hello4");
+    genVec_print(vec, str_print); putchar('\n');
+
+    hashset* set = SET_FROM_VEC(vec, wyhash_str, str_cmp);
+    hashset_print(set, str_print);
+
+    if (SET_INSERT_CSTR(set, "hello5")) {
+        printf("already exist - not inserted\n");
+    } else {
+        printf("not exist - inserted\n");
+    }
+
+    String str; 
+    string_create_stk(&str, "fkdjfkdj");
+    SET_INSERT(set, str);
+    hashset_print(set, str_print);
+
+    string_destroy_stk(&str);
+    genVec_destroy(vec);
+    hashset_destroy(set);
+}
+
+// static void test_foreach_visits_all(void)
+// {
+//     hashset* s = int_set();
+//     for (int i = 0; i < 8; i++) {
+//         hashset_insert(s, (u8*)&i);
+//     }
+//
+//     int count = 0, sum = 0;
+//     SET_FOREACH(s, e) {
+//         count++;
+//         sum += *(int*)e;
+//     }
+//     WC_ASSERT_EQ_INT(count, 8);
+//     WC_ASSERT_EQ_INT(sum,   0+1+2+3+4+5+6+7);
+//     hashset_destroy(s);
+// }
+//
+// static void test_foreach_skips_empty(void)
+// {
+//     // Deleted slots must not appear during iteration
+//     hashset* s = int_set();
+//     for (int i = 0; i < 8; i++) {
+//         hashset_insert(s, (u8*)&i);
+//     }
+//     for (int i = 0; i < 4; i++) {
+//         hashset_remove(s, (u8*)&i);
+//     }
+//
+//     int count = 0;
+//     SET_FOREACH(s, e) {
+//         WC_ASSERT_TRUE(*(int*)e >= 4);
+//         count++;
+//     }
+//     WC_ASSERT_EQ_INT(count, 4);
+//     hashset_destroy(s);
+// }
+//
+// static void test_foreach_empty_set(void)
+// {
+//     hashset* s = int_set();
+//     int count = 0;
+//     SET_FOREACH(s, e) {
+//         (void)e;
+//         count++;
+//     }
+//     WC_ASSERT_EQ_INT(count, 0);
+//     hashset_destroy(s);
+// }
+//
+// static void test_foreach_count_matches_size(void)
+// {
+//     // Number of elements visited must always equal size
+//     hashset* s = int_set();
+//     for (int i = 0; i < 24; i++) {
+//         hashset_insert(s, (u8*)&i);
+//     }
+//     for (int i = 0; i < 8; i++) {
+//         hashset_remove(s, (u8*)&i);
+//     }
+//
+//     int count = 0;
+//     SET_FOREACH(s, e) {
+//         (void)e;
+//         count++;
+//     }
+//     WC_ASSERT_EQ_U64((u64)count, hashset_size(s));
+//     hashset_destroy(s);
+// }
+
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * String set  (owns heap memory)
+ * ════════════════════════════════════════════════════════════════════════════ */
 
 static void test_str_insert_move_nulls_ptr(void)
 {
     hashset* s  = str_set();
     String*  s1 = string_from_cstr("hello");
     hashset_insert_move(s, (u8**)&s1);
-    WC_ASSERT_NULL(s1); /* ownership transferred */
+    WC_ASSERT_NULL(s1); // ownership transferred
 
     String probe;
     string_create_stk(&probe, "hello");
@@ -443,7 +541,7 @@ static void test_str_insert_move_nulls_ptr(void)
 
 static void test_str_insert_copy_leaves_src_valid(void)
 {
-    /* Source String must still be valid and unchanged after copy insert */
+    // Source String must still be valid and unchanged after copy insert
     hashset* s  = str_set();
     String*  s1 = string_from_cstr("world");
     hashset_insert(s, (u8*)s1);
@@ -456,14 +554,13 @@ static void test_str_insert_copy_leaves_src_valid(void)
 
 static void test_str_insert_copy_independence(void)
 {
-    /* Mutating source String after copy insert must not affect stored copy */
+    // Mutating source String after copy insert must not affect stored copy
     hashset* s = str_set();
     String   sv;
     string_create_stk(&sv, "original");
     hashset_insert(s, (u8*)&sv);
     string_append_cstr(&sv, "_mutated");
 
-    /* The stored copy should still read "original" */
     String probe;
     string_create_stk(&probe, "original");
     WC_ASSERT_TRUE(hashset_has(s, (u8*)&probe));
@@ -499,7 +596,7 @@ static void test_str_no_duplicates(void)
 
 static void test_str_insert_move_duplicate_frees_elm(void)
 {
-    /* insert_move on a duplicate must free the incoming pointer */
+    // insert_move on a duplicate must free the incoming pointer
     hashset* s = str_set();
     String   sv;
     string_create_stk(&sv, "dup");
@@ -508,7 +605,7 @@ static void test_str_insert_move_duplicate_frees_elm(void)
     String* dup = string_from_cstr("dup");
     b8 existed = hashset_insert_move(s, (u8**)&dup);
     WC_ASSERT_TRUE(existed);
-    WC_ASSERT_NULL(dup);         /* must be freed and nulled */
+    WC_ASSERT_NULL(dup);        // must be freed and nulled
     WC_ASSERT_EQ_U64(hashset_size(s), 1);
 
     string_destroy_stk(&sv);
@@ -553,6 +650,49 @@ static void test_str_resize_preserves_membership(void)
     hashset_destroy(s);
 }
 
+static void test_str_remove_frees_elm(void)
+{
+    // remove must call del_fn on owned String before clearing the slot
+    hashset* s = str_set();
+    String sv;
+    string_create_stk(&sv, "owned");
+    hashset_insert(s, (u8*)&sv);
+    string_destroy_stk(&sv);
+
+    String probe;
+    string_create_stk(&probe, "owned");
+    WC_ASSERT_TRUE(hashset_remove(s, (u8*)&probe));
+    WC_ASSERT_EQ_U64(hashset_size(s), 0);
+    string_destroy_stk(&probe);
+    hashset_destroy(s);
+}
+
+static void test_str_clear_then_reuse(void)
+{
+    hashset* s = str_set();
+    for (int i = 0; i < 8; i++) {
+        char buf[16];
+        snprintf(buf, sizeof(buf), "item%d", i);
+        String sv;
+        string_create_stk(&sv, buf);
+        hashset_insert(s, (u8*)&sv);
+        string_destroy_stk(&sv);
+    }
+    hashset_clear(s);
+    WC_ASSERT_EQ_U64(hashset_size(s), 0);
+
+    // Usable after clear
+    String* v = string_from_cstr("fresh");
+    hashset_insert_move(s, (u8**)&v);
+    WC_ASSERT_EQ_U64(hashset_size(s), 1);
+
+    String probe;
+    string_create_stk(&probe, "fresh");
+    WC_ASSERT_TRUE(hashset_has(s, (u8*)&probe));
+    string_destroy_stk(&probe);
+    hashset_destroy(s);
+}
+
 
 /* ── Suite entry point ───────────────────────────────────────────────────── */
 
@@ -569,32 +709,34 @@ void hashset_suite(void)
     WC_RUN(test_size_and_empty);
     WC_RUN(test_size_tracks_inserts);
     WC_RUN(test_resize_preserves_membership);
-    WC_RUN(test_shrink_on_remove);
+    WC_RUN(test_remove_correctness_after_many_removes);
 
-    WC_SUITE("HashSet — tombstone correctness");
-    WC_RUN(test_tombstone_reinsert);
-    WC_RUN(test_tombstone_probe_chain);
+    WC_SUITE("HashSet — delete correctness");
+    WC_RUN(test_remove_reinsert);
+    WC_RUN(test_remove_mid_chain);
     WC_RUN(test_remove_reinsert_cycle);
+    WC_RUN(test_remove_first_in_chain);
+    WC_RUN(test_remove_all_then_reinsert);
 
     WC_SUITE("HashSet — clear");
     WC_RUN(test_clear_empties_set);
     WC_RUN(test_clear_then_reuse);
     WC_RUN(test_clear_frees_string_elms);
-
-    WC_SUITE("HashSet — reset");
-    WC_RUN(test_reset);
-    WC_RUN(test_reset_then_reuse);
+    WC_RUN(test_clear_empty_set);
 
     WC_SUITE("HashSet — copy");
     WC_RUN(test_copy_int_set);
     WC_RUN(test_copy_independence);
     WC_RUN(test_copy_str_set);
     WC_RUN(test_copy_empty_set);
+    WC_RUN(test_copy_then_remove_src_elm);
 
-    WC_SUITE("HashSet — iteration");
-    WC_RUN(test_foreach_visits_all);
-    WC_RUN(test_foreach_skips_tombstones);
-    WC_RUN(test_foreach_empty_set);
+    WC_SUITE("HashSet — Macros");
+    test_macors();
+    // WC_RUN(test_foreach_visits_all);
+    // WC_RUN(test_foreach_skips_empty);
+    // WC_RUN(test_foreach_empty_set);
+    // WC_RUN(test_foreach_count_matches_size);
 
     WC_SUITE("HashSet — String (owned elements)");
     WC_RUN(test_str_insert_move_nulls_ptr);
@@ -605,6 +747,8 @@ void hashset_suite(void)
     WC_RUN(test_str_insert_move_duplicate_frees_elm);
     WC_RUN(test_str_remove);
     WC_RUN(test_str_resize_preserves_membership);
+    WC_RUN(test_str_remove_frees_elm);
+    WC_RUN(test_str_clear_then_reuse);
 }
 
 

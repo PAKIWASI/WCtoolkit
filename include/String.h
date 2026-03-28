@@ -4,17 +4,11 @@
 #include "common.h"
 
 
-#define STR_SSO_SIZE 24
-
 #ifndef STRING_GROWTH
     #define STRING_GROWTH    1.5F    // capacity multiplier on grow
 #endif
-#ifndef STRING_SHRINK_AT
-    #define STRING_SHRINK_AT 0.25F   // shrink when size/cap falls below this
-#endif
-#ifndef STRING_SHRINK_BY
-    #define STRING_SHRINK_BY 0.5F    // multiply capacity by this on shrink
-#endif
+
+#define STR_SSO_SIZE 24
 
 
 typedef struct {
@@ -22,12 +16,12 @@ typedef struct {
         char* heap;
         char  stk[STR_SSO_SIZE];
     };
-    // b8  sso;     // HACK: if cap is = STR_SSO_SIZE then we are in sso mode, if greater then heap mode
+    // b8  sso;     // if cap is = STR_SSO_SIZE then we are in sso mode, if greater then heap mode
     u64 size;
     u64 capacity;
 } String;
 
-// 24 8 8 = 40 bytes
+// 24 8 8 = 40 bytes (same as genVec)
 
 
 //  Construction / Destruction 
@@ -75,6 +69,8 @@ void string_shrink_to_fit(String* str);
 // Return a malloc'd NUL-terminated copy — caller must free().
 char* string_to_cstr(const String* str);
 
+void string_to_cstr_buf(const String* str, char* buff, u64 n);
+
 // Return a raw pointer into the internal buffer (no NUL terminator).
 char* string_data_ptr(const String* str);
 
@@ -94,8 +90,10 @@ void string_insert_cstr(String* str, u64 i, const char* cstr);
 void string_insert_string(String* str, u64 i, const String* other);
 
 void string_remove_char(String* str, u64 i);
-// Remove chars in range [l, r] inclusive.
-void string_remove_range(String* str, u64 l, u64 r);
+
+// TODO: test
+// Remove chars in range [start, start + len)
+void string_remove_range(String* str, u64 start, u64 len);
 
 // Remove all chars (keep allocation).
 void string_clear(String* str);
@@ -150,10 +148,16 @@ static inline b8 string_empty(const String* str)
     return str->size == 0;
 }
 
+static inline b8 string_sso(const String* str)
+{
+    CHECK_FATAL(!str, "str is null");
+    return str->capacity == STR_SSO_SIZE;
+}
+
 
 /*
  Macro to temporarily NUL-terminate a String for read-only C APIs.
- Do NOT break/return/goto inside the block.
+Note: Do NOT break/return/goto inside the block.
 
  Usage:
    TEMP_CSTR_READ(s) {

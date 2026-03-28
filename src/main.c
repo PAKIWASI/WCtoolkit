@@ -1,38 +1,20 @@
 #include "String.h"
-#include "common.h"
 #include <stdio.h>
 
 
 int main(void)
 {
-    String* str = string_from_cstr("helllo");
+    String* str = string_from_cstr("hello");
 
-    string_print(str);
-    printf("\n%lu\n%lu\n", str->size, str->capacity);
-    print_hex(castptr(str), sizeof(String), 8);
+    char cstr[10] = {0};
 
-    string_append_cstr(str, " what is up whataaaa");
-    string_append_char(str, ' ');
+    string_to_cstr_buf(str, cstr, 10);
 
-    string_print(str);
-    printf("\n%lu\n%lu\n", str->size, str->capacity);
-    print_hex(castptr(str), sizeof(String), 8);
+    string_print(str); putchar('\n');
 
-    string_pop_char(str);
-    string_pop_char(str);
-    string_pop_char(str);
-    string_pop_char(str);
-    string_pop_char(str);
-    string_pop_char(str);
-    string_pop_char(str);
-    string_pop_char(str);
-    string_pop_char(str);
-
-    string_shrink_to_fit(str);
-
-    string_print(str);
-    printf("\n%lu\n%lu\n", str->size, str->capacity);
-    print_hex(castptr(str), sizeof(String), 8);
+    printf("%s\n", cstr);
 
     string_destroy(str);
 }
+
+

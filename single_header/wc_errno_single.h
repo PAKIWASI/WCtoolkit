@@ -67,15 +67,17 @@ typedef enum {
     WC_OK        = 0,
     WC_ERR_FULL,       // arena exhausted / container at capacity
     WC_ERR_EMPTY,      // pop or peek on empty container
+    WC_ERR_INVALID_OP, // call to a function with preconditions not met
 } wc_err;
 
 static inline const char* wc_strerror(wc_err e)
 {
     switch (e) {
-        case WC_OK:        return "ok";
-        case WC_ERR_FULL:  return "full";
-        case WC_ERR_EMPTY: return "empty";
-        default:           return "unknown";
+        case WC_OK:             return "ok";
+        case WC_ERR_FULL:       return "full";
+        case WC_ERR_EMPTY:      return "empty";
+        case WC_ERR_INVALID_OP: return "invalid op";
+        default:                return "unknown";
     }
 }
 

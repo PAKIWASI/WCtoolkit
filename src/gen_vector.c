@@ -1,9 +1,7 @@
 #include "gen_vector.h"
-#include "common.h"
 #include "wc_errno.h"
 
 #include <string.h>
-
 
 
 #define GENVEC_MIN_CAPACITY 4
@@ -23,13 +21,6 @@
         }                                               \
     } while (0)
 
-#define MAYBE_SHRINK(vec)                                                  \
-    do {                                                                   \
-        if (vec->size <= (u64)((float)vec->capacity * GENVEC_SHRINK_AT)) { \
-            genVec_shrink(vec);                                            \
-        }                                                                  \
-    } while (0)
-
 
 // ops accessors (safe when ops is NULL)
 #define COPY_FN(vec) VEC_COPY_FN(vec)
@@ -40,7 +31,6 @@
 // private functions
 
 static void genVec_grow(genVec* vec);
-static void genVec_shrink(genVec* vec);
 
 
 // API Implementation
@@ -94,10 +84,12 @@ genVec* genVec_init_val(u64 n, const u8* val, u32 data_size, const container_ops
     vec->size = n; // capacity set to n in genVec_init
 
     copy_fn copy = COPY_FN(vec);
-    for (u64 i = 0; i < n; i++) {
-        if (copy) {
+    if (copy) {
+        for (u64 i = 0; i < n; i++) {
             copy(GET_PTR(vec, i), val);
-        } else {
+        }
+    } else {
+        for (u64 i = 0; i < n; i++) {
             memcpy(GET_PTR(vec, i), val, data_size);
         }
     }
@@ -116,10 +108,12 @@ void genVec_init_val_stk(u64 n, const u8* val, u32 data_size, const container_op
     vec->size = n;
 
     copy_fn copy = COPY_FN(vec);
-    for (u64 i = 0; i < n; i++) {
-        if (copy) {
+    if (copy) {
+        for (u64 i = 0; i < n; i++) {
             copy(GET_PTR(vec, i), val);
-        } else {
+        }
+    } else {
+        for (u64 i = 0; i < n; i++) {
             memcpy(GET_PTR(vec, i), val, data_size);
         }
     }
@@ -226,10 +220,12 @@ void genVec_reserve_val(genVec* vec, u64 new_capacity, const u8* val)
     genVec_reserve(vec, new_capacity);
 
     copy_fn copy = COPY_FN(vec);
-    for (u64 i = vec->size; i < new_capacity; i++) {
-        if (copy) {
+    if (copy) {
+        for (u64 i = vec->size; i < new_capacity; i++) {
             copy(GET_PTR(vec, i), val);
-        } else {
+        }
+    } else {
+        for (u64 i = vec->size; i < new_capacity; i++) {
             memcpy(GET_PTR(vec, i), val, vec->data_size);
         }
     }
@@ -283,6 +279,7 @@ void genVec_push_move(genVec* vec, u8** data)
     MAYBE_GROW(vec);
 
     move_fn move = MOVE_FN(vec);
+
     if (move) {
         move(GET_PTR(vec, vec->size), data);
     } else {
@@ -317,8 +314,51 @@ void genVec_pop(genVec* vec, u8* popped)
     }
 
     vec->size--;
+}
 
-    MAYBE_SHRINK(vec);
+void genVec_swap_pop(genVec* vec, u64 i, u8* out)
+{
+    CHECK_FATAL(!vec, "vec is null");
+    CHECK_FATAL(i >= vec->size, "index out of bounds");
+
+    if (out) {
+        copy_fn copy = COPY_FN(vec);
+        if (copy) {
+            copy(out, GET_PTR(vec, i)); 
+        } else {
+            memcpy(out, GET_PTR(vec, i), vec->data_size);
+        }
+    }
+
+    delete_fn del = DEL_FN(vec);
+    if (del) {
+        del(GET_PTR(vec, i));
+    }
+
+    // swap the last container with the removed one
+    // if owns memory elsewhere, those are still valid, only container location changes 
+    memcpy(GET_PTR(vec, i), GET_PTR(vec, vec->size-1), vec->data_size);
+    vec->size--;
+}
+
+void genVec_swap(genVec* vec, u64 i, u64 j)
+{
+    CHECK_FATAL(!vec, "vec is null");
+    CHECK_FATAL(i >= vec->size || j >= vec->size, "index out of bounds");
+
+    if (i == j) { return; }
+
+    // we need one empty container as temp space for swap
+    MAYBE_GROW(vec);
+
+    // shallow copy of the jth container to temp space
+    memcpy(GET_PTR(vec, vec->size), GET_PTR(vec, j), vec->data_size);
+    // shallow copy into jth container
+    memcpy(GET_PTR(vec, j), GET_PTR(vec, i), vec->data_size);
+    // shallow copy from temp space into ith container
+    memcpy(GET_PTR(vec, i), GET_PTR(vec, vec->size), vec->data_size);
+
+    // temp container will be over written on next push 
 }
 
 
@@ -329,6 +369,7 @@ void genVec_get(const genVec* vec, u64 i, u8* out)
     CHECK_FATAL(i >= vec->size, "index out of bounds");
 
     copy_fn copy = COPY_FN(vec);
+
     if (copy) {
         copy(out, GET_PTR(vec, i));
     } else {
@@ -533,37 +574,36 @@ void genVec_remove(genVec* vec, u64 i, u8* out)
     }
 
     vec->size--;
-
-    MAYBE_SHRINK(vec);
 }
 
-
-void genVec_remove_range(genVec* vec, u64 l, u64 r)
+/*
+    0 1 2 3 4 5, (1, 3) -> [1, 4)
+    start = 1 
+    len = 3
+    end = 1 + 3 - 1 = 3
+*/
+void genVec_remove_range(genVec* vec, u64 start, u64 len)
 {
     CHECK_FATAL(!vec, "vec is null");
-    CHECK_FATAL(l >= vec->size, "index out of range");
-    CHECK_FATAL(l > r, "invalid range");
+    if (len == 0) { return; }
+    CHECK_FATAL(start >= vec->size, "start out of range");
 
-    if (r >= vec->size) {
-        r = vec->size - 1;
+    if (start + len >= vec->size) {
+        len = vec->size - start;
     }
 
     delete_fn del = DEL_FN(vec);
     if (del) {
-        for (u64 i = l; i <= r; i++) {
-            del(GET_PTR(vec, i));
+        for (u64 i = 0; i < len; i++) {
+            del(GET_PTR(vec, start + i));
         }
     }
 
-    u64 elms_to_shift = vec->size - (r + 1);
+    u8* dest = GET_PTR(vec, start);
+    u8* src  = GET_PTR(vec, start + len);
+    memmove(dest, src, GET_SCALED(vec, vec->size - len));
 
-    u8* dest = GET_PTR(vec, l);
-    u8* src  = GET_PTR(vec, r + 1);
-    memmove(dest, src, GET_SCALED(vec, elms_to_shift));
-
-    vec->size -= (r - l + 1);
-
-    MAYBE_SHRINK(vec);
+    vec->size -= len;
 }
 
 
@@ -580,6 +620,56 @@ const u8* genVec_back(const genVec* vec)
     CHECK_FATAL(!vec, "vec is null");
     WC_SET_RET(WC_ERR_EMPTY, vec->size == 0, NULL);
     return GET_PTR(vec, vec->size - 1);
+}
+
+
+u64 genVec_find(const genVec* vec, u8* elm, compare_fn cmp_fn)
+{
+    CHECK_FATAL(!vec, "vec is null");
+    CHECK_FATAL(!elm, "elm is null");
+
+    for (u64 i = 0; i < vec->size; i++) {
+        if (cmp_fn) {
+            if (cmp_fn(GET_PTR(vec, i), elm, vec->data_size) == 0) {
+                return i;
+            }
+        } else {
+            if (memcmp(GET_PTR(vec, i), elm, vec->data_size) == 0) {
+                return i;
+            }
+        }
+    }
+
+    return (u64)-1;
+}
+
+
+genVec* genVec_subarr(const genVec* vec, u64 start, u64 len)
+{
+    CHECK_FATAL(!vec, "vec is null");
+    CHECK_FATAL(start >= vec->size, "out of bounds");
+
+    copy_fn copy = COPY_FN(vec);
+
+    if (start + len >= vec->size) {
+        len = vec->size - start;
+    }
+
+    genVec* v = genVec_init(len, vec->data_size, vec->ops);
+
+    if (len > 0) {
+        if (copy) {
+            for (u64 i = 0; i < len; i++) {
+                copy(GET_PTR(v, i), GET_PTR(vec, i + start));
+            }
+        } else {
+            memcpy(GET_PTR(v, 0), GET_PTR(vec, start), len * vec->data_size);
+        }
+
+        v->size = len;
+    }
+
+    return v;
 }
 
 
@@ -612,7 +702,8 @@ void genVec_copy(genVec* dest, const genVec* src)
     memcpy(dest, src, sizeof(genVec));
 
     // TODO: fix for copying into uninited memory ?
-    dest->data = calloc(src->capacity, src->data_size);
+    // dest->data = calloc(src->capacity, src->data_size);
+    dest->data = malloc(GET_SCALED(src, src->capacity));
     CHECK_FATAL(!dest->data, "dest data calloc failed");
 
     copy_fn copy = COPY_FN(src);
@@ -663,23 +754,3 @@ static void genVec_grow(genVec* vec)
     vec->data     = new_data;
     vec->capacity = new_cap;
 }
-
-
-static void genVec_shrink(genVec* vec)
-{
-    u64 reduced_cap = (u64)((float)vec->capacity * GENVEC_SHRINK_BY);
-    if (reduced_cap < vec->size || reduced_cap == 0) {
-        return;
-    }
-
-    u8* new_data = realloc(vec->data, GET_SCALED(vec, reduced_cap));
-    if (!new_data) {
-        WARN("shrink realloc failed");
-        return;
-    }
-
-    vec->data     = new_data;
-    vec->capacity = reduced_cap;
-}
-
-

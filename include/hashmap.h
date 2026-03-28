@@ -4,18 +4,25 @@
 #include "map_setup.h"
 
 
-typedef struct {
-    u8*   key;
-    u8*   val;
-    STATE state;
-} KV;
+/* Generic Hashmap with Ownership Semantics
+  - Robin Hood Hashing
+  - we have 3 arrays: keys, psls, and vals
+  - PSL: probe sequence length - the distance from hashing location
+  - we actuall store psl + 1 as psl = 0 means empty bucket
+  - Robin Hood Invarient: all keys that hash to i come before keys that hash to i + 1
+  - vals store [val] inline
+*/
+
 
 typedef struct {
-    KV*            buckets;
+    u8*            keys; 
+    u8*            psls;
+    u8*            vals;
     u64            size;
     u64            capacity;
     u32            key_size;
     u32            val_size;
+    u8*            scratch;  // key_size + val_size bytes + alignment - temp buffer for robin hood swaps
     custom_hash_fn hash_fn;
     compare_fn     cmp_fn;
 
@@ -33,11 +40,11 @@ typedef struct {
 #define MAP_DEL(ops)  ((ops) ? (ops)->del_fn  : NULL)
 
 
+
 // Create a new hashmap.
 // hash_fn and cmp_fn default to fnv1a_hash / default_compare if NULL.
 // key_ops / val_ops: pass NULL for POD types.
-hashmap* hashmap_create(u32 key_size, u32 val_size,
-                        custom_hash_fn hash_fn, compare_fn cmp_fn,
+hashmap* hashmap_create(u32 key_size, u32 val_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
                         const container_ops* key_ops, const container_ops* val_ops);
 
 void hashmap_destroy(hashmap* map);
@@ -59,12 +66,8 @@ b8 hashmap_put_key_move(hashmap* map, u8** key, const u8* val);
 // Get value for key — copies into val. Returns 1 if found, 0 if not.
 b8 hashmap_get(const hashmap* map, const u8* key, u8* val);
 
-// Get pointer to value — no copy.
-// WARNING: invalidated by put/del operations.
+// Get pointer to value
 u8* hashmap_get_ptr(hashmap* map, const u8* key);
-
-// Get raw bucket pointer at index i.
-KV* hashmap_get_bucket(hashmap* map, u64 i);
 
 // Delete key. If out is provided, value is copied to it before deletion.
 // Returns 1 if found and deleted, 0 if not found.
@@ -79,13 +82,26 @@ void hashmap_print(const hashmap* map, print_fn key_print, print_fn val_print);
 // Remove all elements, keep capacity.
 void hashmap_clear(hashmap* map);
 
-// Deep copy src into dest (dest must be uninitialised or already destroyed).
+// Deep copy src into dest
+// dest should be pre-inited, it will be freed
 void hashmap_copy(hashmap* dest, const hashmap* src);
 
 
-static inline u64 hashmap_size(const hashmap* map)     { CHECK_FATAL(!map, "map is null"); return map->size;      }
-static inline u64 hashmap_capacity(const hashmap* map) { CHECK_FATAL(!map, "map is null"); return map->capacity;  }
-static inline b8  hashmap_empty(const hashmap* map)    { CHECK_FATAL(!map, "map is null"); return map->size == 0; }
+static inline u64 hashmap_size(const hashmap* map)
+{
+    CHECK_FATAL(!map, "map is null");
+    return map->size;
+}
+static inline u64 hashmap_capacity(const hashmap* map)
+{
+    CHECK_FATAL(!map, "map is null");
+    return map->capacity;
+}
+static inline b8 hashmap_empty(const hashmap* map)
+{
+    CHECK_FATAL(!map, "map is null");
+    return map->size == 0;
+}
 
 
 #endif // HASHMAP_H

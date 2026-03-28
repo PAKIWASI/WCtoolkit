@@ -85,7 +85,7 @@ float matrix_get_elm(Matrixf* mat, u64 i, u64 j)
     return mat->data[IDX(mat, i, j)];
 }
 
-void matrix_add(Matrixf* out, const Matrixf* a, const Matrixf* b)
+void matrix_add(Matrixf* restrict out, const Matrixf* restrict a, const Matrixf* restrict b)
 {
     CHECK_FATAL(!out, "out matrix is null");
     CHECK_FATAL(!a, "a matrix is null");
@@ -102,7 +102,7 @@ void matrix_add(Matrixf* out, const Matrixf* a, const Matrixf* b)
 }
 
 
-void matrix_sub(Matrixf* out, const Matrixf* a, const Matrixf* b)
+void matrix_sub(Matrixf* restrict out, const Matrixf* restrict a, const Matrixf* restrict b)
 {
     CHECK_FATAL(!out, "out matrix is null");
     CHECK_FATAL(!a, "a matrix is null");
@@ -121,7 +121,7 @@ void matrix_sub(Matrixf* out, const Matrixf* a, const Matrixf* b)
 
 // ikj multiplication. (mxk) * (kxn) = (mxn)
 // this is good for small to medium size matrices
-void matrix_xply(Matrixf* out, const Matrixf* a, const Matrixf* b)
+void matrix_xply(Matrixf* restrict out, const Matrixf* restrict a, const Matrixf* restrict b)
 {
     CHECK_FATAL(!out, "out matrix is null");
     CHECK_FATAL(!a, "a matrix is null");
@@ -170,7 +170,7 @@ void matrix_xply(Matrixf* out, const Matrixf* a, const Matrixf* b)
 
 // this function transposes b for cache-friendly access
 // takes more memory, good for large size matrices
-void matrix_xply_2(Matrixf* out, const Matrixf* a, const Matrixf* b)
+void matrix_xply_2(Matrixf* restrict out, const Matrixf* restrict a, const Matrixf* restrict b)
 {
     CHECK_FATAL(!out, "out matrix is null");
     CHECK_FATAL(!a, "a matrix is null");
@@ -221,7 +221,7 @@ void matrix_xply_2(Matrixf* out, const Matrixf* a, const Matrixf* b)
 Doolittle algorithm computes U's i-th row, then L's i-th column, alternating.
 For each element, you subtract the dot product of already-computed L and U values.
 */
-void matrix_LU_Decomp(Matrixf* L, Matrixf* U, const Matrixf* mat)
+void matrix_LU_Decomp(Matrixf* restrict L, Matrixf* restrict U, const Matrixf* restrict mat)
 {
     CHECK_FATAL(!L, "L mat is null");
     CHECK_FATAL(!U, "U mat is null");
@@ -306,7 +306,7 @@ float matrix_det(const Matrixf* mat)
 }
 
 
-void matrix_T(Matrixf* out, const Matrixf* mat)
+void matrix_T(Matrixf* restrict out, const Matrixf* restrict mat)
 {
     CHECK_FATAL(!mat, "mat matrix is null");
     CHECK_FATAL(!out, "out matrix is null");
@@ -335,7 +335,7 @@ void matrix_T(Matrixf* out, const Matrixf* mat)
     }
 }
 
-void matrix_scale(Matrixf* mat, float val)
+void matrix_scale(Matrixf* restrict mat, float val)
 {
     CHECK_FATAL(!mat, "matrix is null");
 
@@ -344,7 +344,7 @@ void matrix_scale(Matrixf* mat, float val)
 }
 
 
-void matrix_div(Matrixf* mat, float val)
+void matrix_div(Matrixf* restrict mat, float val)
 {
     CHECK_FATAL(!mat, "mat is null");
     CHECK_FATAL(val == 0, "division by zero!");
@@ -353,7 +353,7 @@ void matrix_div(Matrixf* mat, float val)
     for (u64 i = 0; i < total; i++) { mat->data[i] /= val; }
 }
 
-void matrix_copy(Matrixf* dest, const Matrixf* src)
+void matrix_copy(Matrixf* restrict dest, const Matrixf* restrict src)
 {
     CHECK_FATAL(!dest, "dest matrix is null");
     CHECK_FATAL(!src, "src matrix is null");
@@ -387,6 +387,5 @@ void matrix_print(const Matrixf* mat)
     putchar('|');
     putchar('\n');
 }
-
 
 
