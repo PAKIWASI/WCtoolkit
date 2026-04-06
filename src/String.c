@@ -254,7 +254,7 @@ void string_to_cstr_buf(const String* str, char* buff, u64 n)
     if (str->size > 0) {
         str_copy_n(buff, GET_STR(str), str->size);
     }
-    buff[n - 1] = '\0'; 
+    buff[str->size] = '\0'; 
 }
 
 char* string_data_ptr(const String* s)
