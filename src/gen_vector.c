@@ -120,7 +120,18 @@ void genVec_init_val_stk(u64 n, const u8* val, u32 data_size, const container_op
 }
 
 
-void genVec_init_arr(u64 n, u8* arr, u32 data_size, const container_ops* ops, genVec* vec)
+genVec* genVec_init_arr(u64 n, u32 data_size, const container_ops* ops, u8* arr)
+{
+    genVec* v = genVec_init(n, data_size, ops);
+
+    memcpy(v->data, arr, n * data_size);
+    v->size = n;
+
+    return v;
+}
+
+
+void genVec_init_stk_arr(u64 n, u8* arr, u32 data_size, const container_ops* ops, genVec* vec)
 {
     CHECK_FATAL(!arr, "arr is null");
     CHECK_FATAL(!vec, "vec is null");

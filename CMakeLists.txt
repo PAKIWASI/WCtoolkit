@@ -4,7 +4,7 @@ set(CMAKE_C_COMPILER clang)
 
 project(
     WCtoolkit
-    VERSION 0.6.0
+    VERSION 0.7.0
     DESCRIPTION "A C systems toolkit where ownership is part of the API"
     LANGUAGES C
 )
@@ -32,7 +32,7 @@ set(CMAKE_C_FLAGS_RELEASE   "-O3 -DNDEBUG -march=native -Rpass=loop-vectorize")
 set(CMAKE_EXE_LINKER_FLAGS_RELEASE "")
 
 
-# ── Shared source list ────────────────────────────────────────────────────
+# Shared source list 
 set(LIB_SOURCES
     src/arena.c
     src/bit_vector.c
@@ -49,7 +49,7 @@ set(LIB_SOURCES
 )
 
 
-# ── Main executable ───────────────────────────────────────────────────────
+# Main executable 
 add_executable(main
     src/main.c
     ${LIB_SOURCES}
@@ -57,7 +57,7 @@ add_executable(main
 target_include_directories(main PRIVATE include)
 
 
-# ── Test executable ───────────────────────────────────────────────────────
+# Test executable 
 add_executable(tests
     tests/test_main.c
     tests/string_test.c
@@ -69,9 +69,16 @@ add_executable(tests
     tests/matrix_test.c
     tests/bit_vector_test.c
     tests/complex_test.c
+    
+    tests/speed_tests/gen_vector_speed.c
+    tests/speed_tests/String_speed.c
+    tests/speed_tests/hashmap_speed.c
+    tests/speed_tests/hashset_speed.c
+    tests/speed_tests/arena_speed.c
+
     ${LIB_SOURCES}
 )
-target_include_directories(tests PRIVATE include tests)
+target_include_directories(tests PRIVATE include tests tests/speed_tests)
 target_link_libraries(tests)
 
 # Register with CTest so `ctest` works from the build directory
@@ -80,6 +87,7 @@ add_test(NAME unit_tests COMMAND tests)
 
 
 # # Example programs
+
 # add_executable(examples
 #     examples/examples.c
 #     examples/json_parser.c
@@ -87,7 +95,8 @@ add_test(NAME unit_tests COMMAND tests)
 # )
 # target_include_directories(examples PRIVATE include)
 
-# ── Usage comments ───────────────────────────────────────────────────────
+# Usage comments 
+
 # Debug build (default):
 #   cmake -B build -G Ninja
 #   cmake --build build

@@ -333,6 +333,203 @@ static void test_shrink(void)
     string_destroy(s);
 }
 
+/* ── insert_string ───────────────────────────────────────────────────────── */
+
+static void test_insert_string_front(void)
+{
+    String* a = string_from_cstr("world");
+    String* b = string_from_cstr("hello ");
+    string_insert_string(a, 0, b);
+    WC_ASSERT(string_equals_cstr(a, "hello world"));
+    string_destroy(a);
+    string_destroy(b);
+}
+
+static void test_insert_string_end(void)
+{
+    String* a = string_from_cstr("hello");
+    String* b = string_from_cstr(" world");
+    string_insert_string(a, string_len(a), b);
+    WC_ASSERT(string_equals_cstr(a, "hello world"));
+    string_destroy(a);
+    string_destroy(b);
+}
+
+static void test_insert_string_mid(void)
+{
+    String* a = string_from_cstr("ac");
+    String* b = string_from_cstr("b");
+    string_insert_string(a, 1, b);
+    WC_ASSERT(string_equals_cstr(a, "abc"));
+    string_destroy(a);
+    string_destroy(b);
+}
+
+static void test_insert_empty_string_noop(void)
+{
+    String* a = string_from_cstr("hello");
+    String* b = string_from_cstr("");
+    string_insert_string(a, 0, b);
+    WC_ASSERT(string_equals_cstr(a, "hello"));
+    WC_ASSERT_EQ_U64(string_len(a), 5);
+    string_destroy(a);
+    string_destroy(b);
+}
+
+
+/* ── string_to_cstr_buf ──────────────────────────────────────────────────── */
+
+static void test_to_cstr_buf_basic(void)
+{
+    String* s = string_from_cstr("hello");
+    char buf[16] = {0};
+    string_to_cstr_buf(s, buf, sizeof(buf));
+    WC_ASSERT_EQ_STR(buf, "hello");
+    string_destroy(s);
+}
+
+static void test_to_cstr_buf_nul_terminated(void)
+{
+    String* s = string_from_cstr("abc");
+    char buf[8] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+    string_to_cstr_buf(s, buf, 8);
+    WC_ASSERT_EQ_INT(buf[7], '\0'); /* last byte must be NUL */
+    string_destroy(s);
+}
+
+static void test_to_cstr_buf_empty_string(void)
+{
+    String* s = string_create();
+    char buf[8] = {0xFF};
+    string_to_cstr_buf(s, buf, 8);
+    WC_ASSERT_EQ_INT(buf[7], '\0');
+    string_destroy(s);
+}
+
+
+/* ── string_data_ptr ─────────────────────────────────────────────────────── */
+
+static void test_data_ptr_non_empty(void)
+{
+    String* s = string_from_cstr("hello");
+    char* p = string_data_ptr(s);
+    WC_ASSERT_NOT_NULL(p);
+    WC_ASSERT_EQ_INT(p[0], 'h');
+    WC_ASSERT_EQ_INT(p[4], 'o');
+    string_destroy(s);
+}
+
+static void test_data_ptr_empty_returns_null(void)
+{
+    String* s = string_create();
+    WC_ASSERT_NULL(string_data_ptr(s));
+    string_destroy(s);
+}
+
+static void test_data_ptr_mutation(void)
+{
+    String* s = string_from_cstr("hello");
+    char* p = string_data_ptr(s);
+    p[0] = 'H';
+    WC_ASSERT(string_equals_cstr(s, "Hello"));
+    string_destroy(s);
+}
+
+
+/* ── TEMP_CSTR_READ macro ────────────────────────────────────────────────── */
+
+static void test_temp_cstr_read(void)
+{
+    String* s = string_from_cstr("test");
+    u64 len_before = string_len(s);
+    char captured[16] = {0};
+
+    TEMP_CSTR_READ(s) {
+        /* Inside the block, s has a trailing NUL appended */
+        WC_ASSERT_EQ_U64(string_len(s), len_before + 1);
+        const char* ptr = string_data_ptr(s);
+        WC_ASSERT_NOT_NULL(ptr);
+        for (u64 i = 0; i < len_before; i++) { captured[i] = ptr[i]; }
+        captured[len_before] = '\0';
+    }
+
+    /* After block: NUL removed, length restored */
+    WC_ASSERT_EQ_U64(string_len(s), len_before);
+    WC_ASSERT_EQ_STR(captured, "test");
+    string_destroy(s);
+}
+
+
+/* ── string_append_string_move ───────────────────────────────────────────── */
+
+static void test_append_string_move_nulls_src(void)
+{
+    String* a = string_from_cstr("hello");
+    String* b = string_from_cstr(" world");
+    string_append_string_move(a, &b);
+    WC_ASSERT_NULL(b);
+    WC_ASSERT(string_equals_cstr(a, "hello world"));
+    string_destroy(a);
+}
+
+
+/* ── string_copy (stk variant pattern) ──────────────────────────────────── */
+
+static void test_copy_into_heap_string(void)
+{
+    String* a = string_from_cstr("source");
+    String* b = string_create();
+    string_copy(b, a);
+    WC_ASSERT(string_equals(a, b));
+    /* Independence */
+    string_append_char(a, '!');
+    WC_ASSERT_FALSE(string_equals(a, b));
+    string_destroy(a);
+    string_destroy(b);
+}
+
+static void test_copy_into_non_empty_string(void)
+{
+    /* string_copy must destroy old content of dest before copying */
+    String* dest = string_from_cstr("old_long_content_here");
+    String* src  = string_from_cstr("new");
+    string_copy(dest, src);
+    WC_ASSERT(string_equals_cstr(dest, "new"));
+    string_destroy(dest);
+    string_destroy(src);
+}
+
+static void test_copy_self_noop(void)
+{
+    String* s = string_from_cstr("same");
+    string_copy(s, s);
+    WC_ASSERT(string_equals_cstr(s, "same"));
+    string_destroy(s);
+}
+
+
+/* ── SSO boundary ────────────────────────────────────────────────────────── */
+
+static void test_sso_stays_sso_up_to_limit(void)
+{
+    String* s = string_create();
+    /* STR_SSO_SIZE = 24: fill exactly to capacity */
+    for (int i = 0; i < STR_SSO_SIZE; i++) { string_append_char(s, 'a'); }
+    WC_ASSERT_TRUE(string_sso(s));
+    WC_ASSERT_EQ_U64(string_len(s), STR_SSO_SIZE);
+    string_destroy(s);
+}
+
+static void test_sso_promotes_at_overflow(void)
+{
+    String* s = string_create();
+    for (int i = 0; i < STR_SSO_SIZE + 1; i++) { string_append_char(s, 'b'); }
+    WC_ASSERT_FALSE(string_sso(s));
+    WC_ASSERT_EQ_U64(string_len(s), (u64)(STR_SSO_SIZE + 1));
+    string_destroy(s);
+}
+
+
 
 /* ── Suite entry point ───────────────────────────────────────────────────── */
 
@@ -382,4 +579,30 @@ void string_suite(void)
     WC_RUN(test_to_cstr);
     WC_RUN(test_growth);
     WC_RUN(test_shrink);
+
+    // new tests
+    WC_RUN(test_insert_string_front);
+    WC_RUN(test_insert_string_end);
+    WC_RUN(test_insert_string_mid);
+    WC_RUN(test_insert_empty_string_noop);
+
+    WC_RUN(test_to_cstr_buf_basic);
+    WC_RUN(test_to_cstr_buf_nul_terminated);
+    WC_RUN(test_to_cstr_buf_empty_string);
+
+    WC_RUN(test_data_ptr_non_empty);
+    WC_RUN(test_data_ptr_empty_returns_null);
+    WC_RUN(test_data_ptr_mutation);
+
+    WC_RUN(test_temp_cstr_read);
+    WC_RUN(test_append_string_move_nulls_src);
+
+    WC_RUN(test_copy_into_heap_string);
+    WC_RUN(test_copy_into_non_empty_string);
+    WC_RUN(test_copy_self_noop);
+
+    WC_RUN(test_sso_stays_sso_up_to_limit);
+    WC_RUN(test_sso_promotes_at_overflow);
 }
+
+

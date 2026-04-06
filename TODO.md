@@ -6,7 +6,7 @@
 
 ## Immediate
 
-SIMD
+iterators
 
 ---
 
@@ -27,7 +27,7 @@ SIMD
 
 ## SIMD
 
-How much code is vectorizable using 'restrict' ?
+look into ways to utilize simd
 
 ---
 

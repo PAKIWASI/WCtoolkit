@@ -1,20 +1,31 @@
-#include "String.h"
-#include <stdio.h>
+#include "gen_vector.h"
+#include "hashmap.h"
+#include "map_setup.h"
+#include "wc_helpers.h"
+#include "wc_macros.h"
 
 
 int main(void)
 {
-    String* str = string_from_cstr("hello");
+    hashmap* map  = hashmap_create(
+            sizeof(String),
+            sizeof(genVec),
+            wyhash_str,
+            str_cmp,
+            &wc_str_ops,
+            &wc_vec_ops
+    );
 
-    char cstr[10] = {0};
+    String* s = string_from_cstr("hello");
+    genVec* v = genVec_init_arr(5, sizeof(int), NULL, 
+            (u8*)(int[5]){1, 2, 3, 4, 5});
 
-    string_to_cstr_buf(str, cstr, 10);
+    MAP_PUT_MOVE(map, s, v);
 
-    string_print(str); putchar('\n');
+    hashmap_print(map, str_print, vec_print_int);
 
-    printf("%s\n", cstr);
-
-    string_destroy(str);
+    hashmap_destroy(map);
+    return 0;
 }
 
 
