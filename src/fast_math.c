@@ -1,5 +1,4 @@
 #include "fast_math.h"
-
 #include "common.h"
 
 
@@ -27,18 +26,18 @@ float fast_sqrt(float x)
     return guess;
 }
 
+
 float fast_log(float x)
 {
     if (x <= 0.0f) { return -1e10f; }  // Error value
     
-    /* Reduce x to range [0.5, 1.5] for better convergence
-        - Brings x into [0.5, 1.5] range where t = x-1 is small
-        - Uses logarithm property: `ln(x × 2ⁿ) = ln(x) + n×ln(2)`
-        - After computing ln(x) in reduced range, adds back `n × 0.693147...` (ln(2))
+    /* Reduce x to range [1/√2, √2] ≈ [0.707, 1.414] for best Taylor convergence.
+        - Keeps |t| = |x-1| ≤ 0.414, where the 8-term series is accurate to ~1e-5
+        - Uses logarithm property: ln(x × 2ⁿ) = ln(x) + n×ln(2)
     */
     int exp_adjust = 0;
-    while (x > 1.5f) { x *= 0.5f; exp_adjust++; }
-    while (x < 0.5f) { x *= 2.0f; exp_adjust--; }
+    while (x > 1.4142135f) { x *= 0.5f; exp_adjust++; }
+    while (x < 0.7071068f) { x *= 2.0f; exp_adjust--; }
     
     // Now compute ln(x) using ln(1+t) series where t = x-1
     float t = x - 1.0f;
@@ -46,41 +45,63 @@ float fast_log(float x)
     float t3 = t2 * t;
     float t4 = t3 * t;
     float t5 = t4 * t;
-    
-    float result = t - (t2/2.0f) + (t3/3.0f) - (t4/4.0f) + (t5/5.0f);
+    float t6 = t5 * t;
+    float t7 = t6 * t;
+    float t8 = t7 * t;
+ 
+    float result = t - (t2/2.0f) + (t3/3.0f) - (t4/4.0f) + (t5/5.0f)
+                     - (t6/6.0f) + (t7/7.0f) - (t8/8.0f);
     
     // Adjust for range reduction: ln(x * 2^n) = ln(x) + n*ln(2)
     result += 0.693147180559945f * (float)exp_adjust; // ln(2)
-
+ 
     return result;
 }
 
+
 float fast_sin(float x)
 {
-    // Reduce to [-π, π]
-    // const float PI = 3.14159265359f;
-    // const float TWO_PI = 6.28318530718f;
-    
     // Normalize to [-π, π]
-    //- Reduces angle to [-π, π] where Taylor series converges well
-    //- Sine is periodic with period 2π
     while (x > PI) { x -= TWO_PI; }
     while (x < -PI) { x += TWO_PI; }
-    
+ 
+    // Fold to [-π/2, π/2] using sin(π - x) = sin(x)
+    if (x >  PI / 2.0f) { x =  PI - x; }
+    if (x < -PI / 2.0f) { x = -PI - x; }
+ 
     float x2 = x * x;
     float x3 = x2 * x;
     float x5 = x3 * x2;
     float x7 = x5 * x2;
-    
-    return x - (x3/6.0f) + (x5/120.0f) - (x7/5040.0f);
+    float x9 = x7 * x2;
+ 
+    return x - (x3/6.0f) + (x5/120.0f) - (x7/5040.0f) + (x9/362880.0f);
 }
+
 
 float fast_cos(float x)
 {
-    // cos(x) = sin(x + π/2)
-    const float HALF_PI = 1.57079632679f;
-    return fast_sin(x + HALF_PI);
+    // Normalize to [-π, π]
+    while (x >  PI) { x -= TWO_PI; }
+    while (x < -PI) { x += TWO_PI; }
+ 
+    // cos is even
+    if (x < 0.0f) { x = -x; }
+ 
+    // Fold to [0, π/2] using cos(π - x) = -cos(x)
+    int negate = 0;
+    if (x > PI / 2.0f) { x = PI - x; negate = 1; }
+ 
+    // Taylor series for cos(x), converges well on [0, π/2]
+    float x2 = x * x;
+    float x4 = x2 * x2;
+    float x6 = x4 * x2;
+    float x8 = x6 * x2;
+ 
+    float result = 1.0f - (x2/2.0f) + (x4/24.0f) - (x6/720.0f) + (x8/40320.0f);
+    return negate ? -result : result;
 }
+ 
 
 
 /*
