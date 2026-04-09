@@ -50,4 +50,12 @@ float fast_exp(float x);
 float fast_ceil(float x);
 
 
+/*
+    a^b = e^(b * ln(a))
+    Uses exponentiation by squaring for the integer part of the exponent,
+    and fast_exp(frac * fast_log(base)) for the fractional part.
+*/
+float fast_pow(float base, float exp);
+
+
 #endif // FAST_MATH_H

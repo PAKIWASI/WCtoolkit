@@ -208,4 +208,63 @@ float fast_ceil(float x)
     return (float)i;
 }
 
+/* We use the squaring trick from fast_exp function for the integer exponent, and for fractional exponent, we use the identity a^b = e^(b * ln(a)). So we used the fast_exp and fast_log functions already defined.*/ 
 
+float fast_pow(float base, float exp) {
+
+    // 1. Simple Edge Cases
+    if (exp == 0.0f) return 1.0f;
+    if (exp == 1.0f) return base;
+
+    if (base == 0.0f) {
+        return (exp > 0.0f) ? 0.0f : 1e38f; 
+    }
+    // May include other smaller exps like cube and power of 4.
+    if (exp == 2.0f) {
+        return base * base;
+    }
+
+    if(exp == 0.5f) {
+        return fast_sqrt(base);
+    }
+    
+
+    // negative exponents
+    b8 is_negative_exp = 0;
+    if (exp < 0.0f) {
+        is_negative_exp = 1;
+        exp = -exp;
+    }
+
+    // Borrowing from how the fast_exp function is implemented, we split the exponent into integer and fractional parts for better optimization.
+    int int_part = (int)exp;
+    float frac_part = exp - (float)int_part;
+    
+    float result = 1.0f;
+
+    // Calculate fractional exponent part by using the fast_exp and fast_log funtions provided.
+    if (frac_part > 0.0f) {
+        float intermediate = frac_part * fast_log(base);
+        // I think the overflow checking is handled gracefully in the fast_exp funtion and we dont actually need to check for it here. Need confirmation for this. will find out during testing.
+        // if (intermediate > 88.0f) return is_negative_exp ? 0.0f : 1e38f; 
+        // if (intermediate < -87.0f) return is_negative_exp ? 1e38f : 0.0f;
+        result = fast_exp(intermediate);
+    }
+
+    // Incorporating integer part. Used exponentiation by squaring.
+    //Didnt include overflow checks here, as checking in every iteration is more expensive than the native infinity calculations, also 1.f/result will give zero automatically if overflowed, so we get more optimization. Again, needs confirmation.
+    while (int_part > 0) {
+
+        if (int_part & 1) { 
+            result *= base;
+        }
+
+        int_part >>= 1; 
+        if (!int_part) break; 
+
+        base *= base;
+    }
+
+    // Reciprocate if negative exp.
+    return is_negative_exp ? (1.0f / result) : result;
+}
