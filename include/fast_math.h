@@ -6,7 +6,7 @@
     Implement costy math functions using Numerical Methods
     This is faster than math lib, but with (way) less precision
     Use when you dont care about very precise values
-    Originally written to be used for rng gaussian 
+    Originally written to be used for rng gaussian/ neural network weights init
 */
 
 #define PI     3.14159265359f
@@ -40,7 +40,6 @@ cos(x) = sin(x + π/2)
 */
 float fast_cos(float x);
 
-// TODO: e^x
 /*
  By Taylor Series
 e^x = 1 + x + x²/2! + x³/3! + x⁴/4! + ...
@@ -49,17 +48,6 @@ float fast_exp(float x);
 
 
 float fast_ceil(float x);
-/*
-
-Option 2: Range Reduction
-
-Use e^x = e^(integer) × e^(fraction)
-Compute e^(integer) by repeated squaring
-Compute e^(fraction) using Taylor series
-*/
-
-// TODO: higher precision versions ?
-// by increasing iteration count / Taylor series terms
 
 
 #endif // FAST_MATH_H

@@ -10,9 +10,8 @@
 #define typeof __typeof__
 
 
-/* ════════════════════════════════════════════════════════════════════════════
- * STORAGE STRATEGY
- * ════════════════════════════════════════════════════════════════════════════
+/* STORAGE STRATEGY
+ * ================
  *
  * Strategy A — by value: slot holds the full struct (sizeof(String) bytes)
  *   genVec* v = VEC_CX(String, 10, &wc_str_ops);
@@ -26,7 +25,7 @@
  */
 
 
-// ── Creation ───────────────────────────────────────────────────────────────
+// Creation
 
 // POD types (int, float, flat structs) — pass NULL for ops
 #define VEC(T, cap)  genVec_init((cap), sizeof(T), NULL)
@@ -60,7 +59,7 @@ Usage:
     })
 
 
-// ── Push ───────────────────────────────────────────────────────────────────
+// Push
 
 // VEC_PUSH — push any POD value
 #define VEC_PUSH(vec, val)                 \
@@ -92,7 +91,7 @@ Usage:
     })
 
 
-// ── Access ─────────────────────────────────────────────────────────────────
+// Access
 
 #define VEC_AT(vec, T, i)     (*(T*)genVec_get_ptr((vec), (i)))
 #define VEC_AT_MUT(vec, T, i) ((T*)genVec_get_ptr_mut((vec), (i)))
@@ -100,7 +99,7 @@ Usage:
 #define VEC_BACK(vec, T)      (*(T*)genVec_back((vec)))
 
 
-// ── Mutate ─────────────────────────────────────────────────────────────────
+// Mutate
 
 #define VEC_SET(vec, i, val)                       \
     ({                                             \
@@ -109,7 +108,7 @@ Usage:
     })
 
 
-// ── Pop ────────────────────────────────────────────────────────────────────
+// Pop
 
 #define VEC_POP(vec, T)                 \
     ({                                  \
@@ -119,7 +118,7 @@ Usage:
     })
 
 
-// ── Iterate ────────────────────────────────────────────────────────────────
+// Iterate
 
 #define VEC_FOREACH(vec, T, name)                        \
     for (u64 _wvf_i = 0; _wvf_i < (vec)->size; _wvf_i++) \
@@ -132,7 +131,7 @@ Usage:
  * (require wc_helpers.h to be included for the ops structs)
  * ══════════════════════════════════════════════════════════════════════════ */
 
-// ── Vector creation shorthands ───────────────────────────────────────────
+// Vector creation shorthands
 
 #define VEC_OF_INT(cap)     genVec_init((cap), sizeof(int), NULL)
 #define VEC_OF_STR(cap)     VEC_CX(String, (cap), &wc_str_ops)
@@ -141,13 +140,13 @@ Usage:
 #define VEC_OF_VEC_PTR(cap) VEC_CX(genVec*, (cap), &wc_vec_ptr_ops)
 
 
-// ── Push shorthands ──────────────────────────────────────────────────────
+// Push shorthands
 
 #define VEC_PUSH_VEC(outer, inner_ptr)     VEC_PUSH_MOVE((outer), (inner_ptr))
 #define VEC_PUSH_VEC_PTR(outer, inner_ptr) VEC_PUSH_MOVE((outer), (inner_ptr))
 
 
-// ── Hashmap shorthands ───────────────────────────────────────────────────
+// Hashmap shorthands
 
 /*
  * MAP_PUT_INT_STR(map, int_key, cstr_literal)
@@ -171,7 +170,7 @@ Usage:
     })
 
 
-// ── Put (COPY semantics) ──────────────────────────────────────────────────
+// Put (COPY semantics)
 
 #define MAP_PUT(map, key, val)                                \
     ({                                                        \
@@ -181,7 +180,7 @@ Usage:
     })
 
 
-// ── Put (MOVE semantics) ──────────────────────────────────────────────────
+// Put (MOVE semantics)
 
 #define MAP_PUT_MOVE(map, kptr, vptr)                      \
     ({                                                     \
@@ -205,7 +204,7 @@ Usage:
     })
 
 
-// ── Get ───────────────────────────────────────────────────────────────────
+// Get
 
 // V - Type of the value
 #define MAP_GET(map, V, key)                             \
@@ -218,7 +217,7 @@ Usage:
 
 
 
-// ── Iterate ────────────────────────────────────────────────────────────────
+// Iterate
 
 
 // WARN: don't modify the key !!!
@@ -231,7 +230,7 @@ Usage:
         for (T* name = (T*)((map)->vals + (_i * (map)->val_size)); name && (map)->psls[_i]; name = NULL)
 
 
-// ── Hashset shorthands ───────────────────────────────────────────────────
+// Hashset shorthands
 
 #define SET_FROM_VEC(vec, hash_fn, cmp_fn)                                             \
     ({                                                                                 \

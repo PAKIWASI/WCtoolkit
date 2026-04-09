@@ -56,20 +56,20 @@
 
 
 #ifdef WC_TEST_MAIN
-/* Defined exactly once, in the file that #define WC_TEST_MAIN */
+// Defined ex _MAINonce, in the file that #define WC_TEST_MAIN
 int wc_total       = 0;
 int wc_passed      = 0;
 int wc_failed      = 0;
 int wc_test_failed = 0;
 #else
-/* All other translation units: just extern declarations */
+// All other translation units: just extern declarations
 extern int wc_total;
 extern int wc_passed;
 extern int wc_failed;
 extern int wc_test_failed;
 #endif
 
-/* ANSI colours (same palette as common.h) */
+// ANSI colours (same palette as common.h)
 #define WC_RED    "\033[1;31m"
 #define WC_GREEN  "\033[1;32m"
 #define WC_YELLOW "\033[1;33m"
@@ -79,7 +79,7 @@ extern int wc_test_failed;
 
 // Core assert 
 
-/* All asserts funnel through this so failure tracking is in one place */
+// All asserts funnel through this so failure tracking is in one place
 #define WC_ASSERT_CORE(cond, msg)                         \
     do {                                                  \
         if (!(cond)) {                                    \
@@ -92,7 +92,7 @@ extern int wc_test_failed;
     } while (0)
 
 
-/* ── Public assert macros ────────────────────────────────────────────────── */
+// Public assert macros
 
 #define WC_ASSERT(cond) WC_ASSERT_CORE((cond), #cond)
 
@@ -104,7 +104,7 @@ extern int wc_test_failed;
 
 #define WC_ASSERT_NOT_NULL(p) WC_ASSERT_CORE((p) != NULL, #p " != NULL")
 
-/* Integer — prints actual vs expected on failure */
+// Integer — prints actual vs expected on failure
 #define WC_ASSERT_EQ_INT(a, b)                                                                \
     do {                                                                                      \
         long long _a = (long long)(a);                                                        \
@@ -138,7 +138,7 @@ extern int wc_test_failed;
         }                                                                                     \
     } while (0)
 
-/* C-string equality */
+// C-string equality
 #define WC_ASSERT_EQ_STR(a, b)                                                                    \
     do {                                                                                          \
         const char* _a = (const char*)(a);                                                        \
@@ -153,7 +153,7 @@ extern int wc_test_failed;
 
 // Suite and runner macros 
 
-/* Print a suite header */
+// Print a suite header
 #define WC_SUITE(name) printf("\n" WC_CYAN "══ %s ══" WC_RESET "\n", (name))
 
 /*
@@ -194,4 +194,4 @@ extern int wc_test_failed;
     })
 
 
-#endif /* WC_TEST_H */
+#endif // WC_TEST_H

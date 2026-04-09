@@ -335,7 +335,7 @@ void genVec_swap_pop(genVec* vec, u64 i, u8* out)
     if (out) {
         copy_fn copy = COPY_FN(vec);
         if (copy) {
-            copy(out, GET_PTR(vec, i)); 
+            copy(out, GET_PTR(vec, i));
         } else {
             memcpy(out, GET_PTR(vec, i), vec->data_size);
         }
@@ -347,8 +347,8 @@ void genVec_swap_pop(genVec* vec, u64 i, u8* out)
     }
 
     // swap the last container with the removed one
-    // if owns memory elsewhere, those are still valid, only container location changes 
-    memcpy(GET_PTR(vec, i), GET_PTR(vec, vec->size-1), vec->data_size);
+    // if owns memory elsewhere, those are still valid, only container location changes
+    memcpy(GET_PTR(vec, i), GET_PTR(vec, vec->size - 1), vec->data_size);
     vec->size--;
 }
 
@@ -357,7 +357,9 @@ void genVec_swap(genVec* vec, u64 i, u64 j)
     CHECK_FATAL(!vec, "vec is null");
     CHECK_FATAL(i >= vec->size || j >= vec->size, "index out of bounds");
 
-    if (i == j) { return; }
+    if (i == j) {
+        return;
+    }
 
     // we need one empty container as temp space for swap
     MAYBE_GROW(vec);
@@ -369,7 +371,7 @@ void genVec_swap(genVec* vec, u64 i, u64 j)
     // shallow copy from temp space into ith container
     memcpy(GET_PTR(vec, i), GET_PTR(vec, vec->size), vec->data_size);
 
-    // temp container will be over written on next push 
+    // temp container will be over written on next push
 }
 
 
@@ -596,7 +598,9 @@ void genVec_remove(genVec* vec, u64 i, u8* out)
 void genVec_remove_range(genVec* vec, u64 start, u64 len)
 {
     CHECK_FATAL(!vec, "vec is null");
-    if (len == 0) { return; }
+    if (len == 0) {
+        return;
+    }
     CHECK_FATAL(start >= vec->size, "start out of range");
 
     if (start + len >= vec->size) {
@@ -765,3 +769,5 @@ static void genVec_grow(genVec* vec)
     vec->data     = new_data;
     vec->capacity = new_cap;
 }
+
+

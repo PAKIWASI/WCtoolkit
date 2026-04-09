@@ -8,19 +8,19 @@
 
 iterators
 
+
 ---
 
 ## Testing
+
+proper speed tests:
+  seperate tests for pod types and complex types
+  should be done after pod optimizations
 
 
 ---
 
 ## Ergonomics
-
-
----
-
-## Library
 
 
 ---
@@ -43,18 +43,18 @@ Need to test them
 
 ---
 
-## gen_vector
+## Improvements
 
-- Add iterator / cursor support — right now the only way to loop is manual index arithmetic
+### gen_vector
+
+- Add iterator / cursor support — right now the only way to loop is index loops and FOREACH macros
 - `genVec_reverse(vec)` — in-place reversal
 - `genVec_filter(vec, predicate)` — in-place removal of elements where predicate returns false
 - `genVec_view` — a non-owning slice into a vector (pointer + length, no copy)
 - Guard against push-past-capacity in `genVec_init_arr` mode — currently crashes silently.
     Add an `ASSERT_FATAL` at the push site when the internal data pointer is stack-owned.
 
----
-
-## String
+### String
 
 - `string_split(str, delim, &out_count)` — split by delimiter, returns `String**`
 - `string_join(strings, count, sep)` — join array of strings with separator
@@ -73,9 +73,8 @@ Need to test them
   StringView string_view(const String* str, u64 start, u64 len);
   StringView string_view_cstr(const char* cstr);
   ```
----
 
-## HashMap
+### HashMap
 
 - `hashmap_clear(map)` — remove all elements, keep current capacity
 - `hashmap_reset(map)` — remove all elements, reset to initial capacity
@@ -83,16 +82,14 @@ Need to test them
 - `hashmap_keys(map)` — returns a `genVec*` of all keys
 - `hashmap_values(map)` — returns a `genVec*` of all values
 
----
 
-## HashSet
+### HashSet
 
 - Set operations: `hashset_union`, `hashset_intersect`, `hashset_difference`
 - Union-Find data structure ?
 
----
 
-## Matrix (float)
+### Matrix (float)
 
 - `matrix_iden(n)` — create an n×n identity matrix
 - `matrix_adj(out, mat)` — adjugate (adjoint) matrix — **currently stub, not implemented**
@@ -118,9 +115,8 @@ Need to test them
   } MatrixView;
   ```
 
----
 
-## Matrix Generic (`matrix_generic.h`)
+### Matrix Generic (`matrix_generic.h`)
 
 - `MATRIX_INV(T)` — inverse via LU
 - `MATRIX_ADJ(T)` — adjugate
@@ -128,9 +124,8 @@ Need to test them
 - `MATRIX_TRACE(T)`
 - Arena allocation variants (`matrix_arena_alloc_T`, `matrix_arena_arr_alloc_T`)
 
----
 
-## Random
+### Random
 
 - `pcg32_rand_gaussian` uses a `static` spare value — this state is invisible to callers
   and breaks if multiple RNG instances or sequences are needed.
@@ -141,27 +136,22 @@ Need to test them
   instead of `time(NULL)` (second precision) to allow multiple seeds within the same second
 - Uniform integer in `[min, max]` convenience function
 
----
 
-## Fast Math
+### Fast Math
 
-- `fast_exp` range-reduction variant — use `e^x = e^(integer) × e^(fraction)` with repeated
-  squaring for the integer part (this is actually the current implementation — document it better
-  and add a note about where precision falls off vs `expf`)
-- Higher-precision versions with more Taylor series terms, opt-in via macros
 - `fast_atan2(y, x)`
 - `fast_pow(base, exp)`
+- `fast_floor(x)`
+- `fast_abs(x)`
 
----
 
-## Arena
+### Arena
 
 - Thread-local arena support — `ARENA_THREAD_LOCAL` variant for per-thread scratch allocation
 - Multiple arena pools — a pool allocator that hands out fixed-size arenas from a slab
 
----
 
-## BitVector
+### BitVector
 
 - `bitVec_count_set(bv)` — population count (popcount) of all set bits
 - `bitVec_and(out, a, b)`, `bitVec_or(out, a, b)`, `bitVec_xor(out, a, b)`, `bitVec_not(out, a)` — bitwise operations between two vectors
@@ -172,6 +162,8 @@ Need to test them
 ---
 
 ## Speed Improvement
+
+flag for pod types to skip the ops functions checks
 
 ### hashmap
 

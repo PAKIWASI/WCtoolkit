@@ -328,8 +328,8 @@ static inline u64 set_iter_slot(const set_iter* it)
  *   VEC_ITER(v, int, p) { printf("%d\n", *p); }
  */
 #define VEC_ITER(vec, T, ptr)                                                              \
-    for (vec_iter _vi_ = {0}; vec_iter_init(&_vi_, (vec)), vec_iter_valid(&_vi_); (void)0) \
-        for ((T) * (ptr) = (T*)vec_iter_get(&_vi_); ptr;                                   \
+    for (vec_iter _vi_ = {0}; vec_iter_init(&_vi_, (vec)), vec_iter_valid(&_vi_); (void)_vi_) \
+        for (T* (ptr) = (T*)vec_iter_get(&_vi_); ptr;                                   \
              vec_iter_next(&_vi_), (ptr) = vec_iter_valid(&_vi_) ? (T*)vec_iter_get(&_vi_) : NULL)
 
 
@@ -340,7 +340,7 @@ static inline u64 set_iter_slot(const set_iter* it)
  */
 #define VEC_ITER_REV(vec, T, ptr)                                                                 \
     for (vec_iter _vir_ = {0}; vec_iter_init_rev(&_vir_, (vec)), vec_iter_valid(&_vir_); (void)0) \
-        for ((T)* (ptr) = (T*)vec_iter_get(&_vir_); ptr;                                              \
+        for (T* (ptr) = (T*)vec_iter_get(&_vir_); ptr;                                              \
              vec_iter_next(&_vir_), (ptr) = vec_iter_valid(&_vir_) ? (T*)vec_iter_get(&_vir_) : NULL)
 
 
@@ -354,10 +354,10 @@ static inline u64 set_iter_slot(const set_iter* it)
  */
 #define MAP_ITER(map, KT, kptr, VT, vptr)                                                                \
     for (map_iter _mi_ = {0}; map_iter_init(&_mi_, (map)), map_iter_valid(&_mi_); (void)0)               \
-        for (const KT *(kptr) = (const KT*)map_iter_key(&_mi_), *_mi_ksentinel_ = kptr; _mi_ksentinel_;    \
+        for (const KT* (kptr) = (const KT*)map_iter_key(&_mi_), *_mi_ksentinel_ = kptr; _mi_ksentinel_;    \
              map_iter_next(&_mi_), (kptr) = map_iter_valid(&_mi_) ? (const KT*)map_iter_key(&_mi_) : NULL, \
                       _mi_ksentinel_ = (kptr))                                                             \
-            for ((VT)* (vptr) = (VT*)map_iter_val(&_mi_); vptr; (vptr) = NULL)
+            for (VT* (vptr) = (VT*)map_iter_val(&_mi_); vptr; (vptr) = NULL)
 
 
 /* SET_ITER(set, Type, ptr)

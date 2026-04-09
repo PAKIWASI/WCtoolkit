@@ -6,19 +6,19 @@
 #define FLOAT_EPS 1e-3f
 
 
-/* ── Helpers ─────────────────────────────────────────────────────────────── */
+// Helpers
 
-/* Check every element of a matrix against a flat expected array */
+// Check every element of a matrix against a flat expected array
 static int mat_eq(const Matrixf* m, const float* expected, float eps)
 {
     for (u64 i = 0; i < m->m * m->n; i++) {
-        if (fabsf(m->data[i] - expected[i]) > eps) return 0;
+        if (fabsf(m->data[i] - expected[i]) > eps) { return 0; }
     }
     return 1;
 }
 
 
-/* ── Creation ────────────────────────────────────────────────────────────── */
+// Creation
 
 static void test_create_heap(void)
 {
@@ -34,7 +34,7 @@ static void test_create_arr(void)
 {
     float arr[6] = {1,2,3,4,5,6};
     Matrixf* m   = matrix_create_arr(2, 3, arr);
-    WC_ASSERT_EQ_INT(*(int*)&m->data[0], *(int*)&arr[0]); /* bit-identical */
+    WC_ASSERT_EQ_INT(*(int*)&m->data[0], *(int*)&arr[0]); // bit-identical
     WC_ASSERT(mat_eq(m, arr, FLOAT_EPS));
     matrix_destroy(m);
 }
@@ -46,11 +46,11 @@ static void test_create_stk(void)
     matrix_create_stk(&m, 2, 3, data);
     WC_ASSERT_EQ_U64(m.m, 2);
     WC_ASSERT_EQ_U64(m.n, 3);
-    WC_ASSERT_TRUE(m.data == data); /* must point at the provided array */
+    WC_ASSERT_TRUE(m.data == data); // must point at the provided array
 }
 
 
-/* ── Set element ─────────────────────────────────────────────────────────── */
+// Set element
 
 static void test_set_elm(void)
 {
@@ -70,7 +70,7 @@ static void test_set_val_arr(void)
 }
 
 
-/* ── Copy ────────────────────────────────────────────────────────────────── */
+// Copy
 
 static void test_copy(void)
 {
@@ -86,7 +86,7 @@ static void test_copy(void)
 }
 
 
-/* ── Add / Sub ───────────────────────────────────────────────────────────── */
+// Add / Sub
 
 static void test_add(void)
 {
@@ -104,7 +104,7 @@ static void test_add(void)
 
 static void test_add_in_place(void)
 {
-    /* out may alias a */
+    // out may alias a
     Matrixf* a = matrix_create_arr(2, 2, (float[]){1,2,3,4});
     Matrixf* b = matrix_create_arr(2, 2, (float[]){1,1,1,1});
     matrix_add(a, a, b);
@@ -130,7 +130,7 @@ static void test_sub(void)
 
 static void test_sub_self(void)
 {
-    /* out = a - a must produce zeros */
+    // out = a - a must produce zeros
     Matrixf* a = matrix_create_arr(2, 2, (float[]){3,7,1,9});
     float    od[4] = {0};
     Matrixf  out;
@@ -151,11 +151,11 @@ static void test_scale(void)
 }
 
 
-/* ── Multiply ────────────────────────────────────────────────────────────── */
+// Multiply
 
 static void test_xply_2x2(void)
 {
-    /* [[1,2],[3,4]] x [[5,6],[7,8]] = [[19,22],[43,50]] */
+    // [[1,2],[3,4]] x [[5,6],[7,8]] = [[19,22],[43,50]]
     Matrixf* a = matrix_create_arr(2, 2, (float[]){1,2,3,4});
     Matrixf* b = matrix_create_arr(2, 2, (float[]){5,6,7,8});
     float    od[4] = {0};
@@ -170,15 +170,15 @@ static void test_xply_2x2(void)
 
 static void test_xply_rect(void)
 {
-    /* (2x3) * (3x2) = (2x2) */
+    // (2x3) * (3x2) = (2x2)
     Matrixf* a = matrix_create_arr(2, 3, (float[]){1,2,3, 4,5,6});
     Matrixf* b = matrix_create_arr(3, 2, (float[]){7,8, 9,10, 11,12});
     float    od[4] = {0};
     Matrixf  out;
     matrix_create_stk(&out, 2, 2, od);
     matrix_xply(&out, a, b);
-    /* row0: 1*7+2*9+3*11=58, 1*8+2*10+3*12=64 */
-    /* row1: 4*7+5*9+6*11=139, 4*8+5*10+6*12=154 */
+    // row0: 1*7+2*9+3*11=58, 1*8+2*10+3*12=64
+    // row1: 4*7+5*9+6*11=139, 4*8+5*10+6*12=154
     float expected[] = {58,64,139,154};
     WC_ASSERT(mat_eq(&out, expected, FLOAT_EPS));
     matrix_destroy(a);
@@ -187,7 +187,7 @@ static void test_xply_rect(void)
 
 static void test_xply_identity(void)
 {
-    /* A * I = A */
+    // A * I = A
     Matrixf* a = matrix_create_arr(2, 2, (float[]){3,7,2,5});
     Matrixf* I = matrix_create_arr(2, 2, (float[]){1,0,0,1});
     float    od[4] = {0};
@@ -200,11 +200,11 @@ static void test_xply_identity(void)
 }
 
 
-/* ── Transpose ───────────────────────────────────────────────────────────── */
+// Transpose
 
 static void test_transpose_square(void)
 {
-    /* [[1,2],[3,4]]^T = [[1,3],[2,4]] */
+    // [[1,2],[3,4]]^T = [[1,3],[2,4]]
     Matrixf* m = matrix_create_arr(2, 2, (float[]){1,2,3,4});
     float    od[4] = {0};
     Matrixf  out;
@@ -217,7 +217,7 @@ static void test_transpose_square(void)
 
 static void test_transpose_rect(void)
 {
-    /* (2x3)^T = (3x2) */
+    // (2x3)^T = (3x2)
     Matrixf* m = matrix_create_arr(2, 3, (float[]){1,2,3,4,5,6});
     float    od[6] = {0};
     Matrixf  out;
@@ -230,7 +230,7 @@ static void test_transpose_rect(void)
 
 static void test_double_transpose(void)
 {
-    /* (A^T)^T = A */
+    // (A^T)^T = A
     Matrixf* a = matrix_create_arr(2, 3, (float[]){1,2,3,4,5,6});
     float    t1d[6] = {0}, t2d[6] = {0};
     Matrixf  t1, t2;
@@ -243,11 +243,11 @@ static void test_double_transpose(void)
 }
 
 
-/* ── LU decomposition & determinant ─────────────────────────────────────── */
+// LU decomposition & determinant
 
 static void test_lu_reconstruct(void)
 {
-    /* L * U must equal original matrix */
+    // L * U must equal original matrix
     Matrixf* m = matrix_create_arr(3, 3, (float[]){
         2, 1, 1,
         4, 3, 3,
@@ -265,9 +265,10 @@ static void test_lu_reconstruct(void)
     matrix_destroy(m);
 }
 
+// TODO: float equality
 static void test_det_known(void)
 {
-    /* det([[1,2],[3,4]]) = 1*4 - 2*3 = -2 */
+    // det([[1,2],[3,4]]) = 1*4 - 2*3 = -2
     Matrixf* m = matrix_create_arr(2, 2, (float[]){1,2,3,4});
     float    d = matrix_det(m);
     matrix_destroy(m);
@@ -275,7 +276,7 @@ static void test_det_known(void)
 
 static void test_det_3x3(void)
 {
-    /* det([[3,2,4],[2,0,2],[4,2,3]]) = 3*(0-4) - 2*(6-8) + 4*(4-0) = -12+4+16 = 8 */
+    // det([[3,2,4],[2,0,2],[4,2,3]]) = 3*(0-4) - 2*(6-8) + 4*(4-0) = -12+4+16 = 8
     Matrixf* m = matrix_create_arr(3, 3, (float[]){
         3,2,4, 2,0,2, 4,2,3
     });
@@ -292,7 +293,7 @@ static void test_det_identity(void)
 }
 
 
-/* ── Arena allocation ────────────────────────────────────────────────────── */
+// Arena allocation
 
 static void test_arena_alloc(void)
 {
@@ -316,7 +317,7 @@ static void test_arena_arr_alloc(void)
 
 static void test_arena_scratch_temporaries(void)
 {
-    /* Temporaries inside scratch don't leak; result outside scratch survives */
+    // Temporaries inside scratch don't leak; result outside scratch survives
     Arena*   arena = arena_create(nKB(2));
     Matrixf* result = matrix_arena_alloc(arena, 2, 2);
 
@@ -329,14 +330,14 @@ static void test_arena_scratch_temporaries(void)
         (void)t1; (void)t2;
     }
 
-    /* t1 and t2 memory reclaimed; result still holds correct values */
+    // t1 and t2 memory reclaimed; result still holds correct values
     float expected[] = {5,6,7,8};
     WC_ASSERT(mat_eq(result, expected, FLOAT_EPS));
     arena_release(arena);
 }
 
 
-/* ── Suite entry point ───────────────────────────────────────────────────── */
+// Suite entry point
 
 void matrix_suite(void)
 {

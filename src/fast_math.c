@@ -19,10 +19,10 @@ float fast_sqrt(float x)
     
     // Newton-Raphson: next = 0.5 * (guess + x/guess)
     // 3-4 iterations gives good precision
-    guess = 0.5f * (guess + x / guess);
-    guess = 0.5f * (guess + x / guess);
-    guess = 0.5f * (guess + x / guess);
-    guess = 0.5f * (guess + x / guess);
+    guess = 0.5f * (guess + (x / guess));
+    guess = 0.5f * (guess + (x / guess));
+    guess = 0.5f * (guess + (x / guess));
+    guess = 0.5f * (guess + (x / guess));
     
     return guess;
 }
@@ -94,11 +94,11 @@ e^n (integer part) - use repeated squaring
 Part 1: Fractional Component (e^r)
 For r ∈ [0, 1), the Taylor series converges rapidly:
 e^r = 1 + r + r²/2! + r³/3! + r⁴/4! + r⁵/5! + r⁶/6! + ...
-Why range reduction helps:
 
-When r is small, higher-order terms become negligible quickly
-With r < 1, just 7 terms gives good accuracy
-Without reduction, large x would need many more terms
+Why range reduction helps:
+  When r is small, higher-order terms become negligible quickly
+  With r < 1, just 7 terms gives good accuracy
+  Without reduction, large x would need many more terms
 
 
 Part 2: Integer Component (e^n)
