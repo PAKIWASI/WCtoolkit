@@ -7,7 +7,7 @@
 
 // Helpers 
 
-/* Simple int vec — no copy/move/del needed */
+// Simple int vec — no copy/move/del needed
 static genVec* int_vec(u64 cap)
 {
     return genVec_init(cap, sizeof(int), NULL);

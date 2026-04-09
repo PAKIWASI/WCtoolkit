@@ -68,6 +68,7 @@ add_executable(tests
     tests/stack_queue_test.c
     tests/matrix_test.c
     tests/bit_vector_test.c
+    tests/fast_math_test.c
     tests/complex_test.c
     
     tests/speed_tests/gen_vector_speed.c
@@ -86,27 +87,14 @@ enable_testing()
 add_test(NAME unit_tests COMMAND tests)
 
 
-# # Example programs
-
-# add_executable(examples
-#     examples/examples.c
-#     examples/json_parser.c
-#     ${LIB_SOURCES}
-# )
-# target_include_directories(examples PRIVATE include)
-
-# Usage comments 
+# Usage
 
 # Debug build (default):
 #   cmake -B build -G Ninja
 #   cmake --build build
+#   ./build/main
 #   ./build/tests
 #
 # Release build:
 #   cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 #   cmake --build build
-#
-# Run via CTest (shows pass/fail summary):
-#   ctest --test-dir build --output-on-failure
-
-

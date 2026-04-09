@@ -13,6 +13,7 @@ void stack_suite(void);
 void queue_suite(void);
 void matrix_suite(void);
 void bit_vector_suite(void);
+void fast_math_suite(void);
 void complex_suite(void);
 
 // Speed suites 
@@ -44,6 +45,8 @@ int main(void)
     queue_suite();
 
     matrix_suite();
+
+    fast_math_suite();
 
     complex_suite();
 
