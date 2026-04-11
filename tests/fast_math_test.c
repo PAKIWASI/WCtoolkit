@@ -384,6 +384,102 @@ static void test_ceil_result_geq_input(void)
 }
 
 
+// fast_pow
+
+static void test_pow_zero_exponent(void)
+{
+    WC_ASSERT_TRUE(fast_pow(2.0f, 0.0f) == 1.0f);
+    WC_ASSERT_TRUE(fast_pow(0.5f, 0.0f) == 1.0f);
+    WC_ASSERT_TRUE(fast_pow(0.0f, 0.0f) == 1.0f);
+}
+
+static void test_pow_one_exponent(void)
+{
+    WC_ASSERT_TRUE(fast_pow(2.0f, 1.0f) == 2.0f);
+    WC_ASSERT_TRUE(fast_pow(0.5f, 1.0f) == 0.5f);
+}
+
+static void test_pow_zero_base(void)
+{
+    WC_ASSERT_TRUE(fast_pow(0.0f, 2.0f) == 0.0f);
+    WC_ASSERT_TRUE(fast_pow(0.0f, 0.5f) == 0.0f);
+    // Negative exponent for zero base returns sentinel (1e38)
+    WC_ASSERT_TRUE(fast_pow(0.0f, -1.0f) >= 1e37f);
+}
+
+static void test_pow_square(void)
+{
+    WC_ASSERT_TRUE(rel_close(fast_pow(3.0f, 2.0f), 9.0f, EPS_TIGHT));
+    WC_ASSERT_TRUE(rel_close(fast_pow(-4.0f, 2.0f), 16.0f, EPS_TIGHT));
+    WC_ASSERT_TRUE(rel_close(fast_pow(0.5f, 2.0f), 0.25f, EPS_TIGHT));
+}
+
+static void test_pow_sqrt(void)
+{
+    WC_ASSERT_TRUE(rel_close(fast_pow(4.0f, 0.5f), 2.0f, EPS_TIGHT));
+    WC_ASSERT_TRUE(rel_close(fast_pow(2.0f, 0.5f), sqrtf(2.0f), EPS_TIGHT));
+    WC_ASSERT_TRUE(rel_close(fast_pow(0.25f, 0.5f), 0.5f, EPS_TIGHT));
+}
+
+static void test_pow_integer_exponent(void)
+{
+    WC_ASSERT_TRUE(rel_close(fast_pow(2.0f, 3.0f), 8.0f, EPS_TIGHT));
+    WC_ASSERT_TRUE(rel_close(fast_pow(3.0f, 4.0f), 81.0f, EPS_TIGHT));
+    WC_ASSERT_TRUE(rel_close(fast_pow(2.0f, 10.0f), 1024.0f, EPS_TIGHT));
+    WC_ASSERT_TRUE(rel_close(fast_pow(1.1f, 2.0f), 1.21f, EPS_TIGHT));
+}
+
+static void test_pow_negative_exponent(void)
+{
+    WC_ASSERT_TRUE(rel_close(fast_pow(2.0f, -1.0f), 0.5f, EPS_TIGHT));
+    WC_ASSERT_TRUE(rel_close(fast_pow(2.0f, -2.0f), 0.25f, EPS_TIGHT));
+    WC_ASSERT_TRUE(rel_close(fast_pow(10.0f, -3.0f), 0.001f, EPS_TIGHT));
+    WC_ASSERT_TRUE(rel_close(fast_pow(0.5f, -1.0f), 2.0f, EPS_TIGHT));
+}
+
+static void test_pow_fractional_exponent(void)
+{
+    WC_ASSERT_TRUE(rel_close(fast_pow(2.0f, 1.5f), powf(2.0f, 1.5f), EPS_TIGHT));
+    WC_ASSERT_TRUE(rel_close(fast_pow(3.0f, 0.33f), powf(3.0f, 0.33f), EPS_TIGHT));
+    WC_ASSERT_TRUE(rel_close(fast_pow(0.5f, 0.5f), powf(0.5f, 0.5f), EPS_TIGHT));
+}
+
+static void test_pow_general(void)
+{
+    float bases[] = {1.5f, 2.7f, 0.8f};
+    float exps[] = {2.2f, -1.1f, 0.5f};
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 3; j++) {
+            WC_ASSERT_TRUE(rel_close(fast_pow(bases[i], exps[j]), powf(bases[i], exps[j]), EPS_TIGHT));
+        }
+    }
+}
+
+static void test_pow_large_result(void)
+{
+    // Should handle large results gracefully (approaching float max)
+    WC_ASSERT_TRUE(fast_pow(10.0f, 30.0f) > 1e29f);
+}
+
+static void test_pow_small_result(void)
+{
+    // Should handle very small results (approaching 0)
+    WC_ASSERT_TRUE(fast_pow(0.1f, 40.0f) < 1e-37f);
+}
+
+static void test_pow_negative_base(void)
+{
+    // Integer exponents should work
+    WC_ASSERT_TRUE(rel_close(fast_pow(-2.0f, 2.0f), 4.0f, EPS_TIGHT));
+    WC_ASSERT_TRUE(rel_close(fast_pow(-2.0f, 3.0f), -8.0f, EPS_TIGHT));
+    
+    // Fractional exponents with negative base: implementation returns 0
+    // (consistent with fast_sqrt and fast_log returning sentinels)
+    WC_ASSERT_TRUE(fast_pow(-2.0f, 0.5f) == 0.0f);
+    WC_ASSERT_TRUE(fast_pow(-2.0f, 1.5f) == 0.0f);
+}
+
+
 // Suite entry point
 
 void fast_math_suite(void)
@@ -445,6 +541,20 @@ void fast_math_suite(void)
     WC_RUN(test_ceil_zero);
     WC_RUN(test_ceil_result_is_integer);
     WC_RUN(test_ceil_result_geq_input);
+
+    WC_SUITE("fast_pow");
+    WC_RUN(test_pow_zero_exponent);
+    WC_RUN(test_pow_one_exponent);
+    WC_RUN(test_pow_zero_base);
+    WC_RUN(test_pow_square);
+    WC_RUN(test_pow_sqrt);
+    WC_RUN(test_pow_integer_exponent);
+    WC_RUN(test_pow_negative_exponent);
+    WC_RUN(test_pow_fractional_exponent);
+    WC_RUN(test_pow_general);
+    WC_RUN(test_pow_large_result);
+    WC_RUN(test_pow_small_result);
+    WC_RUN(test_pow_negative_base);
 }
 
 
