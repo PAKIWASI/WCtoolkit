@@ -22,7 +22,6 @@ void string_speed_suite(void);
 void hashmap_speed_suite(void);
 void hashset_speed_suite(void);
 void arena_speed_suite(void);
-// void matrix_speed_suite(void);
 
 
 int main(void)
@@ -61,6 +60,7 @@ int main(void)
     arena_speed_suite();
     // matrix_speed_suite();
     printf("\n");
+
 
     return result;
 }

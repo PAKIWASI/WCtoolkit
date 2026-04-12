@@ -27,8 +27,8 @@ message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 set(CMAKE_C_FLAGS_DEBUG   "-g -O0 -fno-omit-frame-pointer -fsanitize=address -fsanitize=undefined -march=native -Rpass=loop-vectorize")
 set(CMAKE_EXE_LINKER_FLAGS_DEBUG   "-fsanitize=address -fsanitize=undefined")
 
-# Release: full optimisation
-set(CMAKE_C_FLAGS_RELEASE   "-O3 -DNDEBUG -march=native -Rpass=loop-vectorize")
+# Release: full optimisation                                                    # this flag doesn't work in debug with Asan
+set(CMAKE_C_FLAGS_RELEASE   "-O3 -DNDEBUG -march=native -Rpass=loop-vectorize -Rpass-missed=loop-vectorize -ffast-math")
 set(CMAKE_EXE_LINKER_FLAGS_RELEASE "")
 
 

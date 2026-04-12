@@ -10,6 +10,7 @@ int main(void)
 
     printf("ehllo");
 
+
     genVec_destroy(v);
     return 0;
 }

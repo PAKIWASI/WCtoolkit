@@ -6,17 +6,16 @@
 
 ## Immediate
 
-iterators
-
+- iterators
+- multithreading
 
 ---
 
 ## Testing
 
-proper speed tests:
-  seperate tests for pod types and complex types
-  should be done after pod optimizations
-
+- proper speed tests:
+    seperate tests for pod types and complex types
+    should be done after pod optimizations
 
 ---
 
@@ -27,7 +26,8 @@ proper speed tests:
 
 ## SIMD
 
-look into ways to utilize simd
+- look at how many loops are not auto vectorised and
+    manually vectorise them using intrinsics
 
 ---
 
