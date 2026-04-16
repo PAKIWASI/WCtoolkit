@@ -39,6 +39,7 @@
 #define COLOR_CYAN   "\033[1;36m"
 
 
+
 // TODO: warm paths ?
 
 #define WARN(fmt, ...)                                            \
@@ -327,8 +328,12 @@ typedef struct {
 
 
 // Tweakable settings
-#define ARENA_DEFAULT_ALIGNMENT (sizeof(u64)) // 8 byte
-#define ARENA_DEFAULT_SIZE      (nKB(4))      // 4 KB
+#ifndef ARENA_DEFAULT_ALIGNMENT
+    #define ARENA_DEFAULT_ALIGNMENT (sizeof(u64)) // 8 byte
+#endif
+#ifndef ARENA_DEFAULT_SIZE
+    #define ARENA_DEFAULT_SIZE      (nKB(4))      // 4 KB
+#endif
 
 
 /*
@@ -378,10 +383,7 @@ void arena_release(Arena* arena);
 
 /*
 Return a pointer to a portion of specified size of the
-specified arena's region. Nothing will restrict you
-from allocating more memory than you specified, so be
-mindful of your memory (as you should anyways) or you
-will get some hard-to-track bugs. By default, memory is
+specified arena's region. By default, memory is
 aligned by alignof(size_t), but you can change this by
 #defining ARENA_DEFAULT_ALIGNMENT before #include'ing
 arena.h. Providing a size of zero results in a failure.
@@ -404,10 +406,7 @@ Same as arena_alloc, except you can specify a memory
 alignment for allocations.
 
 Return a pointer to a portion of specified size of the
-specified arena's region. Nothing will restrict you
-from allocating more memory than you specified, so be
-mindful of your memory (as you should anyways) or you
-will get some hard-to-track bugs. Providing a size of
+specified arena's region. Providing a size of
 zero results in a failure.
 
 Parameters:

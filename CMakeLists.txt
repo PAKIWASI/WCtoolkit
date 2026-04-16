@@ -49,7 +49,7 @@ set(LIB_SOURCES
 )
 
 
-# Main executable 
+# Main executable
 add_executable(main
     src/main.c
     ${LIB_SOURCES}

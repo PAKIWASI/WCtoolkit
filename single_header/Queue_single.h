@@ -39,6 +39,7 @@
 #define COLOR_CYAN   "\033[1;36m"
 
 
+
 // TODO: warm paths ?
 
 #define WARN(fmt, ...)                                            \
@@ -344,6 +345,7 @@ static inline void wc_perror(const char* prefix)
 #endif
 
 
+
 // generic vector container
 typedef struct {
     u8* data; // pointer to generic data
@@ -382,11 +384,13 @@ genVec* genVec_init_val(u64 n, const u8* val, u32 data_size, const container_ops
 
 void genVec_init_val_stk(u64 n, const u8* val, u32 data_size, const container_ops* ops, genVec* vec);
 
+genVec* genVec_init_arr(u64 n, u32 data_size, const container_ops* ops, u8* arr);
+
 // Vector COMPLETELY on stack (can't grow in size).
 // You provide a stack-allocated array which becomes the internal array.
 // should only use if you need genVec operations on C array
 // WARNING: crashes when size == capacity and you try to push.
-void genVec_init_arr(u64 n, u8* arr, u32 data_size, const container_ops* ops, genVec* vec);
+void genVec_init_stk_arr(u64 n, u8* arr, u32 data_size, const container_ops* ops, genVec* vec);
 
 // Destroy heap-allocated vector and clean up all elements.
 void genVec_destroy(genVec* vec);
@@ -689,7 +693,18 @@ void genVec_init_val_stk(u64 n, const u8* val, u32 data_size, const container_op
 }
 
 
-void genVec_init_arr(u64 n, u8* arr, u32 data_size, const container_ops* ops, genVec* vec)
+genVec* genVec_init_arr(u64 n, u32 data_size, const container_ops* ops, u8* arr)
+{
+    genVec* v = genVec_init(n, data_size, ops);
+
+    memcpy(v->data, arr, n * data_size);
+    v->size = n;
+
+    return v;
+}
+
+
+void genVec_init_stk_arr(u64 n, u8* arr, u32 data_size, const container_ops* ops, genVec* vec)
 {
     CHECK_FATAL(!arr, "arr is null");
     CHECK_FATAL(!vec, "vec is null");
@@ -893,7 +908,7 @@ void genVec_swap_pop(genVec* vec, u64 i, u8* out)
     if (out) {
         copy_fn copy = COPY_FN(vec);
         if (copy) {
-            copy(out, GET_PTR(vec, i)); 
+            copy(out, GET_PTR(vec, i));
         } else {
             memcpy(out, GET_PTR(vec, i), vec->data_size);
         }
@@ -905,8 +920,8 @@ void genVec_swap_pop(genVec* vec, u64 i, u8* out)
     }
 
     // swap the last container with the removed one
-    // if owns memory elsewhere, those are still valid, only container location changes 
-    memcpy(GET_PTR(vec, i), GET_PTR(vec, vec->size-1), vec->data_size);
+    // if owns memory elsewhere, those are still valid, only container location changes
+    memcpy(GET_PTR(vec, i), GET_PTR(vec, vec->size - 1), vec->data_size);
     vec->size--;
 }
 
@@ -915,7 +930,9 @@ void genVec_swap(genVec* vec, u64 i, u64 j)
     CHECK_FATAL(!vec, "vec is null");
     CHECK_FATAL(i >= vec->size || j >= vec->size, "index out of bounds");
 
-    if (i == j) { return; }
+    if (i == j) {
+        return;
+    }
 
     // we need one empty container as temp space for swap
     MAYBE_GROW(vec);
@@ -927,7 +944,7 @@ void genVec_swap(genVec* vec, u64 i, u64 j)
     // shallow copy from temp space into ith container
     memcpy(GET_PTR(vec, i), GET_PTR(vec, vec->size), vec->data_size);
 
-    // temp container will be over written on next push 
+    // temp container will be over written on next push
 }
 
 
@@ -1154,7 +1171,9 @@ void genVec_remove(genVec* vec, u64 i, u8* out)
 void genVec_remove_range(genVec* vec, u64 start, u64 len)
 {
     CHECK_FATAL(!vec, "vec is null");
-    if (len == 0) { return; }
+    if (len == 0) {
+        return;
+    }
     CHECK_FATAL(start >= vec->size, "start out of range");
 
     if (start + len >= vec->size) {

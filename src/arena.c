@@ -1,5 +1,4 @@
 #include "arena.h"
-
 #include "wc_errno.h"
 
 /* python

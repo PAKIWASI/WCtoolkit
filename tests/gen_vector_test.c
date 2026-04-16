@@ -642,7 +642,7 @@ static void test_vec_foreach_empty(void)
 
 // Suite entry point 
 
-void gen_vector_suite(void)
+extern void gen_vector_suite(void)
 {
     WC_SUITE("genVec");
 

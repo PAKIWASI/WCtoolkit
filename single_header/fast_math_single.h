@@ -39,6 +39,7 @@
 #define COLOR_CYAN   "\033[1;36m"
 
 
+
 // TODO: warm paths ?
 
 #define WARN(fmt, ...)                                            \
@@ -205,7 +206,7 @@ static inline void wc_print_cstr(const u8* elm)
     Implement costy math functions using Numerical Methods
     This is faster than math lib, but with (way) less precision
     Use when you dont care about very precise values
-    Originally written to be used for rng gaussian 
+    Originally written to be used for rng gaussian/ neural network weights init
 */
 
 #define PI     3.14159265359f
@@ -239,7 +240,6 @@ cos(x) = sin(x + π/2)
 */
 float fast_cos(float x);
 
-// TODO: e^x
 /*
  By Taylor Series
 e^x = 1 + x + x²/2! + x³/3! + x⁴/4! + ...
@@ -248,17 +248,14 @@ float fast_exp(float x);
 
 
 float fast_ceil(float x);
+
+
 /*
-
-Option 2: Range Reduction
-
-Use e^x = e^(integer) × e^(fraction)
-Compute e^(integer) by repeated squaring
-Compute e^(fraction) using Taylor series
+    a^b = e^(b * ln(a))
+    Uses exponentiation by squaring for the integer part of the exponent,
+    and fast_exp(frac * fast_log(base)) for the fractional part.
 */
-
-// TODO: higher precision versions ?
-// by increasing iteration count / Taylor series terms
+float fast_pow(float base, float exp);
 
 #endif /* WC_FAST_MATH_H */
 
@@ -283,26 +280,26 @@ float fast_sqrt(float x)
     
     // Newton-Raphson: next = 0.5 * (guess + x/guess)
     // 3-4 iterations gives good precision
-    guess = 0.5f * (guess + x / guess);
-    guess = 0.5f * (guess + x / guess);
-    guess = 0.5f * (guess + x / guess);
-    guess = 0.5f * (guess + x / guess);
+    guess = 0.5f * (guess + (x / guess));
+    guess = 0.5f * (guess + (x / guess));
+    guess = 0.5f * (guess + (x / guess));
+    guess = 0.5f * (guess + (x / guess));
     
     return guess;
 }
+
 
 float fast_log(float x)
 {
     if (x <= 0.0f) { return -1e10f; }  // Error value
     
-    /* Reduce x to range [0.5, 1.5] for better convergence
-        - Brings x into [0.5, 1.5] range where t = x-1 is small
-        - Uses logarithm property: `ln(x × 2ⁿ) = ln(x) + n×ln(2)`
-        - After computing ln(x) in reduced range, adds back `n × 0.693147...` (ln(2))
+    /* Reduce x to range [1/√2, √2] ≈ [0.707, 1.414] for best Taylor convergence.
+        - Keeps |t| = |x-1| ≤ 0.414, where the 8-term series is accurate to ~1e-5
+        - Uses logarithm property: ln(x × 2ⁿ) = ln(x) + n×ln(2)
     */
     int exp_adjust = 0;
-    while (x > 1.5f) { x *= 0.5f; exp_adjust++; }
-    while (x < 0.5f) { x *= 2.0f; exp_adjust--; }
+    while (x > 1.4142135f) { x *= 0.5f; exp_adjust++; }
+    while (x < 0.7071068f) { x *= 2.0f; exp_adjust--; }
     
     // Now compute ln(x) using ln(1+t) series where t = x-1
     float t = x - 1.0f;
@@ -310,41 +307,63 @@ float fast_log(float x)
     float t3 = t2 * t;
     float t4 = t3 * t;
     float t5 = t4 * t;
-    
-    float result = t - (t2/2.0f) + (t3/3.0f) - (t4/4.0f) + (t5/5.0f);
+    float t6 = t5 * t;
+    float t7 = t6 * t;
+    float t8 = t7 * t;
+ 
+    float result = t - (t2/2.0f) + (t3/3.0f) - (t4/4.0f) + (t5/5.0f)
+                     - (t6/6.0f) + (t7/7.0f) - (t8/8.0f);
     
     // Adjust for range reduction: ln(x * 2^n) = ln(x) + n*ln(2)
     result += 0.693147180559945f * (float)exp_adjust; // ln(2)
-
+ 
     return result;
 }
 
+
 float fast_sin(float x)
 {
-    // Reduce to [-π, π]
-    // const float PI = 3.14159265359f;
-    // const float TWO_PI = 6.28318530718f;
-    
     // Normalize to [-π, π]
-    //- Reduces angle to [-π, π] where Taylor series converges well
-    //- Sine is periodic with period 2π
     while (x > PI) { x -= TWO_PI; }
     while (x < -PI) { x += TWO_PI; }
-    
+ 
+    // Fold to [-π/2, π/2] using sin(π - x) = sin(x)
+    if (x >  PI / 2.0f) { x =  PI - x; }
+    if (x < -PI / 2.0f) { x = -PI - x; }
+ 
     float x2 = x * x;
     float x3 = x2 * x;
     float x5 = x3 * x2;
     float x7 = x5 * x2;
-    
-    return x - (x3/6.0f) + (x5/120.0f) - (x7/5040.0f);
+    float x9 = x7 * x2;
+ 
+    return x - (x3/6.0f) + (x5/120.0f) - (x7/5040.0f) + (x9/362880.0f);
 }
+
 
 float fast_cos(float x)
 {
-    // cos(x) = sin(x + π/2)
-    const float HALF_PI = 1.57079632679f;
-    return fast_sin(x + HALF_PI);
+    // Normalize to [-π, π]
+    while (x >  PI) { x -= TWO_PI; }
+    while (x < -PI) { x += TWO_PI; }
+ 
+    // cos is even
+    if (x < 0.0f) { x = -x; }
+ 
+    // Fold to [0, π/2] using cos(π - x) = -cos(x)
+    int negate = 0;
+    if (x > PI / 2.0f) { x = PI - x; negate = 1; }
+ 
+    // Taylor series for cos(x), converges well on [0, π/2]
+    float x2 = x * x;
+    float x4 = x2 * x2;
+    float x6 = x4 * x2;
+    float x8 = x6 * x2;
+ 
+    float result = 1.0f - (x2/2.0f) + (x4/24.0f) - (x6/720.0f) + (x8/40320.0f);
+    return negate ? -result : result;
 }
+ 
 
 
 /*
@@ -358,11 +377,11 @@ e^n (integer part) - use repeated squaring
 Part 1: Fractional Component (e^r)
 For r ∈ [0, 1), the Taylor series converges rapidly:
 e^r = 1 + r + r²/2! + r³/3! + r⁴/4! + r⁵/5! + r⁶/6! + ...
-Why range reduction helps:
 
-When r is small, higher-order terms become negligible quickly
-With r < 1, just 7 terms gives good accuracy
-Without reduction, large x would need many more terms
+Why range reduction helps:
+  When r is small, higher-order terms become negligible quickly
+  With r < 1, just 7 terms gives good accuracy
+  Without reduction, large x would need many more terms
 
 
 Part 2: Integer Component (e^n)
@@ -449,6 +468,67 @@ float fast_ceil(float x)
     
     // If x is negative, truncation already rounded towards zero (up)
     return (float)i;
+}
+
+/* We use the squaring trick from fast_exp function for the integer exponent, and for fractional exponent, we use the identity a^b = e^(b * ln(a)). So we used the fast_exp and fast_log functions already defined.*/ 
+
+float fast_pow(float base, float exp) {
+
+    // 1. Simple Edge Cases
+    if (exp == 0.0f) return 1.0f;
+    if (exp == 1.0f) return base;
+
+    if (base == 0.0f) {
+        return (exp > 0.0f) ? 0.0f : 1e38f; 
+    }
+    // May include other smaller exps like cube and power of 4.
+    if (exp == 2.0f) {
+        return base * base;
+    }
+
+    if(exp == 0.5f) {
+        return fast_sqrt(base);
+    }
+    
+
+    // negative exponents
+    b8 is_negative_exp = 0;
+    if (exp < 0.0f) {
+        is_negative_exp = 1;
+        exp = -exp;
+    }
+
+    // Borrowing from how the fast_exp function is implemented, we split the exponent into integer and fractional parts for better optimization.
+    int int_part = (int)exp;
+    float frac_part = exp - (float)int_part;
+    
+    float result = 1.0f;
+
+    // Calculate fractional exponent part by using the fast_exp and fast_log funtions provided.
+    if (frac_part > 0.0f) {
+        float intermediate = frac_part * fast_log(base);
+        // I think the overflow checking is handled gracefully in the fast_exp funtion and we dont actually need to check for it here. Need confirmation for this. will find out during testing.
+        // if (intermediate > 88.0f) return is_negative_exp ? 0.0f : 1e38f; 
+        // if (intermediate < -87.0f) return is_negative_exp ? 1e38f : 0.0f;
+        result = fast_exp(intermediate);
+    }
+
+    // Incorporating integer part. Used exponentiation by squaring.
+    //Didnt include overflow checks here, as checking in every iteration is more expensive than the native infinity calculations, also 1.f/result will give zero automatically if overflowed, so we get more optimization. Again, needs confirmation.
+    while (int_part > 0) {
+
+        if (int_part & 1) { 
+            result *= base;
+        }
+
+        int_part >>= 1; 
+        if (!int_part) break; 
+
+        base *= base;
+    }
+
+    // Reciprocate if negative exp.
+    return is_negative_exp ? (1.0f / result) : result;
 }
 
 #endif /* WC_FAST_MATH_IMPL */
