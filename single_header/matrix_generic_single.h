@@ -31,12 +31,12 @@
 #include <stdlib.h>
 
 // ANSI Color Codes
-#define COLOR_RESET  "\033[0m"
-#define COLOR_RED    "\033[1;31m"
-#define COLOR_YELLOW "\033[1;33m"
-#define COLOR_GREEN  "\033[1;32m"
-#define COLOR_BLUE   "\033[1;34m"
-#define COLOR_CYAN   "\033[1;36m"
+#define WC_COLOR_RESET  "\033[0m"
+#define WC_COLOR_RED    "\033[1;31m"
+#define WC_COLOR_YELLOW "\033[1;33m"
+#define WC_COLOR_GREEN  "\033[1;32m"
+#define WC_COLOR_BLUE   "\033[1;34m"
+#define WC_COLOR_CYAN   "\033[1;36m"
 
 
 
@@ -44,16 +44,16 @@
 
 #define WARN(fmt, ...)                                            \
     do {                                                          \
-        printf(COLOR_YELLOW "[WARN]"                              \
-                            " %s:%d:%s(): " fmt "\n" COLOR_RESET, \
+        printf(WC_COLOR_YELLOW "[WARN]"                              \
+                            " %s:%d:%s(): " fmt "\n" WC_COLOR_RESET, \
                __FILE__, __LINE__, __func__, ##__VA_ARGS__);      \
     } while (0)
 
 #define FATAL(fmt, ...)                                         \
     do {                                                        \
         fprintf(stderr,                                         \
-                COLOR_RED "[FATAL]"                             \
-                          " %s:%d:%s(): " fmt "\n" COLOR_RESET, \
+                WC_COLOR_RED "[FATAL]"                             \
+                          " %s:%d:%s(): " fmt "\n" WC_COLOR_RESET, \
                 __FILE__, __LINE__, __func__, ##__VA_ARGS__);   \
         exit(EXIT_FAILURE);                                     \
     } while (0)
@@ -82,8 +82,8 @@
 
 #define LOG(fmt, ...)                                       \
     do {                                                    \
-        printf(COLOR_CYAN "[LOG]"                           \
-                          " : %s(): " fmt "\n" COLOR_RESET, \
+        printf(WC_COLOR_CYAN "[LOG]"                           \
+                          " : %s(): " fmt "\n" WC_COLOR_RESET, \
                __func__, ##__VA_ARGS__);                    \
     } while (0)
 
@@ -1010,8 +1010,12 @@ align to 4 bytes
 1
 */
 // Align a value to alignment boundary
+// Note: align MUST be power of 2 and >= 1
+// #define ALIGN_UP(val, align) \
+//     (((val) + ((align) - 1)) & ~((align) - 1))
+
 #define ALIGN_UP(val, align) \
-    (((val) + ((align) - 1)) & ~((align) - 1))
+    ((align) == 0 ? (val) : (((val) + ((align) - 1)) & ~((align) - 1)))
 
 // align value to ARENA_DEFAULT_ALIGNMENT
 #define ALIGN_UP_DEFAULT(val) \

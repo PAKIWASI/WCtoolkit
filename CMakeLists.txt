@@ -27,6 +27,13 @@ message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 set(CMAKE_C_FLAGS_DEBUG   "-g -O0 -fno-omit-frame-pointer -fsanitize=address -fsanitize=undefined -march=native -Rpass=loop-vectorize")
 set(CMAKE_EXE_LINKER_FLAGS_DEBUG   "-fsanitize=address -fsanitize=undefined")
 
+# DebugNoSan: debug info, no sanitizers - clean for codelldb
+set(CMAKE_C_FLAGS_DEBUGNOSAN "-g -O0 -fno-omit-frame-pointer -march=native")
+set(CMAKE_EXE_LINKER_FLAGS_DEBUGNOSAN "")
+
+set(VALID_BUILD_TYPES Debug Release DebugNoSan)
+set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS ${VALID_BUILD_TYPES})
+
 # Release: full optimisation                                                    # this flag doesn't work in debug with Asan
 set(CMAKE_C_FLAGS_RELEASE   "-O3 -DNDEBUG -march=native -Rpass=loop-vectorize -Rpass-missed=loop-vectorize -ffast-math")
 set(CMAKE_EXE_LINKER_FLAGS_RELEASE "")
@@ -80,7 +87,7 @@ add_executable(tests
     ${LIB_SOURCES}
 )
 target_include_directories(tests PRIVATE include tests tests/speed_tests)
-target_link_libraries(tests)
+target_link_libraries(tests m)
 
 # Register with CTest so `ctest` works from the build directory
 enable_testing()
