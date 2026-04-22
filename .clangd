@@ -1,7 +1,7 @@
 CompileFlags:
   CompilationDatabase: build/
   Add:
-    - -std=gnu11           
+    - -std=gnu11
     - -Wall
     - -Wextra
     - -Wstrict-prototypes

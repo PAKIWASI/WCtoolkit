@@ -6,6 +6,7 @@
 
 ## Immediate
 
+- Flag for faster read/writes?
 - iterators
 - multithreading
 

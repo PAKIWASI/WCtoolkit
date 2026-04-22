@@ -74,6 +74,13 @@
     } while (0)
 
 
+#define MALLOC(size, cap, name) ({\
+    void* _mlcd = malloc(size * cap);\
+    CHECK_FATAL(!_mlcd, "\"" #name "\"" " malloc failed");\
+    _mlcd;\
+})
+
+
 // TYPES
 
 #include <stdint.h>

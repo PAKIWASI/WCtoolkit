@@ -274,4 +274,18 @@ Usage:
 
 
 
+#define ENQUEUE(q, val)              \
+    ({                               \
+        typeof(val) wvp_tmp = (val); \
+        enqueue((q), (u8*)&wvp_tmp); \
+    })
+
+#define DEQUEUE(q, T)            \
+    ({                           \
+        T __tmp;                 \
+        dequeue(q, (u8*)&__tmp); \
+        _tmp;                    \
+    })
+
+
 #endif // WC_MACROS_H
