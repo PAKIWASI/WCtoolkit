@@ -287,6 +287,21 @@ Usage:
     for (u64 _i = 0; _i < (set)->capacity; _i++) \
         for (const T* name = (const T*)((set)->elms + (_i * (set)->elm_size)); name && (set)->psls[_i]; name = NULL)
 
+
+
+#define ENQUEUE(q, val)              \
+    ({                               \
+        typeof(val) wvp_tmp = (val); \
+        enqueue((q), (u8*)&wvp_tmp); \
+    })
+
+#define DEQUEUE(q, T)            \
+    ({                           \
+        T __tmp;                 \
+        dequeue(q, (u8*)&__tmp); \
+        _tmp;                    \
+    })
+
 #endif /* WC_WC_MACROS_H */
 
 #ifdef WC_IMPLEMENTATION

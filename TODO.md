@@ -77,7 +77,6 @@ Need to test them
 
 ### HashMap
 
-- `hashmap_clear(map)` — remove all elements, keep current capacity
 - `hashmap_reset(map)` — remove all elements, reset to initial capacity
 - `hashmap_update(map, key, val)` — update value only if key exists, return false if not found
 - `hashmap_keys(map)` — returns a `genVec*` of all keys

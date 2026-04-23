@@ -1,6 +1,7 @@
 #include "random.h"
 #include "fast_math.h"
 
+#include <bits/time.h>
 #include <time.h>
 
 
