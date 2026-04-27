@@ -10,8 +10,8 @@ No dependencies beyond the C standard library.
 Targets C11 with GNU extensions (Clang/GCC). Can degrade to C99 by sacrificing macro ergonomics. 
 
 ```c
-// A taste of the library
-genVec* vec = VEC_CX(String, 8, &wc_str_ops);
+// vector of complex 'String' type
+genVec* vec = VEC_CX(String, 10, &wc_str_ops); // ops has copy/move/del fns for String
 
 VEC_PUSH_CSTR(vec, "PAKI");     // create Strings and move into vec
 VEC_PUSH_CSTR(vec, "WASI");     // zero copies, only one move
@@ -22,7 +22,7 @@ VEC_FOREACH(vec, String, s) { string_append_char(s, '!'); }
 String* s = string_create();    // create new string as buffer
 genVec_pop(vec, castptr(s));    // get element out of vec, s owns it now
 
-string_print(s);
+string_print(s);                // do whatever
 genVec_print(vec, str_print);
 
 string_destroy(s);              // free resources
