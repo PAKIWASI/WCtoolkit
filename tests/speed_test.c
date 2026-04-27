@@ -9,10 +9,11 @@
 #include "wc_test.h"
 #include "gen_vector.h"
 #include "hashmap.h"
+#include "String.h"
+#include "wc_helpers.h"
 
 #include <time.h>
 #include <string.h>
-#include <stdlib.h>
 #include <stdio.h>
 
 
@@ -42,47 +43,6 @@ static u64 bench(const char* label, u64 n_ops, u64 start, u64 end)
     WC_ASSERT((pod_ns) <= (cx_ns) + ((cx_ns) / 20))
 
 
-// ─── Fake complex-type ops (heap string shell — minimal overhead) ─────────────
-
-typedef struct { char* ptr; u64 len; } FakeStr;
-
-static void fakestr_copy(u8* dest, const u8* src)
-{
-    const FakeStr* s = (const FakeStr*)src;
-    FakeStr*       d = (FakeStr*)dest;
-    d->len = s->len;
-    d->ptr = malloc(s->len + 1);
-    memcpy(d->ptr, s->ptr, s->len + 1);
-}
-
-static void fakestr_move(u8* dest, u8** src)
-{
-    FakeStr* d = (FakeStr*)dest;
-    FakeStr* s = *(FakeStr**)src;
-    *d   = *s;
-    s->ptr = NULL;
-    s->len = 0;
-}
-
-static void fakestr_del(u8* elm)
-{
-    FakeStr* s = (FakeStr*)elm;
-    free(s->ptr);
-    s->ptr = NULL;
-}
-
-static const container_ops fakestr_ops = { fakestr_copy, fakestr_move, fakestr_del };
-
-static FakeStr make_fakestr(const char* s)
-{
-    FakeStr f;
-    f.len = strlen(s);
-    f.ptr = malloc(f.len + 1);
-    memcpy(f.ptr, s, f.len + 1);
-    return f;
-}
-
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // SUITE 1: push (single-element copy hot path)
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -107,18 +67,20 @@ static void bench_push_pod(void)
 
 static void bench_push_cx(void)
 {
-    genVec* v = genVec_init(PUSH_N, sizeof(FakeStr), &fakestr_ops);
+    // Each element is a String by value (SSO path for short strings).
+    genVec* v = genVec_init(PUSH_N, sizeof(String), &wc_str_ops);
 
     u64 t0 = ns_now();
     for (int i = 0; i < PUSH_N; i++) {
-        FakeStr f = make_fakestr("hello");
-        genVec_push(v, (u8*)&f);
-        free(f.ptr); // push copied it, we own the original
+        String s;
+        string_create_stk(&s, "hello");
+        genVec_push(v, (u8*)&s);
+        string_destroy_stk(&s); // push deep-copied it; we own the original
     }
     u64 t1 = ns_now();
 
     WC_ASSERT_EQ_U64(v->size, PUSH_N);
-    bench("push CX (FakeStr, copy)", PUSH_N, t0, t1);
+    bench("push CX (String, copy)", PUSH_N, t0, t1);
     genVec_destroy(v);
 }
 
@@ -128,7 +90,7 @@ static void bench_push_cx(void)
 // ═══════════════════════════════════════════════════════════════════════════════
 
 #define CLEAR_N  500000
-#define CLEAR_REP 20      // repeat clear+refill so timing is stable
+#define CLEAR_REP 20
 
 static void bench_clear_pod(void)
 {
@@ -152,11 +114,12 @@ static void bench_clear_cx(void)
     u64 total_ns = 0;
 
     for (int r = 0; r < CLEAR_REP; r++) {
-        genVec* v = genVec_init(CLEAR_N, sizeof(FakeStr), &fakestr_ops);
+        genVec* v = genVec_init(CLEAR_N, sizeof(String), &wc_str_ops);
         for (int i = 0; i < CLEAR_N; i++) {
-            FakeStr f = make_fakestr("hi");
-            genVec_push(v, (u8*)&f);
-            free(f.ptr);
+            String s;
+            string_create_stk(&s, "hi");
+            genVec_push(v, (u8*)&s);
+            string_destroy_stk(&s);
         }
         u64 t0 = ns_now();
         genVec_clear(v);
@@ -167,17 +130,16 @@ static void bench_clear_cx(void)
 
     u64 ns_per = total_ns / ((u64)CLEAR_REP * CLEAR_N);
     printf("  %-44s %6llu ns/op  (%d ops)\n",
-           "clear CX (500k FakeStr) x20",
+           "clear CX (500k String) x20",
            (unsigned long long)ns_per,
            CLEAR_REP * CLEAR_N);
 }
 
+#define DESTROY_N   1000000
+#define DESTROY_REP 50
+
 static void bench_destroy_pod(void)
 {
-    // Measure destroy of a large POD vec (should be essentially free post-fix)
-    #define DESTROY_N 1000000
-    #define DESTROY_REP 50
-
     u64 total_ns = 0;
     int val = 1;
 
@@ -202,11 +164,12 @@ static void bench_destroy_cx(void)
     u64 total_ns = 0;
 
     for (int r = 0; r < DESTROY_REP; r++) {
-        genVec* v = genVec_init(DESTROY_N, sizeof(FakeStr), &fakestr_ops);
+        genVec* v = genVec_init(DESTROY_N, sizeof(String), &wc_str_ops);
         for (int i = 0; i < DESTROY_N; i++) {
-            FakeStr f = make_fakestr("world");
-            genVec_push(v, (u8*)&f);
-            free(f.ptr);
+            String s;
+            string_create_stk(&s, "world");
+            genVec_push(v, (u8*)&s);
+            string_destroy_stk(&s);
         }
         u64 t0 = ns_now();
         genVec_destroy(v);
@@ -216,7 +179,7 @@ static void bench_destroy_cx(void)
 
     u64 ns_per = total_ns / DESTROY_REP;
     printf("  %-44s %6llu ns  total  (%d reps of 1M)\n",
-           "destroy CX (1M FakeStr)",
+           "destroy CX (1M String)",
            (unsigned long long)ns_per,
            DESTROY_REP);
 }
@@ -254,16 +217,17 @@ static void bench_vec_copy_pod(void)
 
 static void bench_vec_copy_cx(void)
 {
-    genVec* src = genVec_init(COPY_N, sizeof(FakeStr), &fakestr_ops);
+    genVec* src = genVec_init(COPY_N, sizeof(String), &wc_str_ops);
     for (int i = 0; i < COPY_N; i++) {
-        FakeStr f = make_fakestr("copy");
-        genVec_push(src, (u8*)&f);
-        free(f.ptr);
+        String s;
+        string_create_stk(&s, "copy");
+        genVec_push(src, (u8*)&s);
+        string_destroy_stk(&s);
     }
 
     genVec dest;
     memset(&dest, 0, sizeof(dest));
-    dest.ops    = &fakestr_ops;
+    dest.ops    = &wc_str_ops;
     dest.is_pod = 0;
 
     u64 t0 = ns_now();
@@ -272,7 +236,7 @@ static void bench_vec_copy_cx(void)
     }
     u64 t1 = ns_now();
 
-    bench("genVec_copy CX (1M FakeStr) x20", (u64)COPY_REP * COPY_N, t0, t1);
+    bench("genVec_copy CX (1M String) x20", (u64)COPY_REP * COPY_N, t0, t1);
 
     genVec_destroy_stk(&dest);
     genVec_destroy(src);
@@ -300,15 +264,19 @@ static void bench_init_val_pod(void)
 
 static void bench_init_val_cx(void)
 {
-    FakeStr val = make_fakestr("init");
+    // Use a short string so it stays SSO; this tests the copy_fn broadcast.
+    String val;
+    string_create_stk(&val, "init");
+
     u64 t0 = ns_now();
     for (int r = 0; r < INITVAL_REP; r++) {
-        genVec* v = genVec_init_val(INITVAL_N, (u8*)&val, sizeof(FakeStr), &fakestr_ops);
+        genVec* v = genVec_init_val(INITVAL_N, (u8*)&val, sizeof(String), &wc_str_ops);
         genVec_destroy(v);
     }
     u64 t1 = ns_now();
-    bench("init_val CX (2M FakeStr) x10", (u64)INITVAL_REP * INITVAL_N, t0, t1);
-    free(val.ptr);
+
+    bench("init_val CX (2M String) x10", (u64)INITVAL_REP * INITVAL_N, t0, t1);
+    string_destroy_stk(&val);
 }
 
 
@@ -345,11 +313,12 @@ static void bench_remove_range_cx(void)
     u64 total_ns = 0;
 
     for (int r = 0; r < RANGE_REP; r++) {
-        genVec* v = genVec_init(RANGE_N, sizeof(FakeStr), &fakestr_ops);
+        genVec* v = genVec_init(RANGE_N, sizeof(String), &wc_str_ops);
         for (int i = 0; i < RANGE_N; i++) {
-            FakeStr f = make_fakestr("range");
-            genVec_push(v, (u8*)&f);
-            free(f.ptr);
+            String s;
+            string_create_stk(&s, "range");
+            genVec_push(v, (u8*)&s);
+            string_destroy_stk(&s);
         }
         u64 t0 = ns_now();
         genVec_remove_range(v, 0, RANGE_N);
@@ -389,23 +358,24 @@ static void bench_map_put_pod(void)
 
 static void bench_map_put_cx(void)
 {
-    // FakeStr -> FakeStr map (both key and val have copy/del)
-    hashmap* map = hashmap_create(sizeof(FakeStr), sizeof(FakeStr),
-                                  NULL, NULL, &fakestr_ops, &fakestr_ops);
+    // String -> String map (both key and val have copy/del via wc_str_ops)
+    hashmap* map = hashmap_create(sizeof(String), sizeof(String),
+                                  NULL, NULL, &wc_str_ops, &wc_str_ops);
 
     u64 t0 = ns_now();
     for (int i = 0; i < MAP_N; i++) {
         char buf[32];
         snprintf(buf, sizeof(buf), "key_%d", i);
-        FakeStr k = make_fakestr(buf);
-        FakeStr v = make_fakestr("val");
+        String k, v;
+        string_create_stk(&k, buf);
+        string_create_stk(&v, "val");
         hashmap_put(map, (u8*)&k, (u8*)&v);
-        free(k.ptr);
-        free(v.ptr);
+        string_destroy_stk(&k);
+        string_destroy_stk(&v);
     }
     u64 t1 = ns_now();
 
-    bench("hashmap_put CX FakeStr->FakeStr", MAP_N, t0, t1);
+    bench("hashmap_put CX String->String", MAP_N, t0, t1);
     hashmap_destroy(map);
 }
 
@@ -429,15 +399,17 @@ static void bench_map_get_pod(void)
 
 static void bench_map_get_cx(void)
 {
-    hashmap* map = hashmap_create(sizeof(FakeStr), sizeof(FakeStr),
-                                  NULL, NULL, &fakestr_ops, &fakestr_ops);
+    hashmap* map = hashmap_create(sizeof(String), sizeof(String),
+                                  NULL, NULL, &wc_str_ops, &wc_str_ops);
     for (int i = 0; i < MAP_N; i++) {
         char buf[32];
         snprintf(buf, sizeof(buf), "key_%d", i);
-        FakeStr k = make_fakestr(buf);
-        FakeStr v = make_fakestr("val");
+        String k, v;
+        string_create_stk(&k, buf);
+        string_create_stk(&v, "val");
         hashmap_put(map, (u8*)&k, (u8*)&v);
-        free(k.ptr); free(v.ptr);
+        string_destroy_stk(&k);
+        string_destroy_stk(&v);
     }
 
     int hits = 0;
@@ -445,16 +417,16 @@ static void bench_map_get_cx(void)
     for (int i = 0; i < MAP_N; i++) {
         char buf[32];
         snprintf(buf, sizeof(buf), "key_%d", i);
-        FakeStr k   = make_fakestr(buf);
-        FakeStr out = {0};
+        String k, out;
+        string_create_stk(&k, buf);
         hits += hashmap_get(map, (u8*)&k, (u8*)&out);
-        free(k.ptr);
-        free(out.ptr);
+        string_destroy_stk(&k);
+        string_destroy_stk(&out);
     }
     u64 t1 = ns_now();
 
     WC_ASSERT_EQ_INT(hits, MAP_N);
-    bench("hashmap_get CX FakeStr->FakeStr", MAP_N, t0, t1);
+    bench("hashmap_get CX String->String", MAP_N, t0, t1);
     hashmap_destroy(map);
 }
 
@@ -487,15 +459,17 @@ static void bench_map_clear_cx(void)
     u64 total_ns = 0;
 
     for (int r = 0; r < MCLR_REP; r++) {
-        hashmap* map = hashmap_create(sizeof(FakeStr), sizeof(FakeStr),
-                                      NULL, NULL, &fakestr_ops, &fakestr_ops);
+        hashmap* map = hashmap_create(sizeof(String), sizeof(String),
+                                      NULL, NULL, &wc_str_ops, &wc_str_ops);
         for (int i = 0; i < MCLR_N; i++) {
             char buf[32];
             snprintf(buf, sizeof(buf), "k%d", i);
-            FakeStr k = make_fakestr(buf);
-            FakeStr v = make_fakestr("v");
+            String k, v;
+            string_create_stk(&k, buf);
+            string_create_stk(&v, "v");
             hashmap_put(map, (u8*)&k, (u8*)&v);
-            free(k.ptr); free(v.ptr);
+            string_destroy_stk(&k);
+            string_destroy_stk(&v);
         }
         u64 t0 = ns_now();
         hashmap_clear(map);
@@ -506,7 +480,7 @@ static void bench_map_clear_cx(void)
 
     u64 ns_per = total_ns / ((u64)MCLR_REP * MCLR_N);
     printf("  %-44s %6llu ns/op  (%d reps of 200k)\n",
-           "hashmap_clear CX FakeStr (200k) x20",
+           "hashmap_clear CX String (200k) x20",
            (unsigned long long)ns_per, MCLR_REP);
 }
 
@@ -535,11 +509,12 @@ static void bench_pop_pod(void)
 
 static void bench_pop_cx(void)
 {
-    genVec* v = genVec_init(POP_N, sizeof(FakeStr), &fakestr_ops);
+    genVec* v = genVec_init(POP_N, sizeof(String), &wc_str_ops);
     for (int i = 0; i < POP_N; i++) {
-        FakeStr f = make_fakestr("pop");
-        genVec_push(v, (u8*)&f);
-        free(f.ptr);
+        String s;
+        string_create_stk(&s, "pop");
+        genVec_push(v, (u8*)&s);
+        string_destroy_stk(&s);
     }
 
     u64 t0 = ns_now();
@@ -547,7 +522,7 @@ static void bench_pop_cx(void)
     u64 t1 = ns_now();
 
     WC_ASSERT_EQ_U64(v->size, 0);
-    bench("pop CX (FakeStr, del)", POP_N, t0, t1);
+    bench("pop CX (String, del)", POP_N, t0, t1);
     genVec_destroy(v);
 }
 
