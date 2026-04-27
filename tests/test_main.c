@@ -15,6 +15,7 @@ void bit_vector_suite(void);
 void fast_math_suite(void);
 void complex_suite(void);
 
+int speed_suite(void);
 
 
 int main(void)
@@ -41,6 +42,8 @@ int main(void)
     fast_math_suite();
 
     complex_suite();
+
+    speed_suite();
 
     return WC_REPORT();
 }

@@ -31,6 +31,8 @@ typedef struct {
     // For types with heap resources define one static ops per type:
     const container_ops* key_ops;
     const container_ops* val_ops;
+    b8 key_pod;   // key_ops == NULL
+    b8 val_pod;   // val_ops == NULL
 } hashmap;
 
 
@@ -39,7 +41,13 @@ typedef struct {
 #define MAP_MOVE(ops) ((ops) ? (ops)->move_fn : NULL)
 #define MAP_DEL(ops)  ((ops) ? (ops)->del_fn  : NULL)
 
-
+/* TODO: 
+    reserve one extra slot at the end of the key/val arrays that never holds a real entry.
+    During insert, you keep the “current” key/value in registers or local variables
+    and only write them into the array when the final empty slot is found.
+    This requires a small rewrite of map_insert, but it saves two memcpy calls per eviction
+    and eliminates scratch
+*/
 
 // Create a new hashmap.
 // hash_fn and cmp_fn default to fnv1a_hash / default_compare if NULL.
