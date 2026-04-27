@@ -20,14 +20,14 @@
         (q)->tail = (((q)->head + (q)->size) % (q)->arr->capacity); \
     }
 
-#define MAYBE_GROW(q)                          \
+#define Q_MAYBE_GROW(q)                          \
     do {                                       \
         if ((q)->size == (q)->arr->capacity) { \
             queue_grow((q));                   \
         }                                      \
     } while (0)
 
-#define MAYBE_SHRINK(q)                                         \
+#define Q_MAYBE_SHRINK(q)                                         \
     do {                                                        \
         u64 capacity = (q)->arr->capacity;                      \
         if (capacity <= 4) {                                    \
@@ -130,7 +130,7 @@ void enqueue(Queue* q, const u8* x)
     CHECK_FATAL(!q, "queue is null");
     CHECK_FATAL(!x, "x is null");
 
-    MAYBE_GROW(q);
+    Q_MAYBE_GROW(q);
 
     if (q->tail >= genVec_size(q->arr)) {
         genVec_push(q->arr, x);
@@ -148,7 +148,7 @@ void enqueue_move(Queue* q, u8** x)
     CHECK_FATAL(!x, "x is null");
     CHECK_FATAL(!*x, "*x is null");
 
-    MAYBE_GROW(q);
+    Q_MAYBE_GROW(q);
 
     if (q->tail >= genVec_size(q->arr)) {
         genVec_push_move(q->arr, x);
@@ -180,7 +180,7 @@ void dequeue(Queue* q, u8* out)
 
     HEAD_UPDATE(q);
     q->size--;
-    MAYBE_SHRINK(q);
+    Q_MAYBE_SHRINK(q);
 }
 
 void queue_peek(Queue* q, u8* peek)

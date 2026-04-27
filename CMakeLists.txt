@@ -81,13 +81,6 @@ add_executable(tests
     tests/bit_vector_test.c
     tests/fast_math_test.c
     tests/complex_test.c
-    
-    tests/speed_tests/gen_vector_speed.c
-    tests/speed_tests/String_speed.c
-    tests/speed_tests/hashmap_speed.c
-    tests/speed_tests/hashset_speed.c
-    tests/speed_tests/arena_speed.c
-
     ${LIB_SOURCES}
 )
 target_include_directories(tests PRIVATE include tests tests/speed_tests)

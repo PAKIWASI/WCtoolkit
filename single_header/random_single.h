@@ -765,6 +765,7 @@ float fast_pow(float base, float exp) {
 #ifndef WC_RANDOM_IMPL
 #define WC_RANDOM_IMPL
 
+#include <bits/time.h>
 #include <time.h>
 
 
