@@ -31,8 +31,6 @@ typedef struct {
     // For types with heap resources define one static ops per type:
     const container_ops* key_ops;
     const container_ops* val_ops;
-    b8 key_pod;   // key_ops == NULL
-    b8 val_pod;   // val_ops == NULL
 } hashmap;
 
 

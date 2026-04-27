@@ -85,6 +85,7 @@ static void bench_push_cx(void)
 }
 
 
+// BUG: cx showing lower time than pod. some timer error?
 // ═══════════════════════════════════════════════════════════════════════════════
 // SUITE 2: clear / destroy (bulk del loop — biggest POD win)
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -200,7 +201,7 @@ static void bench_vec_copy_pod(void)
 
     genVec dest;
     memset(&dest, 0, sizeof(dest));
-    dest.is_pod = 1; // init dest so destroy_stk is safe on first call inside copy
+    // dest.is_pod = 1; // init dest so destroy_stk is safe on first call inside copy
 
     u64 t0 = ns_now();
     for (int r = 0; r < COPY_REP; r++) {
@@ -228,7 +229,7 @@ static void bench_vec_copy_cx(void)
     genVec dest;
     memset(&dest, 0, sizeof(dest));
     dest.ops    = &wc_str_ops;
-    dest.is_pod = 0;
+    // dest.is_pod = 0;
 
     u64 t0 = ns_now();
     for (int r = 0; r < COPY_REP; r++) {

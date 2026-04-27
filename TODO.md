@@ -6,7 +6,7 @@
 
 ## Immediate
 
-- Flag for faster read/writes?
+- Update Readme for new pod flag in genvec/hashmap/hashset
 - iterators
 - multithreading
 

@@ -42,8 +42,6 @@ typedef struct {
     u64 size;       // Number of elements currently in vector
     u64 capacity;   // Total allocated capacity (in elements)
     u32 data_size;  // Size of each element in bytes
-    b8  is_pod;     // true when ops == NULL; skips fn-ptr loads on hot paths
-
 } genVec;
 
 // 8 8 8 8 4 '4'  = 40 bytes
