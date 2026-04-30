@@ -80,12 +80,32 @@ Queue* queue_create_val(u64 n, const u8* val, u32 data_size, const container_ops
     return q;
 }
 
+
+void queue_create_stk(Queue* q, u64 n, u32 data_size, const container_ops* ops)
+{
+    CHECK_FATAL(n == 0, "n can't be 0");
+    CHECK_FATAL(data_size == 0, "data_size can't be 0");
+
+    q->arr = genVec_init(n, data_size, ops);
+
+    q->head = 0;
+    q->tail = 0;
+    q->size = 0;
+}
+
 void queue_destroy(Queue* q)
 {
     CHECK_FATAL(!q, "queue is null");
 
     genVec_destroy(q->arr);
     free(q);
+}
+
+void queue_destroy_stk(Queue* q)
+{
+    CHECK_FATAL(!q, "queue is null");
+
+    genVec_destroy(q->arr);
 }
 
 void queue_clear(Queue* q)

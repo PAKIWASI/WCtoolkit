@@ -14,8 +14,10 @@ typedef struct { // Circular Queue
 
 Queue*    queue_create(u64 n, u32 data_size, const container_ops* ops);
 Queue*    queue_create_val(u64 n, const u8* val, u32 data_size, const container_ops* ops);
+void      queue_create_stk(Queue* q, u64 n, u32 data_size, const container_ops* ops);
 
 void      queue_destroy(Queue* q);
+void      queue_destroy_stk(Queue* q);
 void      queue_clear(Queue* q);
 void      queue_reset(Queue* q);
 void      queue_shrink_to_fit(Queue* q);
