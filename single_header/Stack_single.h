@@ -363,7 +363,6 @@ typedef struct {
     u64 size;       // Number of elements currently in vector
     u64 capacity;   // Total allocated capacity (in elements)
     u32 data_size;  // Size of each element in bytes
-
 } genVec;
 
 // 8 8 8 8 4 '4'  = 40 bytes
@@ -602,6 +601,8 @@ _Thread_local wc_err wc_errno = WC_OK;
 #define MOVE_FN(vec) VEC_MOVE_FN(vec)
 #define DEL_FN(vec)  VEC_DEL_FN(vec)
 
+#define IS_POD(vec) (vec->ops == NULL)
+
 
 // private functions
 
@@ -658,14 +659,20 @@ genVec* genVec_init_val(u64 n, const u8* val, u32 data_size, const container_ops
 
     vec->size = n; // capacity set to n in genVec_init
 
-    copy_fn copy = COPY_FN(vec);
-    if (copy) {
-        for (u64 i = 0; i < n; i++) {
-            copy(GET_PTR(vec, i), val);
-        }
-    } else {
+    if (IS_POD(vec)) {
         for (u64 i = 0; i < n; i++) {
             memcpy(GET_PTR(vec, i), val, data_size);
+        }
+    } else {
+        copy_fn copy = vec->ops->copy_fn;
+        if (copy) {
+            for (u64 i = 0; i < n; i++) {
+                copy(GET_PTR(vec, i), val);
+            }
+        } else {
+            for (u64 i = 0; i < n; i++) {
+                memcpy(GET_PTR(vec, i), val, data_size);
+            }
         }
     }
 
@@ -682,14 +689,20 @@ void genVec_init_val_stk(u64 n, const u8* val, u32 data_size, const container_op
 
     vec->size = n;
 
-    copy_fn copy = COPY_FN(vec);
-    if (copy) {
-        for (u64 i = 0; i < n; i++) {
-            copy(GET_PTR(vec, i), val);
-        }
-    } else {
+    if (IS_POD(vec)) {
         for (u64 i = 0; i < n; i++) {
             memcpy(GET_PTR(vec, i), val, data_size);
+        }
+    } else {
+        copy_fn copy = vec->ops->copy_fn;
+        if (copy) {
+            for (u64 i = 0; i < n; i++) {
+                copy(GET_PTR(vec, i), val);
+            }
+        } else {
+            for (u64 i = 0; i < n; i++) {
+                memcpy(GET_PTR(vec, i), val, data_size);
+            }
         }
     }
 }
@@ -736,10 +749,12 @@ void genVec_destroy_stk(genVec* vec)
         return;
     }
 
-    delete_fn del = DEL_FN(vec);
-    if (del) {
-        for (u64 i = 0; i < vec->size; i++) {
-            del(GET_PTR(vec, i));
+    if (!IS_POD(vec)) {
+        delete_fn del = vec->ops->del_fn;
+        if (del) {
+            for (u64 i = 0; i < vec->size; i++) {
+                del(GET_PTR(vec, i));
+            }
         }
     }
 
@@ -752,10 +767,12 @@ void genVec_clear(genVec* vec)
 {
     CHECK_FATAL(!vec, "vec is null");
 
-    delete_fn del = DEL_FN(vec);
-    if (del) {
-        for (u64 i = 0; i < vec->size; i++) {
-            del(GET_PTR(vec, i));
+    if (!IS_POD(vec)) {
+        delete_fn del = vec->ops->del_fn;
+        if (del) {
+            for (u64 i = 0; i < vec->size; i++) {
+                del(GET_PTR(vec, i));
+            }
         }
     }
 
@@ -767,10 +784,12 @@ void genVec_reset(genVec* vec)
 {
     CHECK_FATAL(!vec, "vec is null");
 
-    delete_fn del = DEL_FN(vec);
-    if (del) {
-        for (u64 i = 0; i < vec->size; i++) {
-            del(GET_PTR(vec, i));
+    if (!IS_POD(vec)) {
+        delete_fn del = vec->ops->del_fn;
+        if (del) {
+            for (u64 i = 0; i < vec->size; i++) {
+                del(GET_PTR(vec, i));
+            }
         }
     }
 
@@ -805,14 +824,20 @@ void genVec_reserve_val(genVec* vec, u64 new_capacity, const u8* val)
 
     genVec_reserve(vec, new_capacity);
 
-    copy_fn copy = COPY_FN(vec);
-    if (copy) {
-        for (u64 i = vec->size; i < new_capacity; i++) {
-            copy(GET_PTR(vec, i), val);
-        }
-    } else {
+    if (IS_POD(vec)) {
         for (u64 i = vec->size; i < new_capacity; i++) {
             memcpy(GET_PTR(vec, i), val, vec->data_size);
+        }
+    } else {
+        copy_fn copy = vec->ops->copy_fn;
+        if (copy) {
+            for (u64 i = vec->size; i < new_capacity; i++) {
+                copy(GET_PTR(vec, i), val);
+            }
+        } else {
+            for (u64 i = vec->size; i < new_capacity; i++) {
+                memcpy(GET_PTR(vec, i), val, vec->data_size);
+            }
         }
     }
     vec->size = new_capacity;
@@ -845,11 +870,15 @@ void genVec_push(genVec* vec, const u8* data)
 
     MAYBE_GROW(vec);
 
-    copy_fn copy = COPY_FN(vec);
-    if (copy) {
-        copy(GET_PTR(vec, vec->size), data);
-    } else {
+    if (IS_POD(vec)) {
         memcpy(GET_PTR(vec, vec->size), data, vec->data_size);
+    } else {
+        copy_fn copy = vec->ops->copy_fn;
+        if (copy) {
+            copy(GET_PTR(vec, vec->size), data);
+        } else {
+            memcpy(GET_PTR(vec, vec->size), data, vec->data_size);
+        }
     }
 
     vec->size++;
@@ -864,13 +893,17 @@ void genVec_push_move(genVec* vec, u8** data)
 
     MAYBE_GROW(vec);
 
-    move_fn move = MOVE_FN(vec);
-
-    if (move) {
-        move(GET_PTR(vec, vec->size), data);
-    } else {
+    if (IS_POD(vec)) {
         memcpy(GET_PTR(vec, vec->size), *data, vec->data_size);
         *data = NULL;
+    } else {
+        move_fn move = vec->ops->move_fn;
+        if (move) {
+            move(GET_PTR(vec, vec->size), data);
+        } else {
+            memcpy(GET_PTR(vec, vec->size), *data, vec->data_size);
+            *data = NULL;
+        }
     }
 
     vec->size++;
@@ -886,17 +919,23 @@ void genVec_pop(genVec* vec, u8* popped)
     u8* last_elm = GET_PTR(vec, vec->size - 1);
 
     if (popped) {
-        copy_fn copy = COPY_FN(vec);
-        if (copy) {
-            copy(popped, last_elm);
-        } else {
+        if (IS_POD(vec)) {
             memcpy(popped, last_elm, vec->data_size);
+        } else {
+            copy_fn copy = vec->ops->copy_fn;
+            if (copy) {
+                copy(popped, last_elm);
+            } else {
+                memcpy(popped, last_elm, vec->data_size);
+            }
         }
     }
 
-    delete_fn del = DEL_FN(vec);
-    if (del) {
-        del(last_elm);
+    if (!IS_POD(vec)) {
+        delete_fn del = vec->ops->del_fn;
+        if (del) {
+            del(last_elm);
+        }
     }
 
     vec->size--;
@@ -908,17 +947,23 @@ void genVec_swap_pop(genVec* vec, u64 i, u8* out)
     CHECK_FATAL(i >= vec->size, "index out of bounds");
 
     if (out) {
-        copy_fn copy = COPY_FN(vec);
-        if (copy) {
-            copy(out, GET_PTR(vec, i));
-        } else {
+        if (IS_POD(vec)) {
             memcpy(out, GET_PTR(vec, i), vec->data_size);
+        } else {
+            copy_fn copy = vec->ops->copy_fn;
+            if (copy) {
+                copy(out, GET_PTR(vec, i));
+            } else {
+                memcpy(out, GET_PTR(vec, i), vec->data_size);
+            }
         }
     }
 
-    delete_fn del = DEL_FN(vec);
-    if (del) {
-        del(GET_PTR(vec, i));
+    if (!IS_POD(vec)) {
+        delete_fn del = vec->ops->del_fn;
+        if (del) {
+            del(GET_PTR(vec, i));
+        }
     }
 
     // swap the last container with the removed one
@@ -956,12 +1001,15 @@ void genVec_get(const genVec* vec, u64 i, u8* out)
     CHECK_FATAL(!out, "out is null");
     CHECK_FATAL(i >= vec->size, "index out of bounds");
 
-    copy_fn copy = COPY_FN(vec);
-
-    if (copy) {
-        copy(out, GET_PTR(vec, i));
-    } else {
+    if (IS_POD(vec)) {
         memcpy(out, GET_PTR(vec, i), vec->data_size);
+    } else {
+        copy_fn copy = vec->ops->copy_fn;
+        if (copy) {
+            copy(out, GET_PTR(vec, i));
+        } else {
+            memcpy(out, GET_PTR(vec, i), vec->data_size);
+        }
     }
 }
 
@@ -992,16 +1040,19 @@ void genVec_replace(genVec* vec, u64 i, const u8* data)
 
     u8* to_replace = GET_PTR(vec, i);
 
-    delete_fn del = DEL_FN(vec);
-    if (del) {
-        del(to_replace);
-    }
-
-    copy_fn copy = COPY_FN(vec);
-    if (copy) {
-        copy(to_replace, data);
-    } else {
+    if (IS_POD(vec)) {
         memcpy(to_replace, data, vec->data_size);
+    } else {
+        delete_fn del = vec->ops->del_fn;
+        if (del) {
+            del(to_replace);
+        }
+        copy_fn copy = vec->ops->copy_fn;
+        if (copy) {
+            copy(to_replace, data);
+        } else {
+            memcpy(to_replace, data, vec->data_size);
+        }
     }
 }
 
@@ -1015,17 +1066,21 @@ void genVec_replace_move(genVec* vec, u64 i, u8** data)
 
     u8* to_replace = GET_PTR(vec, i);
 
-    delete_fn del = DEL_FN(vec);
-    if (del) {
-        del(to_replace);
-    }
-
-    move_fn move = MOVE_FN(vec);
-    if (move) {
-        move(to_replace, data);
-    } else {
+    if (IS_POD(vec)) {
         memcpy(to_replace, *data, vec->data_size);
         *data = NULL;
+    } else {
+        delete_fn del = vec->ops->del_fn;
+        if (del) {
+            del(to_replace);
+        }
+        move_fn move = vec->ops->move_fn;
+        if (move) {
+            move(to_replace, data);
+        } else {
+            memcpy(to_replace, *data, vec->data_size);
+            *data = NULL;
+        }
     }
 }
 
@@ -1044,11 +1099,15 @@ void genVec_insert(genVec* vec, u64 i, const u8* data)
     u8* dest = GET_PTR(vec, i + 1);
     memmove(dest, src, GET_SCALED(vec, elements_to_shift));
 
-    copy_fn copy = COPY_FN(vec);
-    if (copy) {
-        copy(src, data);
-    } else {
+    if (IS_POD(vec)) {
         memcpy(src, data, vec->data_size);
+    } else {
+        copy_fn copy = vec->ops->copy_fn;
+        if (copy) {
+            copy(src, data);
+        } else {
+            memcpy(src, data, vec->data_size);
+        }
     }
 
     vec->size++;
@@ -1070,12 +1129,17 @@ void genVec_insert_move(genVec* vec, u64 i, u8** data)
     u8* dest = GET_PTR(vec, i + 1);
     memmove(dest, src, GET_SCALED(vec, elements_to_shift));
 
-    move_fn move = MOVE_FN(vec);
-    if (move) {
-        move(src, data);
-    } else {
+    if (IS_POD(vec)) {
         memcpy(src, *data, vec->data_size);
         *data = NULL;
+    } else {
+        move_fn move = vec->ops->move_fn;
+        if (move) {
+            move(src, data);
+        } else {
+            memcpy(src, *data, vec->data_size);
+            *data = NULL;
+        }
     }
 
     vec->size++;
@@ -1100,13 +1164,17 @@ void genVec_insert_multi(genVec* vec, u64 i, const u8* data, u64 num_data)
         memmove(dest, src, GET_SCALED(vec, elements_to_shift));
     }
 
-    copy_fn copy = COPY_FN(vec);
-    if (copy) {
-        for (u64 j = 0; j < num_data; j++) {
-            copy(GET_PTR(vec, j + i), data + (size_t)(j * vec->data_size));
-        }
-    } else {
+    if (IS_POD(vec)) {
         memcpy(src, data, GET_SCALED(vec, num_data));
+    } else {
+        copy_fn copy = vec->ops->copy_fn;
+        if (copy) {
+            for (u64 j = 0; j < num_data; j++) {
+                copy(GET_PTR(vec, j + i), data + (size_t)(j * vec->data_size));
+            }
+        } else {
+            memcpy(src, data, GET_SCALED(vec, num_data));
+        }
     }
 }
 
@@ -1141,17 +1209,23 @@ void genVec_remove(genVec* vec, u64 i, u8* out)
     CHECK_FATAL(i >= vec->size, "index out of bounds");
 
     if (out) {
-        copy_fn copy = COPY_FN(vec);
-        if (copy) {
-            copy(out, GET_PTR(vec, i));
-        } else {
+        if (IS_POD(vec)) {
             memcpy(out, GET_PTR(vec, i), vec->data_size);
+        } else {
+            copy_fn copy = vec->ops->copy_fn;
+            if (copy) {
+                copy(out, GET_PTR(vec, i));
+            } else {
+                memcpy(out, GET_PTR(vec, i), vec->data_size);
+            }
         }
     }
 
-    delete_fn del = DEL_FN(vec);
-    if (del) {
-        del(GET_PTR(vec, i));
+    if (!IS_POD(vec)) {
+        delete_fn del = vec->ops->del_fn;
+        if (del) {
+            del(GET_PTR(vec, i));
+        }
     }
 
     u64 elements_to_shift = vec->size - i - 1;
@@ -1182,10 +1256,12 @@ void genVec_remove_range(genVec* vec, u64 start, u64 len)
         len = vec->size - start;
     }
 
-    delete_fn del = DEL_FN(vec);
-    if (del) {
-        for (u64 i = 0; i < len; i++) {
-            del(GET_PTR(vec, start + i));
+    if (!IS_POD(vec)) {
+        delete_fn del = vec->ops->del_fn;
+        if (del) {
+            for (u64 i = 0; i < len; i++) {
+                del(GET_PTR(vec, start + i));
+            }
         }
     }
 
@@ -1239,8 +1315,6 @@ genVec* genVec_subarr(const genVec* vec, u64 start, u64 len)
     CHECK_FATAL(!vec, "vec is null");
     CHECK_FATAL(start >= vec->size, "out of bounds");
 
-    copy_fn copy = COPY_FN(vec);
-
     if (start + len >= vec->size) {
         len = vec->size - start;
     }
@@ -1248,12 +1322,17 @@ genVec* genVec_subarr(const genVec* vec, u64 start, u64 len)
     genVec* v = genVec_init(len, vec->data_size, vec->ops);
 
     if (len > 0) {
-        if (copy) {
-            for (u64 i = 0; i < len; i++) {
-                copy(GET_PTR(v, i), GET_PTR(vec, i + start));
-            }
-        } else {
+        if (IS_POD(vec)) {
             memcpy(GET_PTR(v, 0), GET_PTR(vec, start), len * vec->data_size);
+        } else {
+            copy_fn copy = vec->ops->copy_fn;
+            if (copy) {
+                for (u64 i = 0; i < len; i++) {
+                    copy(GET_PTR(v, i), GET_PTR(vec, i + start));
+                }
+            } else {
+                memcpy(GET_PTR(v, 0), GET_PTR(vec, start), len * vec->data_size);
+            }
         }
 
         v->size = len;
@@ -1296,13 +1375,17 @@ void genVec_copy(genVec* dest, const genVec* src)
     dest->data = malloc(GET_SCALED(src, src->capacity));
     CHECK_FATAL(!dest->data, "dest data calloc failed");
 
-    copy_fn copy = COPY_FN(src);
-    if (copy) {
-        for (u64 i = 0; i < src->size; i++) {
-            copy(GET_PTR(dest, i), GET_PTR(src, i));
-        }
-    } else {
+    if (IS_POD(src)) {
         memcpy(dest->data, src->data, GET_SCALED(src, src->size));
+    } else {
+        copy_fn copy = src->ops->copy_fn;
+        if (copy) {
+            for (u64 i = 0; i < src->size; i++) {
+                copy(GET_PTR(dest, i), GET_PTR(src, i));
+            }
+        } else {
+            memcpy(dest->data, src->data, GET_SCALED(src, src->size));
+        }
     }
 }
 
