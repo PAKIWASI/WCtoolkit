@@ -68,7 +68,7 @@ add_executable(main
 target_include_directories(main PRIVATE include)
 
 
-# Test executable 
+# Test executable
 add_executable(tests
     tests/test_main.c
     tests/string_test.c
@@ -84,22 +84,19 @@ add_executable(tests
     tests/speed_test.c
     ${LIB_SOURCES}
 )
-target_include_directories(tests PRIVATE include tests tests/speed_tests)
-target_link_libraries(tests m)
+target_include_directories(tests PRIVATE include tests)
+target_link_libraries(tests)
 
 # Register with CTest so `ctest` works from the build directory
 enable_testing()
 add_test(NAME unit_tests COMMAND tests)
 
 
-# Usage
-
-# Debug build (default):
-#   cmake -B build -G Ninja
-#   cmake --build build
-#   ./build/main
-#   ./build/tests
-#
-# Release build:
-#   cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
-#   cmake --build build
+# Example projects
+# Leetcode
+add_executable(leetcode
+    examples/leetcode.c
+    ${LIB_SOURCES}
+)
+target_include_directories(leetcode PRIVATE include)
+target_link_libraries(leetcode)
