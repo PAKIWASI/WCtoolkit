@@ -4,6 +4,9 @@
 #include "wc_macros.h"
 
 
+
+
+
 int main(void)
 {
     hashmap* map = hashmap_create(
