@@ -2,6 +2,7 @@
 #include "gen_vector.h"
 #include "hashmap.h"
 #include "wc_macros.h"
+#include <stdio.h>
 
 
 /*
@@ -15,15 +16,18 @@ Explanation: Because nums[0] + nums[1] == 9, we return [0, 1].
 */
 static genVec* two_sum(const int* arr, u32 size, int target)
 {
-    hashmap* map = hashmap_create( sizeof(int),
-                sizeof(u32), NULL, NULL, NULL, NULL );
+    hashmap* map = hashmap_create(sizeof(int), sizeof(u32),
+                                  NULL, NULL, NULL, NULL );
     genVec* v = VEC(u32, 2);
 
     for (u32 i = 0; i < size; i++) {
         int remaining = target - arr[i];
-        u8* idx = hashmap_get_ptr(map, cast(remaining));
-        if (idx) {
-            genVec_push(v, cast(i));
+        u32 idx = -1;
+        b8 has = hashmap_get(map, cast(remaining), cast(idx));
+        printf("%b, %u\n", has, idx);
+        if (has) {
+            int a = 5;
+            genVec_push(v, cast(a));
             break;
         }
         MAP_PUT(map, cast(arr[i]), cast(i));
