@@ -2,6 +2,7 @@
 #include "gen_vector.h"
 #include "hashmap.h"
 #include "wc_macros.h"
+#include <stdio.h>
 
 
 /*
@@ -35,16 +36,17 @@ static genVec* two_sum(const int* arr, u32 size, int target)
     return v;
 }
 
-
-
-
 int main(void)
 {
+    printf("Leetcode 1: Two Sums\n");
     int arr1[4] = {2, 7, 11, 15};
     genVec* res = two_sum(arr1, 4, 18);
     genVec_print(res, wc_print_u32);
-
+    putchar('\n');
 
     genVec_destroy(res);
     return 0;
 }
+
+
+
