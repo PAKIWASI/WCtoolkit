@@ -2,7 +2,6 @@
 #include "gen_vector.h"
 #include "hashmap.h"
 #include "wc_macros.h"
-#include <stdio.h>
 
 
 /*
@@ -22,15 +21,14 @@ static genVec* two_sum(const int* arr, u32 size, int target)
 
     for (u32 i = 0; i < size; i++) {
         int remaining = target - arr[i];
-        u32 idx = -1;
+        u32 idx = size;
         b8 has = hashmap_get(map, cast(remaining), cast(idx));
-        printf("%b, %u\n", has, idx);
         if (has) {
-            int a = 5;
-            genVec_push(v, cast(a));
+            genVec_push(v, cast(idx));  // push the stored index
+            genVec_push(v, cast(i));    // push the current index
             break;
         }
-        MAP_PUT(map, cast(arr[i]), cast(i));
+        MAP_PUT(map, arr[i], i);
     }
 
     hashmap_destroy(map);
@@ -43,7 +41,7 @@ static genVec* two_sum(const int* arr, u32 size, int target)
 int main(void)
 {
     int arr1[4] = {2, 7, 11, 15};
-    genVec* res = two_sum(arr1, 4, 9);
+    genVec* res = two_sum(arr1, 4, 18);
     genVec_print(res, wc_print_u32);
 
 
