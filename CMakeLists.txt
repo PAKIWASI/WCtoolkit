@@ -93,6 +93,16 @@ add_test(NAME unit_tests COMMAND tests)
 
 
 # Example projects
+
+# wcjson
+add_executable(wcjson
+    examples/wcjson/wcjson_main.c
+    examples/wcjson/wcjson.c
+    ${LIB_SOURCES}
+)
+target_include_directories(wcjson PRIVATE include)
+target_link_libraries(wcjson)
+
 # Leetcode
 add_executable(leetcode
     examples/leetcode.c
