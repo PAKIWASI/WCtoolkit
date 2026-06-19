@@ -345,7 +345,7 @@ static inline void wc_perror(const char* prefix)
  */
 
 
-// genVec growth settings (user can change)
+// genVec growth settings
 
 #ifndef GENVEC_GROWTH
     #define GENVEC_GROWTH 1.5F      // vec capacity multiplier
