@@ -50,6 +50,9 @@ Parameters:
 */
 void arena_create_arr_stk(Arena* arena, u8* data, u64 size);
 
+
+void arena_create_stk(Arena* arena, u64 capacity);
+
 /*
 Reset the pointer to the arena region to the beginning
 of the allocation. Allows reuse of the memory without

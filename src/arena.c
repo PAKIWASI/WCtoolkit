@@ -56,6 +56,19 @@ Arena* arena_create(u64 capacity)
     return arena;
 }
 
+void arena_create_stk(Arena* arena, u64 capacity)
+{
+    if (capacity == 0) {
+        capacity = ARENA_DEFAULT_SIZE;
+    }
+
+    arena->base = (u8*)malloc(capacity);
+    CHECK_FATAL(!arena->base, "arena base malloc failed");
+
+    arena->idx  = 0;
+    arena->size = capacity;
+}
+
 void arena_create_arr_stk(Arena* arena, u8* data, u64 size)
 {
     CHECK_FATAL(!arena, "arena is null");
