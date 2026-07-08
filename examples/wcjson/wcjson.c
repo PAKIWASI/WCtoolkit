@@ -25,10 +25,8 @@ wcjson* wcjson_create_from_file(const char* filename)
     char* raw_json;
     long size = read_file(filename, &raw_json);
 
-    // NOTE: we assume that if raw json takes `size` bytes then wcjson
-    // overhead will be double that. we need this to initiate arena
-    // we allocate arena with size * 2 as a safety margin (i hope it'll be enough!)
-    // Maybe we can alocate by pages?
+    // NOTE: we need a good way to caculate size of the final json to init arena or 
+    // implement paging (maybe a paged arena?)
 
     wcjson* json = malloc(sizeof(wcjson));
     CHECK_FATAL(!json, "wcjson malloc failed");

@@ -11,9 +11,6 @@ align to 4 bytes
 */
 // Align a value to alignment boundary
 // Note: align MUST be power of 2 and >= 1
-// #define ALIGN_UP(val, align) \
-//     (((val) + ((align) - 1)) & ~((align) - 1))
-
 #define ALIGN_UP(val, align) \
     ((align) == 0 ? (val) : (((val) + ((align) - 1)) & ~((align) - 1)))
 

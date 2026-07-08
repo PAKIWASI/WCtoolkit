@@ -4,7 +4,6 @@
 #include "common.h"
 
 
-
 typedef struct {
     u8* base;
     u64 idx;
@@ -12,11 +11,9 @@ typedef struct {
 } Arena;
 
 
-
-
 // Tweakable settings
 #ifndef ARENA_DEFAULT_ALIGNMENT
-    #define ARENA_DEFAULT_ALIGNMENT (sizeof(u64)) // 8 byte
+    #define ARENA_DEFAULT_ALIGNMENT (sizeof(size_t)) // 8 bytes
 #endif
 #ifndef ARENA_DEFAULT_SIZE
     #define ARENA_DEFAULT_SIZE      (nKB(4))      // 4 KB
@@ -161,12 +158,14 @@ typedef struct {
 } arena_scratch;
 
 
-static inline arena_scratch arena_scratch_begin(Arena* arena) {
+static inline arena_scratch arena_scratch_begin(Arena* arena)
+{
     CHECK_FATAL(!arena, "arena is null");
     return (arena_scratch){ .arena = arena, .saved_idx = arena->idx };
 }
 
-static inline void arena_scratch_end(arena_scratch* scratch) {
+static inline void arena_scratch_end(arena_scratch* scratch)
+{
     if (scratch && scratch->arena) {
         scratch->arena->idx = scratch->saved_idx;
     }
