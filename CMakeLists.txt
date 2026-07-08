@@ -85,7 +85,7 @@ add_executable(tests
     ${LIB_SOURCES}
 )
 target_include_directories(tests PRIVATE include tests)
-target_link_libraries(tests)
+target_link_libraries(tests m)
 
 # Register with CTest so `ctest` works from the build directory
 enable_testing()
@@ -94,19 +94,21 @@ add_test(NAME unit_tests COMMAND tests)
 
 # Example projects
 
-# wcjson
-add_executable(wcjson
-    examples/wcjson/wcjson_main.c
-    examples/wcjson/wcjson.c
-    ${LIB_SOURCES}
-)
-target_include_directories(wcjson PRIVATE include)
-target_link_libraries(wcjson)
+# # wcjson
+# add_executable(wcjson
+#     examples/wcjson/wcjson_main.c
+#     examples/wcjson/wcjson.c
+#     ${LIB_SOURCES}
+# )
+# target_include_directories(wcjson PRIVATE include)
+# target_link_libraries(wcjson)
+#
+# # Leetcode
+# add_executable(leetcode
+#     examples/leetcode.c
+#     ${LIB_SOURCES}
+# )
+# target_include_directories(leetcode PRIVATE include)
+# target_link_libraries(leetcode)
 
-# Leetcode
-add_executable(leetcode
-    examples/leetcode.c
-    ${LIB_SOURCES}
-)
-target_include_directories(leetcode PRIVATE include)
-target_link_libraries(leetcode)
+
