@@ -1,29 +1,17 @@
-#include "gen_vector.h"
-#include "hashmap.h"
-
-#include "wc_helpers.h"
-#include "wc_macros.h"
+#include "arena.h"
 
 
 int main(void)
 {
-    hashmap* map  = hashmap_create(
-            sizeof(String),
-            sizeof(genVec),
-            wyhash_str,
-            str_cmp,
-            &wc_str_ops,
-            &wc_vec_ops
-    );
+    Arena* arena = arena_create(0);
 
-    String* s = string_from_cstr("hello");
-    genVec* v = genVec_init_arr(5, sizeof(int), NULL, 
-            (u8*)(int[5]){1, 2, 3, 4, 5});
+    ARENA_SCRATCH(arena) {
+        int* n = ARENA_ALLOC_N(arena, int, 10);
 
-    MAP_PUT_MOVE(map, s, v);
+        n[0] = 67;
+    }
 
-    hashmap_print(map, str_print, vec_print_int);
-
-    hashmap_destroy(map);
+    printf("%lu\n", arena_remaining(arena));
+    arena_release(arena);
     return 0;
 }

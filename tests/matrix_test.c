@@ -321,7 +321,7 @@ static void test_arena_scratch_temporaries(void)
     Arena*   arena = arena_create(nKB(2));
     Matrixf* result = matrix_arena_alloc(arena, 2, 2);
 
-    ARENA_SCRATCH(sc, arena) {
+    ARENA_SCRATCH(arena) {
         Matrixf* t1 = matrix_arena_arr_alloc(arena, 2, 2,
                         (float[]){1,0,0,1});
         Matrixf* t2 = matrix_arena_arr_alloc(arena, 2, 2,

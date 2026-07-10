@@ -13,7 +13,7 @@ typedef struct {
 
 // Tweakable settings
 #ifndef ARENA_DEFAULT_ALIGNMENT
-    #define ARENA_DEFAULT_ALIGNMENT (sizeof(size_t)) // 8 bytes
+    #define ARENA_DEFAULT_ALIGNMENT (sizeof(void*)) // 8 bytes
 #endif
 #ifndef ARENA_DEFAULT_SIZE
     #define ARENA_DEFAULT_SIZE      (nKB(4))      // 4 KB
@@ -58,7 +58,11 @@ expensive frees.
 Parameters:
   Arena *arena    |    The arena to be cleared.
 */
-void arena_clear(Arena* arena);
+static inline void arena_clear(Arena* arena)
+{
+    CHECK_FATAL(!arena, "arena is null");
+    arena->idx = 0;
+}
 
 /*
 Free the memory allocated for the entire arena region.
@@ -66,7 +70,12 @@ Free the memory allocated for the entire arena region.
 Parameters:
   Arena *arena    |    The arena to be destroyed.
 */
-void arena_release(Arena* arena);
+static inline void arena_release(Arena* arena)
+{
+    CHECK_FATAL(!arena, "arena is null");
+    free(arena->base);
+    free(arena);
+}
 
 /*
 Return a pointer to a portion of specified size of the
@@ -112,28 +121,6 @@ Return:
 u8* arena_alloc_aligned(Arena* arena, u64 size, u32 alignment);
 
 
-/*
-Get the value of index at the current state of arena
-This can be used to later clear upto that point using arena_clear_mark
-
-Parameters:
-  Arena* arena          |   The arena whose idx will be returned
-
-Return:
-  The current value of idx variable
-*/
-u64 arena_get_mark(Arena* arena);
-
-/*
-Clear the arena from current index back to mark
-
-Parameters:
-  Arena* arena          |   The arena you want to clear using it's mark
-  u64    mark           |   The mark previosly obtained by arena_get_mark 
-*/
-void arena_clear_mark(Arena* arena, u64 mark);
-
-
 // Get used capacity
 static inline u64 arena_used(Arena* arena)
 {
@@ -154,37 +141,38 @@ static inline u64 arena_remaining(Arena* arena)
 
 typedef struct {
     Arena* arena;
-    u64 saved_idx;
-} arena_scratch;
+    u64 mark;
+} ArenaScratch;
 
 
-static inline arena_scratch arena_scratch_begin(Arena* arena)
+static inline ArenaScratch arena_scratch_begin(Arena* arena)
 {
     CHECK_FATAL(!arena, "arena is null");
-    return (arena_scratch){ .arena = arena, .saved_idx = arena->idx };
+    return (ArenaScratch){ .arena = arena, .mark = arena->idx };
 }
 
-static inline void arena_scratch_end(arena_scratch* scratch)
+static inline void arena_scratch_end(ArenaScratch scratch)
 {
-    if (scratch && scratch->arena) {
-        scratch->arena->idx = scratch->saved_idx;
+    if (scratch.arena) {
+        scratch.arena->idx = scratch.mark;
+        scratch.arena = NULL;
     }
 }
 
 // macro for automatic cleanup arena_scratch
-#define ARENA_SCRATCH(name, arena_ptr) \
-    for (arena_scratch name = arena_scratch_begin(arena_ptr); \
-         (name).arena != NULL; \
-         arena_scratch_end(&(name)), (name).arena = NULL)
+#define ARENA_SCRATCH(arena_ptr) \
+    for (ArenaScratch __nme__ = arena_scratch_begin(arena_ptr); \
+         (__nme__ ).arena != NULL; \
+         arena_scratch_end((__nme__ )), (__nme__).arena = NULL)
 
 /* USAGE:
 // Manual:
 ScratchArena scratch = arena_scratch_begin(arena);
 char* tmp = ARENA_ALLOC_N(arena, char, 256);
-arena_scratch_end(&scratch);
+arena_scratch_end(scratch);
 
 // Automatic:
-ARENA_SCRATCH(scratch, arena) {
+ARENA_SCRATCH(arena) {
     char* tmp = ARENA_ALLOC_N(arena, char, 256);
 } // auto cleanup
 */

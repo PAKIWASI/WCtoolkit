@@ -1,14 +1,19 @@
 #include "arena.h"
 #include "wc_errno.h"
 
-/* python
-align to 8 bytes
->>> 4 + 7 & ~(7)
+/*'''python
+align a 4 byte thing to 8 bytes alignment boundry:
+>>> 4 + (8 - 1) & ~(8 - 1)
 8
-align to 4 bytes
->>> 1 + 4 & ~(4)
-1
-*/
+>>> 7 + (8 - 1) & ~(8 - 1)
+8
+>>> 9 + (8 - 1) & ~(8 - 1)
+16 <- how much bytes should a 9 byte thing occupy to align to boundry
+>>> 15 + (8 - 1) & ~(8 - 1)
+16
+>>> 18 + (8 - 1) & ~(8 - 1)
+24
+'''*/
 // Align a value to alignment boundary
 // Note: align MUST be power of 2 and >= 1
 #define ALIGN_UP(val, align) \
@@ -18,17 +23,7 @@ align to 4 bytes
 #define ALIGN_UP_DEFAULT(val) \
     ALIGN_UP((val), ARENA_DEFAULT_ALIGNMENT)
 
-// Align a pointer to alignment boundary  
-// turn ptr to a u64 val to align, then turn to ptr again
-#define ALIGN_PTR(ptr, align) \
-    ((u8*)ALIGN_UP((ptr), (align)))
 
-// align a pointer to ARENA_DEFAULT_ALIGNMENT
-#define ALIGN_PTR_DEFAULT(ptr) \
-    ALIGN_PTR((ptr), ARENA_DEFAULT_ALIGNMENT)
-
-
-#define ARENA_CURR_IDX_PTR(arena) ((arena)->base + (arena)->idx)
 #define ARENA_PTR(arena, idx) ((arena)->base + (idx))
 
 
@@ -77,33 +72,18 @@ void arena_create_arr_stk(Arena* arena, u8* data, u64 size)
     arena->size = size;
 }
 
-void arena_clear(Arena* arena)
-{
-    CHECK_FATAL(!arena, "arena is null");
-
-    arena->idx = 0;
-}
-
-void arena_release(Arena* arena)
-{
-    CHECK_FATAL(!arena, "arena is null");
-    
-    free(arena->base);
-    free(arena);
-}
-
 u8* arena_alloc(Arena* arena, u64 size)
 {
     CHECK_FATAL(!arena, "arena is null");
     CHECK_FATAL(size == 0, "can't have allocation of size = 0");
-    
+
     // Align the current index first
     u64 aligned_idx = ALIGN_UP_DEFAULT(arena->idx);
     WC_SET_RET(WC_ERR_FULL, arena->size - aligned_idx < size, NULL);
-    
+
     u8* ptr = ARENA_PTR(arena, aligned_idx);
     arena->idx = aligned_idx + size;
-    
+
     return ptr;
 }
 
@@ -124,23 +104,6 @@ u8* arena_alloc_aligned(Arena* arena, u64 size, u32 alignment)
     arena->idx = aligned_idx + size;
 
     return ptr;
-}
-
-u64 arena_get_mark(Arena* arena)
-{
-    CHECK_FATAL(!arena, "arena is null");
-
-    return arena->idx;
-}
-
-void arena_clear_mark(Arena* arena, u64 mark)
-{
-    CHECK_FATAL(!arena, "arena is null");
-    CHECK_FATAL(mark > arena->idx, "mark is out of bounds");
-
-    if (mark == arena->idx) { return; }
-
-    arena->idx = mark;
 }
 
 
