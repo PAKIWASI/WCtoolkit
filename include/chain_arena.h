@@ -1,7 +1,7 @@
 #ifndef CHAIN_ARENA_H
 #define CHAIN_ARENA_H
 
-#include "common.h"
+#include "gen_vector.h"
 
 
 #ifndef ARENA_DEFAULT_ALIGNMENT
@@ -13,23 +13,14 @@
 #endif
 
 
-typedef struct ArenaNode
-{
-    // TODO: do we ever need dynamic size for base in this type of arena?
+typedef struct ArenaNode {
     u8  base[ARENA_NODE_INLINE_SIZE];
     u64 used;    // per-node index - when new allocation needs more bytes than left in curr node, we create a new node and allocate there
-    struct ArenaNode* next;
 } ArenaNode;
 
-// TODO: should we switch to dynamic array of nodes? then we can easily find which node holds a certain global index
 typedef struct {
-    ArenaNode** nodes;  // TODO: compete dynmaic arry imp
-    u32 size;
-    u32 cap;
+    genVec nodes;   // vec of ArenaNode*
     u64 idx;    // per-arena index - tracks total bytes used. Also used for marking save points (scratch)
-    // TODO: instead of having idx in each node, we can have one here, when idx=ARENA_NODE_INLINE_SIZE,
-    // then we create a new node and just continue. if user wants to read a particular offset, we can
-    // calculate which node it resides in and hand it over
 } ChainArena;
 
 // scratch space with partial clearing arena
@@ -41,6 +32,7 @@ typedef struct {
 // you save a mark, do some work (eg per frame work in a game loop) then reset back to mark at the end of loop
 
 
+
 ChainArena* chain_arena_create(void);
 
 void chain_arena_release(ChainArena* arena);
@@ -49,15 +41,19 @@ void chain_arena_release(ChainArena* arena);
 // void chain_arena_release_stk(ChainArena* arena);
 
 
-// allocate `size` bytes with default alignment
-u8* chain_arena_alloc(ChainArena* arena, u64 size);
-
 // allocate `size` bytes with custom alignment `align`
-void chain_arena_alloc_aligned(ChainArena* arena, u64 size, u32 align);
+u8* chain_arena_alloc_aligned(ChainArena* arena, u64 size, u32 align);
 
-// reset arena back to inital state. with a single node
+// allocate `size` bytes with default alignment
+static inline u8* chain_arena_alloc(ChainArena* arena, u64 size)
+{
+    return chain_arena_alloc_aligned(arena, size, ARENA_DEFAULT_ALIGNMENT);
+}
+
+// reset arena back to inital state. with only one fresh node
 void chain_arena_reset(ChainArena* arena);
 
+// TODO: this does not work with vector approach
 // clear all nodes but keep allocated nodes
 static inline void chain_arena_clear(ChainArena* arena)
 {

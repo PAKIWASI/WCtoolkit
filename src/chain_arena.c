@@ -1,4 +1,7 @@
 #include "chain_arena.h"
+#include "common.h"
+#include "gen_vector.h"
+#include <string.h>
 
 
 /*'''python
@@ -15,24 +18,36 @@ align a 4 byte thing to 8 bytes alignment boundry:
 24
 '''*/
 // Align a value to alignment boundary
-// Note: align MUST be power of 2 and >= 1
+// Note: align MUST be power of 2 and >= 1. pow of 2 validated in caller
 #define ALIGN_UP(val, align) \
     ((align) == 0 ? (val) : (((val) + ((align) - 1)) & ~((align) - 1)))
 
-// align value to ARENA_DEFAULT_ALIGNMENT
-#define ALIGN_UP_DEFAULT(val) \
-    ALIGN_UP((val), ARENA_DEFAULT_ALIGNMENT)
-
-#define ARENA_NODE_PTR(node, idx) ((node)->base + (idx))
-
-// given a global idx, find which node number contains it
-// each node's used goes up to ARENA_NODE_INLINE_SIZE
-// TODO: we do O(n) each time for the node ptr?
-#define FIND_NODE(arena, idx) (idx % ARENA_NODE_INLINE_SIZE)
+#define LAST_NODE(arena) (*(ArenaNode**)genVec_back(&arena->nodes))
+#define REMAINING(node)  (ARENA_NODE_INLINE_SIZE - (node)->used)
+#define NODE_PTR(node)   ((node)->base + (node)->used)
 
 
-static inline void append_node(ChainArena* arena);
+#define NODES_INIT_SIZE 10
 
+
+static inline ArenaNode* append_node(ChainArena* arena);
+
+
+// Ops for Genvec container
+static void chain_move(u8* dest, u8** src) {
+    *(ArenaNode**)dest = *(ArenaNode**)src;
+    *(ArenaNode**)src  = NULL;
+}
+
+static void chain_del(u8* key) {
+    free(*(ArenaNode**)key);
+}
+
+static container_ops chain_ops = {
+    .copy_fn = NULL,
+    .move_fn = chain_move,
+    .del_fn  = chain_del
+};
 
 
 ChainArena* chain_arena_create(void)
@@ -40,14 +55,10 @@ ChainArena* chain_arena_create(void)
     ArenaNode* n = malloc(sizeof(ArenaNode));
     CHECK_FATAL(!n, "node malloc failed");
     n->used = 0;
-    n->next = NULL;
 
     ChainArena* arena = malloc(sizeof(ChainArena));
     CHECK_FATAL(!arena, "arena malloc failed");
-    arena->head      = n;
-    arena->curr      = n;
-    arena->idx       = 0;
-    arena->num_nodes = 1;
+    genVec_init_stk(NODES_INIT_SIZE, sizeof(ArenaNode*), &chain_ops, &arena->nodes);
 
     return arena;
 }
@@ -56,64 +67,52 @@ void chain_arena_release(ChainArena* arena)
 {
     CHECK_FATAL(!arena, "arena is null");
 
-    if (arena->num_nodes != 0) {
-        ArenaNode* prev = NULL;
-        ArenaNode* curr = arena->head;
-        ArenaNode* final = arena->curr;
-        do {
-            prev = curr;
-            curr = curr->next;
-            free(prev);
-        } while (curr != final);
-    }
+    // destroyes each node using chain_del function but not itself
+    genVec_destroy_stk(&arena->nodes);
 
+    // free the arena struct, including the genVec struct itself
     free(arena);
 }
 
-u8* chain_arena_alloc(ChainArena* arena, u64 size)
+
+// TODO: we have a global index in ChainArena, we should use that to determine
+// if the next allocation happens in an already present last node or a new node is
+// needed. We should also use it to implement chain_arena_clear
+
+u8* chain_arena_alloc_aligned(ChainArena* arena, u64 size, u32 align)
 {
     CHECK_FATAL(!arena, "arena is null");
     CHECK_FATAL(size == 0, "can't have allocation of size = 0");
-    CHECK_FATAL(size > ARENA_NODE_INLINE_SIZE,
-                "max possible alloc size is %lu", ARENA_NODE_INLINE_SIZE);
-    // TODO: test this by allocating ARENA_NODE_INLINE_SIZE on a fresh node
+    CHECK_FATAL((align & (align - 1)) != 0,
+                "alignment must be power of two");
 
-    // Align the current index first
-    u64 aligned_idx = ALIGN_UP_DEFAULT(arena->idx);
-    u64 aligned_used = ALIGN_UP_DEFAULT(arena->curr->used);
-    // We dont have enough space in current node!
-    // make a new one, do allocation there
-    if (ARENA_NODE_INLINE_SIZE - aligned_idx < size) {
-        append_node(arena);
-        // recurse with newly created block
-        return chain_arena_alloc(arena, size);
-    }
+    ArenaNode* last = (REMAINING(LAST_NODE(arena)) < size) ?
+                        append_node(arena) : LAST_NODE(arena);
 
-    u8* ptr = ARENA_NODE_PTR(arena->curr, aligned_idx);
-    arena->curr->used += aligned_used + size;
-    arena->idx = aligned_idx + size;
-
-
-    return ptr;
+    // align used to alignment boundry
+    u64 aligned_idx = ALIGN_UP(last->used, align);
+    // global idx incremented by size and the number of bytes taken by alignment
+    arena->idx += (aligned_idx - last->used) + size;
+    last->used = aligned_idx;   // used moves forward to allocation boundry
+    u8* ret = NODE_PTR(last);   // get the ptr to START of alloc (old aligned node->used)
+    last->used += size;         // increment used by size
+    return ret;                 // ret ptr to start of allocation
 }
 
 
 
 
-
-
-// create a new node and append it to the chain
-static inline void append_node(ChainArena* arena)
+static inline ArenaNode* append_node(ChainArena* arena)
 {
     ArenaNode* n = malloc(sizeof(ArenaNode));
-    CHECK_FATAL(!n, "node malloc failed");
     n->used = 0;
-    n->next = NULL;
-
-    arena->curr->next = n;
-    arena->curr       = n;
-    arena->num_nodes++;
+    genVec_push(&arena->nodes, castptr(n));
+    return n;
 }
+
+
+
+
 
 
 
