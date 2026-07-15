@@ -3,5 +3,5 @@
 
 build/
 .cache/
-
+.gdb_history
 

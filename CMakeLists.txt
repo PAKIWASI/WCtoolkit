@@ -46,6 +46,7 @@ set(CMAKE_EXE_LINKER_FLAGS_RELEASE "")
 # Shared source list
 set(LIB_SOURCES
     src/arena.c
+    src/chain_arena.c
     src/bit_vector.c
     src/fast_math.c
     src/gen_vector.c
