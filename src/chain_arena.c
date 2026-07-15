@@ -100,8 +100,6 @@ u8* chain_arena_alloc_aligned(ChainArena* arena, u64 size, u32 align)
 }
 
 
-
-
 static inline ArenaNode* append_node(ChainArena* arena)
 {
     ArenaNode* n = malloc(sizeof(ArenaNode));
@@ -109,13 +107,3 @@ static inline ArenaNode* append_node(ChainArena* arena)
     genVec_push(&arena->nodes, castptr(n));
     return n;
 }
-
-
-
-
-
-
-
-
-
-
