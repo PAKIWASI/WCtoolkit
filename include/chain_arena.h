@@ -18,17 +18,18 @@ typedef struct ArenaNode {
 
 typedef struct {
     genVec nodes;   // vector of ArenaNode*
-    u64 idx;        // linear bump offset: jumps by ARENA_NODE_INLINE_SIZE
-                    // when a new node is appended.  Used for O(1) node lookup.
-    u64 used;       // total bytes actually allocated (sum of node->used).
-                    // This is the scratch save/restore mark.
+    u64 idx;        // linear offset: (last_node_index * NODE_SIZE).
+                    // Updated when nodes are appended or removed.
+    u64 used;       // total bytes allocated (sum of all node->used).
+                    // Used for scratch save/restore.
 } ChainArena;
 
 typedef struct {
     ChainArena* arena;
-    u64 mark;       // saved `used` value to restore to
+    u64 node_idx;         // index of the last node at scratch start
+    u64 node_used_mark;   // that node's `used` value at scratch start
+    u64 arena_used_mark;  // arena->used at scratch start
 } ChainArenaScratch;
-
 
 
 ChainArena* chain_arena_create(void);
@@ -54,25 +55,22 @@ static inline void chain_arena_clear(ChainArena* arena)
 
     u64 node_count = genVec_size(&arena->nodes);
     for (u64 i = 0; i < node_count; i++) {
-        ArenaNode* node = *(ArenaNode**)genVec_get_ptr_mut(&arena->nodes, i);
-        node->used = 0;
+        (*(ArenaNode**)genVec_get_ptr_mut(&arena->nodes, i))->used = 0;
     }
     arena->idx  = 0;
     arena->used = 0;
 }
 
 
-static inline ChainArenaScratch chain_arena_scratch_begin(ChainArena* arena) {
-    CHECK_FATAL(!arena, "arena is null");
-    return (ChainArenaScratch){ .arena = arena, .mark = arena->used };
-}
+ChainArenaScratch chain_arena_scratch_begin(ChainArena* arena);
 
-inline void chain_arena_scratch_end(ChainArenaScratch scratch);
+void chain_arena_scratch_end(ChainArenaScratch scratch);
 
 #define CHAIN_ARENA_SCRATCH(c_arena_ptr) \
     for (ChainArenaScratch __nme__ = chain_arena_scratch_begin(c_arena_ptr); \
          (__nme__).arena != NULL; \
          chain_arena_scratch_end((__nme__)), (__nme__).arena = NULL)
+
 
 // Typed allocation macros
 #define CHAIN_ARENA_ALLOC(arena, T)         ((T*)chain_arena_alloc((arena), sizeof(T)))
