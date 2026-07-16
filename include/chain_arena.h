@@ -18,8 +18,6 @@ typedef struct ArenaNode {
 
 typedef struct {
     genVec nodes;   // vector of ArenaNode*
-    u64 idx;        // linear offset: (last_node_index * NODE_SIZE).
-                    // Updated when nodes are appended or removed.
     u64 used;       // total bytes allocated (sum of all node->used).
                     // Used for scratch save/restore.
 } ChainArena;
@@ -49,17 +47,7 @@ static inline u8* chain_arena_alloc(ChainArena* arena, u64 size)
 void chain_arena_reset(ChainArena* arena);
 
 // clear all space but dont free any nodes
-static inline void chain_arena_clear(ChainArena* arena)
-{
-    CHECK_FATAL(!arena, "arena is null");
-
-    u64 node_count = genVec_size(&arena->nodes);
-    for (u64 i = 0; i < node_count; i++) {
-        (*(ArenaNode**)genVec_get_ptr_mut(&arena->nodes, i))->used = 0;
-    }
-    arena->idx  = 0;
-    arena->used = 0;
-}
+void chain_arena_clear(ChainArena* arena);
 
 
 ChainArenaScratch chain_arena_scratch_begin(ChainArena* arena);

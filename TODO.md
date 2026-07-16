@@ -6,7 +6,7 @@
 
 ## Immediate
 
-- Update Readme for new pod flag in genvec/hashmap/hashset
+- alternative allocators to malloc
 - iterators
 - multithreading
 
