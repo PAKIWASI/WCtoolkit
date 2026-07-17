@@ -1,6 +1,7 @@
 #ifndef BIT_VECTOR_H
 #define BIT_VECTOR_H
 
+#include "common.h"
 #include "gen_vector.h"
 
 

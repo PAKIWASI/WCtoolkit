@@ -1,6 +1,7 @@
 #ifndef CHAIN_ARENA_H
 #define CHAIN_ARENA_H
 
+#include "common.h"
 #include "gen_vector.h"
 
 #ifndef ARENA_DEFAULT_ALIGNMENT

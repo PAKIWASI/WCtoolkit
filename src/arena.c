@@ -1,5 +1,7 @@
 #include "arena.h"
+#include "common.h"
 #include "wc_errno.h"
+#include <stdlib.h>
 
 /*'''python
 align a 4 byte thing to 8 bytes alignment boundry:

@@ -1,6 +1,7 @@
 #ifndef STACK_H
 #define STACK_H
 
+#include "common.h"
 #include "gen_vector.h"
 
 

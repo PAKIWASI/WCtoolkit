@@ -1,6 +1,9 @@
 #include "Queue.h"
+#include "common.h"
 #include "gen_vector.h"
 #include "wc_errno.h"
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 

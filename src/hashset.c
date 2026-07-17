@@ -1,4 +1,8 @@
 #include "hashset.h"
+#include "common.h"
+#include "map_setup.h"
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 

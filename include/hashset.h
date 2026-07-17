@@ -1,6 +1,7 @@
 #ifndef HASHSET_H
 #define HASHSET_H
 
+#include "common.h"
 #include "map_setup.h"
 
 

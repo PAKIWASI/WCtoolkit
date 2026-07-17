@@ -1,7 +1,9 @@
 #include "random.h"
+#include "common.h"
 #include "fast_math.h"
 
 #include <bits/time.h>
+#include <stdint.h>
 #include <time.h>
 
 

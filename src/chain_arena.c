@@ -1,5 +1,7 @@
-#include "chain_arena.h"
 #include "common.h"
+#include "chain_arena.h"
+#include "gen_vector.h"
+#include <stdlib.h>
 #include <string.h>
 
 
