@@ -547,8 +547,6 @@ typedef struct ArenaNode {
 
 typedef struct {
     genVec nodes;   // vector of ArenaNode*
-    u64 idx;        // linear offset: (last_node_index * NODE_SIZE).
-                    // Updated when nodes are appended or removed.
     u64 used;       // total bytes allocated (sum of all node->used).
                     // Used for scratch save/restore.
 } ChainArena;
@@ -578,17 +576,7 @@ static inline u8* chain_arena_alloc(ChainArena* arena, u64 size)
 void chain_arena_reset(ChainArena* arena);
 
 // clear all space but dont free any nodes
-static inline void chain_arena_clear(ChainArena* arena)
-{
-    CHECK_FATAL(!arena, "arena is null");
-
-    u64 node_count = genVec_size(&arena->nodes);
-    for (u64 i = 0; i < node_count; i++) {
-        (*(ArenaNode**)genVec_get_ptr_mut(&arena->nodes, i))->used = 0;
-    }
-    arena->idx  = 0;
-    arena->used = 0;
-}
+void chain_arena_clear(ChainArena* arena);
 
 
 ChainArenaScratch chain_arena_scratch_begin(ChainArena* arena);
@@ -628,6 +616,8 @@ _Thread_local wc_err wc_errno = WC_OK;
 #ifndef WC_GEN_VECTOR_IMPL
 #define WC_GEN_VECTOR_IMPL
 
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 
@@ -1291,9 +1281,10 @@ void genVec_remove(genVec* vec, u64 i, u8* out)
     vec->size--;
 }
 
+
 /*
     0 1 2 3 4 5, (1, 3) -> [1, 4)
-    start = 1 
+    start = 1
     len = 3
     end = 1 + 3 - 1 = 3
 */
@@ -1320,7 +1311,7 @@ void genVec_remove_range(genVec* vec, u64 start, u64 len)
 
     u8* dest = GET_PTR(vec, start);
     u8* src  = GET_PTR(vec, start + len);
-    memmove(dest, src, GET_SCALED(vec, vec->size - len));
+    memmove(dest, src, GET_SCALED(vec, vec->size - start - len));   // TODO: is this right
 
     vec->size -= len;
 }
@@ -1487,6 +1478,7 @@ static void genVec_grow(genVec* vec)
 #ifndef WC_CHAIN_ARENA_IMPL
 #define WC_CHAIN_ARENA_IMPL
 
+#include <stdlib.h>
 #include <string.h>
 
 
@@ -1514,11 +1506,10 @@ static void chain_move(u8* dest, u8** src)
 
 static void chain_del(u8* key)
 {
-    ArenaNode* node = *(ArenaNode**)key;
-    free(node);
+    free(*(ArenaNode**)key);
 }
 
-static container_ops chain_ops = {
+static container_ops chain_ops_ptr = {
     .copy_fn = NULL,
     .move_fn = chain_move,
     .del_fn  = chain_del
@@ -1536,10 +1527,9 @@ ChainArena* chain_arena_create(void)
     ChainArena* arena = malloc(sizeof(ChainArena));
     CHECK_FATAL(!arena, "arena malloc failed");
 
-    genVec_init_stk(NODES_INIT_SIZE, sizeof(ArenaNode*), &chain_ops, &arena->nodes);
-    genVec_push(&arena->nodes, castptr(n));   // initial node
+    genVec_init_stk(NODES_INIT_SIZE, sizeof(ArenaNode*), &chain_ops_ptr, &arena->nodes);
+    genVec_push_move(&arena->nodes, (u8**)&n);   // initial node
 
-    arena->idx  = 0;   // first node at offset 0
     arena->used = 0;
     return arena;
 }
@@ -1558,6 +1548,7 @@ u8* chain_arena_alloc_aligned(ChainArena* arena, u64 size, u32 align)
     CHECK_FATAL((align & (align - 1)) != 0, "alignment must be power of two");
 
     ArenaNode* last = LAST_NODE(arena);
+
     u64 aligned_idx = ALIGN_UP(last->used, align);
     u64 required = (aligned_idx - last->used) + size;
 
@@ -1590,14 +1581,22 @@ void chain_arena_reset(ChainArena* arena)
     }
 
     // Reset the first node
-    ArenaNode* first = *(ArenaNode**)genVec_get_ptr_mut(&arena->nodes, 0);
-    first->used = 0;
+    (*(ArenaNode**)genVec_get_ptr_mut(&arena->nodes, 0))->used = 0;
 
-    arena->idx  = 0;
     arena->used = 0;
 }
 
-// (chain_arena_clear is defined inline in the header)
+// clear all space but dont free any nodes
+void chain_arena_clear(ChainArena* arena)
+{
+    CHECK_FATAL(!arena, "arena is null");
+
+    u64 node_count = genVec_size(&arena->nodes);
+    for (u64 i = 0; i < node_count; i++) {
+        (*(ArenaNode**)genVec_get_ptr_mut(&arena->nodes, i))->used = 0;
+    }
+    arena->used = 0;
+}
 
 
 // Scratch API
@@ -1635,7 +1634,6 @@ void chain_arena_scratch_end(ChainArenaScratch scratch)
 
     // 3. Restore the global counters
     a->used = scratch.arena_used_mark;
-    a->idx  = scratch.node_idx * ARENA_NODE_INLINE_SIZE;
 
     scratch.arena = NULL;   // mark as consumed
 }
@@ -1649,12 +1647,10 @@ static inline ArenaNode* append_node(ChainArena* arena)
     CHECK_FATAL(!n, "node malloc failed");
     n->used = 0;
 
-    genVec_push(&arena->nodes, castptr(n));
+    ArenaNode* ret = n;
+    genVec_push_move(&arena->nodes, (u8**)&n);  // push move consumes n
 
-    // Advance the linear offset by one full node size
-    arena->idx += ARENA_NODE_INLINE_SIZE;
-
-    return n;
+    return ret;
 }
 
 #endif /* WC_CHAIN_ARENA_IMPL */

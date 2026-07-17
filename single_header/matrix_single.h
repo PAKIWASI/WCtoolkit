@@ -721,6 +721,8 @@ _Thread_local wc_err wc_errno = WC_OK;
 #ifndef WC_ARENA_IMPL
 #define WC_ARENA_IMPL
 
+#include <stdlib.h>
+
 /*'''python
 align a 4 byte thing to 8 bytes alignment boundry:
 >>> 4 + (8 - 1) & ~(8 - 1)
@@ -831,6 +833,12 @@ u8* arena_alloc_aligned(Arena* arena, u64 size, u32 alignment)
 /* ===== matrix.c ===== */
 #ifndef WC_MATRIX_IMPL
 #define WC_MATRIX_IMPL
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+
 
 Matrixf* matrix_create(u64 m, u64 n)
 {

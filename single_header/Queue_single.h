@@ -582,6 +582,8 @@ _Thread_local wc_err wc_errno = WC_OK;
 #ifndef WC_GEN_VECTOR_IMPL
 #define WC_GEN_VECTOR_IMPL
 
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 
@@ -1245,9 +1247,10 @@ void genVec_remove(genVec* vec, u64 i, u8* out)
     vec->size--;
 }
 
+
 /*
     0 1 2 3 4 5, (1, 3) -> [1, 4)
-    start = 1 
+    start = 1
     len = 3
     end = 1 + 3 - 1 = 3
 */
@@ -1274,7 +1277,7 @@ void genVec_remove_range(genVec* vec, u64 start, u64 len)
 
     u8* dest = GET_PTR(vec, start);
     u8* src  = GET_PTR(vec, start + len);
-    memmove(dest, src, GET_SCALED(vec, vec->size - len));
+    memmove(dest, src, GET_SCALED(vec, vec->size - start - len));   // TODO: is this right
 
     vec->size -= len;
 }
@@ -1441,6 +1444,8 @@ static void genVec_grow(genVec* vec)
 #ifndef WC_QUEUE_IMPL
 #define WC_QUEUE_IMPL
 
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 

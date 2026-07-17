@@ -527,7 +527,7 @@ ARENA_SCRATCH(arena) {
 #ifndef WC_MATRIX_GENERIC_H
 #define WC_MATRIX_GENERIC_H
 
-#include <string.h>
+// #include <string.h>
 
 
 // ============================================================================
@@ -998,6 +998,8 @@ _Thread_local wc_err wc_errno = WC_OK;
 /* ===== arena.c ===== */
 #ifndef WC_ARENA_IMPL
 #define WC_ARENA_IMPL
+
+#include <stdlib.h>
 
 /*'''python
 align a 4 byte thing to 8 bytes alignment boundry:

@@ -309,8 +309,8 @@ float fast_log(float x)
     while (x < 0.7071068f) { x *= 2.0f; exp_adjust--; }
     
     // Now compute ln(x) using ln(1+t) series where t = x-1
-    float t = x - 1.0f;
-    float t2 = t * t;
+    float t  = x - 1.0f;
+    float t2 = t  * t;
     float t3 = t2 * t;
     float t4 = t3 * t;
     float t5 = t4 * t;
@@ -477,13 +477,16 @@ float fast_ceil(float x)
     return (float)i;
 }
 
-/* We use the squaring trick from fast_exp function for the integer exponent, and for fractional exponent, we use the identity a^b = e^(b * ln(a)). So we used the fast_exp and fast_log functions already defined.*/ 
-
+/*
+ * We use the squaring trick from fast_exp function for the integer exponent,
+ * and for fractional exponent, we use the identity a^b = e^(b * ln(a)).
+ * So we used the fast_exp and fast_log functions already defined.
+*/
 float fast_pow(float base, float exp) {
 
     // 1. Simple Edge Cases
-    if (exp == 0.0f) return 1.0f;
-    if (exp == 1.0f) return base;
+    if (exp == 0.0f) { return 1.0f; }
+    if (exp == 1.0f) { return base; }
 
     if (base == 0.0f) {
         return (exp > 0.0f) ? 0.0f : 1e38f; 
@@ -521,15 +524,16 @@ float fast_pow(float base, float exp) {
     }
 
     // Incorporating integer part. Used exponentiation by squaring.
-    //Didnt include overflow checks here, as checking in every iteration is more expensive than the native infinity calculations, also 1.f/result will give zero automatically if overflowed, so we get more optimization. Again, needs confirmation.
+    //Didnt include overflow checks here, as checking in every iteration is more expensive than the native infinity calculations,
+    //also 1.f/result will give zero automatically if overflowed, so we get more optimization. Again, needs confirmation.
     while (int_part > 0) {
 
         if (int_part & 1) { 
             result *= base;
         }
 
-        int_part >>= 1; 
-        if (!int_part) break; 
+        int_part >>= 1;
+        if (!int_part) { break; }
 
         base *= base;
     }

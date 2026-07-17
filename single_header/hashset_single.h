@@ -723,6 +723,8 @@ _Thread_local wc_err wc_errno = WC_OK;
 #ifndef WC_STRING_IMPL
 #define WC_STRING_IMPL
 
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 
@@ -1370,6 +1372,8 @@ static void ensure_capacity(String* s, u64 needed)
 #ifndef WC_HASHSET_IMPL
 #define WC_HASHSET_IMPL
 
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 

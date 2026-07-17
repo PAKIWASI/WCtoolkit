@@ -541,6 +541,8 @@ _Thread_local wc_err wc_errno = WC_OK;
 #ifndef WC_ARENA_IMPL
 #define WC_ARENA_IMPL
 
+#include <stdlib.h>
+
 /*'''python
 align a 4 byte thing to 8 bytes alignment boundry:
 >>> 4 + (8 - 1) & ~(8 - 1)
