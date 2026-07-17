@@ -6,7 +6,7 @@
 
 ## Immediate
 
-- alternative allocators to malloc
+- alternative allocators to malloc. like my own arenas
 - iterators
 - multithreading
 

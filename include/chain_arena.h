@@ -4,6 +4,7 @@
 #include "common.h"
 #include "gen_vector.h"
 
+
 #ifndef ARENA_DEFAULT_ALIGNMENT
     #define ARENA_DEFAULT_ALIGNMENT (sizeof(void*))   // 8 bytes
 #endif
