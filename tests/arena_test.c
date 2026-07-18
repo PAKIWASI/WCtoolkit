@@ -1,3 +1,4 @@
+#include "common.h"
 #include "wc_test.h"
 #include "arena.h"
 #include "wc_errno.h"
