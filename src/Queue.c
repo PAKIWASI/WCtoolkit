@@ -2,6 +2,7 @@
 #include "common.h"
 #include "gen_vector.h"
 #include "wc_errno.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -276,7 +277,7 @@ static void queue_compact(Queue* q, u64 new_capacity)
 {
     CHECK_FATAL(new_capacity < q->size, "new_capacity must be >= current size");
 
-    // Share the same ops pointer — no callbacks to copy
+    // Share the same ops pointer
     genVec* new_arr = genVec_init(new_capacity, q->arr->data_size, q->arr->ops);
 
     u64 h       = q->head;
@@ -294,3 +295,5 @@ static void queue_compact(Queue* q, u64 new_capacity)
     q->head = 0;
     q->tail = q->size % new_capacity;
 }
+
+
