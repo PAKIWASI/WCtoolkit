@@ -5,7 +5,7 @@
 
 
 #ifndef STRING_GROWTH
-    #define STRING_GROWTH    1.5F    // capacity multiplier on grow
+#define STRING_GROWTH 1.5F // capacity multiplier on grow
 #endif
 
 #define STR_SSO_SIZE 24
@@ -16,7 +16,6 @@ typedef struct {
         char* heap;
         char  stk[STR_SSO_SIZE];
     };
-    // b8  sso;     // if cap is = STR_SSO_SIZE then we are in sso mode, if greater then heap mode
     u64 size;
     u64 capacity;
 } String;
@@ -24,7 +23,7 @@ typedef struct {
 // 24 8 8 = 40 bytes (same as genVec)
 
 
-//  Construction / Destruction 
+//  Construction / Destruction
 
 // Create an empty string on the heap.
 String* string_create(void);
@@ -52,7 +51,7 @@ void string_move(String* dest, String** src);
 void string_copy(String* dest, const String* src);
 
 
-//  Capacity 
+//  Capacity
 
 // Ensure capacity >= new_cap (never shrinks).
 void string_reserve(String* str, u64 new_cap);
@@ -64,7 +63,7 @@ void string_reserve_char(String* str, u64 new_cap, char c);
 void string_shrink_to_fit(String* str);
 
 
-//  Conversion 
+//  Conversion
 
 // Return a malloc'd NUL-terminated copy — caller must free().
 char* string_to_cstr(const String* str);
@@ -75,7 +74,7 @@ void string_to_cstr_buf(const String* str, char* buff, u64 n);
 char* string_data_ptr(const String* str);
 
 
-//  Modification 
+//  Modification
 
 void string_append_char(String* str, char c);
 void string_append_cstr(String* str, const char* cstr);
@@ -96,24 +95,44 @@ void string_remove_char(String* str, u64 i);
 void string_remove_range(String* str, u64 start, u64 len);
 
 // Remove all chars (keep allocation).
-void string_clear(String* str);
+static inline void string_clear(String* str)
+{
+    CHECK_FATAL(!str, "str is null");
+    str->size = 0;
+}
 
 
-//  Access 
+//  Access
 
-char string_char_at(const String* str, u64 i);
-void string_set_char(String* str, u64 i, char c);
+static inline char string_char_at(const String* str, u64 i)
+{
+    CHECK_FATAL(!str, "str is null");
+    CHECK_FATAL(i >= str->size, "index out of bounds");
+    b8 is_sso = str->stk[STR_SSO_SIZE - 1] != '\0';
+    return (is_sso ? str->stk : str->heap)[i];
+}
+
+static inline void string_set_char(String* str, u64 i, char c)
+{
+    CHECK_FATAL(!str, "str is null");
+    CHECK_FATAL(i >= str->size, "index out of bounds");
+    b8 is_sso                          = str->stk[STR_SSO_SIZE - 1] != '\0';
+    (is_sso ? str->stk : str->heap)[i] = c;
+}
 
 
-//  Comparison 
+//  Comparison
 
 // 0 == equal, <0 == str1 < str2, >0 == str1 > str2
-int string_compare(const String* s1, const String* s2);
-b8  string_equals(const String* s1, const String* s2);
-b8  string_equals_cstr(const String* str, const char* cstr);
+int              string_compare(const String* s1, const String* s2);
+static inline b8 string_equals(const String* s1, const String* s2)
+{
+    return string_compare(s1, s2) == 0;
+}
+b8 string_equals_cstr(const String* str, const char* cstr);
 
 
-//  Search 
+//  Search
 
 // Returns index, or (u64)-1 if not found.
 u64 string_find_char(const String* str, char c);
@@ -123,12 +142,12 @@ u64 string_find_cstr(const String* str, const char* substr);
 String* string_substr(const String* str, u64 start, u64 length);
 
 
-//  I/O 
+//  I/O
 
 void string_print(const String* str);
 
 
-//  Inline helpers 
+//  Inline helpers
 
 static inline u64 string_len(const String* str)
 {
@@ -148,10 +167,10 @@ static inline b8 string_empty(const String* str)
     return str->size == 0;
 }
 
-static inline b8 string_sso(const String* str)
+static inline b8 string_is_sso(const String* str)
 {
     CHECK_FATAL(!str, "str is null");
-    return str->capacity == STR_SSO_SIZE;
+    return str->stk[STR_SSO_SIZE - 1] != '\0';
 }
 
 
@@ -165,9 +184,7 @@ Note: Do NOT break/return/goto inside the block.
    }
 */
 #define TEMP_CSTR_READ(str) \
-    for (u8 _once = 0; \
-         (_once == 0) && (string_append_char((str), '\0'), 1); \
-         _once++, string_pop_char((str)))
+    for (u8 _once = 0; (_once == 0) && (string_append_char((str), '\0'), 1); _once++, string_pop_char((str)))
 
 
 

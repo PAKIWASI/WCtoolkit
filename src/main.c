@@ -1,28 +1,17 @@
-#include "common.h"
-#define ARENA_NODE_INLINE_SIZE nKB(8)
-#include "chain_arena.h"
+#include "String.h"
 #include <stdio.h>
-
-// BUG: ARENA_NODE_INLINE_SIZE override not working
 
 
 int main(void)
 {
-    ChainArena* arena = chain_arena_create();
+    String s = {0};
 
-    int* a = CHAIN_ARENA_ALLOC_N(arena, int, 1000);
-    int* b = CHAIN_ARENA_ALLOC_N(arena, int, 1000);
+    string_create_stk(&s, "hello");
+    printf("sso: %d\n", string_is_sso(&s));
 
-    CHAIN_ARENA_SCRATCH(arena) {
-        int* c = CHAIN_ARENA_ALLOC_N(arena, int, 1000);
-        CHAIN_ARENA_SCRATCH(arena) {
-            int* d = CHAIN_ARENA_ALLOC_N(arena, int, 1000);
-        }
-    }
+    string_append_cstr(&s, " world jfdkjfkdjjfdjfkdjfk");
+    printf("sso: %d\n", string_is_sso(&s));
 
-    printf("arena->used: %lu\n", arena->used);
-    printf("num nodes: %lu\n", arena->nodes.size);
-
-    chain_arena_release(arena);
+    string_destroy_stk(&s);
     return 0;
 }

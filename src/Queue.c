@@ -1,7 +1,6 @@
 #include "Queue.h"
 #include "common.h"
 #include "gen_vector.h"
-#include "wc_errno.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -187,8 +186,7 @@ void enqueue_move(Queue* q, u8** x)
 void dequeue(Queue* q, u8* out)
 {
     CHECK_FATAL(!q, "queue is null");
-
-    WC_SET_RET(WC_ERR_EMPTY, q->size == 0, );
+    CHECK_FATAL(q->size == 0, "cannot dequeue from empty queue");
 
     if (out) {
         genVec_get(q->arr, q->head, out);
@@ -211,8 +209,7 @@ void queue_peek(Queue* q, u8* peek)
 {
     CHECK_FATAL(!q, "queue is null");
     CHECK_FATAL(!peek, "peek is null");
-
-    WC_SET_RET(WC_ERR_EMPTY, q->size == 0, );
+    CHECK_FATAL(q->size == 0, "cannot peek empty queue");
 
     genVec_get(q->arr, q->head, peek);
 }
@@ -220,8 +217,7 @@ void queue_peek(Queue* q, u8* peek)
 const u8* queue_peek_ptr(Queue* q)
 {
     CHECK_FATAL(!q, "queue is null");
-
-    WC_SET_RET(WC_ERR_EMPTY, q->size == 0, NULL);
+    CHECK_FATAL(q->size == 0, "cannot peek empty queue");
 
     return genVec_get_ptr(q->arr, q->head);
 }
@@ -295,5 +291,3 @@ static void queue_compact(Queue* q, u64 new_capacity)
     q->head = 0;
     q->tail = q->size % new_capacity;
 }
-
-

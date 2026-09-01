@@ -1,5 +1,4 @@
 #include "common.h"
-#include "wc_errno.h"
 #include "gen_vector.h"
 
 #include <stdio.h>
@@ -342,8 +341,7 @@ void genVec_push_move(genVec* vec, u8** data)
 void genVec_pop(genVec* vec, u8* popped)
 {
     CHECK_FATAL(!vec, "vec is null");
-
-    WC_SET_RET(WC_ERR_EMPTY, vec->size == 0, );
+    CHECK_FATAL(vec->size == 0, "cannot pop from empty vector");
 
     u8* last_elm = GET_PTR(vec, vec->size - 1);
 
@@ -706,7 +704,7 @@ void genVec_remove_range(genVec* vec, u64 start, u64 len)
 const u8* genVec_front(const genVec* vec)
 {
     CHECK_FATAL(!vec, "vec is null");
-    WC_SET_RET(WC_ERR_EMPTY, vec->size == 0, NULL);
+    CHECK_FATAL(vec->size == 0, "cannot get front of empty vector");
     return GET_PTR(vec, 0);
 }
 
@@ -714,7 +712,7 @@ const u8* genVec_front(const genVec* vec)
 const u8* genVec_back(const genVec* vec)
 {
     CHECK_FATAL(!vec, "vec is null");
-    WC_SET_RET(WC_ERR_EMPTY, vec->size == 0, NULL);
+    CHECK_FATAL(vec->size == 0, "cannot get back of empty vector");
     return GET_PTR(vec, vec->size - 1);
 }
 
@@ -857,4 +855,3 @@ static void genVec_grow(genVec* vec)
     vec->data     = new_data;
     vec->capacity = new_cap;
 }
-

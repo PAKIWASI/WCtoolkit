@@ -1,5 +1,7 @@
+#include "common.h"
 #include "wc_test.h"
 #include "String.h"
+#include <stdlib.h>
 
 
 // TODO: test SSO
@@ -300,13 +302,13 @@ static void test_shrink(void)
 {
     String* s = string_create();
 
-    // grow within sso (current sso = 24)
+    // grow within sso (usable sso capacity = STR_SSO_SIZE - 1 = 23)
     for (int i = 0; i < 20; i++) {
         string_append_char(s, 'a');
     }
     WC_ASSERT_EQ_U64(string_len(s), 20);
-    WC_ASSERT_EQ_U64(string_capacity(s), STR_SSO_SIZE);
-    WC_ASSERT_FALSE(!string_sso(s));
+    WC_ASSERT_EQ_U64(string_capacity(s), STR_SSO_SIZE - 1);
+    WC_ASSERT_FALSE(!string_is_sso(s));
 
     // grow over sso
 
@@ -314,20 +316,20 @@ static void test_shrink(void)
         string_append_char(s, 'b');
     }
     WC_ASSERT_EQ_U64(string_len(s), 30);
-    WC_ASSERT_FALSE(string_sso(s));
+    WC_ASSERT_FALSE(string_is_sso(s));
 
     // remove 10 (within sso range but no auto shrinkage)
     for (int i = 0; i < 10; i++) {
         string_pop_char(s);
     }
     WC_ASSERT_EQ_U64(string_len(s), 20);
-    WC_ASSERT_FALSE(string_sso(s));
+    WC_ASSERT_FALSE(string_is_sso(s));
 
     // do the manual shrink
     string_shrink_to_fit(s);
     WC_ASSERT_EQ_U64(string_len(s), 20);
-    WC_ASSERT_EQ_U64(string_capacity(s), STR_SSO_SIZE);
-    WC_ASSERT_FALSE(!string_sso(s));
+    WC_ASSERT_EQ_U64(string_capacity(s), STR_SSO_SIZE - 1);
+    WC_ASSERT_FALSE(!string_is_sso(s));
 
 
     string_destroy(s);
@@ -513,19 +515,19 @@ static void test_copy_self_noop(void)
 static void test_sso_stays_sso_up_to_limit(void)
 {
     String* s = string_create();
-    // STR_SSO_SIZE = 24: fill exactly to capacity
-    for (int i = 0; i < STR_SSO_SIZE; i++) { string_append_char(s, 'a'); }
-    WC_ASSERT_TRUE(string_sso(s));
-    WC_ASSERT_EQ_U64(string_len(s), STR_SSO_SIZE);
+    // Usable SSO capacity is STR_SSO_SIZE - 1 (last byte reserved for the mode flag)
+    for (int i = 0; i < STR_SSO_SIZE - 1; i++) { string_append_char(s, 'a'); }
+    WC_ASSERT_TRUE(string_is_sso(s));
+    WC_ASSERT_EQ_U64(string_len(s), (u64)(STR_SSO_SIZE - 1));
     string_destroy(s);
 }
 
 static void test_sso_promotes_at_overflow(void)
 {
     String* s = string_create();
-    for (int i = 0; i < STR_SSO_SIZE + 1; i++) { string_append_char(s, 'b'); }
-    WC_ASSERT_FALSE(string_sso(s));
-    WC_ASSERT_EQ_U64(string_len(s), (u64)(STR_SSO_SIZE + 1));
+    for (int i = 0; i < STR_SSO_SIZE; i++) { string_append_char(s, 'b'); }
+    WC_ASSERT_FALSE(string_is_sso(s));
+    WC_ASSERT_EQ_U64(string_len(s), (u64)STR_SSO_SIZE);
     string_destroy(s);
 }
 
@@ -604,5 +606,3 @@ void string_suite(void)
     WC_RUN(test_sso_stays_sso_up_to_limit);
     WC_RUN(test_sso_promotes_at_overflow);
 }
-
-

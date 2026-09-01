@@ -1,6 +1,5 @@
 #include "String.h"
 #include "common.h"
-#include "wc_errno.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -9,34 +8,34 @@
 
 //  Internal macros
 
-#define IS_SSO(s)          ((s)->capacity == STR_SSO_SIZE)
+#define IS_SSO(s)          (s->stk[STR_SSO_SIZE - 1] != '\0')
 #define GET_STR(s)         (IS_SSO(s) ? (s)->stk : (s)->heap)
 #define GET_STR_PTR(s, i)  (GET_STR(s) + i)
 #define GET_STR_CHAR(s, i) (GET_STR(s)[i])
 #define STR_REMAINING(s)   ((s)->capacity - (s)->size)
 
 // Grow if full.
-#define MAYBE_GROW_STR(s)                     \
-    do {                                  \
-        if ((s)->size >= (s)->capacity) { \
-            if (IS_SSO(s)) {              \
-                stk_to_heap(s);           \
-            } else {                      \
-                string_grow(s);           \
-            }                             \
-        }                                 \
+#define MAYBE_GROW_STR(s)                        \
+    do {                                         \
+        if ((s)->size >= (s)->capacity) {        \
+            if (IS_SSO(s)) {                     \
+                s->stk[STR_SSO_SIZE - 1] = '\0'; \
+                stk_to_heap(s);                  \
+            } else {                             \
+                string_grow(s);                  \
+            }                                    \
+        }                                        \
     } while (0)
 
 
 
 //  Private helpers
 
-static u64  cstr_len(const char* cstr);
-static void str_copy_n(char* dest, const char* src, u64 n);
-static void stk_to_heap(String* s);
-static void heap_to_stk(String* s);
-static void string_grow(String* s);
-static void ensure_capacity(String* s, u64 needed);
+static inline u64  cstr_len(const char* cstr);
+static inline void stk_to_heap(String* s);
+static inline void heap_to_stk(String* s);
+static inline void string_grow(String* s);
+static inline void ensure_capacity(String* s, u64 needed);
 
 
 
@@ -47,8 +46,9 @@ String* string_create(void)
     String* s = malloc(sizeof(String));
     CHECK_FATAL(!s, "malloc failed");
 
-    s->size     = 0;
-    s->capacity = STR_SSO_SIZE;
+    s->size                  = 0;
+    s->capacity              = STR_SSO_SIZE - 1; // 0-22 bit is usable
+    s->stk[STR_SSO_SIZE - 1] = 1;                // when last bit (23) is '\0' (NULL) then we have moved to the heap
 
     return s;
 }
@@ -70,11 +70,11 @@ String* string_from_string(const String* other)
     CHECK_FATAL(!s, "malloc failed");
 
     s->size     = 0;
-    s->capacity = STR_SSO_SIZE;
+    s->capacity = STR_SSO_SIZE - 1;
 
     if (other->size > 0) {
         ensure_capacity(s, other->size);
-        str_copy_n(GET_STR(s), GET_STR(other), other->size);
+        memcpy(GET_STR(s), GET_STR(other), other->size);
         s->size = other->size;
     }
 
@@ -85,8 +85,9 @@ void string_create_stk(String* s, const char* cstr)
 {
     CHECK_FATAL(!s, "str is null");
 
-    s->size     = 0;
-    s->capacity = STR_SSO_SIZE;
+    s->size                  = 0;
+    s->stk[STR_SSO_SIZE - 1] = 1; // mark SSO mode
+    s->capacity              = STR_SSO_SIZE - 1; // last byte reserved for the SSO flag
 
     if (!cstr) {
         return;
@@ -98,7 +99,7 @@ void string_create_stk(String* s, const char* cstr)
     }
 
     ensure_capacity(s, len);
-    str_copy_n(GET_STR(s), cstr, len);
+    memcpy(GET_STR(s), cstr, len);
     s->size = len;
 }
 
@@ -115,11 +116,11 @@ void string_destroy_stk(String* s)
 
     if (!IS_SSO(s)) {
         free(s->heap);
-        s->heap = NULL;
     }
 
-    s->size     = 0;
-    s->capacity = STR_SSO_SIZE; // leave in valid SSO state, not capacity=0
+    s->size                  = 0;
+    s->stk[STR_SSO_SIZE - 1] = 1; // mark SSO mode; NOT preserved from heap mode
+    s->capacity              = STR_SSO_SIZE - 1; // leave in valid, reusable SSO state
 }
 
 void string_move(String* dest, String** src)
@@ -138,7 +139,7 @@ void string_move(String* dest, String** src)
 
     // Zero out src so its destructor is harmless, then free the struct
     (*src)->size     = 0;
-    (*src)->capacity = STR_SSO_SIZE;
+    (*src)->capacity = STR_SSO_SIZE - 1;
     free(*src);
     *src = NULL;
 }
@@ -155,11 +156,11 @@ void string_copy(String* dest, const String* src)
     string_destroy_stk(dest);
 
     dest->size     = 0;
-    dest->capacity = STR_SSO_SIZE;
+    dest->capacity = STR_SSO_SIZE - 1;
 
     if (src->size > 0) {
         ensure_capacity(dest, src->size);
-        str_copy_n(GET_STR(dest), GET_STR(src), src->size);
+        memcpy(GET_STR(dest), GET_STR(src), src->size);
         dest->size = src->size;
     }
 }
@@ -211,12 +212,12 @@ void string_shrink_to_fit(String* s)
     if (s->size == 0) {
         free(s->heap);
         s->heap     = NULL;
-        s->capacity = STR_SSO_SIZE;
+        s->capacity = STR_SSO_SIZE - 1;
         return;
     }
 
-    if (s->size <= STR_SSO_SIZE) {
-        // Bring back to SSO.
+    if (s->size <= STR_SSO_SIZE - 1) {
+        // Bring back to SSO (only place this happens)
         heap_to_stk(s);
         return;
     }
@@ -241,7 +242,7 @@ char* string_to_cstr(const String* s)
     CHECK_FATAL(!out, "malloc failed");
 
     if (s->size > 0) {
-        str_copy_n(out, GET_STR(s), s->size);
+        memcpy(out, GET_STR(s), s->size);
     }
     out[s->size] = '\0';
 
@@ -255,9 +256,9 @@ void string_to_cstr_buf(const String* str, char* buff, u64 n)
     CHECK_FATAL(n < str->size + 1, "buffer not enough");
 
     if (str->size > 0) {
-        str_copy_n(buff, GET_STR(str), str->size);
+        memcpy(buff, GET_STR(str), str->size);
     }
-    buff[str->size] = '\0'; 
+    buff[str->size] = '\0';
 }
 
 char* string_data_ptr(const String* s)
@@ -291,7 +292,7 @@ void string_append_cstr(String* s, const char* cstr)
     }
 
     ensure_capacity(s, s->size + len);
-    str_copy_n(GET_STR(s) + s->size, cstr, len);
+    memcpy(GET_STR(s) + s->size, cstr, len);
     s->size += len;
 }
 
@@ -305,7 +306,7 @@ void string_append_string(String* s, const String* other)
     }
 
     ensure_capacity(s, s->size + other->size);
-    str_copy_n(GET_STR(s) + s->size, GET_STR(other), other->size);
+    memcpy(GET_STR(s) + s->size, GET_STR(other), other->size);
     s->size += other->size;
 }
 
@@ -326,7 +327,7 @@ void string_append_string_move(String* s, String** other)
 char string_pop_char(String* s)
 {
     CHECK_FATAL(!s, "str is null");
-    WC_SET_RET(WC_ERR_EMPTY, s->size == 0, '\0');
+    CHECK_FATAL(s->size == 0, "cannot pop from empty string");
 
     char c = GET_STR_CHAR(s, --s->size);
     return c;
@@ -366,7 +367,7 @@ void string_insert_cstr(String* s, u64 i, const char* cstr)
     for (u64 j = s->size; j > i; j--) {
         buf[j + len - 1] = buf[j - 1];
     }
-    str_copy_n(buf + i, cstr, len);
+    memcpy(buf + i, cstr, len);
     s->size += len;
 }
 
@@ -389,7 +390,7 @@ void string_insert_string(String* s, u64 i, const String* other)
     for (u64 j = s->size; j > i; j--) {
         buf[j + len - 1] = buf[j - 1];
     }
-    str_copy_n(buf + i, GET_STR(other), len);
+    memcpy(buf + i, GET_STR(other), len);
     s->size += len;
 }
 
@@ -419,39 +420,21 @@ void string_remove_range(String* s, u64 start, u64 len)
     CHECK_FATAL(!s, "str is null");
     CHECK_FATAL(start >= s->size, "start out of bounds");
 
-    if (len == 0) { return; }
+    if (len == 0) {
+        return;
+    }
 
     if (start + len >= s->size) {
         len = s->size - start;
     }
 
-    memmove(GET_STR_PTR(s, start), GET_STR_PTR(s, start + len), s->size - len);
+    memmove(GET_STR_PTR(s, start), GET_STR_PTR(s, start + len), s->size - start - len);
 
     s->size -= len;
 }
 
-void string_clear(String* s)
-{
-    CHECK_FATAL(!s, "str is null");
-    s->size = 0;
-}
-
 
 //  Access
-
-char string_char_at(const String* s, u64 i)
-{
-    CHECK_FATAL(!s, "str is null");
-    CHECK_FATAL(i >= s->size, "index out of bounds");
-    return GET_STR_CHAR(s, i);
-}
-
-void string_set_char(String* s, u64 i, char c)
-{
-    CHECK_FATAL(!s, "str is null");
-    CHECK_FATAL(i >= s->size, "index out of bounds");
-    *GET_STR_PTR(s, i) = c; // TODO: test this
-}
 
 
 //  Comparison
@@ -479,11 +462,6 @@ int string_compare(const String* s1, const String* s2)
     return 0;
 }
 
-b8 string_equals(const String* s1, const String* s2)
-{
-    return string_compare(s1, s2) == 0;
-}
-
 b8 string_equals_cstr(const String* s, const char* cstr)
 {
     CHECK_FATAL(!s, "str is null");
@@ -508,7 +486,9 @@ u64 string_find_char(const String* s, char c)
 {
     CHECK_FATAL(!s, "str is null");
 
-    if (s->size == 0) { return (u64)-1; }
+    if (s->size == 0) {
+        return (u64)-1;
+    }
     const char* buf = GET_STR(s);
     const char* p   = memchr(buf, (unsigned char)c, s->size);
     return p ? (u64)(p - buf) : (u64)-1;
@@ -549,7 +529,7 @@ String* string_substr(const String* s, u64 start, u64 length)
 
     if (length > 0) {
         ensure_capacity(result, length);
-        str_copy_n(GET_STR(result), GET_STR(s) + start, length);
+        memcpy(GET_STR(result), GET_STR(s) + start, length);
         result->size = length;
     }
 
@@ -572,42 +552,37 @@ void string_print(const String* s)
 }
 
 
-// TODO: remove this and do ray strlen
-static u64 cstr_len(const char* cstr)
+static inline u64 cstr_len(const char* cstr)
 {
     return (u64)strlen(cstr);
 }
 
-// TODO: remove this and do normal memcpy
-static void str_copy_n(char* dest, const char* src, u64 n)
-{
-    memcpy(dest, src, n);
-}
 
 // Promote SSO buffer to heap allocation.
-static void stk_to_heap(String* s)
+static inline void stk_to_heap(String* s)
 {
     u64 new_cap = (u64)((float)s->capacity * STRING_GROWTH);
 
     char* new_data = malloc(new_cap);
     CHECK_FATAL(!new_data, "malloc failed");
 
-    str_copy_n(new_data, s->stk, s->size);
+    memcpy(new_data, s->stk, s->size);
 
     s->heap     = new_data;
     s->capacity = new_cap;
 }
 
-static void heap_to_stk(String* s)
+static inline void heap_to_stk(String* s)
 {
-    char tmp[STR_SSO_SIZE];
-    str_copy_n(tmp, s->heap, s->size);
-    free(s->heap);
-    str_copy_n(s->stk, tmp, s->size);
-    s->capacity = STR_SSO_SIZE;
+    // save the ptr as memcpy on stk will overwrite
+    char* heap = s->heap;
+    memcpy(s->stk, heap, s->size);
+    free(heap);
+    s->stk[STR_SSO_SIZE - 1] = 1; // mark SSO mode; NOT preserved from heap mode
+    s->capacity = STR_SSO_SIZE - 1;
 }
 
-static void string_grow(String* s)
+static inline void string_grow(String* s)
 {
     u64 new_cap = (u64)((float)s->capacity * STRING_GROWTH);
 
@@ -618,13 +593,13 @@ static void string_grow(String* s)
     s->capacity = new_cap;
 }
 
-static void ensure_capacity(String* s, u64 needed)
+static inline void ensure_capacity(String* s, u64 needed)
 {
     if (needed <= s->capacity) {
         return;
     }
 
-    // Grow by at least STRING_GROWTH factor so we don't alloc on every push.
+    // Grow by at least STRING_GROWTH factor
     u64 new_cap = (u64)((float)s->capacity * STRING_GROWTH);
     if (new_cap < needed) {
         new_cap = needed;
@@ -632,9 +607,10 @@ static void ensure_capacity(String* s, u64 needed)
 
     // currently in sso but sso_cap is not enough
     if (IS_SSO(s)) {
+        s->stk[STR_SSO_SIZE-1] = '\0';
         char* new_data = malloc(new_cap);
         CHECK_FATAL(!new_data, "malloc failed");
-        str_copy_n(new_data, s->stk, s->size);
+        memcpy(new_data, s->stk, s->size);
         s->heap     = new_data;
         s->capacity = new_cap;
     } else {
