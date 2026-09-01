@@ -205,128 +205,12 @@ static inline void wc_print_cstr(const u8* elm)
 
 #endif /* WC_COMMON_H */
 
-/* ===== wc_errno.h ===== */
-#ifndef WC_WC_ERRNO_H
-#define WC_WC_ERRNO_H
-
-#include <stdio.h>
-
-
-/* wc_errno.h — Error reporting for WCtoolkit
- * ============================================
- *
- * Two tiers:
- *
- *   CHECK_FATAL  Programmer errors: null pointer, out of bounds, OOM.
- *                Crashes with a message. These are bugs, not conditions.
- *
- *   wc_errno     Expected conditions: pop on empty, arena full.
- *                Function returns NULL / 0 / void. wc_errno says why.
- *                Ignore it if you don't care. Check it if you do.
- *
- *
- * USAGE
- * -----
- *   // Check a single call:
- *   wc_errno = WC_OK;
- *   u8* p = arena_alloc(arena, size);
- *   if (!p && wc_errno == WC_ERR_FULL) { ... }
- *
- *   // Check a batch — wc_errno stays set if any call failed:
- *   wc_errno = WC_OK;
- *   float* a = (float*)arena_alloc(arena, 256);
- *   float* b = (float*)arena_alloc(arena, 256);
- *   if (wc_errno) { wc_perror("alloc"); }
- *
- *
- * RULES
- * -----
- *   1. Successful calls do NOT clear wc_errno — clear it yourself.
- *   2. Check the return value first. wc_errno tells you WHY, not WHETHER.
- *   3. wc_errno is thread-local. Each thread has its own copy.
- *
- *
- * WHAT SETS wc_errno
- * ------------------
- *   arena_alloc, arena_alloc_aligned      WC_ERR_FULL    arena exhausted
- *   genVec_pop, genVec_front, genVec_back WC_ERR_EMPTY   vec is empty
- *   dequeue, queue_peek, queue_peek_ptr   WC_ERR_EMPTY   queue is empty
- *   stack_pop, stack_peek                 WC_ERR_EMPTY   stack is empty
- */
-
-
-typedef enum {
-    WC_OK        = 0,
-    WC_ERR_FULL,       // arena exhausted / container at capacity
-    WC_ERR_EMPTY,      // pop or peek on empty container
-    WC_ERR_INVALID_OP, // call to a function with preconditions not met
-} wc_err;
-
-static inline const char* wc_strerror(wc_err e)
-{
-    switch (e) {
-        case WC_OK:             return "ok";
-        case WC_ERR_FULL:       return "full";
-        case WC_ERR_EMPTY:      return "empty";
-        case WC_ERR_INVALID_OP: return "invalid op";
-        default:                return "unknown";
-    }
-}
-
-/* Defined in wc_errno.c:
- *   _Thread_local wc_err wc_errno = WC_OK;
- */
-extern _Thread_local wc_err wc_errno;
-
-/* Print last error — same pattern as perror(3).
- *   wc_perror("arena_alloc");  ->  "arena_alloc: full"
- */
-static inline void wc_perror(const char* prefix)
-{
-    if (prefix && prefix[0]) {
-        fprintf(stderr, "%s: %s\n", prefix, wc_strerror(wc_errno));
-    } else {
-        fprintf(stderr, "%s\n", wc_strerror(wc_errno));
-    }
-}
-
-
-/* Internal macros (library use only)
- * ------------------------------------
- * WC_SET_RET — replaces CHECK_WARN_RET at expected-condition sites.
- * Sets wc_errno silently and returns. No print.
- *
- *   WC_SET_RET(WC_ERR_EMPTY, vec->size == 0, );     void return
- *   WC_SET_RET(WC_ERR_FULL,  cond,           NULL); pointer return
- */
-#define WC_SET_RET(err_code, cond, ret) \
-    do {                                \
-        if (cond) {                     \
-            wc_errno = (err_code);      \
-            return ret;                 \
-        }                               \
-    } while (0)
-
-/* WC_PROPAGATE_RET — exit immediately if a callee already set wc_errno.
- *
- *   some_internal_fn(vec);
- *   WC_PROPAGATE_RET( );   // exits if some_internal_fn set wc_errno
- */
-#define WC_PROPAGATE_RET(ret)    \
-    do {                         \
-        if (wc_errno != WC_OK) { \
-            return ret;          \
-        }                        \
-    } while (0)
-
-#endif /* WC_WC_ERRNO_H */
-
 /* ===== String.h ===== */
 #ifndef WC_STRING_H
 #define WC_STRING_H
 
 #ifndef STRING_GROWTH
-    #define STRING_GROWTH    1.5F    // capacity multiplier on grow
+#define STRING_GROWTH 1.5F // capacity multiplier on grow
 #endif
 
 #define STR_SSO_SIZE 24
@@ -337,7 +221,6 @@ typedef struct {
         char* heap;
         char  stk[STR_SSO_SIZE];
     };
-    // b8  sso;     // if cap is = STR_SSO_SIZE then we are in sso mode, if greater then heap mode
     u64 size;
     u64 capacity;
 } String;
@@ -345,7 +228,7 @@ typedef struct {
 // 24 8 8 = 40 bytes (same as genVec)
 
 
-//  Construction / Destruction 
+//  Construction / Destruction
 
 // Create an empty string on the heap.
 String* string_create(void);
@@ -373,7 +256,7 @@ void string_move(String* dest, String** src);
 void string_copy(String* dest, const String* src);
 
 
-//  Capacity 
+//  Capacity
 
 // Ensure capacity >= new_cap (never shrinks).
 void string_reserve(String* str, u64 new_cap);
@@ -385,7 +268,7 @@ void string_reserve_char(String* str, u64 new_cap, char c);
 void string_shrink_to_fit(String* str);
 
 
-//  Conversion 
+//  Conversion
 
 // Return a malloc'd NUL-terminated copy — caller must free().
 char* string_to_cstr(const String* str);
@@ -396,7 +279,7 @@ void string_to_cstr_buf(const String* str, char* buff, u64 n);
 char* string_data_ptr(const String* str);
 
 
-//  Modification 
+//  Modification
 
 void string_append_char(String* str, char c);
 void string_append_cstr(String* str, const char* cstr);
@@ -417,24 +300,44 @@ void string_remove_char(String* str, u64 i);
 void string_remove_range(String* str, u64 start, u64 len);
 
 // Remove all chars (keep allocation).
-void string_clear(String* str);
+static inline void string_clear(String* str)
+{
+    CHECK_FATAL(!str, "str is null");
+    str->size = 0;
+}
 
 
-//  Access 
+//  Access
 
-char string_char_at(const String* str, u64 i);
-void string_set_char(String* str, u64 i, char c);
+static inline char string_char_at(const String* str, u64 i)
+{
+    CHECK_FATAL(!str, "str is null");
+    CHECK_FATAL(i >= str->size, "index out of bounds");
+    b8 is_sso = str->stk[STR_SSO_SIZE - 1] != '\0';
+    return (is_sso ? str->stk : str->heap)[i];
+}
+
+static inline void string_set_char(String* str, u64 i, char c)
+{
+    CHECK_FATAL(!str, "str is null");
+    CHECK_FATAL(i >= str->size, "index out of bounds");
+    b8 is_sso                          = str->stk[STR_SSO_SIZE - 1] != '\0';
+    (is_sso ? str->stk : str->heap)[i] = c;
+}
 
 
-//  Comparison 
+//  Comparison
 
 // 0 == equal, <0 == str1 < str2, >0 == str1 > str2
-int string_compare(const String* s1, const String* s2);
-b8  string_equals(const String* s1, const String* s2);
-b8  string_equals_cstr(const String* str, const char* cstr);
+int              string_compare(const String* s1, const String* s2);
+static inline b8 string_equals(const String* s1, const String* s2)
+{
+    return string_compare(s1, s2) == 0;
+}
+b8 string_equals_cstr(const String* str, const char* cstr);
 
 
-//  Search 
+//  Search
 
 // Returns index, or (u64)-1 if not found.
 u64 string_find_char(const String* str, char c);
@@ -444,12 +347,12 @@ u64 string_find_cstr(const String* str, const char* substr);
 String* string_substr(const String* str, u64 start, u64 length);
 
 
-//  I/O 
+//  I/O
 
 void string_print(const String* str);
 
 
-//  Inline helpers 
+//  Inline helpers
 
 static inline u64 string_len(const String* str)
 {
@@ -469,10 +372,10 @@ static inline b8 string_empty(const String* str)
     return str->size == 0;
 }
 
-static inline b8 string_sso(const String* str)
+static inline b8 string_is_sso(const String* str)
 {
     CHECK_FATAL(!str, "str is null");
-    return str->capacity == STR_SSO_SIZE;
+    return str->stk[STR_SSO_SIZE - 1] != '\0';
 }
 
 
@@ -486,9 +389,7 @@ Note: Do NOT break/return/goto inside the block.
    }
 */
 #define TEMP_CSTR_READ(str) \
-    for (u8 _once = 0; \
-         (_once == 0) && (string_append_char((str), '\0'), 1); \
-         _once++, string_pop_char((str)))
+    for (u8 _once = 0; (_once == 0) && (string_append_char((str), '\0'), 1); _once++, string_pop_char((str)))
 
 #endif /* WC_STRING_H */
 
@@ -749,18 +650,6 @@ static const container_ops wc_vec_ptr_ops = { vec_copy_ptr, vec_move_ptr, vec_de
 
 #ifdef WC_IMPLEMENTATION
 
-/* ===== wc_errno.c ===== */
-#ifndef WC_WC_ERRNO_IMPL
-#define WC_WC_ERRNO_IMPL
-
-/* One definition of the thread-local error variable.
- * Every translation unit that includes wc_error.h sees the extern declaration.
- * This file provides the actual storage.
- */
-_Thread_local wc_err wc_errno = WC_OK;
-
-#endif /* WC_WC_ERRNO_IMPL */
-
 /* ===== String.c ===== */
 #ifndef WC_STRING_IMPL
 #define WC_STRING_IMPL
@@ -772,34 +661,34 @@ _Thread_local wc_err wc_errno = WC_OK;
 
 //  Internal macros
 
-#define IS_SSO(s)          ((s)->capacity == STR_SSO_SIZE)
+#define IS_SSO(s)          (s->stk[STR_SSO_SIZE - 1] != '\0')
 #define GET_STR(s)         (IS_SSO(s) ? (s)->stk : (s)->heap)
 #define GET_STR_PTR(s, i)  (GET_STR(s) + i)
 #define GET_STR_CHAR(s, i) (GET_STR(s)[i])
 #define STR_REMAINING(s)   ((s)->capacity - (s)->size)
 
 // Grow if full.
-#define MAYBE_GROW_STR(s)                     \
-    do {                                  \
-        if ((s)->size >= (s)->capacity) { \
-            if (IS_SSO(s)) {              \
-                stk_to_heap(s);           \
-            } else {                      \
-                string_grow(s);           \
-            }                             \
-        }                                 \
+#define MAYBE_GROW_STR(s)                        \
+    do {                                         \
+        if ((s)->size >= (s)->capacity) {        \
+            if (IS_SSO(s)) {                     \
+                s->stk[STR_SSO_SIZE - 1] = '\0'; \
+                stk_to_heap(s);                  \
+            } else {                             \
+                string_grow(s);                  \
+            }                                    \
+        }                                        \
     } while (0)
 
 
 
 //  Private helpers
 
-static u64  cstr_len(const char* cstr);
-static void str_copy_n(char* dest, const char* src, u64 n);
-static void stk_to_heap(String* s);
-static void heap_to_stk(String* s);
-static void string_grow(String* s);
-static void ensure_capacity(String* s, u64 needed);
+static inline u64  cstr_len(const char* cstr);
+static inline void stk_to_heap(String* s);
+static inline void heap_to_stk(String* s);
+static inline void string_grow(String* s);
+static inline void ensure_capacity(String* s, u64 needed);
 
 
 
@@ -810,8 +699,9 @@ String* string_create(void)
     String* s = malloc(sizeof(String));
     CHECK_FATAL(!s, "malloc failed");
 
-    s->size     = 0;
-    s->capacity = STR_SSO_SIZE;
+    s->size                  = 0;
+    s->capacity              = STR_SSO_SIZE - 1; // 0-22 bit is usable
+    s->stk[STR_SSO_SIZE - 1] = 1;                // when last bit (23) is '\0' (NULL) then we have moved to the heap
 
     return s;
 }
@@ -833,11 +723,11 @@ String* string_from_string(const String* other)
     CHECK_FATAL(!s, "malloc failed");
 
     s->size     = 0;
-    s->capacity = STR_SSO_SIZE;
+    s->capacity = STR_SSO_SIZE - 1;
 
     if (other->size > 0) {
         ensure_capacity(s, other->size);
-        str_copy_n(GET_STR(s), GET_STR(other), other->size);
+        memcpy(GET_STR(s), GET_STR(other), other->size);
         s->size = other->size;
     }
 
@@ -848,8 +738,9 @@ void string_create_stk(String* s, const char* cstr)
 {
     CHECK_FATAL(!s, "str is null");
 
-    s->size     = 0;
-    s->capacity = STR_SSO_SIZE;
+    s->size                  = 0;
+    s->stk[STR_SSO_SIZE - 1] = 1; // mark SSO mode
+    s->capacity              = STR_SSO_SIZE - 1; // last byte reserved for the SSO flag
 
     if (!cstr) {
         return;
@@ -861,7 +752,7 @@ void string_create_stk(String* s, const char* cstr)
     }
 
     ensure_capacity(s, len);
-    str_copy_n(GET_STR(s), cstr, len);
+    memcpy(GET_STR(s), cstr, len);
     s->size = len;
 }
 
@@ -878,11 +769,11 @@ void string_destroy_stk(String* s)
 
     if (!IS_SSO(s)) {
         free(s->heap);
-        s->heap = NULL;
     }
 
-    s->size     = 0;
-    s->capacity = STR_SSO_SIZE; // leave in valid SSO state, not capacity=0
+    s->size                  = 0;
+    s->stk[STR_SSO_SIZE - 1] = 1; // mark SSO mode; NOT preserved from heap mode
+    s->capacity              = STR_SSO_SIZE - 1; // leave in valid, reusable SSO state
 }
 
 void string_move(String* dest, String** src)
@@ -901,7 +792,7 @@ void string_move(String* dest, String** src)
 
     // Zero out src so its destructor is harmless, then free the struct
     (*src)->size     = 0;
-    (*src)->capacity = STR_SSO_SIZE;
+    (*src)->capacity = STR_SSO_SIZE - 1;
     free(*src);
     *src = NULL;
 }
@@ -918,11 +809,11 @@ void string_copy(String* dest, const String* src)
     string_destroy_stk(dest);
 
     dest->size     = 0;
-    dest->capacity = STR_SSO_SIZE;
+    dest->capacity = STR_SSO_SIZE - 1;
 
     if (src->size > 0) {
         ensure_capacity(dest, src->size);
-        str_copy_n(GET_STR(dest), GET_STR(src), src->size);
+        memcpy(GET_STR(dest), GET_STR(src), src->size);
         dest->size = src->size;
     }
 }
@@ -974,12 +865,12 @@ void string_shrink_to_fit(String* s)
     if (s->size == 0) {
         free(s->heap);
         s->heap     = NULL;
-        s->capacity = STR_SSO_SIZE;
+        s->capacity = STR_SSO_SIZE - 1;
         return;
     }
 
-    if (s->size <= STR_SSO_SIZE) {
-        // Bring back to SSO.
+    if (s->size <= STR_SSO_SIZE - 1) {
+        // Bring back to SSO (only place this happens)
         heap_to_stk(s);
         return;
     }
@@ -1004,7 +895,7 @@ char* string_to_cstr(const String* s)
     CHECK_FATAL(!out, "malloc failed");
 
     if (s->size > 0) {
-        str_copy_n(out, GET_STR(s), s->size);
+        memcpy(out, GET_STR(s), s->size);
     }
     out[s->size] = '\0';
 
@@ -1018,9 +909,9 @@ void string_to_cstr_buf(const String* str, char* buff, u64 n)
     CHECK_FATAL(n < str->size + 1, "buffer not enough");
 
     if (str->size > 0) {
-        str_copy_n(buff, GET_STR(str), str->size);
+        memcpy(buff, GET_STR(str), str->size);
     }
-    buff[str->size] = '\0'; 
+    buff[str->size] = '\0';
 }
 
 char* string_data_ptr(const String* s)
@@ -1054,7 +945,7 @@ void string_append_cstr(String* s, const char* cstr)
     }
 
     ensure_capacity(s, s->size + len);
-    str_copy_n(GET_STR(s) + s->size, cstr, len);
+    memcpy(GET_STR(s) + s->size, cstr, len);
     s->size += len;
 }
 
@@ -1068,7 +959,7 @@ void string_append_string(String* s, const String* other)
     }
 
     ensure_capacity(s, s->size + other->size);
-    str_copy_n(GET_STR(s) + s->size, GET_STR(other), other->size);
+    memcpy(GET_STR(s) + s->size, GET_STR(other), other->size);
     s->size += other->size;
 }
 
@@ -1089,7 +980,7 @@ void string_append_string_move(String* s, String** other)
 char string_pop_char(String* s)
 {
     CHECK_FATAL(!s, "str is null");
-    WC_SET_RET(WC_ERR_EMPTY, s->size == 0, '\0');
+    CHECK_FATAL(s->size == 0, "cannot pop from empty string");
 
     char c = GET_STR_CHAR(s, --s->size);
     return c;
@@ -1129,7 +1020,7 @@ void string_insert_cstr(String* s, u64 i, const char* cstr)
     for (u64 j = s->size; j > i; j--) {
         buf[j + len - 1] = buf[j - 1];
     }
-    str_copy_n(buf + i, cstr, len);
+    memcpy(buf + i, cstr, len);
     s->size += len;
 }
 
@@ -1152,7 +1043,7 @@ void string_insert_string(String* s, u64 i, const String* other)
     for (u64 j = s->size; j > i; j--) {
         buf[j + len - 1] = buf[j - 1];
     }
-    str_copy_n(buf + i, GET_STR(other), len);
+    memcpy(buf + i, GET_STR(other), len);
     s->size += len;
 }
 
@@ -1182,39 +1073,21 @@ void string_remove_range(String* s, u64 start, u64 len)
     CHECK_FATAL(!s, "str is null");
     CHECK_FATAL(start >= s->size, "start out of bounds");
 
-    if (len == 0) { return; }
+    if (len == 0) {
+        return;
+    }
 
     if (start + len >= s->size) {
         len = s->size - start;
     }
 
-    memmove(GET_STR_PTR(s, start), GET_STR_PTR(s, start + len), s->size - len);
+    memmove(GET_STR_PTR(s, start), GET_STR_PTR(s, start + len), s->size - start - len);
 
     s->size -= len;
 }
 
-void string_clear(String* s)
-{
-    CHECK_FATAL(!s, "str is null");
-    s->size = 0;
-}
-
 
 //  Access
-
-char string_char_at(const String* s, u64 i)
-{
-    CHECK_FATAL(!s, "str is null");
-    CHECK_FATAL(i >= s->size, "index out of bounds");
-    return GET_STR_CHAR(s, i);
-}
-
-void string_set_char(String* s, u64 i, char c)
-{
-    CHECK_FATAL(!s, "str is null");
-    CHECK_FATAL(i >= s->size, "index out of bounds");
-    *GET_STR_PTR(s, i) = c; // TODO: test this
-}
 
 
 //  Comparison
@@ -1242,11 +1115,6 @@ int string_compare(const String* s1, const String* s2)
     return 0;
 }
 
-b8 string_equals(const String* s1, const String* s2)
-{
-    return string_compare(s1, s2) == 0;
-}
-
 b8 string_equals_cstr(const String* s, const char* cstr)
 {
     CHECK_FATAL(!s, "str is null");
@@ -1271,7 +1139,9 @@ u64 string_find_char(const String* s, char c)
 {
     CHECK_FATAL(!s, "str is null");
 
-    if (s->size == 0) { return (u64)-1; }
+    if (s->size == 0) {
+        return (u64)-1;
+    }
     const char* buf = GET_STR(s);
     const char* p   = memchr(buf, (unsigned char)c, s->size);
     return p ? (u64)(p - buf) : (u64)-1;
@@ -1312,7 +1182,7 @@ String* string_substr(const String* s, u64 start, u64 length)
 
     if (length > 0) {
         ensure_capacity(result, length);
-        str_copy_n(GET_STR(result), GET_STR(s) + start, length);
+        memcpy(GET_STR(result), GET_STR(s) + start, length);
         result->size = length;
     }
 
@@ -1335,42 +1205,37 @@ void string_print(const String* s)
 }
 
 
-// TODO: remove this and do ray strlen
-static u64 cstr_len(const char* cstr)
+static inline u64 cstr_len(const char* cstr)
 {
     return (u64)strlen(cstr);
 }
 
-// TODO: remove this and do normal memcpy
-static void str_copy_n(char* dest, const char* src, u64 n)
-{
-    memcpy(dest, src, n);
-}
 
 // Promote SSO buffer to heap allocation.
-static void stk_to_heap(String* s)
+static inline void stk_to_heap(String* s)
 {
     u64 new_cap = (u64)((float)s->capacity * STRING_GROWTH);
 
     char* new_data = malloc(new_cap);
     CHECK_FATAL(!new_data, "malloc failed");
 
-    str_copy_n(new_data, s->stk, s->size);
+    memcpy(new_data, s->stk, s->size);
 
     s->heap     = new_data;
     s->capacity = new_cap;
 }
 
-static void heap_to_stk(String* s)
+static inline void heap_to_stk(String* s)
 {
-    char tmp[STR_SSO_SIZE];
-    str_copy_n(tmp, s->heap, s->size);
-    free(s->heap);
-    str_copy_n(s->stk, tmp, s->size);
-    s->capacity = STR_SSO_SIZE;
+    // save the ptr as memcpy on stk will overwrite
+    char* heap = s->heap;
+    memcpy(s->stk, heap, s->size);
+    free(heap);
+    s->stk[STR_SSO_SIZE - 1] = 1; // mark SSO mode; NOT preserved from heap mode
+    s->capacity = STR_SSO_SIZE - 1;
 }
 
-static void string_grow(String* s)
+static inline void string_grow(String* s)
 {
     u64 new_cap = (u64)((float)s->capacity * STRING_GROWTH);
 
@@ -1381,13 +1246,13 @@ static void string_grow(String* s)
     s->capacity = new_cap;
 }
 
-static void ensure_capacity(String* s, u64 needed)
+static inline void ensure_capacity(String* s, u64 needed)
 {
     if (needed <= s->capacity) {
         return;
     }
 
-    // Grow by at least STRING_GROWTH factor so we don't alloc on every push.
+    // Grow by at least STRING_GROWTH factor
     u64 new_cap = (u64)((float)s->capacity * STRING_GROWTH);
     if (new_cap < needed) {
         new_cap = needed;
@@ -1395,9 +1260,10 @@ static void ensure_capacity(String* s, u64 needed)
 
     // currently in sso but sso_cap is not enough
     if (IS_SSO(s)) {
+        s->stk[STR_SSO_SIZE-1] = '\0';
         char* new_data = malloc(new_cap);
         CHECK_FATAL(!new_data, "malloc failed");
-        str_copy_n(new_data, s->stk, s->size);
+        memcpy(new_data, s->stk, s->size);
         s->heap     = new_data;
         s->capacity = new_cap;
     } else {
