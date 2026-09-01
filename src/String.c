@@ -1,5 +1,5 @@
-#include "common.h"
 #include "String.h"
+#include "common.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -8,11 +8,11 @@
 
 //  Internal macros
 
-#define IS_SSO(s)          (s->stk[STR_SSO_SIZE - 1] != '\0')
-#define GET_STR(s)         (IS_SSO(s) ? (s)->stk : (s)->heap)
 #define GET_STR_PTR(s, i)  (GET_STR(s) + i)
 #define GET_STR_CHAR(s, i) (GET_STR(s)[i])
 #define STR_REMAINING(s)   ((s)->capacity - (s)->size)
+#define IS_SSO(s)          (s->stk[STR_SSO_SIZE - 1] != '\0')
+#define GET_STR(s)         (IS_SSO(s) ? (s)->stk : (s)->heap)
 
 // Grow if full.
 #define MAYBE_GROW_STR(s)                        \
@@ -86,7 +86,7 @@ void string_create_stk(String* s, const char* cstr)
     CHECK_FATAL(!s, "str is null");
 
     s->size                  = 0;
-    s->stk[STR_SSO_SIZE - 1] = 1; // mark SSO mode
+    s->stk[STR_SSO_SIZE - 1] = 1;                // mark SSO mode
     s->capacity              = STR_SSO_SIZE - 1; // last byte reserved for the SSO flag
 
     if (!cstr) {
@@ -119,7 +119,7 @@ void string_destroy_stk(String* s)
     }
 
     s->size                  = 0;
-    s->stk[STR_SSO_SIZE - 1] = 1; // mark SSO mode; NOT preserved from heap mode
+    s->stk[STR_SSO_SIZE - 1] = 1;                // mark SSO mode; NOT preserved from heap mode
     s->capacity              = STR_SSO_SIZE - 1; // leave in valid, reusable SSO state
 }
 
@@ -579,7 +579,7 @@ static inline void heap_to_stk(String* s)
     memcpy(s->stk, heap, s->size);
     free(heap);
     s->stk[STR_SSO_SIZE - 1] = 1; // mark SSO mode; NOT preserved from heap mode
-    s->capacity = STR_SSO_SIZE - 1;
+    s->capacity              = STR_SSO_SIZE - 1;
 }
 
 static inline void string_grow(String* s)
@@ -607,8 +607,8 @@ static inline void ensure_capacity(String* s, u64 needed)
 
     // currently in sso but sso_cap is not enough
     if (IS_SSO(s)) {
-        s->stk[STR_SSO_SIZE-1] = '\0';
-        char* new_data = malloc(new_cap);
+        s->stk[STR_SSO_SIZE - 1] = '\0';
+        char* new_data           = malloc(new_cap);
         CHECK_FATAL(!new_data, "malloc failed");
         memcpy(new_data, s->stk, s->size);
         s->heap     = new_data;

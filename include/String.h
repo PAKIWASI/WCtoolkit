@@ -108,16 +108,19 @@ static inline char string_char_at(const String* str, u64 i)
 {
     CHECK_FATAL(!str, "str is null");
     CHECK_FATAL(i >= str->size, "index out of bounds");
-    b8 is_sso = str->stk[STR_SSO_SIZE - 1] != '\0';
-    return (is_sso ? str->stk : str->heap)[i];
+    return ((str->stk[STR_SSO_SIZE - 1] != '\0') ? (str)->stk : (str)->heap)[i];
+}
+
+static inline char string_char_at_unsafe(const String* str, u64 i)
+{
+    return ((str->stk[STR_SSO_SIZE - 1] != '\0') ? (str)->stk : (str)->heap)[i];
 }
 
 static inline void string_set_char(String* str, u64 i, char c)
 {
     CHECK_FATAL(!str, "str is null");
     CHECK_FATAL(i >= str->size, "index out of bounds");
-    b8 is_sso                          = str->stk[STR_SSO_SIZE - 1] != '\0';
-    (is_sso ? str->stk : str->heap)[i] = c;
+    ((str->stk[STR_SSO_SIZE - 1] != '\0') ? str->stk : str->heap)[i] = c;
 }
 
 
