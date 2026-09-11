@@ -1,16 +1,16 @@
-#ifndef WC_MAP_SETUP_SINGLE_H
-#define WC_MAP_SETUP_SINGLE_H
+#ifndef WC_VIEWS_SINGLE_H
+#define WC_VIEWS_SINGLE_H
 
 /*
- * map_setup_single.h
+ * views_single.h
  * Auto-generated single-header library.
  *
  * In EXACTLY ONE .c file, before including this header:
  *     #define WC_IMPLEMENTATION
- *     #include "map_setup_single.h"
+ *     #include "views_single.h"
  *
  * All other files just:
- *     #include "map_setup_single.h"
+ *     #include "views_single.h"
  */
 
 /* ===== common.h ===== */
@@ -398,129 +398,347 @@ Note: Do NOT break/return/goto inside the block.
 
 #endif /* WC_STRING_H */
 
-/* ===== map_setup.h ===== */
-#ifndef WC_MAP_SETUP_H
-#define WC_MAP_SETUP_H
+/* ===== wc_errno.h ===== */
+#ifndef WC_WC_ERRNO_H
+#define WC_WC_ERRNO_H
 
-#include <string.h>
+#include <stdio.h>
 
 
-typedef u64 (*custom_hash_fn)(const u8* key, u64 size);
+/* wc_errno.h — Error reporting for WCtoolkit
+ * ============================================
+ *
+ * Two tiers:
+ *
+ *   CHECK_FATAL  Programmer errors: null pointer, out of bounds, OOM.
+ *                Crashes with a message. These are bugs, not conditions.
+ *
+ *   wc_errno     Expected conditions: pop on empty, arena full.
+ *                Function returns NULL / 0 / void. wc_errno says why.
+ *                Ignore it if you don't care. Check it if you do.
+ *
+ *
+ * USAGE
+ * -----
+ *   // Check a single call:
+ *   wc_errno = WC_OK;
+ *   u8* p = arena_alloc(arena, size);
+ *   if (!p && wc_errno == WC_ERR_FULL) { ... }
+ *
+ *   // Check a batch — wc_errno stays set if any call failed:
+ *   wc_errno = WC_OK;
+ *   float* a = (float*)arena_alloc(arena, 256);
+ *   float* b = (float*)arena_alloc(arena, 256);
+ *   if (wc_errno) { wc_perror("alloc"); }
+ *
+ *
+ * RULES
+ * -----
+ *   1. Successful calls do NOT clear wc_errno — clear it yourself.
+ *   2. Check the return value first. wc_errno tells you WHY, not WHETHER.
+ *   3. wc_errno is thread-local. Each thread has its own copy.
+ *
+ *
+ * WHAT SETS wc_errno
+ * ------------------
+ *   arena_alloc, arena_alloc_aligned      WC_ERR_FULL    arena exhausted
+ *   genVec_pop, genVec_front, genVec_back WC_ERR_EMPTY   vec is empty
+ *   dequeue, queue_peek, queue_peek_ptr   WC_ERR_EMPTY   queue is empty
+ *   stack_pop, stack_peek                 WC_ERR_EMPTY   stack is empty
+ */
 
-#define LOAD_FACTOR_GROW      0.75 // Robin Hood sweet spot
-#define HASHMAP_INIT_CAPACITY 16   // power-of-2 to avoid modulo
 
 typedef enum {
-    NOT_FOUND = 0,
-    FOUND,
-    ROBINHOOD_EXIT,
-} LOOKUP_RES;
+    WC_OK        = 0,
+    WC_ERR_FULL,       // arena exhausted / container at capacity
+    WC_ERR_EMPTY,      // pop or peek on empty container
+    WC_ERR_INVALID_OP, // call to a function with preconditions not met
+} wc_err;
 
-/*
-====================WYHASH====================
-*/
-// wyhash v4 — public domain, Wang Yi
-// Best default for hashmaps: fast, excellent avalanche, low collision rate.
-// Beats FNV1a and MurmurHash3 on all key sizes.
-
-static inline u64 wyr8(const u8* p)
+static inline const char* wc_strerror(wc_err e)
 {
-    u64 v;
-    memcpy(&v, p, 8);
-    return v;
-}
-static inline u64 wyr4(const u8* p)
-{
-    u32 v;
-    memcpy(&v, p, 4);
-    return v;
-}
-
-static inline u64 wymix(u64 a, u64 b)
-{
-    __uint128_t r = (__uint128_t)a * b;
-    return (u64)(r) ^ (u64)(r >> 64);
-}
-
-static u64 wyhash(const u8* key, u64 len)
-{
-    const u64 seed = 0x517cc1b727220a95ULL;
-    const u64 s0   = 0x2d358dccaa6c78a5ULL;
-    const u64 s1   = 0x8bb84b93962eacc9ULL;
-    const u64 s2   = 0x4b33a62ed433d4a3ULL;
-
-    u64 a, b;
-    u64 h = seed ^ wymix(seed ^ s0, s1) ^ len;
-
-    const u8* p = key;
-    u64       i = len;
-
-    // bulk: 16 bytes at a time
-    for (; i >= 16; i -= 16, p += 16) {
-        h = wymix(wyr8(p) ^ s1, wyr8(p + 8) ^ h);
+    switch (e) {
+        case WC_OK:             return "ok";
+        case WC_ERR_FULL:       return "full";
+        case WC_ERR_EMPTY:      return "empty";
+        case WC_ERR_INVALID_OP: return "invalid op";
+        default:                return "unknown";
     }
+}
 
-    // tail
-    if (i >= 8) {
-        a = wyr8(p);
-        b = wyr8(p + i - 8);
-    } else if (i >= 4) {
-        a = wyr4(p);
-        b = wyr4(p + i - 4);
-    } else if (i > 0) {
-        a = ((u64)p[0] << 16) | ((u64)p[i >> 1] << 8) | p[i - 1];
-        b = 0;
+/* Defined in wc_errno.c:
+ *   _Thread_local wc_err wc_errno = WC_OK;
+ */
+extern _Thread_local wc_err wc_errno;
+
+/* Print last error — same pattern as perror(3).
+ *   wc_perror("arena_alloc");  ->  "arena_alloc: full"
+ */
+static inline void wc_perror(const char* prefix)
+{
+    if (prefix && prefix[0]) {
+        fprintf(stderr, "%s: %s\n", prefix, wc_strerror(wc_errno));
     } else {
-        a = 0;
-        b = 0;
+        fprintf(stderr, "%s\n", wc_strerror(wc_errno));
     }
+}
 
-    return wymix(a ^ s2 ^ h, b ^ s2);
+
+/* Internal macros (library use only)
+ * ------------------------------------
+ * WC_SET_RET — replaces CHECK_WARN_RET at expected-condition sites.
+ * Sets wc_errno silently and returns. No print.
+ *
+ *   WC_SET_RET(WC_ERR_EMPTY, vec->size == 0, );     void return
+ *   WC_SET_RET(WC_ERR_FULL,  cond,           NULL); pointer return
+ */
+#define WC_SET_RET(err_code, cond, ret) \
+    do {                                \
+        if (cond) {                     \
+            wc_errno = (err_code);      \
+            return ret;                 \
+        }                               \
+    } while (0)
+
+/* WC_PROPAGATE_RET — exit immediately if a callee already set wc_errno.
+ *
+ *   some_internal_fn(vec);
+ *   WC_PROPAGATE_RET( );   // exits if some_internal_fn set wc_errno
+ */
+#define WC_PROPAGATE_RET(ret)    \
+    do {                         \
+        if (wc_errno != WC_OK) { \
+            return ret;          \
+        }                        \
+    } while (0)
+
+#endif /* WC_WC_ERRNO_H */
+
+/* ===== arena.h ===== */
+#ifndef WC_ARENA_H
+#define WC_ARENA_H
+
+#include <stdlib.h>
+
+
+typedef struct {
+    u8* base;
+    u64 idx;
+    u64 size;
+} Arena;
+
+
+// Tweakable settings
+#ifndef ARENA_DEFAULT_ALIGNMENT
+    #define ARENA_DEFAULT_ALIGNMENT (sizeof(void*)) // 8 bytes
+#endif
+#ifndef ARENA_DEFAULT_SIZE
+    #define ARENA_DEFAULT_SIZE      (nKB(4))      // 4 KB
+#endif
+
+
+/*
+Allocate and return a pointer to memory to the arena
+with a region with the specified size. Providing a
+size = 0 results in size = ARENA_DEFAULT_SIZE (user can modify)
+
+Parameters:
+  u64 size    |    The size (in bytes) of the arena
+                      memory region.
+Return:
+  Pointer to arena on success, NULL on failure
+*/
+Arena* arena_create(u64 capacity);
+
+/*
+Initialize an arena object with pointers to the arena and a
+pre-allocated region(base ptr), as well as the size of the provided
+region. Good for using the stack instead of the heap.
+The arena and the data may be stack initialized, so no arena_release.
+Note that ARENA_DEFAULT_SIZE is not used.
+
+Parameters:
+  Arena* arena    |   The arena object being initialized.
+  u8*    data     |   The region to be arena-fyed.
+  u64    size     |   The size of the region in bytes.
+*/
+void arena_create_arr_stk(Arena* arena, u8* data, u64 size);
+
+
+void arena_create_stk(Arena* arena, u64 capacity);
+
+/*
+Reset the pointer to the arena region to the beginning
+of the allocation. Allows reuse of the memory without
+expensive frees.
+
+Parameters:
+  Arena *arena    |    The arena to be cleared.
+*/
+static inline void arena_clear(Arena* arena)
+{
+    CHECK_FATAL(!arena, "arena is null");
+    arena->idx = 0;
 }
 
 /*
-====================DEFAULT FUNCTIONS====================
+Free the memory allocated for the entire arena region.
+
+Parameters:
+  Arena *arena    |    The arena to be destroyed.
 */
-
-static inline u64 fnv1a_hash(const u8* bytes, u64 size)
+static inline void arena_release(Arena* arena)
 {
-    u64 hash = 14695981039346656037ULL; // 64-bit FNV offset basis
-    for (u64 i = 0; i < size; i++) {
-        hash ^= bytes[i];
-        hash *= 1099511628211ULL; // 64-bit FNV prime
-    }
-    return hash;
+    CHECK_FATAL(!arena, "arena is null");
+    free(arena->base);
+    free(arena);
 }
-
-static inline int default_compare(const u8* a, const u8* b, u64 size)
-{
-    return memcmp(a, b, size);
-}
-
 
 /*
-====================STRING HASHING====================
+Return a pointer to a portion of specified size of the
+specified arena's region. By default, memory is
+aligned by alignof(size_t), but you can change this by
+#defining ARENA_DEFAULT_ALIGNMENT before #include'ing
+arena.h. Providing a size of zero results in a failure.
+
+Parameters:
+  Arena* arena    |    The arena of which the pointer
+                       from the region will be
+                       distributed
+  u64 size        |    The size (in bytes) of
+                       allocated memory planned to be
+                       used.
+Return:
+  Pointer to arena region segment on success, NULL on
+  failure.
+*/
+u8* arena_alloc(Arena* arena, u64 size);
+
+/*
+Same as arena_alloc, except you can specify a memory
+alignment for allocations.
+
+Return a pointer to a portion of specified size of the
+specified arena's region. Providing a size of
+zero results in a failure.
+
+Parameters:
+  Arena* arena              |    The arena of which the pointer
+                                 from the region will be
+                                 distributed
+  u64 size                  |    The size (in bytes) of
+                                 allocated memory planned to be
+                                 used.
+  u32 alignment             |    Alignment (in bytes) for each
+                                 memory allocation.
+Return:
+  Pointer to arena region segment on success, NULL on
+  failure.
+*/
+u8* arena_alloc_aligned(Arena* arena, u64 size, u32 alignment);
+
+
+// Get used capacity
+static inline u64 arena_used(Arena* arena)
+{
+    CHECK_FATAL(!arena, "arena is null");
+    return arena->idx;
+}
+
+// Get remaining capacity
+static inline u64 arena_remaining(Arena* arena)
+{
+    CHECK_FATAL(!arena, "arena is null");
+    return arena->size - arena->idx;
+}
+
+
+
+// explicit scratch arena
+
+typedef struct {
+    Arena* arena;
+    u64 mark;
+} ArenaScratch;
+
+
+static inline ArenaScratch arena_scratch_begin(Arena* arena)
+{
+    CHECK_FATAL(!arena, "arena is null");
+    return (ArenaScratch){ .arena = arena, .mark = arena->idx };
+}
+
+static inline void arena_scratch_end(ArenaScratch scratch)
+{
+    if (scratch.arena) {
+        scratch.arena->idx = scratch.mark;
+        scratch.arena = NULL;
+    }
+}
+
+// macro for automatic cleanup arena_scratch
+#define ARENA_SCRATCH(arena_ptr) \
+    for (ArenaScratch __nme__ = arena_scratch_begin(arena_ptr); \
+         (__nme__ ).arena != NULL; \
+         arena_scratch_end((__nme__ )), (__nme__).arena = NULL)
+
+/* USAGE:
+// Manual:
+ScratchArena scratch = arena_scratch_begin(arena);
+char* tmp = ARENA_ALLOC_N(arena, char, 256);
+arena_scratch_end(scratch);
+
+// Automatic:
+ARENA_SCRATCH(arena) {
+    char* tmp = ARENA_ALLOC_N(arena, char, 256);
+} // auto cleanup
 */
 
-// wyhash variants for String
 
-static u64 wyhash_str(const u8* key, u64 size)
-{
-    (void)size;
-    String* str = (String*)key;
-    return wyhash((const u8*)string_data_ptr(str), string_len(str));
-}
+// USEFULL MACROS
 
-static u64 wyhash_str_ptr(const u8* key, u64 size)
-{
-    (void)size;
-    String* str = *(String**)key;
-    return wyhash((const u8*)string_data_ptr(str), string_len(str));
-}
+#define ARENA_CREATE_STK_ARR(arena, n) (arena_create_arr_stk((arena), (u8[nKB(n)]){0}, nKB(n)))
 
-#define ALIGN8(size) (((u64)(size) + 7u) & ~7u)
+// typed allocation
+#define ARENA_ALLOC(arena, T) ((T*)arena_alloc((arena), sizeof(T)))
 
-#endif /* WC_MAP_SETUP_H */
+#define ARENA_ALLOC_N(arena, T, n) ((T*)arena_alloc((arena), sizeof(T) * (n)))
+
+// common for structs
+#define ARENA_ALLOC_ZERO(arena, T) ((T*)memset(ARENA_ALLOC(arena, T), 0, sizeof(T)))
+
+#define ARENA_ALLOC_ZERO_N(arena, T, n) ((T*)memset(ARENA_ALLOC_N(arena, T, n), 0, sizeof(T) * (n)))
+
+// Allocate and copy array into arena
+#define ARENA_PUSH_ARRAY(arena, T, src, count)      \
+    ({                                              \
+        (T)* _dst = ARENA_ALLOC_N(arena, T, count); \
+        memcpy(_dst, src, sizeof(T) * (count));     \
+        _dst;                                       \
+    })
+
+#endif /* WC_ARENA_H */
+
+/* ===== views.h ===== */
+#ifndef WC_VIEWS_H
+#define WC_VIEWS_H
+
+typedef struct {
+    const char* ptr;
+    u64         len;
+} strview;
+
+
+
+strview strview_from_string(String* str);
+
+strview strview_from_string_explicit(String* str, u64 off, u64 len);
+
+strview strview_cstr_arena(Arena* a, const char* cstr, u64 clen);
+
+void strview_print(strview sv);
+
+#endif /* WC_VIEWS_H */
 
 #ifdef WC_IMPLEMENTATION
 
@@ -1150,6 +1368,171 @@ static inline void ensure_capacity(String* s, u64 needed)
 
 #endif /* WC_STRING_IMPL */
 
+/* ===== wc_errno.c ===== */
+#ifndef WC_WC_ERRNO_IMPL
+#define WC_WC_ERRNO_IMPL
+
+/* One definition of the thread-local error variable.
+ * Every translation unit that includes wc_error.h sees the extern declaration.
+ * This file provides the actual storage.
+ */
+_Thread_local wc_err wc_errno = WC_OK;
+
+#endif /* WC_WC_ERRNO_IMPL */
+
+/* ===== arena.c ===== */
+#ifndef WC_ARENA_IMPL
+#define WC_ARENA_IMPL
+
+#include <stdlib.h>
+
+/*'''python
+align a 4 byte thing to 8 bytes alignment boundry:
+>>> 4 + (8 - 1) & ~(8 - 1)
+8
+>>> 7 + (8 - 1) & ~(8 - 1)
+8
+>>> 9 + (8 - 1) & ~(8 - 1)
+16 <- how much bytes should a 9 byte thing occupy to align to boundry
+>>> 15 + (8 - 1) & ~(8 - 1)
+16
+>>> 18 + (8 - 1) & ~(8 - 1)
+24
+'''*/
+// Align a value to alignment boundary
+// Note: align MUST be power of 2 and >= 1
+#define ALIGN_UP(val, align) \
+    ((align) == 0 ? (val) : (((val) + ((align) - 1)) & ~((align) - 1)))
+
+// align value to ARENA_DEFAULT_ALIGNMENT
+#define ALIGN_UP_DEFAULT(val) \
+    ALIGN_UP((val), ARENA_DEFAULT_ALIGNMENT)
+
+
+#define ARENA_PTR(arena, idx) ((arena)->base + (idx))
+
+
+
+
+
+Arena* arena_create(u64 capacity)
+{
+    if (capacity == 0) {
+        capacity = ARENA_DEFAULT_SIZE;
+    }
+
+    Arena* arena = (Arena*)malloc(sizeof(Arena));
+    CHECK_FATAL(!arena, "arena malloc failed");
+
+    arena->base = (u8*)malloc(capacity);
+    CHECK_FATAL(!arena->base, "arena base malloc failed");
+
+    arena->idx = 0;
+    arena->size = capacity;
+
+    return arena;
+}
+
+void arena_create_stk(Arena* arena, u64 capacity)
+{
+    if (capacity == 0) {
+        capacity = ARENA_DEFAULT_SIZE;
+    }
+
+    arena->base = (u8*)malloc(capacity);
+    CHECK_FATAL(!arena->base, "arena base malloc failed");
+
+    arena->idx  = 0;
+    arena->size = capacity;
+}
+
+void arena_create_arr_stk(Arena* arena, u8* data, u64 size)
+{
+    CHECK_FATAL(!arena, "arena is null");
+    CHECK_FATAL(!data, "data is null");
+    CHECK_FATAL(size == 0, "size can't be zero");
+
+    arena->base = data;
+    arena->idx = 0;
+    arena->size = size;
+}
+
+u8* arena_alloc(Arena* arena, u64 size)
+{
+    CHECK_FATAL(!arena, "arena is null");
+    CHECK_FATAL(size == 0, "can't have allocation of size = 0");
+
+    // Align the current index first
+    u64 aligned_idx = ALIGN_UP_DEFAULT(arena->idx);
+    WC_SET_RET(WC_ERR_FULL, arena->size - aligned_idx < size, NULL);
+
+    u8* ptr = ARENA_PTR(arena, aligned_idx);
+    arena->idx = aligned_idx + size;
+
+    return ptr;
+}
+
+u8* arena_alloc_aligned(Arena* arena, u64 size, u32 alignment)
+{
+
+    CHECK_FATAL(!arena, "arena is null");
+    CHECK_FATAL(size == 0, "can't have allocation of size = 0");
+    CHECK_FATAL((alignment & (alignment - 1)) != 0,
+                "alignment must be power of two");
+
+
+    u64 aligned_idx = ALIGN_UP(arena->idx, alignment);
+
+    WC_SET_RET(WC_ERR_FULL, arena->size - aligned_idx < size, NULL);
+
+    u8* ptr = ARENA_PTR(arena, aligned_idx);
+    arena->idx = aligned_idx + size;
+
+    return ptr;
+}
+
+#endif /* WC_ARENA_IMPL */
+
+/* ===== views.c ===== */
+#ifndef WC_VIEWS_IMPL
+#define WC_VIEWS_IMPL
+
+#include <stdio.h>
+#include <string.h>
+
+
+strview strview_from_string(String* str)
+{
+    return (strview){.ptr = string_data_ptr(str), .len = string_len(str)};
+}
+
+strview strview_from_string_explicit(String* str, u64 off, u64 len)
+{
+    CHECK_FATAL(off + len >= string_len(str), "invalid range");
+    return (strview){.ptr = string_data_ptr(str) + off, .len = len};
+}
+
+// store raw cstr in arena and return a view over it
+// supposted to be immutable string storage + view
+strview strview_cstr_arena(Arena* a, const char* cstr, u64 clen)
+{
+    char* p = ARENA_ALLOC_N(a, char, clen + 1); // for NULL Terminator
+    memcpy(p, cstr, clen + 1);
+    return (strview){.ptr = p, .len = clen};
+}
+
+void strview_print(strview sv)
+{
+    putchar('\"');
+    for (u64 i = 0; i < sv.len; i++) {
+        putchar(sv.ptr[i]);
+    }
+    putchar('\"');
+    putchar('\n');
+}
+
+#endif /* WC_VIEWS_IMPL */
+
 #endif /* WC_IMPLEMENTATION */
 
-#endif /* WC_MAP_SETUP_SINGLE_H */
+#endif /* WC_VIEWS_SINGLE_H */

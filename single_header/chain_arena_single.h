@@ -416,29 +416,29 @@ static inline b8 genVec_empty(const genVec* vec)
 #define WC_CHAIN_ARENA_H
 
 #ifndef ARENA_DEFAULT_ALIGNMENT
-    #define ARENA_DEFAULT_ALIGNMENT (sizeof(void*))   // 8 bytes
+#define ARENA_DEFAULT_ALIGNMENT (sizeof(void*)) // 8 bytes
 #endif
 
 #ifndef ARENA_NODE_INLINE_SIZE
-    #define ARENA_NODE_INLINE_SIZE (nKB(4))           // 4096 bytes
+#define ARENA_NODE_INLINE_SIZE (nKB(4)) // 4096 bytes
 #endif
 
 typedef struct ArenaNode {
+    u64 used; // bytes consumed inside this node
     u8  base[ARENA_NODE_INLINE_SIZE];
-    u64 used;    // bytes consumed inside this node
 } ArenaNode;
 
 typedef struct {
-    genVec nodes;   // vector of ArenaNode*
-    u64 used;       // total bytes allocated (sum of all node->used).
-                    // Used for scratch save/restore.
+    genVec nodes; // vector of ArenaNode*
+    u64    used;  // total bytes allocated (sum of all node->used).
+                  // Used for scratch save/restore.
 } ChainArena;
 
 typedef struct {
     ChainArena* arena;
-    u64 node_idx;         // index of the last node at scratch start
-    u64 node_used_mark;   // that node's `used` value at scratch start
-    u64 arena_used_mark;  // arena->used at scratch start
+    u64         node_idx;        // index of the last node at scratch start
+    u64         node_used_mark;  // that node's `used` value at scratch start
+    u64         arena_used_mark; // arena->used at scratch start
 } ChainArenaScratch;
 
 
@@ -466,18 +466,16 @@ ChainArenaScratch chain_arena_scratch_begin(ChainArena* arena);
 
 void chain_arena_scratch_end(ChainArenaScratch scratch);
 
-#define CHAIN_ARENA_SCRATCH(c_arena_ptr) \
-    for (ChainArenaScratch __nme__ = chain_arena_scratch_begin(c_arena_ptr); \
-         (__nme__).arena != NULL; \
+#define CHAIN_ARENA_SCRATCH(c_arena_ptr)                                                              \
+    for (ChainArenaScratch __nme__ = chain_arena_scratch_begin(c_arena_ptr); (__nme__).arena != NULL; \
          chain_arena_scratch_end((__nme__)), (__nme__).arena = NULL)
 
 
 // Typed allocation macros
-#define CHAIN_ARENA_ALLOC(arena, T)         ((T*)chain_arena_alloc((arena), sizeof(T)))
-#define CHAIN_ARENA_ALLOC_N(arena, T, n)    ((T*)chain_arena_alloc((arena), sizeof(T) * (n)))
-#define CHAIN_ARENA_ALLOC_ZERO(arena, T)    ((T*)memset(CHAIN_ARENA_ALLOC(arena, T), 0, sizeof(T)))
-#define CHAIN_ARENA_ALLOC_ZERO_N(arena, T, n)\
-    ((T*)memset(CHAIN_ARENA_ALLOC_N(arena, T, n), 0, sizeof(T) * (n)))
+#define CHAIN_ARENA_ALLOC(arena, T)           ((T*)chain_arena_alloc((arena), sizeof(T)))
+#define CHAIN_ARENA_ALLOC_N(arena, T, n)      ((T*)chain_arena_alloc((arena), sizeof(T) * (n)))
+#define CHAIN_ARENA_ALLOC_ZERO(arena, T)      ((T*)memset(CHAIN_ARENA_ALLOC(arena, T), 0, sizeof(T)))
+#define CHAIN_ARENA_ALLOC_ZERO_N(arena, T, n) ((T*)memset(CHAIN_ARENA_ALLOC_N(arena, T, n), 0, sizeof(T) * (n)))
 
 #endif /* WC_CHAIN_ARENA_H */
 

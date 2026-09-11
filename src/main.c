@@ -1,17 +1,29 @@
-#include "String.h"
-#include <stdio.h>
+#include "arena.h"
+#include "common.h"
+#include "views.h"
+#include <string.h>
 
 
 int main(void)
 {
-    String s = {0};
+    Arena* a = arena_create(nKB(1));
 
-    string_create_stk(&s, "hello");
-    printf("sso: %d\n", string_is_sso(&s));
+    const char* cstr = "helllo";
+    strview sv = strview_cstr_arena(a, cstr, strlen(cstr));
+    ArenaScratch as = arena_scratch_begin(a);
+    strview sv2 = strview_cstr_arena(a, cstr, strlen(cstr));
+    strview_print(sv);
+    strview_print(sv2);
 
-    string_append_cstr(&s, " world jfdkjfkdjjfdjfkdjfk");
-    printf("sso: %d\n", string_is_sso(&s));
+    arena_scratch_end(as);
 
-    string_destroy_stk(&s);
-    return 0;
+    const char* cstr2 = "worljkfj";
+    strview sv3 = strview_cstr_arena(a, cstr2, strlen(cstr2));
+
+    strview_print(sv);
+    strview_print(sv2);
+    strview_print(sv3);
+
+
+    arena_release(a);
 }

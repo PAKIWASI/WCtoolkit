@@ -23,6 +23,8 @@ typedef struct {
 // 24 8 8 = 40 bytes (same as genVec)
 
 
+
+
 //  Construction / Destruction
 
 // Create an empty string on the heap.
@@ -188,6 +190,10 @@ Note: Do NOT break/return/goto inside the block.
 */
 #define TEMP_CSTR_READ(str) \
     for (u8 _once = 0; (_once == 0) && (string_append_char((str), '\0'), 1); _once++, string_pop_char((str)))
+
+
+
+
 
 
 

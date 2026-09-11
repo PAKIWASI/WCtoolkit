@@ -325,6 +325,9 @@ static inline void wc_perror(const char* prefix)
 #ifndef WC_ARENA_H
 #define WC_ARENA_H
 
+#include <stdlib.h>
+
+
 typedef struct {
     u8* base;
     u64 idx;

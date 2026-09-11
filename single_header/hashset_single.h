@@ -228,6 +228,8 @@ typedef struct {
 // 24 8 8 = 40 bytes (same as genVec)
 
 
+
+
 //  Construction / Destruction
 
 // Create an empty string on the heap.
@@ -313,16 +315,19 @@ static inline char string_char_at(const String* str, u64 i)
 {
     CHECK_FATAL(!str, "str is null");
     CHECK_FATAL(i >= str->size, "index out of bounds");
-    b8 is_sso = str->stk[STR_SSO_SIZE - 1] != '\0';
-    return (is_sso ? str->stk : str->heap)[i];
+    return ((str->stk[STR_SSO_SIZE - 1] != '\0') ? (str)->stk : (str)->heap)[i];
+}
+
+static inline char string_char_at_unsafe(const String* str, u64 i)
+{
+    return ((str->stk[STR_SSO_SIZE - 1] != '\0') ? (str)->stk : (str)->heap)[i];
 }
 
 static inline void string_set_char(String* str, u64 i, char c)
 {
     CHECK_FATAL(!str, "str is null");
     CHECK_FATAL(i >= str->size, "index out of bounds");
-    b8 is_sso                          = str->stk[STR_SSO_SIZE - 1] != '\0';
-    (is_sso ? str->stk : str->heap)[i] = c;
+    ((str->stk[STR_SSO_SIZE - 1] != '\0') ? str->stk : str->heap)[i] = c;
 }
 
 
@@ -619,11 +624,11 @@ static inline b8 hashset_empty(const hashset* set)
 
 //  Internal macros
 
-#define IS_SSO(s)          (s->stk[STR_SSO_SIZE - 1] != '\0')
-#define GET_STR(s)         (IS_SSO(s) ? (s)->stk : (s)->heap)
 #define GET_STR_PTR(s, i)  (GET_STR(s) + i)
 #define GET_STR_CHAR(s, i) (GET_STR(s)[i])
 #define STR_REMAINING(s)   ((s)->capacity - (s)->size)
+#define IS_SSO(s)          (s->stk[STR_SSO_SIZE - 1] != '\0')
+#define GET_STR(s)         (IS_SSO(s) ? (s)->stk : (s)->heap)
 
 // Grow if full.
 #define MAYBE_GROW_STR(s)                        \
@@ -697,7 +702,7 @@ void string_create_stk(String* s, const char* cstr)
     CHECK_FATAL(!s, "str is null");
 
     s->size                  = 0;
-    s->stk[STR_SSO_SIZE - 1] = 1; // mark SSO mode
+    s->stk[STR_SSO_SIZE - 1] = 1;                // mark SSO mode
     s->capacity              = STR_SSO_SIZE - 1; // last byte reserved for the SSO flag
 
     if (!cstr) {
@@ -730,7 +735,7 @@ void string_destroy_stk(String* s)
     }
 
     s->size                  = 0;
-    s->stk[STR_SSO_SIZE - 1] = 1; // mark SSO mode; NOT preserved from heap mode
+    s->stk[STR_SSO_SIZE - 1] = 1;                // mark SSO mode; NOT preserved from heap mode
     s->capacity              = STR_SSO_SIZE - 1; // leave in valid, reusable SSO state
 }
 
@@ -1190,7 +1195,7 @@ static inline void heap_to_stk(String* s)
     memcpy(s->stk, heap, s->size);
     free(heap);
     s->stk[STR_SSO_SIZE - 1] = 1; // mark SSO mode; NOT preserved from heap mode
-    s->capacity = STR_SSO_SIZE - 1;
+    s->capacity              = STR_SSO_SIZE - 1;
 }
 
 static inline void string_grow(String* s)
@@ -1218,8 +1223,8 @@ static inline void ensure_capacity(String* s, u64 needed)
 
     // currently in sso but sso_cap is not enough
     if (IS_SSO(s)) {
-        s->stk[STR_SSO_SIZE-1] = '\0';
-        char* new_data = malloc(new_cap);
+        s->stk[STR_SSO_SIZE - 1] = '\0';
+        char* new_data           = malloc(new_cap);
         CHECK_FATAL(!new_data, "malloc failed");
         memcpy(new_data, s->stk, s->size);
         s->heap     = new_data;
