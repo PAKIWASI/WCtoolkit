@@ -42,7 +42,7 @@
  * ------------------
  *   arena_alloc, arena_alloc_aligned      WC_ERR_FULL    arena exhausted
  *   genVec_pop, genVec_front, genVec_back WC_ERR_EMPTY   vec is empty
- *   dequeue, queue_peek, queue_peek_ptr   WC_ERR_EMPTY   queue is empty
+ *   queue_pop, queue_peek, queue_peek_ptr WC_ERR_EMPTY   queue is empty
  *   stack_pop, stack_peek                 WC_ERR_EMPTY   stack is empty
  */
 

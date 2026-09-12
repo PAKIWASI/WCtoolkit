@@ -43,6 +43,26 @@ static void test_stack_pop_empty_sets_errno(void)
     stack_destroy(s);
 }
 
+static void test_stack_peek_empty_sets_errno(void)
+{
+    Stack* s = int_stack(4);
+    int out = 0;
+    wc_errno = WC_OK;
+    stack_peek(s, (u8*)&out);
+    WC_ASSERT_EQ_INT(wc_errno, WC_ERR_EMPTY);
+    stack_destroy(s);
+}
+
+static void test_stack_peek_ptr_empty_sets_errno(void)
+{
+    Stack* s = int_stack(4);
+    wc_errno = WC_OK;
+    const u8* p = stack_peek_ptr(s);
+    WC_ASSERT_NULL(p);
+    WC_ASSERT_EQ_INT(wc_errno, WC_ERR_EMPTY);
+    stack_destroy(s);
+}
+
 static void test_stack_size(void)
 {
     Stack* s = int_stack(4);
@@ -85,16 +105,16 @@ static Queue* int_queue(u64 cap) {
     return queue_create(cap, sizeof(int), NULL);
 }
 
-static void test_queue_enqueue_dequeue_fifo(void)
+static void test_queue_push_pop_fifo(void)
 {
     Queue* q = int_queue(4);
     int vals[] = {1, 2, 3};
-    for (int i = 0; i < 3; i++) enqueue(q, (u8*)&vals[i]);
+    for (int i = 0; i < 3; i++) queue_push(q, (u8*)&vals[i]);
 
     int out;
-    dequeue(q, (u8*)&out); WC_ASSERT_EQ_INT(out, 1);
-    dequeue(q, (u8*)&out); WC_ASSERT_EQ_INT(out, 2);
-    dequeue(q, (u8*)&out); WC_ASSERT_EQ_INT(out, 3);
+    queue_pop(q, (u8*)&out); WC_ASSERT_EQ_INT(out, 1);
+    queue_pop(q, (u8*)&out); WC_ASSERT_EQ_INT(out, 2);
+    queue_pop(q, (u8*)&out); WC_ASSERT_EQ_INT(out, 3);
     queue_destroy(q);
 }
 
@@ -104,17 +124,17 @@ static void test_queue_size(void)
     WC_ASSERT_EQ_U64(queue_size(q), 0);
     WC_ASSERT_TRUE(queue_empty(q));
     int x = 1;
-    enqueue(q, (u8*)&x);
+    queue_push(q, (u8*)&x);
     WC_ASSERT_EQ_U64(queue_size(q), 1);
     WC_ASSERT_FALSE(queue_empty(q));
     queue_destroy(q);
 }
 
-static void test_queue_dequeue_empty_sets_errno(void)
+static void test_queue_pop_empty_sets_errno(void)
 {
     Queue* q = int_queue(4);
     wc_errno = WC_OK;
-    dequeue(q, NULL);
+    queue_pop(q, NULL);
     WC_ASSERT_EQ_INT(wc_errno, WC_ERR_EMPTY);
     queue_destroy(q);
 }
@@ -123,7 +143,7 @@ static void test_queue_peek(void)
 {
     Queue* q = int_queue(4);
     int x = 42;
-    enqueue(q, (u8*)&x);
+    queue_push(q, (u8*)&x);
     WC_ASSERT_EQ_INT(*(int*)queue_peek_ptr(q), 42);
     /* peek must not dequeue */
     WC_ASSERT_EQ_U64(queue_size(q), 1);
@@ -132,13 +152,13 @@ static void test_queue_peek(void)
 
 static void test_queue_circular_wrap(void)
 {
-    /* Enqueue/dequeue repeatedly to force circular buffer wrap-around */
+    /* Push/pop repeatedly to force circular buffer wrap-around */
     Queue* q = int_queue(4);
     for (int round = 0; round < 5; round++) {
         int in = round * 10;
-        enqueue(q, (u8*)&in);
+        queue_push(q, (u8*)&in);
         int out = 0;
-        dequeue(q, (u8*)&out);
+        queue_pop(q, (u8*)&out);
         WC_ASSERT_EQ_INT(out, in);
     }
     WC_ASSERT_TRUE(queue_empty(q));
@@ -148,12 +168,12 @@ static void test_queue_circular_wrap(void)
 static void test_queue_growth(void)
 {
     Queue* q = int_queue(2);
-    for (int i = 0; i < 20; i++) enqueue(q, (u8*)&i);
+    for (int i = 0; i < 20; i++) queue_push(q, (u8*)&i);
     WC_ASSERT_EQ_U64(queue_size(q), 20);
-    /* dequeue in order */
+    /* pop in order */
     for (int i = 0; i < 20; i++) {
         int out = 0;
-        dequeue(q, (u8*)&out);
+        queue_pop(q, (u8*)&out);
         WC_ASSERT_EQ_INT(out, i);
     }
     queue_destroy(q);
@@ -163,7 +183,7 @@ static void test_queue_reset(void)
 {
     Queue* q = int_queue(4);
     int x = 1;
-    for (int i = 0; i < 4; i++) enqueue(q, (u8*)&x);
+    for (int i = 0; i < 4; i++) queue_push(q, (u8*)&x);
     queue_reset(q);
     WC_ASSERT_EQ_U64(queue_size(q), 0);
     WC_ASSERT_TRUE(queue_empty(q));
@@ -179,6 +199,8 @@ void stack_suite(void)
     WC_RUN(test_stack_push_peek);
     WC_RUN(test_stack_push_pop_lifo);
     WC_RUN(test_stack_pop_empty_sets_errno);
+    WC_RUN(test_stack_peek_empty_sets_errno);
+    WC_RUN(test_stack_peek_ptr_empty_sets_errno);
     WC_RUN(test_stack_size);
     WC_RUN(test_stack_clear);
     WC_RUN(test_stack_growth);
@@ -187,9 +209,9 @@ void stack_suite(void)
 void queue_suite(void)
 {
     WC_SUITE("Queue");
-    WC_RUN(test_queue_enqueue_dequeue_fifo);
+    WC_RUN(test_queue_push_pop_fifo);
     WC_RUN(test_queue_size);
-    WC_RUN(test_queue_dequeue_empty_sets_errno);
+    WC_RUN(test_queue_pop_empty_sets_errno);
     WC_RUN(test_queue_peek);
     WC_RUN(test_queue_circular_wrap);
     WC_RUN(test_queue_growth);

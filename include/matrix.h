@@ -21,14 +21,17 @@ typedef struct {
 Matrixf* matrix_create(u64 m, u64 n);
 
 // create heap matrix with m rows and n cols and an array of size m x n
-Matrixf* matrix_create_arr(u64 m, u64 n, const float* arr);
+Matrixf* matrix_create_arr(u64 m, u64 n, const float* arr) __attribute__((nonnull(3)));
 
 // create matrix with everything on the stack
-void matrix_create_stk(Matrixf* mat, u64 m, u64 n, float* data);
+void matrix_create_stk(u64 m, u64 n, float* data, Matrixf* mat) __attribute__((nonnull(3, 4)));
 
 // destroy the matrix created with matrix_create or matrix_create_arr
 // DO NOT use on stack-allocated matrices (created with matrix_create_stk)
-void matrix_destroy(Matrixf* mat);
+void matrix_destroy(Matrixf* mat) __attribute__((nonnull(1)));
+// SAFE ON: raw/uninitialized dest. Never reads dest before writing it.
+void matrix_copy(Matrixf* dest, const Matrixf* src) __attribute__((nonnull(1, 2)));
+void matrix_move(Matrixf* dest, Matrixf** src) __attribute__((nonnull(1, 2)));
 
 
 // SETTERS
@@ -44,15 +47,15 @@ void matrix_destroy(Matrixf* mat);
            {7, 8, 9}
        });
 */
-void matrix_set_val_arr(Matrixf* mat, u64 count, const float* arr);
+void matrix_set_val_arr(Matrixf* mat, u64 count, const float* arr) __attribute__((nonnull(1, 3)));
 
 // for 2D arrays (array of pointers)
-void matrix_set_val_arr2(Matrixf* mat, u64 m, u64 n, const float** arr2);
+void matrix_set_val_arr2(Matrixf* mat, u64 m, u64 n, const float** arr2) __attribute__((nonnull(1, 4)));
 
 // set the value at position (i, j) where i is row and j is column
-void matrix_set_elm(Matrixf* mat, float elm, u64 i, u64 j);
+void matrix_set_elm(Matrixf* mat, float elm, u64 i, u64 j) __attribute__((nonnull(1)));
 
-float matrix_get_elm(Matrixf* mat, u64 i, u64 j);
+float matrix_get_elm(const Matrixf* mat, u64 i, u64 j) __attribute__((nonnull(1)));
 
 
 // BASIC OPERATIONS
@@ -60,20 +63,20 @@ float matrix_get_elm(Matrixf* mat, u64 i, u64 j);
 
 // Matrix addition: out = a + b
 // out must NOT alias a or b (restrict enables auto-vectorization)
-void matrix_add(Matrixf* restrict out, const Matrixf* restrict a, const Matrixf* restrict b);
+void matrix_add(Matrixf* restrict out, const Matrixf* restrict a, const Matrixf* restrict b) __attribute__((nonnull(1, 2, 3)));
 
 // Matrix subtraction: out = a - b
 // out must NOT alias a or b (restrict enables auto-vectorization)
-void matrix_sub(Matrixf* restrict out, const Matrixf* restrict a, const Matrixf* restrict b);
+void matrix_sub(Matrixf* restrict out, const Matrixf* restrict a, const Matrixf* restrict b) __attribute__((nonnull(1, 2, 3)));
 
 // Scalar multiplication: mat = mat * val
-void matrix_scale(Matrixf* restrict mat, float val);
+void matrix_scale(Matrixf* restrict mat, float val) __attribute__((nonnull(1)));
 
 // Element wise division
-void matrix_div(Matrixf* restrict mat, float val);
+void matrix_div(Matrixf* restrict mat, float val) __attribute__((nonnull(1)));
 
 // Matrix copy: dest = src
-void matrix_copy(Matrixf* restrict dest, const Matrixf* restrict src);
+void matrix_copy(Matrixf* restrict dest, const Matrixf* restrict src) __attribute__((nonnull(1, 2)));
 
 
 // MATRIX MULTIPLICATION
@@ -83,13 +86,13 @@ void matrix_copy(Matrixf* restrict dest, const Matrixf* restrict src);
 // (m×k) * (k×n) = (m×n)
 // out must NOT alias a or b
 // Uses blocked ikj multiplication for cache efficiency (good for small-medium matrices)
-void matrix_xply(Matrixf* restrict out, const Matrixf* restrict a, const Matrixf* restrict b);
+void matrix_xply(Matrixf* restrict out, const Matrixf* restrict a, const Matrixf* restrict b) __attribute__((nonnull(1, 2, 3)));
 
 // Matrix multiplication variant 2: out = a × b
 // Transposes b internally for better cache locality
 // Takes more memory but can be faster for large matrices
 // out must NOT alias a or b
-void matrix_xply_2(Matrixf* restrict out, const Matrixf* restrict a, const Matrixf* restrict b);
+void matrix_xply_2(Matrixf* restrict out, const Matrixf* restrict a, const Matrixf* restrict b) __attribute__((nonnull(1, 2, 3)));
 
 
 
@@ -98,29 +101,29 @@ void matrix_xply_2(Matrixf* restrict out, const Matrixf* restrict a, const Matri
 
 // Transpose: out = mat^T
 // out must NOT alias mat
-void matrix_T(Matrixf* restrict out, const Matrixf* restrict mat);
+void matrix_T(Matrixf* restrict out, const Matrixf* restrict mat) __attribute__((nonnull(1, 2)));
 
 // LU Decomposition: mat = L × U
 // Decomposes square matrix into Lower and Upper triangular matrices
-void matrix_LU_Decomp(Matrixf* restrict L, Matrixf* restrict U, const Matrixf* restrict mat);
+void matrix_LU_Decomp(Matrixf* restrict L, Matrixf* restrict U, const Matrixf* restrict mat) __attribute__((nonnull(1, 2, 3)));
 
 // Calculate determinant using LU decomposition
-float matrix_det(const Matrixf* mat);
+float matrix_det(const Matrixf* mat) __attribute__((nonnull(1)));
 
 // Calculate adjugate (adjoint) matrix
 // TODO: NOT IMPLEMENTED
-void matrix_adj(Matrixf* out, const Matrixf* mat);
+void matrix_adj(Matrixf* out, const Matrixf* mat) __attribute__((nonnull(1, 2)));
 
 // Calculate matrix inverse: out = mat^(-1)
 // TODO: NOT IMPLEMENTED
-void matrix_inv(Matrixf* out, const Matrixf* mat);
+void matrix_inv(Matrixf* out, const Matrixf* mat) __attribute__((nonnull(1, 2)));
 
 
 // UTILITIES
 // ============================================================================
 
 // print the formatted, aligned matrix to stdout
-void matrix_print(const Matrixf* mat);
+void matrix_print(const Matrixf* mat) __attribute__((nonnull(1)));
 
 
 #define MATRIX_TOTAL(mat)    ((u64)((mat)->n * (mat)->m))
@@ -144,7 +147,7 @@ No need to call matrix_destroy - freed when arena is cleared/released
 Usage:
     Matrix* mat = MATRIX_ARENA(arena, 3, 3);
 */
-static inline Matrixf* matrix_arena_alloc(Arena* arena, u64 m, u64 n)
+static inline Matrixf* matrix_arena_alloc(Arena* arena, u64 m, u64 n) __attribute__((nonnull(1)))
 {
     CHECK_FATAL(m == 0 && n == 0, "n == m == 0");
 
@@ -168,7 +171,7 @@ Usage:
     Matrix* mat = MATRIX_ARENA_ARR(arena, 3, 3, (float[9]){1,2,3,4,5,6,7,8,9});
 */
 
-static inline Matrixf* matrix_arena_arr_alloc(Arena* arena, u64 m, u64 n, const float* arr)
+static inline Matrixf* matrix_arena_arr_alloc(Arena* arena, u64 m, u64 n, const float* arr) __attribute__((nonnull(1, 4)))
 {
     CHECK_FATAL(m == 0 || n == 0, "matrix dims must be > 0");
     CHECK_FATAL(!arr, "input arr is null");

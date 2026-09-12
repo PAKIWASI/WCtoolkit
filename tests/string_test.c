@@ -21,7 +21,7 @@ static void test_create_empty(void)
 static void test_create_stk(void)
 {
     String s;
-    string_create_stk(&s, "hello");
+    string_create_stk("hello", &s);
     WC_ASSERT_EQ_U64(string_len(&s), 5);
     WC_ASSERT(string_equals_cstr(&s, "hello"));
     string_destroy_stk(&s);
@@ -206,7 +206,7 @@ static void test_find_char(void)
 {
     String* s = string_from_cstr("hello");
     WC_ASSERT_EQ_U64(string_find_char(s, 'e'), 1);
-    WC_ASSERT_EQ_U64(string_find_char(s, 'z'), (u64)-1);
+    WC_ASSERT_EQ_U64(string_find_char(s, 'z'), WC_NOT_FOUND);
     string_destroy(s);
 }
 
@@ -214,7 +214,7 @@ static void test_find_cstr(void)
 {
     String* s = string_from_cstr("hello world");
     WC_ASSERT_EQ_U64(string_find_cstr(s, "world"), 6);
-    WC_ASSERT_EQ_U64(string_find_cstr(s, "xyz"),   (u64)-1);
+    WC_ASSERT_EQ_U64(string_find_cstr(s, "xyz"),   WC_NOT_FOUND);
     WC_ASSERT_EQ_U64(string_find_cstr(s, ""),       0);
     string_destroy(s);
 }
@@ -248,7 +248,7 @@ static void test_move_nulls_src(void)
 {
     String* src  = string_from_cstr("move me");
     String  dest;
-    string_create_stk(&dest, "");
+    string_create_stk("", &dest);
     string_move(&dest, &src);
     WC_ASSERT_NULL(src);
     WC_ASSERT(string_equals_cstr(&dest, "move me"));

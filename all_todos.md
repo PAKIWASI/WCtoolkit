@@ -1,74 +1,118 @@
-Here's every decision/TODO from all three plans (the core API plan and C11/GCC-Clang plan are both in `plan.md`; the macro layer plan is `macro_plan.md`), in one numbered list ordered roughly by benefit-per-effort — real bugs and cheap safety nets first, pure churn and performance tweaks last. Just reply with the numbers you want.
+# WCtoolkit — Task Tracker
 
-**Live bugs — fix now, cheap, no design decisions needed**
-1. `genVec_copy` reads `dest`'s old fields via `genVec_destroy_stk(dest)` before they're valid — rewrite to build directly into `dest` like `string_copy` does.
-2. `stack_peek`/`stack_peek_ptr` underflow `genVec_size(stk)-1` on an empty stack and crash instead of setting `WC_ERR_EMPTY`.
-3. `SET_INSERT_MOVE` macro references `(vec)` instead of `(set)` — fails to compile or silently binds to an unrelated variable.
-4. `DEQUEUE` macro uses `_tmp` instead of `__tmp` — same class of bug as #3.
-5. `ARENA_SCRATCH`'s cleanup runs in a for-loop increment clause, which is skipped on early `return` — silent scratch-leak, no warning comment at all today.
-6. `TEMP_CSTR_READ` has the identical footgun as #5 but is at least documented ("do NOT break/return/goto inside the block").
-7. `MAP_GET` discards `hashmap_get`'s found/not-found result and returns uninitialized memory on a miss.
+## Phase 0 — Regression gate
+- [x] 0-A: Add `wc_errno` empty-stack tests to `stack_queue_test.c`
+- [x] 0-A: Add `wc_errno` empty-vec tests to `gen_vector_test.c`
+- [x] 0-A: Add arena exhaustion test to `arena_test.c`
+- [x] 0-B: Create `tests/macros_test.c` skeleton
+- [x] 0-B: Wire `macros_test.c` into `CMakeLists.txt`
 
-**Safety net — do before further changes land on top of these files**
-8. Add `tests/macros_test.c` skeleton, wire into `CMakeLists.txt`/`ctest` (currently the macro layer has zero test coverage — how #3/#4 shipped).
-9. Add one test per row of the `wc_errno` doc table, asserting the documented function doesn't crash and does set the right code (would've caught #2 immediately).
-10. Turn on `-Wall -Wextra -Wpedantic -Wshadow -Wconversion -Wsign-conversion -Wcast-align -Wnull-dereference -Wdouble-promotion -Wformat=2 -Wimplicit-fallthrough -Wundef`, triage findings, then `-Werror`.
-11. Stop hardcoding `CMAKE_C_COMPILER` to clang; add a GCC+Clang CI matrix so "supports both" is actually tested.
+## Phase 1 — Live bug fixes
+- [x] 1-A: Fix `stack_peek` / `stack_peek_ptr` underflow (`Stack.c`)
+- [x] 1-B: Fix `SET_INSERT_MOVE` `(vec)` → `(set)` (`wc_macros.h`)
+- [x] 1-C: Fix `DEQUEUE` `_tmp` → `__tmp` (`wc_macros.h`)
+- [x] 1-D: Add `macros_test.c` tests for `SET_INSERT_MOVE` and `DEQUEUE`
 
-**Correctness / contract fixes**
-12. Kill the duplicate SSO-detection in `wc_helpers.h`'s `str_copy` — call `string_is_sso()` instead of re-deriving it from `capacity == STR_SSO_SIZE - 1`.
-13. Audit `hashmap_copy`/`hashset_copy` against the "never read dest before writing it" rule (same class as #1).
-14. Decide whether hashmap/hashset "key not found" should set `wc_errno` or stay a bare `b8` return, then apply that decision identically to both.
-15. Audit `bitVec_pop` on an empty vector — decide/fix its behavior.
-16. Audit `matrix_det`/`matrix_LU_Decomp` on singular/non-square input — decide/fix its behavior.
-17. Add `// SAFE ON: raw/uninitialized dest` / `// REQUIRES: live, initialized dest` tags to every copy-shaped function.
+## Phase 2 — Copy/move contract
+- [x] 2-A: Rewrite `genVec_copy` (no `destroy_stk` on dest, build directly)
+- [x] 2-A: Add `SAFE ON` comment above `genVec_copy` in `gen_vector.h`
+- [x] 2-B: Collapse `vec_copy` / `vec_copy_ptr` in `wc_helpers.h` to delegate to `genVec_copy`
+- [x] 2-C: Fix `str_copy` SSO detection → `string_is_sso()`
+- [x] 2-D: Audit `hashmap_copy` / `hashset_copy` against Rule 3; fix if needed
+- [x] 2-E: Add `SAFE ON` / `REQUIRES` tags to all copy-shaped declarations
+- [x] 2-F: Add `genVec_copy` on raw-dest test to `gen_vector_test.c`
 
-**Coverage gaps**
-18. Add `hashmap_create_stk`/`_destroy_stk` and `hashset_create_stk`/`_destroy_stk` (the latter already exists internally — just expose it).
-19. Add public bucket-iteration accessors (`hashmap_bucket_count`, `_bucket_occupied`, `_bucket_key_ptr`, `_bucket_val_ptr`, + hashset equivalents) — needed to fix #34 below too.
-20. Add const `hashmap_get_ptr`/hashset `_get_ptr` + `_get_ptr_mut` pairs.
-21. Add `Queue` copy/move.
-22. Add `Matrixf` move.
-23. Document `NOT COPYABLE`/`HEAP-ONLY` at the type definition for `ChainArena`/`bitVec`/`StringStore` wherever you choose not to fill the gap.
-24. Add a single `#define WC_NOT_FOUND ((u64)-1)` in `common.h`, replace the five independent literals; confirm `genVec_find` uses the same sentinel as `string_find_*`.
+## Phase 3 — API coverage gaps
+- [x] 3-A: Expose `hashset_destroy_stk` publicly
+- [x] 3-A: Add `hashmap_create_stk` / `hashmap_destroy_stk`
+- [x] 3-B: Add `hashmap_bucket_count/occupied/key_ptr/val_ptr`
+- [x] 3-B: Add `hashset_bucket_count/occupied/elm_ptr`
+- [x] 3-C: Add `hashmap_get_ptr` (const) / rename current to `hashmap_get_ptr_mut`
+- [x] 3-C: Add `hashset_get_ptr` / `hashset_get_ptr_mut`
+- [x] 3-D: Add `queue_copy` / `queue_move`
+- [x] 3-E: Add `matrix_move`
+- [x] 3-F: Audit `bitVec_pop` on empty; decide/fix behavior
+- [x] 3-F: Audit `matrix_det` / `matrix_LU_Decomp` on bad input; decide/fix
+- [x] 3-G: Add `NOT COPYABLE` comment to `chain_arena.h`
+- [x] 3-G: Add `HEAP-ONLY` comment (or `_stk`) to `bit_vector.h`
+- [x] 3-G: Add `NOT COPYABLE` comment to `views.h`
+- [x] 3-H: Add `WC_NOT_FOUND` to `common.h`; replace `(u64)-1` literals
 
-**Compile-time hardening**
-25. Convert the `String`/`genVec` slot-size comment to `_Static_assert(sizeof(String) == sizeof(genVec), ...)`; audit hashmap/hashset/matrix sizing comments for the same treatment.
-26. `__attribute__((nonnull))` on every function whose first lines are `CHECK_FATAL(!x, ...)`.
-27. `__attribute__((warn_unused_result))` on the `_create`/`_init` family.
-28. `__attribute__((malloc, alloc_size(N)))` on the allocator family.
-29. Convert `FATAL`'s macro body to a real `wc_fatal_report()` function with `__attribute__((noreturn, format(printf, 4, 5)))`.
+## Phase 4 — Macro layer
+- [x] 4-A: Fix `MAP_GET` (assert-on-miss); add `MAP_TRY_GET`
+- [x] 4-B: Delete `VEC_PUSH_COPY` and `SET_INSERT_COPY`
+- [x] 4-C: Rename `ENQUEUE`/`DEQUEUE` macros → `QUEUE_PUSH`/`QUEUE_POP`; update call sites
+- [x] 4-D: Rename `enqueue`/`dequeue` functions → `queue_push`/`queue_pop`; grep sweep
+- [x] 4-E: Add `STACK_CREATE/PUSH/PUSH_MOVE/POP/AT/FOREACH` macro layer
+- [x] 4-F: Add `QUEUE_CREATE/PUSH_MOVE/PUSH_CSTR/AT/FOREACH` macro layer
+- [x] 4-G: Rewrite `MAP_FOREACH_KEY/VAL`, `SET_FOREACH`, `SET_FROM_VEC` to use bucket accessors
+- [x] 4-H: Rebuild `ARENA_SCRATCH` with `__attribute__((cleanup))`
+- [x] 4-H: Rebuild `TEMP_CSTR_READ` with `__attribute__((cleanup))`
+- [x] 4-I: Add `macros_test.c` tests for all new/modified macros
 
-**Macro layer naming & completeness**
-30. Standardize macro naming grammar (`<MODULE>_<VERB>[_<QUALIFIER>]`) across `VEC`/`STACK`/`QUEUE`/`MAP`/`SET` per the Part B table.
-31. Delete the false `_COPY`-suffixed duplicate macros (`VEC_PUSH_COPY`, `SET_INSERT_COPY`).
-32. Add Stack/Queue macro layers for the first time (mostly one-line aliases over `VEC_*`).
-33. Generalize Map/Set typed-creation shorthand via `WC_OPS`/`_CREATE_OF` instead of hand-listing combos like `MAP_PUT_INT_STR`.
-34. Rewrite `SET_FOREACH`/`MAP_FOREACH_KEY`/`_VAL`/`SET_FROM_VEC` to use the accessors from #19 instead of reaching into private struct fields.
+## Phase 5 — In-place renames
 
-**Type-safety macro mechanisms**
-35. `WC_OPS(T)` — `_Generic`-based auto-derivation of the right `ops` struct from the element type (highest-leverage single item in the macro plan).
-36. `WC_ASSERT_ELEM_SIZE` — debug-mode size-mismatch check wrapped around every typed accessor macro.
-37. `_Static_assert` guards anywhere a macro takes two type tokens that must agree in size/alignment.
-38. Document the C11+GNU-only toolchain restriction explicitly (`CONTRIBUTING.md` or header note) so `typeof`/`_Generic` sites don't get "fixed" into more-portable-but-worse C99 later.
+> Pulled ahead of the hardening phase: renames are mechanical churn with no behavioral risk, and
+> doing them first lets the attribute / static-assert work in Phase 6 land once on final names.
+> VEC_* / MAP_* / pcg32_* prefixes are untouched by this phase.
 
-**Renames — pure churn, mechanical, do last**
-39. `genVec`→`GenVec`, `bitVec`→`BitVec`, `hashmap`→`HashMap`, `hashset`→`HashSet`, `strview`→`StrView`, `string_store`→`StringStore`.
-40. `pcg32_random_t`→`Pcg32`.
-41. `arena_release`→`arena_destroy`, `chain_arena_release`→`chain_arena_destroy`.
-42. `enqueue`/`dequeue`→`queue_push`/`queue_pop` (gate old names behind `WCTOOLKIT_LEGACY_NAMES` if you have external callers).
+- [ ] 5-A: Rename genVec -> GenVec everywhere
+- [ ] 5-B: Rename bitVec -> BitVec everywhere
+- [ ] 5-C: Rename hashmap -> HashMap everywhere
+- [ ] 5-D: Rename hashset -> HashSet everywhere
+- [ ] 5-E: Rename strview -> StrView, string_store -> StringStore, pcg32_random_t -> Pcg32
+- [ ] 5-F: Rename release verbs: arena_release -> arena_destroy, chain_arena_release -> chain_arena_destroy
+- [ ] 5-G: Regenerate all *_single.h via tools/make_single_header.py; confirm no old names remain
+- [ ] 5-H: Post-rename grep audit - no survivors in comments/strings/README/plan docs
 
-**RAII ergonomics** (not important, maybe later)
-43. `AutoString`/`AutoVec`/`AutoMap`/`AutoSet`/`AutoQueue`/`AutoArena` — `__attribute__((cleanup(...)))` wrappers as an opt-in second API tier.
+## Phase 6 — Compile-time hardening + performance
 
-**Performance — MUST
-48. Cache the resolved `copy_fn`/`IS_POD` dispatch on the `genVec` struct at construction instead of re-branching on every push/pop/get.
-49. Dedupe redundant checks across call chains — e.g. `stack_peek_ptr` calling two functions that each null-check the same pointer. Free, no tradeoff.
-50. Merge multi-condition `CHECK_FATAL` checks into one branch on the hot path, splitting out which check failed only on the cold path. Free, no tradeoff.
-51. Hoist bounds checks out of loops — validate once, then use `_unsafe` accessors for the iterations (also the fix for `VEC_FOREACH`).
-52. `__attribute__((hot))`/`((cold))` on fast paths vs. `CHECK_FATAL` failure paths.
-53. Add explicit `_unsafe` sibling accessors (e.g. `genVec_get_ptr_unsafe`) so hot-path callers can opt out of checks per call site. Real safety tradeoff, but scoped.
-54. Make `CHECK_FATAL` respect `-DNDEBUG` and strip in Release builds. Real safety tradeoff, and it's blanket (whole build), not per-call-site like #53.
-55. `matrix_xply_2` cache-line-sized tile blocking + actually reading the `-Rpass-missed=loop-vectorize` output Release builds already generate.
+> 6-A / 6-B already landed in the working tree (common.h). Remaining items run on the renamed API.
 
-(Not a TODO, just confirmed correct: `GENVEC_GROWTH`/`STRING_GROWTH` at 1.5× — leave as is.)
+- [x] 6-A: CHECK_FATAL respects NDEBUG - DONE (include/common.h:68)
+- [x] 6-B: FATAL -> wc_fatal_report with noreturn + format - DONE (include/common.h:39,51)
+- [x] 6-C: nonnull sweep across all public headers (genVec/hashmap/String/Stack/Queue/hashset/arena/chain_arena/bitVec/matrix/views = 200 attrs) — nullable ops/callbacks/optional-out audited & left unmarked; fast_math/random have no pointer params. VERIFY build
+- [ ] 6-D: warn_unused_result on _create/_init/_alloc family - audit ignored returns
+- [ ] 6-E: malloc/alloc_size on allocator family - verify alloc_size(N) arg indices
+- [ ] 6-F: _Static_assert(sizeof(String)==sizeof(genVec)) + sizing audit - verify sizes first (assert is a target)
+- [ ] 6-G: Add genVec_get_ptr_unsafe / genVec_get_ptr_mut_unsafe
+- [ ] 6-H: Add WC_ASSERT_ELEM_SIZE; wrap VEC_AT / AT_MUT / FRONT / BACK / POP / FOREACH
+- [ ] 6-I: Add WC_OPS via _Generic; add VEC_CREATE_OF / MAP_CREATE_OF
+- [ ] 6-J: Deduplicate CHECK_FATAL across Stack/Queue -> genVec call chains (_impl variants)
+- [ ] 6-K: Merge multi-condition CHECK_FATALs into one branch (genVec_get, hashmap_get_ptr, ...)
+- [ ] 6-L: VEC_FOREACH hoist bounds check + use _unsafe internally (needs 6-G)
+- [ ] 6-M: Cache is_pod on genVec - field exists (gen_vector.h:46) + _Static_assert(sizeof(genVec)==40) restored; wire at init + consume at IS_POD sites
+
+## Phase 7 — Baseline + single-header gate + residual bugfixes
+
+- [ ] 7-A: Commit/rebase the WIP baseline + sync tracker (tick 6-A/B, note 6-M) so the gate matches code
+- [ ] 7-B: Single-header gate - regen all *_single.h, add a smoke test that includes + links them; wire to ctest
+- [ ] 7-C: Fix string_store_cstr for strings >1024 (wire unused heap union, views.c:84-92) + test
+- [ ] 7-D: Verify genVec_remove_range memmove bound (the // TODO: is this right, incl. regenerated singles)
+
+## Phase 8 — New features
+
+> Last. Every feature ships with tests + single-header regen + README update (no feature without its gate). In 8-E, matrix_adj / matrix_inv must be built on matrix_LU_Decomp_pivot, so do the pivoted LU first.
+- [ ] 8-A: `genVec_reverse`, `genVec_filter`, push guard for stack-array vecs
+- [ ] 8-B: `string_split`, `string_join`, `string_trim*`, `string_to_upper/lower`
+- [ ] 8-B: `string_replace`, `string_format`, `string_reverse`, `string_starts/ends_with`
+- [ ] 8-B: `string_count_char`, `string_repeat`
+- [ ] 8-C: `hashmap_reset`, `hashmap_update`, `hashmap_keys`, `hashmap_values`
+- [ ] 8-D: `hashset_union`, `hashset_intersect`, `hashset_difference`
+- [ ] 8-E: `matrix_iden`, `matrix_adj`, `matrix_inv`, `matrix_trace`, `matrix_rank`, `matrix_pow`
+- [ ] 8-E: `matrix_LU_Decomp_pivot` (partial pivoting)
+- [ ] 8-F: Move `gaussian_spare`/`has_spare` into `Pcg32` struct
+- [ ] 8-F: Expose `_r` variants; add `pcg32_rand_seed_time_hp`, `pcg32_rand_range`
+- [ ] 8-G: `fast_atan2`, `fast_pow`, `fast_floor`, `fast_abs`
+- [ ] 8-H: `bitVec_count_set`, `bitVec_and/or/xor/not`, `bitVec_find_first_set/clear`, `bitVec_print_all`
+
+## Phase 9 — Convention consistency refactor
+
+> Audit found conventions mostly consistent (dest-first copies, receiver-first ops, `T**` moves, `WC_NOT_FOUND`, optional-out last). Items 1–3 fixed; 4–6 from the audit pending re-derivation.
+
+- [x] 9-1: Flip `_create_stk` to receiver-last — `queue_create_stk`, `string_create_stk`, `arena_create_stk`, `arena_create_arr_stk` (+ `ARENA_CREATE_STK_ARR` macro), `matrix_create_stk`; all call sites across include/src/tests/examples updated
+- [x] 9-2: Rename `genVec_init*` → `genVec_create*` everywhere (include/src/tests/examples; 87 sites, 0 leftovers; `single_header/` excluded — pending 7-B)
+- [x] 9-3: const-correctness — `bitVec_test/size_bits/size_bytes`, `stack_size/empty/capacity/peek_ptr`, `queue_size/empty/capacity/peek_ptr`, `matrix_get_elm`, `genVec_get_ptr` take const receivers; `genVec_get_ptr_mut` takes non-const receiver
+- [ ] 9-4: Re-derive + fix audit items 4–6 (from the consistency review)
+- [ ] 9-5: Regenerate `single_header/*.h` + smoke gate (feeds 7-B) — currently out of sync after 9-2
+- [ ] 9-6: VERIFY build (GCC + Clang) after 9-1..9-3 — baseline was green pre-refactor; nothing compiled since the crash recovery

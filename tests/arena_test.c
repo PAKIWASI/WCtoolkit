@@ -151,7 +151,7 @@ static void test_stk_arena(void)
 {
     u8    buf[256];
     Arena a;
-    arena_create_arr_stk(&a, buf, 256);
+    arena_create_arr_stk(buf, 256, &a);
     WC_ASSERT_EQ_U64(a.size, 256);
     WC_ASSERT_EQ_U64(a.idx,  0);
 
@@ -175,6 +175,19 @@ static void test_used_remaining(void)
     arena_release(a);
 }
 
+static void test_alloc_full_sets_errno(void)
+{
+    Arena* a = arena_create(64);
+    /* exhaust the arena */
+    arena_alloc(a, 64);
+    /* next alloc must fail with WC_ERR_FULL */
+    wc_errno = WC_OK;
+    u8* p = arena_alloc(a, 1);
+    WC_ASSERT_NULL(p);
+    WC_ASSERT_EQ_INT(wc_errno, WC_ERR_FULL);
+    arena_release(a);
+}
+
 
 /* ── Suite entry point ───────────────────────────────────────────────────── */
 
@@ -195,6 +208,7 @@ void arena_suite(void)
 
     /* full arena */
     WC_RUN(test_alloc_full_returns_null);
+    WC_RUN(test_alloc_full_sets_errno);
 
     /* scratch */
     WC_RUN(test_scratch_begin_end);

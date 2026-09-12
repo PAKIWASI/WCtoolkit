@@ -1,6 +1,7 @@
 #include "bit_vector.h"
 #include "common.h"
 #include "gen_vector.h"
+#include "wc_errno.h"
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -12,7 +13,7 @@ bitVec* bitVec_create(void)
     CHECK_FATAL(!bvec, "bvec init failed");
 
     // u8 is POD — no ops needed
-    bvec->arr = genVec_init(0, sizeof(u8), NULL);
+    bvec->arr = genVec_create(0, sizeof(u8), NULL);
 
     bvec->size = 0;
 
@@ -63,7 +64,7 @@ void bitVec_clear(bitVec* bvec, u64 i)
 }
 
 // Test bit i (returns 1 or 0)
-u8 bitVec_test(bitVec* bvec, u64 i)
+u8 bitVec_test(const bitVec* bvec, u64 i)
 {
     CHECK_FATAL(!bvec, "bvec is null");
     CHECK_FATAL(i >= bvec->size, "index out of bounds");
@@ -97,6 +98,7 @@ void bitVec_push(bitVec* bvec)
 void bitVec_pop(bitVec* bvec)
 {
     CHECK_FATAL(!bvec, "bvec is null");
+    WC_SET_RET(WC_ERR_EMPTY, bvec->size == 0, );
 
     bvec->size--;
     if (bvec->size % 8 == 0) {

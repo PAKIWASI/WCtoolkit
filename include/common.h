@@ -15,6 +15,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 
 // ANSI Color Codes
 #define WC_COLOR_RESET  "\033[0m"
@@ -35,14 +36,19 @@
                __FILE__, __LINE__, __func__, ##__VA_ARGS__);      \
     } while (0)
 
-#define FATAL(fmt, ...)                                         \
-    do {                                                        \
-        fprintf(stderr,                                         \
-                WC_COLOR_RED "[FATAL]"                             \
-                          " %s:%d:%s(): " fmt "\n" WC_COLOR_RESET, \
-                __FILE__, __LINE__, __func__, ##__VA_ARGS__);   \
-        exit(EXIT_FAILURE);                                     \
-    } while (0)
+__attribute__((noreturn, format(printf, 4, 5)))
+static inline void wc_fatal_report(const char* file, int line, const char* func, const char* fmt, ...)
+{
+    fprintf(stderr, WC_COLOR_RED "[FATAL] %s:%d:%s(): ", file, line, func);
+    va_list args;
+    va_start(args, fmt);
+    vfprintf(stderr, fmt, args);
+    va_end(args);
+    fprintf(stderr, "\n" WC_COLOR_RESET);
+    exit(EXIT_FAILURE);
+}
+
+#define FATAL(fmt, ...) wc_fatal_report(__FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__)
 
 #define CHECK_WARN(cond, fmt, ...)                           \
     do {                                                     \
@@ -59,12 +65,16 @@
         }                                                    \
     } while (0)
 
+#ifdef NDEBUG
+#define CHECK_FATAL(cond, fmt, ...) ((void)0)
+#else
 #define CHECK_FATAL(cond, fmt, ...)                           \
     do {                                                      \
         if (__builtin_expect(!!(cond), 0)) {                  \
             FATAL("Check: (%s): " fmt, #cond, ##__VA_ARGS__); \
         }                                                     \
     } while (0)
+#endif
 
 #define LOG(fmt, ...)                                       \
     do {                                                    \
@@ -91,6 +101,8 @@ typedef uint8_t  b8;
 typedef uint16_t u16;
 typedef uint32_t u32;
 typedef uint64_t u64;
+
+#define WC_NOT_FOUND ((u64)-1)
 
 // #define false ((b8)0)
 // #define true  ((b8)1)

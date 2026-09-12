@@ -10,7 +10,7 @@
 // Simple int vec — no copy/move/del needed
 static genVec* int_vec(u64 cap)
 {
-    return genVec_init(cap, sizeof(int), NULL);
+    return genVec_create(cap, sizeof(int), NULL);
 }
 
 static void push_ints(genVec* v, int count)
@@ -25,7 +25,7 @@ static void push_ints(genVec* v, int count)
 
 static void test_init_zero_cap(void)
 {
-    genVec* v = genVec_init(0, sizeof(int), NULL);
+    genVec* v = genVec_create(0, sizeof(int), NULL);
     WC_ASSERT_NOT_NULL(v);
     WC_ASSERT_EQ_U64(genVec_size(v), 0);
     WC_ASSERT_EQ_U64(genVec_capacity(v), 0);
@@ -44,7 +44,7 @@ static void test_init_with_cap(void)
 static void test_init_val(void)
 {
     int     val = 42;
-    genVec* v   = genVec_init_val(5, (u8*)&val, sizeof(int), NULL);
+    genVec* v   = genVec_create_val(5, (u8*)&val, sizeof(int), NULL);
     WC_ASSERT_EQ_U64(genVec_size(v), 5);
     for (u64 i = 0; i < 5; i++) {
         WC_ASSERT_EQ_INT(*(int*)genVec_get_ptr(v, i), 42);
@@ -55,7 +55,7 @@ static void test_init_val(void)
 static void test_init_stk(void)
 {
     genVec v;
-    genVec_init_stk(4, sizeof(int), NULL, &v);
+    genVec_create_stk(4, sizeof(int), NULL, &v);
     WC_ASSERT_EQ_U64(genVec_size(&v), 0);
     WC_ASSERT_EQ_U64(genVec_capacity(&v), 4);
     genVec_destroy_stk(&v);
@@ -305,7 +305,7 @@ static void test_copy(void)
     push_ints(src, 4);
 
     genVec dest;
-    genVec_init_stk(0, sizeof(int), NULL, &dest);
+    genVec_create_stk(0, sizeof(int), NULL, &dest);
     genVec_copy(&dest, src);
 
     WC_ASSERT_EQ_U64(genVec_size(&dest), 4);
@@ -322,13 +322,30 @@ static void test_copy(void)
     genVec_destroy_stk(&dest);
 }
 
+static void test_copy_raw_dest(void)
+{
+    genVec* src = int_vec(4);
+    push_ints(src, 4);
+
+    genVec dest; /* deliberately uninitialized stack memory */
+    genVec_copy(&dest, src);
+
+    WC_ASSERT_EQ_U64(genVec_size(&dest), 4);
+    for (int i = 0; i < 4; i++) {
+        WC_ASSERT_EQ_INT(*(int*)genVec_get_ptr(&dest, (u64)i), i);
+    }
+
+    genVec_destroy(src);
+    genVec_destroy_stk(&dest);
+}
+
 static void test_move_nulls_src(void)
 {
     genVec* src = int_vec(4);
     push_ints(src, 4);
 
     genVec dest;
-    genVec_init_stk(0, sizeof(int), NULL, &dest);
+    genVec_create_stk(0, sizeof(int), NULL, &dest);
     genVec_move(&dest, &src);
 
     WC_ASSERT_NULL(src);
@@ -371,7 +388,7 @@ static void test_insert_multi_mid(void)
 
 static void test_swap_pop_middle(void)
 {
-    genVec* v = genVec_init(4, sizeof(int), NULL);
+    genVec* v = genVec_create(4, sizeof(int), NULL);
     for (int i = 0; i < 4; i++) { VEC_PUSH(v, i); } /* 0 1 2 3 */
     int out = 0;
     genVec_swap_pop(v, 1, (u8*)&out); /* remove 1, last (3) fills its slot */
@@ -386,7 +403,7 @@ static void test_swap_pop_middle(void)
 
 static void test_swap_pop_last(void)
 {
-    genVec* v = genVec_init(4, sizeof(int), NULL);
+    genVec* v = genVec_create(4, sizeof(int), NULL);
     for (int i = 0; i < 4; i++) { VEC_PUSH(v, i); }
     genVec_swap_pop(v, 3, NULL); /* last element — just shrinks */
     WC_ASSERT_EQ_U64(genVec_size(v), 3);
@@ -396,7 +413,7 @@ static void test_swap_pop_last(void)
 
 static void test_swap_pop_single_element(void)
 {
-    genVec* v = genVec_init(4, sizeof(int), NULL);
+    genVec* v = genVec_create(4, sizeof(int), NULL);
     int x = 99;
     VEC_PUSH(v, x);
     genVec_swap_pop(v, 0, NULL);
@@ -409,7 +426,7 @@ static void test_swap_pop_single_element(void)
 
 static void test_swap_two_elements(void)
 {
-    genVec* v = genVec_init(4, sizeof(int), NULL);
+    genVec* v = genVec_create(4, sizeof(int), NULL);
     for (int i = 0; i < 4; i++) { VEC_PUSH(v, i); } /* 0 1 2 3 */
     genVec_swap(v, 0, 3);
     WC_ASSERT_EQ_INT(VEC_AT(v, int, 0), 3);
@@ -420,7 +437,7 @@ static void test_swap_two_elements(void)
 
 static void test_swap_same_index_noop(void)
 {
-    genVec* v = genVec_init(4, sizeof(int), NULL);
+    genVec* v = genVec_create(4, sizeof(int), NULL);
     for (int i = 0; i < 3; i++) { VEC_PUSH(v, i); }
     genVec_swap(v, 1, 1);
     WC_ASSERT_EQ_INT(VEC_AT(v, int, 1), 1);
@@ -429,7 +446,7 @@ static void test_swap_same_index_noop(void)
 
 static void test_swap_adjacent(void)
 {
-    genVec* v = genVec_init(4, sizeof(int), NULL);
+    genVec* v = genVec_create(4, sizeof(int), NULL);
     for (int i = 0; i < 4; i++) { VEC_PUSH(v, i); }
     genVec_swap(v, 1, 2);
     WC_ASSERT_EQ_INT(VEC_AT(v, int, 1), 2);
@@ -442,7 +459,7 @@ static void test_swap_adjacent(void)
 
 static void test_find_hit(void)
 {
-    genVec* v = genVec_init(8, sizeof(int), NULL);
+    genVec* v = genVec_create(8, sizeof(int), NULL);
     for (int i = 0; i < 8; i++) { VEC_PUSH(v, i); }
     int target = 5;
     WC_ASSERT_EQ_U64(genVec_find(v, (u8*)&target, NULL), 5);
@@ -451,7 +468,7 @@ static void test_find_hit(void)
 
 static void test_find_first_occurrence(void)
 {
-    genVec* v = genVec_init(8, sizeof(int), NULL);
+    genVec* v = genVec_create(8, sizeof(int), NULL);
     for (int i = 0; i < 4; i++) { VEC_PUSH(v, i); }
     for (int i = 0; i < 4; i++) { VEC_PUSH(v, i); } /* duplicate 0..3 */
     int target = 2;
@@ -461,18 +478,18 @@ static void test_find_first_occurrence(void)
 
 static void test_find_miss(void)
 {
-    genVec* v = genVec_init(4, sizeof(int), NULL);
+    genVec* v = genVec_create(4, sizeof(int), NULL);
     for (int i = 0; i < 4; i++) { VEC_PUSH(v, i); }
     int target = 99;
-    WC_ASSERT_EQ_U64(genVec_find(v, (u8*)&target, NULL), (u64)-1);
+    WC_ASSERT_EQ_U64(genVec_find(v, (u8*)&target, NULL), WC_NOT_FOUND);
     genVec_destroy(v);
 }
 
 static void test_find_empty_vec(void)
 {
-    genVec* v = genVec_init(4, sizeof(int), NULL);
+    genVec* v = genVec_create(4, sizeof(int), NULL);
     int target = 0;
-    WC_ASSERT_EQ_U64(genVec_find(v, (u8*)&target, NULL), (u64)-1);
+    WC_ASSERT_EQ_U64(genVec_find(v, (u8*)&target, NULL), WC_NOT_FOUND);
     genVec_destroy(v);
 }
 
@@ -481,7 +498,7 @@ static void test_find_empty_vec(void)
 
 static void test_subarr_middle(void)
 {
-    genVec* v = genVec_init(6, sizeof(int), NULL);
+    genVec* v = genVec_create(6, sizeof(int), NULL);
     for (int i = 0; i < 6; i++) { VEC_PUSH(v, i); } /* 0..5 */
     genVec* sub = genVec_subarr(v, 2, 3); /* [2, 3, 4] */
     WC_ASSERT_EQ_U64(genVec_size(sub), 3);
@@ -494,7 +511,7 @@ static void test_subarr_middle(void)
 
 static void test_subarr_clamps_to_end(void)
 {
-    genVec* v = genVec_init(4, sizeof(int), NULL);
+    genVec* v = genVec_create(4, sizeof(int), NULL);
     for (int i = 0; i < 4; i++) { VEC_PUSH(v, i); }
     genVec* sub = genVec_subarr(v, 2, 100); /* len exceeds bounds */
     WC_ASSERT_EQ_U64(genVec_size(sub), 2); /* clamped: [2, 3] */
@@ -504,7 +521,7 @@ static void test_subarr_clamps_to_end(void)
 
 static void test_subarr_independent(void)
 {
-    genVec* v = genVec_init(4, sizeof(int), NULL);
+    genVec* v = genVec_create(4, sizeof(int), NULL);
     for (int i = 0; i < 4; i++) { VEC_PUSH(v, i); }
     genVec* sub = genVec_subarr(v, 0, 4);
     int x = 999;
@@ -519,7 +536,7 @@ static void test_subarr_independent(void)
 
 static void test_shrink_to_fit_reduces_capacity(void)
 {
-    genVec* v = genVec_init(100, sizeof(int), NULL);
+    genVec* v = genVec_create(100, sizeof(int), NULL);
     for (int i = 0; i < 5; i++) { VEC_PUSH(v, i); }
     genVec_shrink_to_fit(v);
     WC_ASSERT_TRUE(genVec_capacity(v) <= 10); /* <= max(5, GENVEC_MIN_CAPACITY) */
@@ -532,7 +549,7 @@ static void test_shrink_to_fit_reduces_capacity(void)
 
 static void test_shrink_to_fit_already_tight(void)
 {
-    genVec* v = genVec_init(4, sizeof(int), NULL);
+    genVec* v = genVec_create(4, sizeof(int), NULL);
     for (int i = 0; i < 4; i++) { VEC_PUSH(v, i); }
     u64 cap_before = genVec_capacity(v);
     genVec_shrink_to_fit(v);
@@ -590,7 +607,7 @@ static void test_replace_move_frees_old(void)
 
 static void test_remove_with_out(void)
 {
-    genVec* v = genVec_init(4, sizeof(int), NULL);
+    genVec* v = genVec_create(4, sizeof(int), NULL);
     for (int i = 0; i < 4; i++) { VEC_PUSH(v, i); } /* 0 1 2 3 */
     int out = 0;
     genVec_remove(v, 1, (u8*)&out);
@@ -606,7 +623,7 @@ static void test_init_val_stk(void)
 {
     genVec v;
     int val = 7;
-    genVec_init_val_stk(5, (u8*)&val, sizeof(int), NULL, &v);
+    genVec_create_val_stk(5, (u8*)&val, sizeof(int), NULL, &v);
     WC_ASSERT_EQ_U64(genVec_size(&v), 5);
     for (u64 i = 0; i < 5; i++) {
         WC_ASSERT_EQ_INT(VEC_AT(&v, int, i), 7);
@@ -619,7 +636,7 @@ static void test_init_val_stk(void)
 
 static void test_vec_foreach_mutates(void)
 {
-    genVec* v = genVec_init(4, sizeof(int), NULL);
+    genVec* v = genVec_create(4, sizeof(int), NULL);
     for (int i = 0; i < 4; i++) { VEC_PUSH(v, i); }
     VEC_FOREACH(v, int, p) { (*p) *= 2; }
     WC_ASSERT_EQ_INT(VEC_AT(v, int, 0), 0);
@@ -631,13 +648,43 @@ static void test_vec_foreach_mutates(void)
 
 static void test_vec_foreach_empty(void)
 {
-    genVec* v    = genVec_init(4, sizeof(int), NULL);
+    genVec* v    = genVec_create(4, sizeof(int), NULL);
     int     count = 0;
     VEC_FOREACH(v, int, p) { count++; (void)p; }
     WC_ASSERT_EQ_INT(count, 0);
     genVec_destroy(v);
 }
 
+/* ── wc_errno: empty-vec operations ─────────────────────────────────────── */
+
+static void test_pop_empty_sets_errno(void)
+{
+    genVec* v = genVec_create(4, sizeof(int), NULL);
+    wc_errno = WC_OK;
+    genVec_pop(v, NULL);
+    WC_ASSERT_EQ_INT(wc_errno, WC_ERR_EMPTY);
+    genVec_destroy(v);
+}
+
+static void test_front_empty_sets_errno(void)
+{
+    genVec* v = genVec_create(4, sizeof(int), NULL);
+    wc_errno = WC_OK;
+    const u8* p = genVec_front(v);
+    WC_ASSERT_NULL(p);
+    WC_ASSERT_EQ_INT(wc_errno, WC_ERR_EMPTY);
+    genVec_destroy(v);
+}
+
+static void test_back_empty_sets_errno(void)
+{
+    genVec* v = genVec_create(4, sizeof(int), NULL);
+    wc_errno = WC_OK;
+    const u8* p = genVec_back(v);
+    WC_ASSERT_NULL(p);
+    WC_ASSERT_EQ_INT(wc_errno, WC_ERR_EMPTY);
+    genVec_destroy(v);
+}
 
 
 // Suite entry point 
@@ -687,6 +734,7 @@ extern void gen_vector_suite(void)
 
     /* copy / move */
     WC_RUN(test_copy);
+    WC_RUN(test_copy_raw_dest);
     WC_RUN(test_move_nulls_src);
 
     /* insert_multi */
@@ -722,4 +770,9 @@ extern void gen_vector_suite(void)
 
     WC_RUN(test_vec_foreach_mutates);
     WC_RUN(test_vec_foreach_empty);
+
+    /* wc_errno: empty-vec operations must set WC_ERR_EMPTY, not crash */
+    WC_RUN(test_pop_empty_sets_errno);
+    WC_RUN(test_front_empty_sets_errno);
+    WC_RUN(test_back_empty_sets_errno);
 }

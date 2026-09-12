@@ -42,47 +42,59 @@ typedef struct {
 // ops: pass NULL for POD types.
 hashset* hashset_create(u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
                         const container_ops* ops);
+void     hashset_create_stk(u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
+                            const container_ops* ops, hashset* set) __attribute__((nonnull(5)));
 
-void hashset_destroy(hashset* set);
+void hashset_destroy(hashset* set) __attribute__((nonnull(1)));
+void hashset_destroy_stk(hashset* set) __attribute__((nonnull(1)));
 
 // Insert element — COPY semantics.
 // Returns 1 if already existed (no-op), 0 if newly inserted.
-b8 hashset_insert(hashset* set, const u8* elm);
+b8 hashset_insert(hashset* set, const u8* elm) __attribute__((nonnull(1, 2)));
 
 // Insert element — MOVE semantics (elm is nulled on insert, or freed if duplicate).
 // Returns 1 if already existed (elm freed), 0 if newly inserted.
-b8 hashset_insert_move(hashset* set, u8** elm);
+b8 hashset_insert_move(hashset* set, u8** elm) __attribute__((nonnull(1, 2)));
 
 // Returns 1 if found, 0 if not.
-b8 hashset_has(const hashset* set, const u8* elm);
+b8 hashset_has(const hashset* set, const u8* elm) __attribute__((nonnull(1, 2)));
+
+// Get pointer to element in-place. Returns NULL if not found.
+const u8* hashset_get_ptr(const hashset* set, const u8* elm) __attribute__((nonnull(1, 2)));
+u8*       hashset_get_ptr_mut(hashset* set, const u8* elm) __attribute__((nonnull(1, 2)));
+
+// Bucket iteration accessors
+u64       hashset_bucket_count(const hashset* set) __attribute__((nonnull(1)));
+b8        hashset_bucket_occupied(const hashset* set, u64 i) __attribute__((nonnull(1)));
+const u8* hashset_bucket_elm_ptr(const hashset* set, u64 i) __attribute__((nonnull(1)));
 
 // Returns 1 if found and removed, 0 if not found.
-b8 hashset_remove(hashset* set, const u8* elm);
+b8 hashset_remove(hashset* set, const u8* elm) __attribute__((nonnull(1, 2)));
 
 // Print all elements.
-void hashset_print(const hashset* set, print_fn print);
+void hashset_print(const hashset* set, print_fn print) __attribute__((nonnull(1, 2)));
 
 // Remove all elements, keep capacity.
-void hashset_clear(hashset* set);
+void hashset_clear(hashset* set) __attribute__((nonnull(1)));
 
 // Deep copy src into dest
-// dest should be pre-inited
-void hashset_copy(hashset* dest, const hashset* src);
+// SAFE ON: raw/uninitialized dest. Never reads dest before writing it.
+void hashset_copy(hashset* dest, const hashset* src) __attribute__((nonnull(1, 2)));
 
 
-static inline u64 hashset_size(const hashset* set)
+static inline u64 hashset_size(const hashset* set) __attribute__((nonnull(1)))
 {
     CHECK_FATAL(!set, "set is null");
     return set->size;
 }
 
-static inline u64 hashset_capacity(const hashset* set)
+static inline u64 hashset_capacity(const hashset* set) __attribute__((nonnull(1)))
 {
     CHECK_FATAL(!set, "set is null");
     return set->capacity;
 }
 
-static inline b8 hashset_empty(const hashset* set)
+static inline b8 hashset_empty(const hashset* set) __attribute__((nonnull(1)))
 {
     CHECK_FATAL(!set, "set is null");
     return set->size == 0;

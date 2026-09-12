@@ -58,7 +58,7 @@ String* string_from_cstr(const char* cstr)
     String* s = malloc(sizeof(String));
     CHECK_FATAL(!s, "malloc failed");
 
-    string_create_stk(s, cstr);
+    string_create_stk(cstr, s);
     return s;
 }
 
@@ -82,7 +82,7 @@ String* string_from_string(const String* other)
     return s;
 }
 
-void string_create_stk(String* s, const char* cstr)
+void string_create_stk(const char* cstr, String* s)
 {
     CHECK_FATAL(!s, "str is null");
 
@@ -489,11 +489,11 @@ u64 string_find_char(const String* s, char c)
     CHECK_FATAL(!s, "str is null");
 
     if (s->size == 0) {
-        return (u64)-1;
+        return WC_NOT_FOUND;
     }
     const char* buf = GET_STR(s);
     const char* p   = memchr(buf, (unsigned char)c, s->size);
-    return p ? (u64)(p - buf) : (u64)-1;
+    return p ? (u64)(p - buf) : WC_NOT_FOUND;
 }
 
 u64 string_find_cstr(const String* s, const char* substr)
@@ -506,7 +506,7 @@ u64 string_find_cstr(const String* s, const char* substr)
         return 0;
     }
     if (len > s->size) {
-        return (u64)-1;
+        return WC_NOT_FOUND;
     }
 
     const char* buf = GET_STR(s);
@@ -515,7 +515,7 @@ u64 string_find_cstr(const String* s, const char* substr)
             return i;
         }
     }
-    return (u64)-1;
+    return WC_NOT_FOUND;
 }
 
 String* string_substr(const String* s, u64 start, u64 length)

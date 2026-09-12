@@ -14,6 +14,7 @@ void matrix_suite(void);
 void bit_vector_suite(void);
 void fast_math_suite(void);
 void complex_suite(void);
+void macros_suite(void);
 
 int speed_suite(void);
 
@@ -42,6 +43,8 @@ int main(void)
     fast_math_suite();
 
     complex_suite();
+
+    macros_suite();
 
     speed_suite();
 

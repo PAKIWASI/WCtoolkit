@@ -6,12 +6,12 @@
 
 Stack* stack_create(u64 n, u32 data_size, const container_ops* ops)
 {
-    return genVec_init(n, data_size, ops);
+    return genVec_create(n, data_size, ops);
 }
 
 Stack* stack_create_val(u64 n, const u8* val, u32 data_size, const container_ops* ops)
 {
-    return genVec_init_val(n, val, data_size, ops);
+    return genVec_create_val(n, val, data_size, ops);
 }
 
 
@@ -47,11 +47,16 @@ void stack_pop(Stack* stk, u8* popped)
 
 void stack_peek(Stack* stk, u8* peek)
 {
+    CHECK_FATAL(!stk, "stack is null");
+    CHECK_FATAL(!peek, "peek is null");
+    WC_SET_RET(WC_ERR_EMPTY, stack_empty(stk), );
     genVec_get(stk, genVec_size(stk) - 1, peek);
 }
 
-const u8* stack_peek_ptr(Stack* stk)
+const u8* stack_peek_ptr(const Stack* stk)
 {
+    CHECK_FATAL(!stk, "stack is null");
+    WC_SET_RET(WC_ERR_EMPTY, stack_empty(stk), NULL);
     return genVec_get_ptr(stk, genVec_size(stk) - 1);
 }
 
@@ -59,4 +64,3 @@ void stack_print(Stack* stk, print_fn print_fn)
 {
     genVec_print(stk, print_fn);
 }
-

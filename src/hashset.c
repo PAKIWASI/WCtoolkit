@@ -40,16 +40,14 @@ static inline void set_maybe_resize(hashset* set);
 ====================PUBLIC FUNCTIONS====================
 */
 
-hashset* hashset_create(u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
-                        const container_ops* ops)
+void hashset_create_stk(u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
+                        const container_ops* ops, hashset* set)
 {
+    CHECK_FATAL(!set, "set is null");
     CHECK_FATAL(elm_size == 0, "elm_size can't be 0");
 
-    hashset* set = malloc(sizeof(hashset));
-    CHECK_FATAL(!set, "set malloc failed");
-
     set->elms = malloc((u64)HASHMAP_INIT_CAPACITY * elm_size);
-    CHECK_FATAL(!set->elms, "elms calloc failed");
+    CHECK_FATAL(!set->elms, "elms malloc failed");
     set->psls = calloc(HASHMAP_INIT_CAPACITY, sizeof(u8));
     CHECK_FATAL(!set->psls, "psls calloc failed");
 
@@ -65,6 +63,15 @@ hashset* hashset_create(u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
     set->cmp_fn  = cmp_fn  ? cmp_fn  : default_compare;
 
     set->ops = ops;
+}
+
+hashset* hashset_create(u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
+                        const container_ops* ops)
+{
+    hashset* set = malloc(sizeof(hashset));
+    CHECK_FATAL(!set, "set malloc failed");
+
+    hashset_create_stk(elm_size, hash_fn, cmp_fn, ops, set);
 
     return set;
 }
@@ -73,21 +80,7 @@ hashset* hashset_create(u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
 void hashset_destroy(hashset* set)
 {
     CHECK_FATAL(!set, "set is null");
-
-    delete_fn e_del = SET_DEL(set->ops);
-
-    if (e_del) {
-        for (u64 i = 0; i < set->capacity; i++) {
-            if (*GET_PSL(set, i) == BUCKET_EMPTY) {
-                continue;
-            }
-            e_del(GET_ELM(set, i));
-        }
-    }
-
-    free(set->elms);
-    free(set->psls);
-    free(set->scratch);
+    hashset_destroy_stk(set);
     free(set);
 }
 
@@ -182,9 +175,44 @@ b8 hashset_has(const hashset* set, const u8* elm)
     CHECK_FATAL(!set || !elm, "null arg");
 
     LOOKUP_RES res;
-    u8             out_psl;
+    u8         out_psl;
     set_lookup(set, elm, &res, &out_psl);
     return res == FOUND;
+}
+
+const u8* hashset_get_ptr(const hashset* set, const u8* elm)
+{
+    CHECK_FATAL(!set || !elm, "null arg");
+
+    LOOKUP_RES res;
+    u8         out_psl;
+    u64        slot = set_lookup(set, elm, &res, &out_psl);
+    return (res == FOUND) ? GET_ELM(set, slot) : NULL;
+}
+
+u8* hashset_get_ptr_mut(hashset* set, const u8* elm)
+{
+    return (u8*)hashset_get_ptr(set, elm);
+}
+
+u64 hashset_bucket_count(const hashset* set)
+{
+    CHECK_FATAL(!set, "set is null");
+    return set->capacity;
+}
+
+b8 hashset_bucket_occupied(const hashset* set, u64 i)
+{
+    CHECK_FATAL(!set, "set is null");
+    CHECK_FATAL(i >= set->capacity, "index out of bounds");
+    return *GET_PSL(set, i) != BUCKET_EMPTY;
+}
+
+const u8* hashset_bucket_elm_ptr(const hashset* set, u64 i)
+{
+    CHECK_FATAL(!set, "set is null");
+    CHECK_FATAL(i >= set->capacity, "index out of bounds");
+    return GET_ELM(set, i);
 }
 
 
@@ -282,7 +310,9 @@ void hashset_copy(hashset* dest, const hashset* src)
 {
     CHECK_FATAL(!dest || !src, "null arg");
 
-    hashset_destroy_stk(dest);
+    if (dest == src) {
+        return;
+    }
 
     dest->elms = calloc(src->capacity, src->elm_size);
     CHECK_FATAL(!dest->elms, "copy elms calloc failed");

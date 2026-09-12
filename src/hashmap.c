@@ -53,22 +53,18 @@ static void        map_resize(hashmap* map, u64 new_capacity);
 ====================PUBLIC FUNCTIONS====================
 */
 
-hashmap* hashmap_create(u32 key_size, u32 val_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
-                        const container_ops* key_ops, const container_ops* val_ops)
+void hashmap_create_stk(u32 key_size, u32 val_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
+                        const container_ops* key_ops, const container_ops* val_ops, hashmap* map)
 {
+    CHECK_FATAL(!map, "map is null");
     CHECK_FATAL(key_size == 0 || val_size == 0, "key/val size can't be 0");
 
-    hashmap* map = malloc(sizeof(hashmap));
-    CHECK_FATAL(!map, "map malloc failed");
-
-    // map->keys = calloc(HASHMAP_INIT_CAPACITY, key_size);
     map->keys = malloc((u64)HASHMAP_INIT_CAPACITY * key_size);
-    CHECK_FATAL(!map->keys, "keys calloc failed");
+    CHECK_FATAL(!map->keys, "keys malloc failed");
     map->psls = calloc(HASHMAP_INIT_CAPACITY, sizeof(u8));
     CHECK_FATAL(!map->psls, "psls calloc failed");
-    // map->vals = calloc(HASHMAP_INIT_CAPACITY, val_size);
     map->vals = malloc((u64)HASHMAP_INIT_CAPACITY * val_size);
-    CHECK_FATAL(!map->vals, "vals calloc failed");
+    CHECK_FATAL(!map->vals, "vals malloc failed");
 
     map->scratch = malloc(2 * (ALIGN8(key_size) + val_size));
     CHECK_FATAL(!map->scratch, "scratch malloc failed");
@@ -83,6 +79,15 @@ hashmap* hashmap_create(u32 key_size, u32 val_size, custom_hash_fn hash_fn, comp
 
     map->key_ops = key_ops;
     map->val_ops = val_ops;
+}
+
+hashmap* hashmap_create(u32 key_size, u32 val_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
+                        const container_ops* key_ops, const container_ops* val_ops)
+{
+    hashmap* map = malloc(sizeof(hashmap));
+    CHECK_FATAL(!map, "map malloc failed");
+
+    hashmap_create_stk(key_size, val_size, hash_fn, cmp_fn, key_ops, val_ops, map);
 
     return map;
 }
@@ -91,33 +96,11 @@ hashmap* hashmap_create(u32 key_size, u32 val_size, custom_hash_fn hash_fn, comp
 void hashmap_destroy(hashmap* map)
 {
     CHECK_FATAL(!map, "map is null");
-
-    if (!IS_POD_K(map) || !IS_POD_V(map)) {
-        delete_fn k_del = IS_POD_K(map) ? NULL : map->key_ops->del_fn;
-        delete_fn v_del = IS_POD_V(map) ? NULL : map->val_ops->del_fn;
-        if (k_del || v_del) {
-            for (u64 i = 0; i < map->capacity; i++) {
-                if (*GET_PSL(map, i) == BUCKET_EMPTY) {
-                    continue;
-                }
-                if (k_del) {
-                    k_del(GET_KEY(map, i));
-                }
-                if (v_del) {
-                    v_del(GET_VAL(map, i));
-                }
-            }
-        }
-    }
-
-    free(map->keys);
-    free(map->psls);
-    free(map->vals);
-    free(map->scratch);
+    hashmap_destroy_stk(map);
     free(map);
 }
 
-static void hashmap_destroy_stk(hashmap* map)
+void hashmap_destroy_stk(hashmap* map)
 {
     CHECK_FATAL(!map, "map is null");
 
@@ -385,10 +368,10 @@ b8 hashmap_get(const hashmap* map, const u8* key, u8* val)
 }
 
 
-// Get pointer to value in-place. Returns NULL if not found.
+// Get pointer to value in-place (read-only). Returns NULL if not found.
 // The pointer is valid until the next mutation (put/del/resize).
 // Do NOT free the returned pointer — the map owns it.
-u8* hashmap_get_ptr(hashmap* map, const u8* key)
+const u8* hashmap_get_ptr(const hashmap* map, const u8* key)
 {
     CHECK_FATAL(!map || !key, "null arg");
 
@@ -397,6 +380,39 @@ u8* hashmap_get_ptr(hashmap* map, const u8* key)
     u64        slot = map_lookup(map, key, &res, &out_psl);
 
     return (res == FOUND) ? GET_VAL(map, slot) : NULL;
+}
+
+// Get mutable pointer to value in-place. Returns NULL if not found.
+u8* hashmap_get_ptr_mut(hashmap* map, const u8* key)
+{
+    return (u8*)hashmap_get_ptr(map, key);
+}
+
+u64 hashmap_bucket_count(const hashmap* map)
+{
+    CHECK_FATAL(!map, "map is null");
+    return map->capacity;
+}
+
+b8 hashmap_bucket_occupied(const hashmap* map, u64 i)
+{
+    CHECK_FATAL(!map, "map is null");
+    CHECK_FATAL(i >= map->capacity, "index out of bounds");
+    return *GET_PSL(map, i) != BUCKET_EMPTY;
+}
+
+const u8* hashmap_bucket_key_ptr(const hashmap* map, u64 i)
+{
+    CHECK_FATAL(!map, "map is null");
+    CHECK_FATAL(i >= map->capacity, "index out of bounds");
+    return GET_KEY(map, i);
+}
+
+u8* hashmap_bucket_val_ptr(hashmap* map, u64 i)
+{
+    CHECK_FATAL(!map, "map is null");
+    CHECK_FATAL(i >= map->capacity, "index out of bounds");
+    return GET_VAL(map, i);
 }
 
 
@@ -535,7 +551,9 @@ void hashmap_copy(hashmap* dest, const hashmap* src)
 {
     CHECK_FATAL(!dest || !src, "null arg");
 
-    hashmap_destroy_stk(dest);
+    if (dest == src) {
+        return;
+    }
 
     dest->keys = malloc(src->capacity * src->key_size);
     CHECK_FATAL(!dest->keys, "copy keys calloc failed");

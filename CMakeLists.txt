@@ -82,6 +82,14 @@ if(WC_WARNINGS_AS_ERRORS)
   list(APPEND WC_WARN_FLAGS -Werror)
 endif()
 
+# The nonnull sweep (6-C) marks function params __attribute__((nonnull)) while the bodies keep
+# runtime CHECK_FATAL(!x) null checks as defense-in-depth. Under GCC that makes the runtime
+# check provably-always-false, which -Wnonnull-compare (-Wall) flags -> -Werror would fail.
+# Suppress it for GCC only. Clang has no -Wnonnull-compare, so do NOT add the flag there
+# (an unknown -W option under -Werror would itself break the build).
+if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
+  list(APPEND WC_WARN_FLAGS -Wno-nonnull-compare)
+endif()
 message(STATUS "Warnings-as-errors: ${WC_WARNINGS_AS_ERRORS}")
 
 
@@ -126,6 +134,7 @@ add_executable(tests
     tests/bit_vector_test.c
     tests/fast_math_test.c
     tests/complex_test.c
+    tests/macros_test.c
     tests/speed_test.c
     ${LIB_SOURCES}
 )

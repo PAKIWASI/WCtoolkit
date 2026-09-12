@@ -29,7 +29,7 @@ Matrixf* matrix_create_arr(u64 m, u64 n, const float* arr)
     return mat;
 }
 
-void matrix_create_stk(Matrixf* mat, u64 m, u64 n, float* data)
+void matrix_create_stk(u64 m, u64 n, float* data, Matrixf* mat)
 {
     CHECK_FATAL(!mat, "matrix is null");
     CHECK_FATAL(!data, "data is null");
@@ -81,7 +81,7 @@ void matrix_set_elm(Matrixf* mat, float elm, u64 i, u64 j)
     mat->data[IDX(mat, i, j)] = elm;
 }
 
-float matrix_get_elm(Matrixf* mat, u64 i, u64 j)
+float matrix_get_elm(const Matrixf* mat, u64 i, u64 j)
 {
     CHECK_FATAL(!mat, "matrix is null");
     CHECK_FATAL(i >= mat->m || j >= mat->n, "index out of bounds");
@@ -190,7 +190,7 @@ void matrix_xply_2(Matrixf* restrict out, const Matrixf* restrict a, const Matri
     // Transpose B for cache-friendly access
     Matrixf b_T;
     float  data[n * k]; // random vals
-    matrix_create_stk(&b_T, n, k, data);
+    matrix_create_stk(n, k, data, &b_T);
     matrix_T(&b_T, b); // transpose sets all vals
 
     memset(out->data, 0, sizeof(float) * m * n);
@@ -295,8 +295,8 @@ float matrix_det(const Matrixf* mat)
     Matrixf L, U;
     float  Ldata[n * n]; // random vals
     float  Udata[n * n];
-    matrix_create_stk(&L, n, n, Ldata);
-    matrix_create_stk(&U, n, n, Udata);
+    matrix_create_stk(n, n, Ldata, &L);
+    matrix_create_stk(n, n, Udata, &U);
 
     // Perform LU decomposition
     matrix_LU_Decomp(&L, &U, mat); // L and U set to zero
@@ -357,14 +357,33 @@ void matrix_div(Matrixf* restrict mat, float val)
     for (u64 i = 0; i < total; i++) { mat->data[i] /= val; }
 }
 
-void matrix_copy(Matrixf* restrict dest, const Matrixf* restrict src)
+void matrix_copy(Matrixf* dest, const Matrixf* src)
 {
-    CHECK_FATAL(!dest, "dest matrix is null");
-    CHECK_FATAL(!src, "src matrix is null");
-    CHECK_FATAL(dest->m != src->m || dest->n != src->n,
-                "matrix dimensions don't match");
+    CHECK_FATAL(!dest || !src, "null arg");
+    if (dest == src) {
+        return;
+    }
 
-    memcpy(dest->data, src->data, sizeof(float) * MATRIX_TOTAL(src));
+    u64 count = src->m * src->n;
+    dest->data = malloc(count * sizeof(float));
+    CHECK_FATAL(!dest->data, "matrix copy malloc failed");
+    memcpy(dest->data, src->data, count * sizeof(float));
+
+    dest->m = src->m;
+    dest->n = src->n;
+}
+
+void matrix_move(Matrixf* dest, Matrixf** src)
+{
+    CHECK_FATAL(!dest || !src || !*src, "null arg");
+    if (dest == *src) {
+        *src = NULL;
+        return;
+    }
+
+    memcpy(dest, *src, sizeof(Matrixf));
+    free(*src);
+    *src = NULL;
 }
 
 void matrix_print(const Matrixf* mat)

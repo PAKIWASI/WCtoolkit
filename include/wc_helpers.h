@@ -59,6 +59,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+_Static_assert(sizeof(String) == sizeof(genVec), "String and genVec sizes must match for value-storage helpers");
+
 
 /* ══════════════════════════════════════════════════════════════════════════
  * 1.  STRING BY VALUE
@@ -71,22 +73,17 @@
 
 static inline void str_copy(u8* dest, const u8* src)
 {
-    // dest is uninitialised raw slot memory — init to valid SSO state first
-    // so that string_copy's internal string_destroy_stk(dest) is safe.
-    String* d = (String*)dest;
-    // d->size     = 0;
-    // d->capacity = STR_SSO_SIZE;
-    // string_copy(d, (const String*)src);
-
-    String* s = (String*)src;
+    String*       d = (String*)dest;
+    const String* s = (const String*)src;
     memcpy(d, s, sizeof(String));
 
-    if (s->capacity == STR_SSO_SIZE - 1) {
+    if (string_is_sso(s)) {
         return; // str stored inline, we have everything
     }
 
     // src owns resources, copy them
     d->heap = malloc(s->capacity);
+    CHECK_FATAL(!d->heap, "malloc failed");
     memcpy(d->heap, s->heap, s->capacity);
 }
 
@@ -158,20 +155,7 @@ static inline int str_cmp_ptr(const u8* a, const u8* b, u64 size)
 
 static inline void vec_copy(u8* dest, const u8* src)
 {
-    const genVec* s = (const genVec*)src;
-    genVec*       d = (genVec*)dest;
-
-    memcpy(d, s, sizeof(genVec));                           // copy all fields (including ops ptr)
-    d->data = malloc(s->capacity * (u64)s->data_size);      // new data buffer
-
-    copy_fn copy = VEC_COPY_FN(s);                          // safe: handles NULL ops
-    if (copy) {
-        for (u64 i = 0; i < s->size; i++) {
-            copy(d->data + (i * d->data_size), genVec_get_ptr(s, i));
-        }
-    } else {
-        memcpy(d->data, s->data, s->capacity * (u64)s->data_size);
-    }
+    genVec_copy((genVec*)dest, (const genVec*)src);
 }
 
 static inline void vec_move(u8* dest, u8** src)
@@ -204,21 +188,9 @@ static inline void vec_print_int(const u8* elm)
 
 static inline void vec_copy_ptr(u8* dest, const u8* src)
 {
-    const genVec* s = *(const genVec**)src;
-
     genVec* d = malloc(sizeof(genVec));
-    memcpy(d, s, sizeof(genVec));                           // copies ops ptr too
-    d->data   = malloc(s->capacity * (u64)s->data_size);
-
-    copy_fn copy = VEC_COPY_FN(s);
-    if (copy) {
-        for (u64 i = 0; i < s->size; i++) {
-            copy(d->data + (i * d->data_size), genVec_get_ptr(s, i));
-        }
-    } else {
-        memcpy(d->data, s->data, s->capacity * (u64)s->data_size);
-    }
-
+    CHECK_FATAL(!d, "malloc failed");
+    genVec_copy(d, *(const genVec**)src);
     *(genVec**)dest = d;
 }
 
@@ -246,7 +218,7 @@ static inline void vec_print_int_ptr(const u8* elm)
  * No per-instance overhead — all vectors of the same type share the pointer.
  *
  * Usage:
- *   genVec* v = genVec_init(8, sizeof(String), &wc_str_ops);
+ *   genVec* v = genVec_create(8, sizeof(String), &wc_str_ops);
  *   hashmap* m = hashmap_create(..., &wc_str_ops, &wc_str_ops);
  * ══════════════════════════════════════════════════════════════════════════ */
 

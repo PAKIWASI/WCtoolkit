@@ -40,7 +40,7 @@ static void genVec_grow(genVec* vec);
 
 // API Implementation
 
-genVec* genVec_init(u64 n, u32 data_size, const container_ops* ops)
+genVec* genVec_create(u64 n, u32 data_size, const container_ops* ops)
 {
     CHECK_FATAL(data_size == 0, "data_size can't be 0");
 
@@ -64,7 +64,7 @@ genVec* genVec_init(u64 n, u32 data_size, const container_ops* ops)
 }
 
 
-void genVec_init_stk(u64 n, u32 data_size, const container_ops* ops, genVec* vec)
+void genVec_create_stk(u64 n, u32 data_size, const container_ops* ops, genVec* vec)
 {
     CHECK_FATAL(!vec, "vec is null");
     CHECK_FATAL(data_size == 0, "data_size can't be 0");
@@ -79,14 +79,14 @@ void genVec_init_stk(u64 n, u32 data_size, const container_ops* ops, genVec* vec
 }
 
 
-genVec* genVec_init_val(u64 n, const u8* val, u32 data_size, const container_ops* ops)
+genVec* genVec_create_val(u64 n, const u8* val, u32 data_size, const container_ops* ops)
 {
     CHECK_FATAL(!val, "val can't be null");
     CHECK_FATAL(n == 0, "cant init with val if n = 0");
 
-    genVec* vec = genVec_init(n, data_size, ops);
+    genVec* vec = genVec_create(n, data_size, ops);
 
-    vec->size = n; // capacity set to n in genVec_init
+    vec->size = n; // capacity set to n in genVec_create
 
     if (IS_POD(vec)) {
         for (u64 i = 0; i < n; i++) {
@@ -109,12 +109,12 @@ genVec* genVec_init_val(u64 n, const u8* val, u32 data_size, const container_ops
 }
 
 
-void genVec_init_val_stk(u64 n, const u8* val, u32 data_size, const container_ops* ops, genVec* vec)
+void genVec_create_val_stk(u64 n, const u8* val, u32 data_size, const container_ops* ops, genVec* vec)
 {
     CHECK_FATAL(!val, "val can't be null");
     CHECK_FATAL(n == 0, "cant init with val if n = 0");
 
-    genVec_init_stk(n, data_size, ops, vec);
+    genVec_create_stk(n, data_size, ops, vec);
 
     vec->size = n;
 
@@ -137,9 +137,9 @@ void genVec_init_val_stk(u64 n, const u8* val, u32 data_size, const container_op
 }
 
 
-genVec* genVec_init_arr(u64 n, u32 data_size, const container_ops* ops, u8* arr)
+genVec* genVec_create_arr(u64 n, u32 data_size, const container_ops* ops, u8* arr)
 {
-    genVec* v = genVec_init(n, data_size, ops);
+    genVec* v = genVec_create(n, data_size, ops);
 
     memcpy(v->data, arr, n * data_size);
     v->size = n;
@@ -148,7 +148,7 @@ genVec* genVec_init_arr(u64 n, u32 data_size, const container_ops* ops, u8* arr)
 }
 
 
-void genVec_init_stk_arr(u64 n, u8* arr, u32 data_size, const container_ops* ops, genVec* vec)
+void genVec_create_stk_arr(u64 n, u8* arr, u32 data_size, const container_ops* ops, genVec* vec)
 {
     CHECK_FATAL(!arr, "arr is null");
     CHECK_FATAL(!vec, "vec is null");
@@ -451,7 +451,7 @@ const u8* genVec_get_ptr(const genVec* vec, u64 i)
 }
 
 
-u8* genVec_get_ptr_mut(const genVec* vec, u64 i)
+u8* genVec_get_ptr_mut(genVec* vec, u64 i)
 {
     CHECK_FATAL(!vec, "vec is null");
     CHECK_FATAL(i >= vec->size, "index out of bounds");
@@ -735,7 +735,7 @@ u64 genVec_find(const genVec* vec, u8* elm, compare_fn cmp_fn)
         }
     }
 
-    return (u64)-1;
+    return WC_NOT_FOUND;
 }
 
 
@@ -748,7 +748,7 @@ genVec* genVec_subarr(const genVec* vec, u64 start, u64 len)
         len = vec->size - start;
     }
 
-    genVec* v = genVec_init(len, vec->data_size, vec->ops);
+    genVec* v = genVec_create(len, vec->data_size, vec->ops);
 
     if (len > 0) {
         if (IS_POD(vec)) {
@@ -790,19 +790,7 @@ void genVec_copy(genVec* dest, const genVec* src)
     CHECK_FATAL(!dest, "dest is null");
     CHECK_FATAL(!src, "src is null");
 
-    if (dest == src) {
-        return;
-    }
-
-    genVec_destroy_stk(dest);
-
-    // Copy all fields (including ops pointer)
-    memcpy(dest, src, sizeof(genVec));
-
-    // TODO: fix for copying into uninited memory ?
-    // dest->data = calloc(src->capacity, src->data_size);
-    dest->data = malloc(GET_SCALED(src, src->capacity));
-    CHECK_FATAL(!dest->data, "dest data calloc failed");
+    \ \ \ \ if\ \(dest\ ==\ src\)\ \{\n\ \ \ \ \ \ \ \ return;\n\ \ \ \ }\n\n\ \ \ \ //\ Copy\ all\ fields\ \(including\ ops\ pointer\)\n\ \ \ \ memcpy\(dest,\ src,\ sizeof\(genVec\)\);\n\n\ \ \ \ dest->data\ =\ malloc\(GET_SCALED\(src,\ src->capacity\)\);\n\ \ \ \ CHECK_FATAL\(!dest->data,\ "dest\ data\ malloc\ failed"\);
 
     if (IS_POD(src)) {
         memcpy(dest->data, src->data, GET_SCALED(src, src->size));

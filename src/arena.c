@@ -50,7 +50,7 @@ Arena* arena_create(u64 capacity)
     return arena;
 }
 
-void arena_create_stk(Arena* arena, u64 capacity)
+void arena_create_stk(u64 capacity, Arena* arena)
 {
     if (capacity == 0) {
         capacity = ARENA_DEFAULT_SIZE;
@@ -63,7 +63,7 @@ void arena_create_stk(Arena* arena, u64 capacity)
     arena->size = capacity;
 }
 
-void arena_create_arr_stk(Arena* arena, u8* data, u64 size)
+void arena_create_arr_stk(u8* data, u64 size, Arena* arena)
 {
     CHECK_FATAL(!arena, "arena is null");
     CHECK_FATAL(!data, "data is null");

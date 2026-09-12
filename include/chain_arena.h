@@ -18,6 +18,7 @@ typedef struct ArenaNode {
     u8  base[ARENA_NODE_INLINE_SIZE];
 } ArenaNode;
 
+// NOT COPYABLE: backs a bump allocator; external pointers into it would be invalidated.
 typedef struct {
     genVec nodes; // vector of ArenaNode*
     u64    used;  // total bytes allocated (sum of all node->used).
@@ -36,25 +37,25 @@ typedef struct {
 
 ChainArena* chain_arena_create(void);
 
-void chain_arena_release(ChainArena* arena);
+void chain_arena_release(ChainArena* arena) __attribute__((nonnull(1)));
 
 
-u8* chain_arena_alloc_aligned(ChainArena* arena, u64 size, u32 align);
+u8* chain_arena_alloc_aligned(ChainArena* arena, u64 size, u32 align) __attribute__((nonnull(1)));
 
-static inline u8* chain_arena_alloc(ChainArena* arena, u64 size)
+static inline u8* chain_arena_alloc(ChainArena* arena, u64 size) __attribute__((nonnull(1)))
 {
     return chain_arena_alloc_aligned(arena, size, ARENA_DEFAULT_ALIGNMENT);
 }
 
 
 // reset back to initial state with a single free node
-void chain_arena_reset(ChainArena* arena);
+void chain_arena_reset(ChainArena* arena) __attribute__((nonnull(1)));
 
 // clear all space but dont free any nodes
-void chain_arena_clear(ChainArena* arena);
+void chain_arena_clear(ChainArena* arena) __attribute__((nonnull(1)));
 
 
-ChainArenaScratch chain_arena_scratch_begin(ChainArena* arena);
+ChainArenaScratch chain_arena_scratch_begin(ChainArena* arena) __attribute__((nonnull(1)));
 
 void chain_arena_scratch_end(ChainArenaScratch scratch);
 

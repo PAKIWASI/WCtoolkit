@@ -17,10 +17,10 @@ static void test_strval_push_copy_independent(void)
 {
     genVec* v = VEC_OF_STR(4);
     String  s;
-    string_create_stk(&s, "hello");
+    string_create_stk("hello", &s);
 
-    VEC_PUSH_COPY(v, s);
-    VEC_PUSH_COPY(v, s);
+    VEC_PUSH(v, s);
+    VEC_PUSH(v, s);
 
     /* mutate source — stored copies must be independent */
     string_append_cstr(&s, "_MUTATED");
@@ -103,7 +103,7 @@ static void test_strval_copy_vec(void)
     VEC_PUSH_CSTR(src, "b");
 
     genVec dest;
-    genVec_init_stk(0, sizeof(String), &wc_str_ops, &dest);
+    genVec_create_stk(0, sizeof(String), &wc_str_ops, &dest);
     genVec_copy(&dest, src);
 
     /* modifying src must not affect dest */
@@ -142,8 +142,8 @@ static void test_strptr_push_copy_independent(void)
     genVec* v  = VEC_OF_STR_PTR(4);
     String* s  = string_from_cstr("hello");
 
-    VEC_PUSH_COPY(v, s);
-    VEC_PUSH_COPY(v, s);
+    VEC_PUSH(v, s);
+    VEC_PUSH(v, s);
 
     /* mutate source — copies in vec must be independent */
     string_append_cstr(s, "_MUTATED");
@@ -301,7 +301,7 @@ static void test_vecval_copy_outer(void)
     }
 
     genVec dest;
-    genVec_init_stk(0, sizeof(genVec), &wc_vec_ops, &dest);
+    genVec_create_stk(0, sizeof(genVec), &wc_vec_ops, &dest);
     genVec_copy(&dest, src);
 
     /* modify src inner — dest must be independent */
@@ -387,7 +387,7 @@ static void test_vecptr_copy_outer(void)
     VEC_PUSH_VEC_PTR(src, inner);
 
     genVec dest;
-    genVec_init_stk(0, sizeof(genVec*), &wc_vec_ptr_ops, &dest);
+    genVec_create_stk(0, sizeof(genVec*), &wc_vec_ptr_ops, &dest);
     genVec_copy(&dest, src);
 
     /* modify src inner — dest copy must be independent */
@@ -462,7 +462,7 @@ static void test_map_str_str_macro(void)
     MAP_PUT_STR_STR(m, "lang",  "C");
 
     String probe;
-    string_create_stk(&probe, "city");
+    string_create_stk("city", &probe);
     String* val = (String*)hashmap_get_ptr(m, (u8*)&probe);
     WC_ASSERT_NOT_NULL(val);
     WC_ASSERT(string_equals_cstr(val, "Cairo"));

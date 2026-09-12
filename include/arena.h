@@ -46,10 +46,10 @@ Parameters:
   u8*    data     |   The region to be arena-fyed.
   u64    size     |   The size of the region in bytes.
 */
-void arena_create_arr_stk(Arena* arena, u8* data, u64 size);
+void arena_create_arr_stk(u8* data, u64 size, Arena* arena) __attribute__((nonnull(1, 3)));
 
 
-void arena_create_stk(Arena* arena, u64 capacity);
+void arena_create_stk(u64 capacity, Arena* arena) __attribute__((nonnull(2)));
 
 /*
 Reset the pointer to the arena region to the beginning
@@ -59,7 +59,7 @@ expensive frees.
 Parameters:
   Arena *arena    |    The arena to be cleared.
 */
-static inline void arena_clear(Arena* arena)
+static inline void arena_clear(Arena* arena) __attribute__((nonnull(1)))
 {
     CHECK_FATAL(!arena, "arena is null");
     arena->idx = 0;
@@ -71,7 +71,7 @@ Free the memory allocated for the entire arena region.
 Parameters:
   Arena *arena    |    The arena to be destroyed.
 */
-static inline void arena_release(Arena* arena)
+static inline void arena_release(Arena* arena) __attribute__((nonnull(1)))
 {
     CHECK_FATAL(!arena, "arena is null");
     free(arena->base);
@@ -96,7 +96,7 @@ Return:
   Pointer to arena region segment on success, NULL on
   failure.
 */
-u8* arena_alloc(Arena* arena, u64 size);
+u8* arena_alloc(Arena* arena, u64 size) __attribute__((nonnull(1)));
 
 /*
 Same as arena_alloc, except you can specify a memory
@@ -119,18 +119,18 @@ Return:
   Pointer to arena region segment on success, NULL on
   failure.
 */
-u8* arena_alloc_aligned(Arena* arena, u64 size, u32 alignment);
+u8* arena_alloc_aligned(Arena* arena, u64 size, u32 alignment) __attribute__((nonnull(1)));
 
 
 // Get used capacity
-static inline u64 arena_used(Arena* arena)
+static inline u64 arena_used(Arena* arena) __attribute__((nonnull(1)))
 {
     CHECK_FATAL(!arena, "arena is null");
     return arena->idx;
 }
 
 // Get remaining capacity
-static inline u64 arena_remaining(Arena* arena)
+static inline u64 arena_remaining(Arena* arena) __attribute__((nonnull(1)))
 {
     CHECK_FATAL(!arena, "arena is null");
     return arena->size - arena->idx;
@@ -146,7 +146,7 @@ typedef struct {
 } ArenaScratch;
 
 
-static inline ArenaScratch arena_scratch_begin(Arena* arena)
+static inline ArenaScratch arena_scratch_begin(Arena* arena) __attribute__((nonnull(1)))
 {
     CHECK_FATAL(!arena, "arena is null");
     return (ArenaScratch){ .arena = arena, .mark = arena->idx };
@@ -160,11 +160,19 @@ static inline void arena_scratch_end(ArenaScratch scratch)
     }
 }
 
-// macro for automatic cleanup arena_scratch
-#define ARENA_SCRATCH(arena_ptr) \
-    for (ArenaScratch __nme__ = arena_scratch_begin(arena_ptr); \
-         (__nme__ ).arena != NULL; \
-         arena_scratch_end((__nme__ )), (__nme__).arena = NULL)
+static inline void _arena_scratch_cleanup(ArenaScratch* s)
+{
+    if (s && s->arena) {
+        s->arena->idx = s->mark;
+        s->arena = NULL;
+    }
+}
+
+// macro for automatic cleanup arena_scratch — safe with return/break/goto
+#define ARENA_SCRATCH(arena_ptr)                                                                             \
+    for (int _as_once = 1; _as_once; _as_once = 0)                                                          \
+        for (ArenaScratch __attribute__((cleanup(_arena_scratch_cleanup))) _as_s = arena_scratch_begin(arena_ptr); \
+             _as_once; _as_once = 0)
 
 /* USAGE:
 // Manual:
@@ -181,7 +189,7 @@ ARENA_SCRATCH(arena) {
 
 // USEFULL MACROS
 
-#define ARENA_CREATE_STK_ARR(arena, n) (arena_create_arr_stk((arena), (u8[nKB(n)]){0}, nKB(n)))
+#define ARENA_CREATE_STK_ARR(arena, n) (arena_create_arr_stk((u8[nKB(n)]){0}, nKB(n), (arena)))
 
 // typed allocation
 #define ARENA_ALLOC(arena, T) ((T*)arena_alloc((arena), sizeof(T)))
