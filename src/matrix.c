@@ -23,7 +23,6 @@ Matrixf* matrix_create(u64 m, u64 n)
 
 Matrixf* matrix_create_arr(u64 m, u64 n, const float* arr)
 {
-    CHECK_FATAL(!arr, "input arr is null");
     Matrixf* mat = matrix_create(m, n);
     memcpy(mat->data, arr, sizeof(float) * m * n);
     return mat;
@@ -31,9 +30,6 @@ Matrixf* matrix_create_arr(u64 m, u64 n, const float* arr)
 
 void matrix_create_stk(u64 m, u64 n, float* data, Matrixf* mat)
 {
-    CHECK_FATAL(!mat, "matrix is null");
-    CHECK_FATAL(!data, "data is null");
-
     // we can do this on the stack
     mat->data = data; // copying stk ptr 
     mat->m    = m;
@@ -42,8 +38,6 @@ void matrix_create_stk(u64 m, u64 n, float* data, Matrixf* mat)
 
 void matrix_destroy(Matrixf* mat)
 {
-    CHECK_FATAL(!mat, "matrix is null");
-
     free(mat->data);
     free(mat);
 }
@@ -51,8 +45,6 @@ void matrix_destroy(Matrixf* mat)
 
 void matrix_set_val_arr(Matrixf* mat, u64 count, const float* arr)
 {
-    CHECK_FATAL(!mat, "matrix is null");
-    CHECK_FATAL(!arr, "arr is null");
     CHECK_FATAL(count != MATRIX_TOTAL(mat), "count doesn't match matrix size");
 
     memcpy(mat->data, arr, sizeof(float) * count);
@@ -60,8 +52,6 @@ void matrix_set_val_arr(Matrixf* mat, u64 count, const float* arr)
 
 void matrix_set_val_arr2(Matrixf* mat, u64 m, u64 n, const float** arr2)
 {
-    CHECK_FATAL(!mat, "matrix is null");
-    CHECK_FATAL(!arr2, "arr is null");
     CHECK_FATAL(!*arr2, "*arr is null");
     CHECK_FATAL(m != mat->m || n != mat->n,
                 "mat dimentions dont match passed arr2");
@@ -75,7 +65,6 @@ void matrix_set_val_arr2(Matrixf* mat, u64 m, u64 n, const float** arr2)
 
 void matrix_set_elm(Matrixf* mat, float elm, u64 i, u64 j)
 {
-    CHECK_FATAL(!mat, "matrix is null");
     CHECK_FATAL(i >= mat->m || j >= mat->n, "index out of bounds");
 
     mat->data[IDX(mat, i, j)] = elm;
@@ -83,7 +72,6 @@ void matrix_set_elm(Matrixf* mat, float elm, u64 i, u64 j)
 
 float matrix_get_elm(const Matrixf* mat, u64 i, u64 j)
 {
-    CHECK_FATAL(!mat, "matrix is null");
     CHECK_FATAL(i >= mat->m || j >= mat->n, "index out of bounds");
 
     return mat->data[IDX(mat, i, j)];
@@ -91,9 +79,6 @@ float matrix_get_elm(const Matrixf* mat, u64 i, u64 j)
 
 void matrix_add(Matrixf* restrict out, const Matrixf* restrict a, const Matrixf* restrict b)
 {
-    CHECK_FATAL(!out, "out matrix is null");
-    CHECK_FATAL(!a, "a matrix is null");
-    CHECK_FATAL(!b, "b matrix is null");
     CHECK_FATAL(a->m != b->m || a->n != b->n || a->m != out->m ||
                     a->n != out->n,
                 "a, b, out mat dimentions dont match");
@@ -108,9 +93,6 @@ void matrix_add(Matrixf* restrict out, const Matrixf* restrict a, const Matrixf*
 
 void matrix_sub(Matrixf* restrict out, const Matrixf* restrict a, const Matrixf* restrict b)
 {
-    CHECK_FATAL(!out, "out matrix is null");
-    CHECK_FATAL(!a, "a matrix is null");
-    CHECK_FATAL(!b, "b matrix is null");
     // FIXED: Added dimension check for 'out' matrix
     CHECK_FATAL(a->m != b->m || a->n != b->n || a->m != out->m ||
                     a->n != out->n,
@@ -127,9 +109,6 @@ void matrix_sub(Matrixf* restrict out, const Matrixf* restrict a, const Matrixf*
 // this is good for small to medium size matrices
 void matrix_xply(Matrixf* restrict out, const Matrixf* restrict a, const Matrixf* restrict b)
 {
-    CHECK_FATAL(!out, "out matrix is null");
-    CHECK_FATAL(!a, "a matrix is null");
-    CHECK_FATAL(!b, "b matrix is null");
     CHECK_FATAL(a->n != b->m,
                 "incompatible matrix dimensions for multiplication");
     CHECK_FATAL(out->m != a->m || out->n != b->n,
@@ -176,9 +155,6 @@ void matrix_xply(Matrixf* restrict out, const Matrixf* restrict a, const Matrixf
 // takes more memory, good for large size matrices
 void matrix_xply_2(Matrixf* restrict out, const Matrixf* restrict a, const Matrixf* restrict b)
 {
-    CHECK_FATAL(!out, "out matrix is null");
-    CHECK_FATAL(!a, "a matrix is null");
-    CHECK_FATAL(!b, "b matrix is null");
     CHECK_FATAL(a->n != b->m, "incompatible matrix dimensions");
     CHECK_FATAL(out->m != a->m || out->n != b->n,
                 "output matrix has wrong dimensions");
@@ -227,9 +203,6 @@ For each element, you subtract the dot product of already-computed L and U value
 */
 void matrix_LU_Decomp(Matrixf* restrict L, Matrixf* restrict U, const Matrixf* restrict mat)
 {
-    CHECK_FATAL(!L, "L mat is null");
-    CHECK_FATAL(!U, "U mat is null");
-    CHECK_FATAL(!mat, "mat is null");
     CHECK_FATAL(mat->n != mat->m, "mat is not a square matrix");
     CHECK_FATAL(L->n != mat->n || L->m != mat->m, "L dimensions don't match");
     CHECK_FATAL(U->n != mat->n || U->m != mat->m, "U dimensions don't match");
@@ -286,7 +259,6 @@ void matrix_LU_Decomp(Matrixf* restrict L, Matrixf* restrict U, const Matrixf* r
 */
 float matrix_det(const Matrixf* mat)
 {
-    CHECK_FATAL(!mat, "mat matrix is null");
     CHECK_FATAL(mat->m != mat->n, "only square matrices have determinant");
 
 
@@ -303,7 +275,6 @@ float matrix_det(const Matrixf* mat)
 
     // Calculate determinant as product of U's diagonal
     float det = 1;
-    // for (u64 i = 0; i < n; i++) { det *= U->data[IDX(U, i, i)]; }
     for (u64 i = 0; i < n; i++) { det *= U.data[IDX(&U, i, i)]; }
 
     return det;
@@ -312,8 +283,6 @@ float matrix_det(const Matrixf* mat)
 
 void matrix_T(Matrixf* restrict out, const Matrixf* restrict mat)
 {
-    CHECK_FATAL(!mat, "mat matrix is null");
-    CHECK_FATAL(!out, "out matrix is null");
     CHECK_FATAL(mat->m != out->n || mat->n != out->m,
                 "incompatible matrix dimensions");
 
@@ -341,8 +310,6 @@ void matrix_T(Matrixf* restrict out, const Matrixf* restrict mat)
 
 void matrix_scale(Matrixf* restrict mat, float val)
 {
-    CHECK_FATAL(!mat, "matrix is null");
-
     u64 total = MATRIX_TOTAL(mat);
     for (u64 i = 0; i < total; i++) { mat->data[i] *= val; }
 }
@@ -350,7 +317,6 @@ void matrix_scale(Matrixf* restrict mat, float val)
 
 void matrix_div(Matrixf* restrict mat, float val)
 {
-    CHECK_FATAL(!mat, "mat is null");
     CHECK_FATAL(val == 0, "division by zero!");
 
     u64 total = MATRIX_TOTAL(mat);
@@ -359,7 +325,6 @@ void matrix_div(Matrixf* restrict mat, float val)
 
 void matrix_copy(Matrixf* dest, const Matrixf* src)
 {
-    CHECK_FATAL(!dest || !src, "null arg");
     if (dest == src) {
         return;
     }
@@ -375,7 +340,6 @@ void matrix_copy(Matrixf* dest, const Matrixf* src)
 
 void matrix_move(Matrixf* dest, Matrixf** src)
 {
-    CHECK_FATAL(!dest || !src || !*src, "null arg");
     if (dest == *src) {
         *src = NULL;
         return;
@@ -388,8 +352,6 @@ void matrix_move(Matrixf* dest, Matrixf** src)
 
 void matrix_print(const Matrixf* mat)
 {
-    CHECK_FATAL(!mat, "matrix is null");
-
     u64 total = mat->m * mat->n;
 
     // Single linear loop O(n)
@@ -403,12 +365,10 @@ void matrix_print(const Matrixf* mat)
         }
 
         // Print element
-        printf("%f ", (double)mat->data[i]);
+        printf("%f ", mat->data[i]);
     }
 
     // Close last row
     putchar('|');
     putchar('\n');
 }
-
-

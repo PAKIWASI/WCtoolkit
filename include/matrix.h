@@ -75,9 +75,6 @@ void matrix_scale(Matrixf* restrict mat, float val) __attribute__((nonnull(1)));
 // Element wise division
 void matrix_div(Matrixf* restrict mat, float val) __attribute__((nonnull(1)));
 
-// Matrix copy: dest = src
-void matrix_copy(Matrixf* restrict dest, const Matrixf* restrict src) __attribute__((nonnull(1, 2)));
-
 
 // MATRIX MULTIPLICATION
 // ============================================================================
@@ -147,7 +144,7 @@ No need to call matrix_destroy - freed when arena is cleared/released
 Usage:
     Matrix* mat = MATRIX_ARENA(arena, 3, 3);
 */
-static inline __attribute__((nonnull(1))) Matrixf* matrix_arena_alloc(Arena* arena, u64 m, u64 n)
+static inline Matrixf* matrix_arena_alloc(Arena* arena, u64 m, u64 n) __attribute__((nonnull(1)))
 {
     CHECK_FATAL(m == 0 && n == 0, "n == m == 0");
 
@@ -171,10 +168,9 @@ Usage:
     Matrix* mat = MATRIX_ARENA_ARR(arena, 3, 3, (float[9]){1,2,3,4,5,6,7,8,9});
 */
 
-static inline __attribute__((nonnull(1, 4))) Matrixf* matrix_arena_arr_alloc(Arena* arena, u64 m, u64 n, const float* arr)
+static inline Matrixf* matrix_arena_arr_alloc(Arena* arena, u64 m, u64 n, const float* arr) __attribute__((nonnull(1, 4)))
 {
     CHECK_FATAL(m == 0 || n == 0, "matrix dims must be > 0");
-    CHECK_FATAL(!arr, "input arr is null");
 
     Matrixf* mat = matrix_arena_alloc(arena, m, n);
     memcpy(mat->data, arr, sizeof(float) * m * n);

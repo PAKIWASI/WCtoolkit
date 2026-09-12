@@ -27,7 +27,7 @@
 // genVec growth settings
 
 #ifndef GENVEC_GROWTH
-    #define GENVEC_GROWTH 1.5F      // vec capacity multiplier
+#define GENVEC_GROWTH 1.5F // vec capacity multiplier
 #endif
 
 
@@ -38,9 +38,9 @@ typedef struct {
     // Pointer to shared type-ops vtable (or NULL for POD types)
     const container_ops* ops;
 
-    u64 size;       // Number of elements currently in vector
-    u64 capacity;   // Total allocated capacity (in elements)
-    u32 data_size;  // Size of each element in bytes
+    u64 size;      // Number of elements currently in vector
+    u64 capacity;  // Total allocated capacity (in elements)
+    u32 data_size; // Size of each element in bytes
 
     // Cache: 1 if ops==NULL (POD fast path). Wired by genVec_create* in 6-M.
     b8 is_pod;
@@ -53,7 +53,7 @@ _Static_assert(sizeof(genVec) == 40, "genVec layout drifted from expected 40 byt
 // Convenience: access ops callbacks safely
 #define VEC_COPY_FN(vec) ((vec)->ops ? (vec)->ops->copy_fn : NULL)
 #define VEC_MOVE_FN(vec) ((vec)->ops ? (vec)->ops->move_fn : NULL)
-#define VEC_DEL_FN(vec)  ((vec)->ops ? (vec)->ops->del_fn  : NULL)
+#define VEC_DEL_FN(vec)  ((vec)->ops ? (vec)->ops->del_fn : NULL)
 
 
 
@@ -70,7 +70,8 @@ void genVec_create_stk(u64 n, u32 data_size, const container_ops* ops, genVec* v
 // Initialize vector of size n with all elements set to val.
 genVec* genVec_create_val(u64 n, const u8* val, u32 data_size, const container_ops* ops) __attribute__((nonnull(2)));
 
-void genVec_create_val_stk(u64 n, const u8* val, u32 data_size, const container_ops* ops, genVec* vec) __attribute__((nonnull(2, 5)));
+void genVec_create_val_stk(u64 n, const u8* val, u32 data_size, const container_ops* ops, genVec* vec)
+    __attribute__((nonnull(2, 5)));
 
 genVec* genVec_create_arr(u64 n, u32 data_size, const container_ops* ops, u8* arr) __attribute__((nonnull(4)));
 
@@ -78,7 +79,8 @@ genVec* genVec_create_arr(u64 n, u32 data_size, const container_ops* ops, u8* ar
 // You provide a stack-allocated array which becomes the internal array.
 // should only use if you need genVec operations on C array
 // WARNING: crashes when size == capacity and you try to push.
-void genVec_create_stk_arr(u64 n, u8* arr, u32 data_size, const container_ops* ops, genVec* vec) __attribute__((nonnull(2, 5)));
+void genVec_create_stk_arr(u64 n, u8* arr, u32 data_size, const container_ops* ops, genVec* vec)
+    __attribute__((nonnull(2, 5)));
 
 // Destroy heap-allocated vector and clean up all elements.
 void genVec_destroy(genVec* vec) __attribute__((nonnull(1)));
@@ -179,7 +181,10 @@ genVec* genVec_subarr(const genVec* vec, u64 start, u64 len) __attribute__((nonn
 void genVec_print(const genVec* vec, print_fn fn) __attribute__((nonnull(1, 2)));
 
 // Deep copy src vector into dest.
-// Note: cleans up dest (if already inited).
+// REQUIRES: dest must be uninitialized (or already destroyed/reset) before calling.
+// This does NOT clean up any existing dest->data / elements — it overwrites
+// dest's fields directly. Calling this on an already-populated dest leaks
+// its old buffer and skips del_fn on its old elements.
 void genVec_copy(genVec* dest, const genVec* src) __attribute__((nonnull(1, 2)));
 
 // Transfer ownership from src to dest.
@@ -190,21 +195,18 @@ void genVec_move(genVec* dest, genVec** src) __attribute__((nonnull(1, 2)));
 // Get number of elements in vector.
 static inline __attribute__((nonnull(1))) u64 genVec_size(const genVec* vec)
 {
-    CHECK_FATAL(!vec, "vec is null");
     return vec->size;
 }
 
 // Get total capacity of vector.
 static inline __attribute__((nonnull(1))) u64 genVec_capacity(const genVec* vec)
 {
-    CHECK_FATAL(!vec, "vec is null");
     return vec->capacity;
 }
 
 // Check if vector is empty.
 static inline __attribute__((nonnull(1))) b8 genVec_empty(const genVec* vec)
 {
-    CHECK_FATAL(!vec, "vec is null");
     return vec->size == 0;
 }
 

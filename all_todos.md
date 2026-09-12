@@ -56,6 +56,8 @@
 - [x] 4-H: Rebuild `TEMP_CSTR_READ` with `__attribute__((cleanup))`
 - [x] 4-I: Add `macros_test.c` tests for all new/modified macros
 
+if we are using __attribute__(nonnull), then drop the CHECK_FATAL validating non nulls
+
 ## Phase 5 — In-place renames
 
 > Pulled ahead of the hardening phase: renames are mechanical churn with no behavioral risk, and

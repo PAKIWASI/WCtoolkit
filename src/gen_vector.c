@@ -59,6 +59,7 @@ genVec* genVec_create(u64 n, u32 data_size, const container_ops* ops)
     vec->capacity  = n;
     vec->data_size = data_size;
     vec->ops       = ops;
+    vec->is_pod    = IS_POD(vec);
 
     return vec;
 }
@@ -66,7 +67,6 @@ genVec* genVec_create(u64 n, u32 data_size, const container_ops* ops)
 
 void genVec_create_stk(u64 n, u32 data_size, const container_ops* ops, genVec* vec)
 {
-    CHECK_FATAL(!vec, "vec is null");
     CHECK_FATAL(data_size == 0, "data_size can't be 0");
 
     vec->data = (n > 0) ? malloc(data_size * n) : NULL;
@@ -76,19 +76,19 @@ void genVec_create_stk(u64 n, u32 data_size, const container_ops* ops, genVec* v
     vec->capacity  = n;
     vec->data_size = data_size;
     vec->ops       = ops;
+    vec->is_pod    = IS_POD(vec);
 }
 
 
 genVec* genVec_create_val(u64 n, const u8* val, u32 data_size, const container_ops* ops)
 {
-    CHECK_FATAL(!val, "val can't be null");
     CHECK_FATAL(n == 0, "cant init with val if n = 0");
 
     genVec* vec = genVec_create(n, data_size, ops);
 
     vec->size = n; // capacity set to n in genVec_create
 
-    if (IS_POD(vec)) {
+    if (vec->is_pod) {
         for (u64 i = 0; i < n; i++) {
             memcpy(GET_PTR(vec, i), val, data_size);
         }
@@ -111,14 +111,13 @@ genVec* genVec_create_val(u64 n, const u8* val, u32 data_size, const container_o
 
 void genVec_create_val_stk(u64 n, const u8* val, u32 data_size, const container_ops* ops, genVec* vec)
 {
-    CHECK_FATAL(!val, "val can't be null");
     CHECK_FATAL(n == 0, "cant init with val if n = 0");
 
     genVec_create_stk(n, data_size, ops, vec);
 
     vec->size = n;
 
-    if (IS_POD(vec)) {
+    if (vec->is_pod) {
         for (u64 i = 0; i < n; i++) {
             memcpy(GET_PTR(vec, i), val, data_size);
         }
@@ -150,8 +149,6 @@ genVec* genVec_create_arr(u64 n, u32 data_size, const container_ops* ops, u8* ar
 
 void genVec_create_stk_arr(u64 n, u8* arr, u32 data_size, const container_ops* ops, genVec* vec)
 {
-    CHECK_FATAL(!arr, "arr is null");
-    CHECK_FATAL(!vec, "vec is null");
     CHECK_FATAL(n == 0, "size of arr can't be 0");
     CHECK_FATAL(data_size == 0, "data_size of arr can't be 0");
 
@@ -160,6 +157,7 @@ void genVec_create_stk_arr(u64 n, u8* arr, u32 data_size, const container_ops* o
     vec->capacity  = n;
     vec->data_size = data_size;
     vec->ops       = ops;
+    vec->is_pod    = IS_POD(vec);
 }
 
 
@@ -172,13 +170,11 @@ void genVec_destroy(genVec* vec)
 
 void genVec_destroy_stk(genVec* vec)
 {
-    CHECK_FATAL(!vec, "vec is null");
-
     if (!vec->data) {
         return;
     }
 
-    if (!IS_POD(vec)) {
+    if (!vec->is_pod) {
         delete_fn del = vec->ops->del_fn;
         if (del) {
             for (u64 i = 0; i < vec->size; i++) {
@@ -194,9 +190,7 @@ void genVec_destroy_stk(genVec* vec)
 
 void genVec_clear(genVec* vec)
 {
-    CHECK_FATAL(!vec, "vec is null");
-
-    if (!IS_POD(vec)) {
+    if (!vec->is_pod) {
         delete_fn del = vec->ops->del_fn;
         if (del) {
             for (u64 i = 0; i < vec->size; i++) {
@@ -211,9 +205,7 @@ void genVec_clear(genVec* vec)
 
 void genVec_reset(genVec* vec)
 {
-    CHECK_FATAL(!vec, "vec is null");
-
-    if (!IS_POD(vec)) {
+    if (!vec->is_pod) {
         delete_fn del = vec->ops->del_fn;
         if (del) {
             for (u64 i = 0; i < vec->size; i++) {
@@ -231,8 +223,6 @@ void genVec_reset(genVec* vec)
 
 void genVec_reserve(genVec* vec, u64 new_capacity)
 {
-    CHECK_FATAL(!vec, "vec is null");
-
     if (new_capacity <= vec->capacity) {
         return;
     }
@@ -247,13 +237,11 @@ void genVec_reserve(genVec* vec, u64 new_capacity)
 
 void genVec_reserve_val(genVec* vec, u64 new_capacity, const u8* val)
 {
-    CHECK_FATAL(!vec, "vec is null");
-    CHECK_FATAL(!val, "val is null");
     CHECK_FATAL(new_capacity < vec->size, "new_capacity must be >= current size");
 
     genVec_reserve(vec, new_capacity);
 
-    if (IS_POD(vec)) {
+    if (vec->is_pod) {
         for (u64 i = vec->size; i < new_capacity; i++) {
             memcpy(GET_PTR(vec, i), val, vec->data_size);
         }
@@ -275,8 +263,6 @@ void genVec_reserve_val(genVec* vec, u64 new_capacity, const u8* val)
 
 void genVec_shrink_to_fit(genVec* vec)
 {
-    CHECK_FATAL(!vec, "vec is null");
-
     u64 min_cap  = vec->size > GENVEC_MIN_CAPACITY ? vec->size : GENVEC_MIN_CAPACITY;
     u64 curr_cap = vec->capacity;
 
@@ -294,12 +280,9 @@ void genVec_shrink_to_fit(genVec* vec)
 
 void genVec_push(genVec* vec, const u8* data)
 {
-    CHECK_FATAL(!vec, "vec is null");
-    CHECK_FATAL(!data, "data is null");
-
     MAYBE_GROW(vec);
 
-    if (IS_POD(vec)) {
+    if (vec->is_pod) {
         memcpy(GET_PTR(vec, vec->size), data, vec->data_size);
     } else {
         copy_fn copy = vec->ops->copy_fn;
@@ -316,13 +299,11 @@ void genVec_push(genVec* vec, const u8* data)
 
 void genVec_push_move(genVec* vec, u8** data)
 {
-    CHECK_FATAL(!vec, "vec is null");
-    CHECK_FATAL(!data, "data is null");
     CHECK_FATAL(!*data, "*data is null");
 
     MAYBE_GROW(vec);
 
-    if (IS_POD(vec)) {
+    if (vec->is_pod) {
         memcpy(GET_PTR(vec, vec->size), *data, vec->data_size);
         *data = NULL;
     } else {
@@ -341,13 +322,12 @@ void genVec_push_move(genVec* vec, u8** data)
 
 void genVec_pop(genVec* vec, u8* popped)
 {
-    CHECK_FATAL(!vec, "vec is null");
     WC_SET_RET(WC_ERR_EMPTY, vec->size == 0, );
 
     u8* last_elm = GET_PTR(vec, vec->size - 1);
 
     if (popped) {
-        if (IS_POD(vec)) {
+        if (vec->is_pod) {
             memcpy(popped, last_elm, vec->data_size);
         } else {
             copy_fn copy = vec->ops->copy_fn;
@@ -359,7 +339,7 @@ void genVec_pop(genVec* vec, u8* popped)
         }
     }
 
-    if (!IS_POD(vec)) {
+    if (!vec->is_pod) {
         delete_fn del = vec->ops->del_fn;
         if (del) {
             del(last_elm);
@@ -371,11 +351,10 @@ void genVec_pop(genVec* vec, u8* popped)
 
 void genVec_swap_pop(genVec* vec, u64 i, u8* out)
 {
-    CHECK_FATAL(!vec, "vec is null");
     CHECK_FATAL(i >= vec->size, "index out of bounds");
 
     if (out) {
-        if (IS_POD(vec)) {
+        if (vec->is_pod) {
             memcpy(out, GET_PTR(vec, i), vec->data_size);
         } else {
             copy_fn copy = vec->ops->copy_fn;
@@ -387,7 +366,7 @@ void genVec_swap_pop(genVec* vec, u64 i, u8* out)
         }
     }
 
-    if (!IS_POD(vec)) {
+    if (!vec->is_pod) {
         delete_fn del = vec->ops->del_fn;
         if (del) {
             del(GET_PTR(vec, i));
@@ -402,7 +381,6 @@ void genVec_swap_pop(genVec* vec, u64 i, u8* out)
 
 void genVec_swap(genVec* vec, u64 i, u64 j)
 {
-    CHECK_FATAL(!vec, "vec is null");
     CHECK_FATAL(i >= vec->size || j >= vec->size, "index out of bounds");
 
     if (i == j) {
@@ -425,11 +403,9 @@ void genVec_swap(genVec* vec, u64 i, u64 j)
 
 void genVec_get(const genVec* vec, u64 i, u8* out)
 {
-    CHECK_FATAL(!vec, "vec is null");
-    CHECK_FATAL(!out, "out is null");
     CHECK_FATAL(i >= vec->size, "index out of bounds");
 
-    if (IS_POD(vec)) {
+    if (vec->is_pod) {
         memcpy(out, GET_PTR(vec, i), vec->data_size);
     } else {
         copy_fn copy = vec->ops->copy_fn;
@@ -444,7 +420,6 @@ void genVec_get(const genVec* vec, u64 i, u8* out)
 
 const u8* genVec_get_ptr(const genVec* vec, u64 i)
 {
-    CHECK_FATAL(!vec, "vec is null");
     CHECK_FATAL(i >= vec->size, "index out of bounds");
 
     return GET_PTR(vec, i);
@@ -453,7 +428,6 @@ const u8* genVec_get_ptr(const genVec* vec, u64 i)
 
 u8* genVec_get_ptr_mut(genVec* vec, u64 i)
 {
-    CHECK_FATAL(!vec, "vec is null");
     CHECK_FATAL(i >= vec->size, "index out of bounds");
 
     return GET_PTR(vec, i);
@@ -462,13 +436,11 @@ u8* genVec_get_ptr_mut(genVec* vec, u64 i)
 
 void genVec_replace(genVec* vec, u64 i, const u8* data)
 {
-    CHECK_FATAL(!vec, "vec is null");
     CHECK_FATAL(i >= vec->size, "index out of bounds");
-    CHECK_FATAL(!data, "data is null");
 
     u8* to_replace = GET_PTR(vec, i);
 
-    if (IS_POD(vec)) {
+    if (vec->is_pod) {
         memcpy(to_replace, data, vec->data_size);
     } else {
         delete_fn del = vec->ops->del_fn;
@@ -487,14 +459,12 @@ void genVec_replace(genVec* vec, u64 i, const u8* data)
 
 void genVec_replace_move(genVec* vec, u64 i, u8** data)
 {
-    CHECK_FATAL(!vec, "vec is null");
     CHECK_FATAL(i >= vec->size, "index out of bounds");
-    CHECK_FATAL(!data, "need a valid data variable");
     CHECK_FATAL(!*data, "need a valid *data variable");
 
     u8* to_replace = GET_PTR(vec, i);
 
-    if (IS_POD(vec)) {
+    if (vec->is_pod) {
         memcpy(to_replace, *data, vec->data_size);
         *data = NULL;
     } else {
@@ -515,8 +485,6 @@ void genVec_replace_move(genVec* vec, u64 i, u8** data)
 
 void genVec_insert(genVec* vec, u64 i, const u8* data)
 {
-    CHECK_FATAL(!vec, "vec is null");
-    CHECK_FATAL(!data, "data is null");
     CHECK_FATAL(i > vec->size, "index out of bounds");
 
     u64 elements_to_shift = vec->size - i;
@@ -527,7 +495,7 @@ void genVec_insert(genVec* vec, u64 i, const u8* data)
     u8* dest = GET_PTR(vec, i + 1);
     memmove(dest, src, GET_SCALED(vec, elements_to_shift));
 
-    if (IS_POD(vec)) {
+    if (vec->is_pod) {
         memcpy(src, data, vec->data_size);
     } else {
         copy_fn copy = vec->ops->copy_fn;
@@ -544,8 +512,6 @@ void genVec_insert(genVec* vec, u64 i, const u8* data)
 
 void genVec_insert_move(genVec* vec, u64 i, u8** data)
 {
-    CHECK_FATAL(!vec, "vec is null");
-    CHECK_FATAL(!data, "data ptr is null");
     CHECK_FATAL(!*data, "*data is null");
     CHECK_FATAL(i > vec->size, "index out of bounds");
 
@@ -557,7 +523,7 @@ void genVec_insert_move(genVec* vec, u64 i, u8** data)
     u8* dest = GET_PTR(vec, i + 1);
     memmove(dest, src, GET_SCALED(vec, elements_to_shift));
 
-    if (IS_POD(vec)) {
+    if (vec->is_pod) {
         memcpy(src, *data, vec->data_size);
         *data = NULL;
     } else {
@@ -576,8 +542,6 @@ void genVec_insert_move(genVec* vec, u64 i, u8** data)
 
 void genVec_insert_multi(genVec* vec, u64 i, const u8* data, u64 num_data)
 {
-    CHECK_FATAL(!vec, "vec is null");
-    CHECK_FATAL(!data, "data is null");
     CHECK_FATAL(num_data == 0, "num_data can't be 0");
     CHECK_FATAL(i > vec->size, "index out of bounds");
 
@@ -592,7 +556,7 @@ void genVec_insert_multi(genVec* vec, u64 i, const u8* data, u64 num_data)
         memmove(dest, src, GET_SCALED(vec, elements_to_shift));
     }
 
-    if (IS_POD(vec)) {
+    if (vec->is_pod) {
         memcpy(src, data, GET_SCALED(vec, num_data));
     } else {
         copy_fn copy = vec->ops->copy_fn;
@@ -609,8 +573,6 @@ void genVec_insert_multi(genVec* vec, u64 i, const u8* data, u64 num_data)
 
 void genVec_insert_multi_move(genVec* vec, u64 i, u8** data, u64 num_data)
 {
-    CHECK_FATAL(!vec, "vec is null");
-    CHECK_FATAL(!data, "data is null");
     CHECK_FATAL(!*data, "*data is null");
     CHECK_FATAL(num_data == 0, "num_data can't be 0");
     CHECK_FATAL(i > vec->size, "index out of bounds");
@@ -626,18 +588,30 @@ void genVec_insert_multi_move(genVec* vec, u64 i, u8** data, u64 num_data)
         memmove(dest, src, GET_SCALED(vec, elements_to_shift));
     }
 
-    memcpy(src, *data, GET_SCALED(vec, num_data));
+    if (vec->is_pod) {
+        memcpy(src, *data, GET_SCALED(vec, num_data));
+    } else {
+        move_fn move = vec->ops->move_fn;
+        if (move) {
+            for (u64 j = 0; j < num_data; j++) {
+                u8* elm_src = *data + (size_t)(j * vec->data_size);
+                move(GET_PTR(vec, j + i), &elm_src);
+            }
+        } else {
+            memcpy(src, *data, GET_SCALED(vec, num_data));
+        }
+    }
+
     *data = NULL;
 }
 
 
 void genVec_remove(genVec* vec, u64 i, u8* out)
 {
-    CHECK_FATAL(!vec, "vec is null");
     CHECK_FATAL(i >= vec->size, "index out of bounds");
 
     if (out) {
-        if (IS_POD(vec)) {
+        if (vec->is_pod) {
             memcpy(out, GET_PTR(vec, i), vec->data_size);
         } else {
             copy_fn copy = vec->ops->copy_fn;
@@ -649,7 +623,7 @@ void genVec_remove(genVec* vec, u64 i, u8* out)
         }
     }
 
-    if (!IS_POD(vec)) {
+    if (!vec->is_pod) {
         delete_fn del = vec->ops->del_fn;
         if (del) {
             del(GET_PTR(vec, i));
@@ -675,7 +649,6 @@ void genVec_remove(genVec* vec, u64 i, u8* out)
 */
 void genVec_remove_range(genVec* vec, u64 start, u64 len)
 {
-    CHECK_FATAL(!vec, "vec is null");
     if (len == 0) {
         return;
     }
@@ -685,7 +658,7 @@ void genVec_remove_range(genVec* vec, u64 start, u64 len)
         len = vec->size - start;
     }
 
-    if (!IS_POD(vec)) {
+    if (!vec->is_pod) {
         delete_fn del = vec->ops->del_fn;
         if (del) {
             for (u64 i = 0; i < len; i++) {
@@ -704,7 +677,6 @@ void genVec_remove_range(genVec* vec, u64 start, u64 len)
 
 const u8* genVec_front(const genVec* vec)
 {
-    CHECK_FATAL(!vec, "vec is null");
     WC_SET_RET(WC_ERR_EMPTY, vec->size == 0, NULL);
     return GET_PTR(vec, 0);
 }
@@ -712,7 +684,6 @@ const u8* genVec_front(const genVec* vec)
 
 const u8* genVec_back(const genVec* vec)
 {
-    CHECK_FATAL(!vec, "vec is null");
     WC_SET_RET(WC_ERR_EMPTY, vec->size == 0, NULL);
     return GET_PTR(vec, vec->size - 1);
 }
@@ -720,9 +691,6 @@ const u8* genVec_back(const genVec* vec)
 
 u64 genVec_find(const genVec* vec, u8* elm, compare_fn cmp_fn)
 {
-    CHECK_FATAL(!vec, "vec is null");
-    CHECK_FATAL(!elm, "elm is null");
-
     for (u64 i = 0; i < vec->size; i++) {
         if (cmp_fn) {
             if (cmp_fn(GET_PTR(vec, i), elm, vec->data_size) == 0) {
@@ -741,7 +709,6 @@ u64 genVec_find(const genVec* vec, u8* elm, compare_fn cmp_fn)
 
 genVec* genVec_subarr(const genVec* vec, u64 start, u64 len)
 {
-    CHECK_FATAL(!vec, "vec is null");
     CHECK_FATAL(start >= vec->size, "out of bounds");
 
     if (start + len >= vec->size) {
@@ -751,7 +718,7 @@ genVec* genVec_subarr(const genVec* vec, u64 start, u64 len)
     genVec* v = genVec_create(len, vec->data_size, vec->ops);
 
     if (len > 0) {
-        if (IS_POD(vec)) {
+        if (vec->is_pod) {
             memcpy(GET_PTR(v, 0), GET_PTR(vec, start), len * vec->data_size);
         } else {
             copy_fn copy = vec->ops->copy_fn;
@@ -773,9 +740,6 @@ genVec* genVec_subarr(const genVec* vec, u64 start, u64 len)
 
 void genVec_print(const genVec* vec, print_fn fn)
 {
-    CHECK_FATAL(!vec, "vec is null");
-    CHECK_FATAL(!fn, "print func is null");
-
     printf("[ ");
     for (u64 i = 0; i < vec->size; i++) {
         fn(GET_PTR(vec, i));
@@ -787,9 +751,6 @@ void genVec_print(const genVec* vec, print_fn fn)
 
 void genVec_copy(genVec* dest, const genVec* src)
 {
-    CHECK_FATAL(!dest, "dest is null");
-    CHECK_FATAL(!src, "src is null");
-
     if (dest == src) {
         return;
     }
@@ -800,7 +761,7 @@ void genVec_copy(genVec* dest, const genVec* src)
     dest->data = malloc(GET_SCALED(src, src->capacity));
     CHECK_FATAL(!dest->data, "dest data malloc failed");
 
-    if (IS_POD(src)) {
+    if (src->is_pod) {
         memcpy(dest->data, src->data, GET_SCALED(src, src->size));
     } else {
         copy_fn copy = src->ops->copy_fn;
@@ -817,9 +778,7 @@ void genVec_copy(genVec* dest, const genVec* src)
 
 void genVec_move(genVec* dest, genVec** src)
 {
-    CHECK_FATAL(!src, "src is null");
     CHECK_FATAL(!*src, "*src is null");
-    CHECK_FATAL(!dest, "dest is null");
 
     if (dest == *src) {
         *src = NULL;

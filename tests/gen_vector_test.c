@@ -1,3 +1,4 @@
+#include "common.h"
 #include "gen_vector.h"
 #include "wc_errno.h"
 #include "wc_macros.h"
@@ -114,15 +115,6 @@ static void test_pop_copies_value(void)
     genVec_destroy(v);
 }
 
-static void test_pop_empty_sets_errno(void)
-{
-    genVec* v = int_vec(4);
-    wc_errno  = WC_OK;
-    genVec_pop(v, NULL);
-    WC_ASSERT_EQ_INT(wc_errno, WC_ERR_EMPTY);
-    genVec_destroy(v);
-}
-
 
 // Get 
 
@@ -153,15 +145,6 @@ static void test_front_back(void)
     push_ints(v, 4); /* 0 1 2 3 */
     WC_ASSERT_EQ_INT(*(int*)genVec_front(v), 0);
     WC_ASSERT_EQ_INT(*(int*)genVec_back(v), 3);
-    genVec_destroy(v);
-}
-
-static void test_front_empty_sets_errno(void)
-{
-    genVec* v = int_vec(4);
-    wc_errno  = WC_OK;
-    genVec_front(v);
-    WC_ASSERT_EQ_INT(wc_errno, WC_ERR_EMPTY);
     genVec_destroy(v);
 }
 
@@ -657,6 +640,25 @@ static void test_vec_foreach_empty(void)
 
 /* ── wc_errno: empty-vec operations ─────────────────────────────────────── */
 
+static void test_pop_empty_sets_errno(void)
+{
+    genVec* v = genVec_create(4, sizeof(int), NULL);
+    wc_errno = WC_OK;
+    genVec_pop(v, NULL);
+    WC_ASSERT_EQ_INT(wc_errno, WC_ERR_EMPTY);
+    genVec_destroy(v);
+}
+
+static void test_front_empty_sets_errno(void)
+{
+    genVec* v = genVec_create(4, sizeof(int), NULL);
+    wc_errno = WC_OK;
+    const u8* p = genVec_front(v);
+    WC_ASSERT_NULL(p);
+    WC_ASSERT_EQ_INT(wc_errno, WC_ERR_EMPTY);
+    genVec_destroy(v);
+}
+
 static void test_back_empty_sets_errno(void)
 {
     genVec* v = genVec_create(4, sizeof(int), NULL);
@@ -686,13 +688,11 @@ extern void gen_vector_suite(void)
     WC_RUN(test_push_triggers_growth);
     WC_RUN(test_pop_reduces_size);
     WC_RUN(test_pop_copies_value);
-    WC_RUN(test_pop_empty_sets_errno);
 
     /* get */
     WC_RUN(test_get_ptr);
     WC_RUN(test_get_copies);
     WC_RUN(test_front_back);
-    WC_RUN(test_front_empty_sets_errno);
 
     /* insert / remove */
     WC_RUN(test_insert_front);
@@ -753,5 +753,7 @@ extern void gen_vector_suite(void)
     WC_RUN(test_vec_foreach_empty);
 
     /* wc_errno: empty-vec operations must set WC_ERR_EMPTY, not crash */
+    WC_RUN(test_pop_empty_sets_errno);
+    WC_RUN(test_front_empty_sets_errno);
     WC_RUN(test_back_empty_sets_errno);
 }

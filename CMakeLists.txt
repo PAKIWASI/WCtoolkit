@@ -63,8 +63,6 @@ endif()
 # Warnings — mirrors .clangd so the editor and the actual build agree,
 # plus a few extra checks .clangd doesn't carry (-Wcast-align,
 # -Wsign-conversion, -Wdouble-promotion, -Wimplicit-fallthrough, -Wundef).
-# NOTE: -Wpedantic intentionally omitted. The macro layer (wc_macros.h) relies on
-# GNU statement-expressions ({ ... }), supported by both gcc and clang (our only targets).
 option(WC_WARNINGS_AS_ERRORS "Treat warnings as errors" ON)
 
 set(WC_WARN_FLAGS

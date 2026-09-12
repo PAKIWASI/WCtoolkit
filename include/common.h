@@ -13,9 +13,9 @@
 
 // LOGGING/ERRORS
 
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdarg.h>
 
 // ANSI Color Codes
 #define WC_COLOR_RESET  "\033[0m"
@@ -29,15 +29,15 @@
 
 // TODO: warm paths ?
 
-#define WARN(fmt, ...)                                            \
-    do {                                                          \
-        printf(WC_COLOR_YELLOW "[WARN]"                              \
-                            " %s:%d:%s(): " fmt "\n" WC_COLOR_RESET, \
-               __FILE__, __LINE__, __func__, ##__VA_ARGS__);      \
+#define WARN(fmt, ...)                                                  \
+    do {                                                                \
+        printf(WC_COLOR_YELLOW "[WARN]"                                 \
+                               " %s:%d:%s(): " fmt "\n" WC_COLOR_RESET, \
+               __FILE__, __LINE__, __func__, ##__VA_ARGS__);            \
     } while (0)
 
-__attribute__((noreturn, format(printf, 4, 5)))
-static inline void wc_fatal_report(const char* file, int line, const char* func, const char* fmt, ...)
+__attribute__((noreturn, format(printf, 4, 5))) static inline void
+wc_fatal_report(const char* file, int line, const char* func, const char* fmt, ...)
 {
     fprintf(stderr, WC_COLOR_RED "[FATAL] %s:%d:%s(): ", file, line, func);
     va_list args;
@@ -76,25 +76,27 @@ static inline void wc_fatal_report(const char* file, int line, const char* func,
     } while (0)
 #endif
 
-#define LOG(fmt, ...)                                       \
-    do {                                                    \
-        printf(WC_COLOR_CYAN "[LOG]"                           \
-                          " : %s(): " fmt "\n" WC_COLOR_RESET, \
-               __func__, ##__VA_ARGS__);                    \
+#define LOG(fmt, ...)                                             \
+    do {                                                          \
+        printf(WC_COLOR_CYAN "[LOG]"                              \
+                             " : %s(): " fmt "\n" WC_COLOR_RESET, \
+               __func__, ##__VA_ARGS__);                          \
     } while (0)
 
 
-#define MALLOC(size, cap, name) ({\
-    void* _mlcd = malloc(size * cap);\
-    CHECK_FATAL(!_mlcd, "\"" #name "\"" " malloc failed");\
-    _mlcd;\
-})
+#define MALLOC(size, cap, name)                \
+    ({                                         \
+        void* _mlcd = malloc(size * cap);      \
+        CHECK_FATAL(!_mlcd, "\"" #name "\""    \
+                            " malloc failed"); \
+        _mlcd;                                 \
+    })
 
 
 // TYPES
 
-#include <stdint.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 typedef uint8_t  u8;
 typedef uint8_t  b8;
@@ -102,7 +104,7 @@ typedef uint16_t u16;
 typedef uint32_t u32;
 typedef uint64_t u64;
 
-#define WC_NOT_FOUND ((u64)-1)
+#define WC_NOT_FOUND ((u64) - 1)
 
 // #define false ((b8)0)
 // #define true  ((b8)1)

@@ -64,8 +64,6 @@ String* string_from_cstr(const char* cstr)
 
 String* string_from_string(const String* other)
 {
-    CHECK_FATAL(!other, "other is null");
-
     String* s = malloc(sizeof(String));
     CHECK_FATAL(!s, "malloc failed");
 
@@ -84,8 +82,6 @@ String* string_from_string(const String* other)
 
 void string_create_stk(const char* cstr, String* s)
 {
-    CHECK_FATAL(!s, "str is null");
-
     s->size                  = 0;
     s->stk[STR_SSO_SIZE - 1] = 1;                // mark SSO mode
     s->capacity              = STR_SSO_SIZE - 1; // last byte reserved for the SSO flag
@@ -106,15 +102,12 @@ void string_create_stk(const char* cstr, String* s)
 
 void string_destroy(String* s)
 {
-    CHECK_FATAL(!s, "str is null");
     string_destroy_stk(s);
     free(s);
 }
 
 void string_destroy_stk(String* s)
 {
-    CHECK_FATAL(!s, "str is null");
-
     if (!IS_SSO(s)) {
         free(s->heap);
     }
@@ -126,9 +119,7 @@ void string_destroy_stk(String* s)
 
 void string_move(String* dest, String** src)
 {
-    CHECK_FATAL(!src, "src ptr is null");
     CHECK_FATAL(!*src, "*src is null");
-    CHECK_FATAL(!dest, "dest is null");
 
     if (dest == *src) {
         *src = NULL;
@@ -147,9 +138,6 @@ void string_move(String* dest, String** src)
 
 void string_copy(String* dest, const String* src)
 {
-    CHECK_FATAL(!src, "src is null");
-    CHECK_FATAL(!dest, "dest is null");
-
     if (src == dest) {
         return;
     }
@@ -172,8 +160,6 @@ void string_copy(String* dest, const String* src)
 
 void string_reserve(String* s, u64 new_cap)
 {
-    CHECK_FATAL(!s, "str is null");
-
     if (new_cap <= s->capacity) {
         return;
     }
@@ -182,7 +168,6 @@ void string_reserve(String* s, u64 new_cap)
 
 void string_reserve_char(String* s, u64 new_cap, char c)
 {
-    CHECK_FATAL(!s, "str is null");
     if (new_cap <= s->capacity) {
         // Fill from current size up to new_cap within existing allocation.
         char* buf = GET_STR(s);
@@ -205,8 +190,6 @@ void string_reserve_char(String* s, u64 new_cap, char c)
 
 void string_shrink_to_fit(String* s)
 {
-    CHECK_FATAL(!s, "str is null");
-
     if (IS_SSO(s)) {
         return;
     } // already optimal
@@ -238,8 +221,6 @@ void string_shrink_to_fit(String* s)
 
 char* string_to_cstr(const String* s)
 {
-    CHECK_FATAL(!s, "str is null");
-
     char* out = malloc(s->size + 1);
     CHECK_FATAL(!out, "malloc failed");
 
@@ -253,8 +234,6 @@ char* string_to_cstr(const String* s)
 
 void string_to_cstr_buf(const String* str, char* buff, u64 n)
 {
-    CHECK_FATAL(!str, "str is null");
-    CHECK_FATAL(!buff, "buff is null");
     CHECK_FATAL(n < str->size + 1, "buffer not enough");
 
     if (str->size > 0) {
@@ -265,7 +244,6 @@ void string_to_cstr_buf(const String* str, char* buff, u64 n)
 
 char* string_data_ptr(const String* s)
 {
-    CHECK_FATAL(!s, "str is null");
     if (s->size == 0) {
         return NULL;
     }
@@ -278,16 +256,12 @@ char* string_data_ptr(const String* s)
 
 void string_append_char(String* s, char c)
 {
-    CHECK_FATAL(!s, "str is null");
     MAYBE_GROW_STR(s);
     GET_STR_CHAR(s, s->size++) = c;
 }
 
 void string_append_cstr(String* s, const char* cstr)
 {
-    CHECK_FATAL(!s, "str is null");
-    CHECK_FATAL(!cstr, "cstr is null");
-
     u64 len = cstr_len(cstr);
     if (len == 0) {
         return;
@@ -300,9 +274,6 @@ void string_append_cstr(String* s, const char* cstr)
 
 void string_append_string(String* s, const String* other)
 {
-    CHECK_FATAL(!s, "str is null");
-    CHECK_FATAL(!other, "other is null");
-
     if (other->size == 0) {
         return;
     }
@@ -314,8 +285,6 @@ void string_append_string(String* s, const String* other)
 
 void string_append_string_move(String* s, String** other)
 {
-    CHECK_FATAL(!s, "str is null");
-    CHECK_FATAL(!other, "other ptr is null");
     CHECK_FATAL(!*other, "*other is null");
 
     if ((*other)->size > 0) {
@@ -328,7 +297,6 @@ void string_append_string_move(String* s, String** other)
 
 char string_pop_char(String* s)
 {
-    CHECK_FATAL(!s, "str is null");
     CHECK_FATAL(s->size == 0, "cannot pop from empty string");
 
     char c = GET_STR_CHAR(s, --s->size);
@@ -337,7 +305,6 @@ char string_pop_char(String* s)
 
 void string_insert_char(String* s, u64 i, char c)
 {
-    CHECK_FATAL(!s, "str is null");
     CHECK_FATAL(i > s->size, "index out of bounds");
 
     MAYBE_GROW_STR(s);
@@ -353,8 +320,6 @@ void string_insert_char(String* s, u64 i, char c)
 
 void string_insert_cstr(String* s, u64 i, const char* cstr)
 {
-    CHECK_FATAL(!s, "str is null");
-    CHECK_FATAL(!cstr, "cstr is null");
     CHECK_FATAL(i > s->size, "index out of bounds");
 
     u64 len = cstr_len(cstr);
@@ -375,8 +340,6 @@ void string_insert_cstr(String* s, u64 i, const char* cstr)
 
 void string_insert_string(String* s, u64 i, const String* other)
 {
-    CHECK_FATAL(!s, "str is null");
-    CHECK_FATAL(!other, "other is null");
     CHECK_FATAL(i > s->size, "index out of bounds");
 
     if (other->size == 0) {
@@ -398,7 +361,6 @@ void string_insert_string(String* s, u64 i, const String* other)
 
 void string_remove_char(String* s, u64 i)
 {
-    CHECK_FATAL(!s, "str is null");
     CHECK_FATAL(i >= s->size, "index out of bounds");
 
     char* buf = GET_STR(s);
@@ -419,7 +381,6 @@ void string_remove_char(String* s, u64 i)
 
 void string_remove_range(String* s, u64 start, u64 len)
 {
-    CHECK_FATAL(!s, "str is null");
     CHECK_FATAL(start >= s->size, "start out of bounds");
 
     if (len == 0) {
@@ -443,9 +404,6 @@ void string_remove_range(String* s, u64 start, u64 len)
 
 int string_compare(const String* s1, const String* s2)
 {
-    CHECK_FATAL(!s1, "str1 is null");
-    CHECK_FATAL(!s2, "str2 is null");
-
     u64 min_len = s1->size < s2->size ? s1->size : s2->size;
 
     if (min_len > 0) {
@@ -466,9 +424,6 @@ int string_compare(const String* s1, const String* s2)
 
 b8 string_equals_cstr(const String* s, const char* cstr)
 {
-    CHECK_FATAL(!s, "str is null");
-    CHECK_FATAL(!cstr, "cstr is null");
-
     u64 len = cstr_len(cstr);
 
     if (s->size != len) {
@@ -486,8 +441,6 @@ b8 string_equals_cstr(const String* s, const char* cstr)
 
 u64 string_find_char(const String* s, char c)
 {
-    CHECK_FATAL(!s, "str is null");
-
     if (s->size == 0) {
         return WC_NOT_FOUND;
     }
@@ -498,9 +451,6 @@ u64 string_find_char(const String* s, char c)
 
 u64 string_find_cstr(const String* s, const char* substr)
 {
-    CHECK_FATAL(!s, "str is null");
-    CHECK_FATAL(!substr, "substr is null");
-
     u64 len = cstr_len(substr);
     if (len == 0) {
         return 0;
@@ -520,7 +470,6 @@ u64 string_find_cstr(const String* s, const char* substr)
 
 String* string_substr(const String* s, u64 start, u64 length)
 {
-    CHECK_FATAL(!s, "str is null");
     CHECK_FATAL(start >= s->size, "start out of bounds");
 
     if (start + length > s->size) {
@@ -543,8 +492,6 @@ String* string_substr(const String* s, u64 start, u64 length)
 
 void string_print(const String* s)
 {
-    CHECK_FATAL(!s, "str is null");
-
     putchar('"');
     const char* buf = GET_STR(s);
     for (u64 i = 0; i < s->size; i++) {

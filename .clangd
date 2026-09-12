@@ -1,7 +1,6 @@
 CompileFlags:
   CompilationDatabase: build/
   Add:
-    - -Wpedantic
     - -Wconversion
     - -Wsign-conversion
     - -Wstrict-prototypes
