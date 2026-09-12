@@ -4,6 +4,7 @@
 #include "common.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 
@@ -35,3 +36,57 @@ void strview_print(strview sv)
     putchar('\n');
 }
 
+
+
+#define TAIL_BUF_OFF(ss) ((ss)->tail->buf + (ss)->tail_off)
+
+void string_store_create(string_store* ss)
+{
+    string_store_node* node = malloc(sizeof(string_store_node));
+    CHECK_FATAL(!node, "node malloc failed");
+
+    node->next   = NULL;
+    ss->head     = node;
+    ss->tail     = node;
+    ss->tail_off = 0;
+    ss->num      = 1;
+}
+
+void string_store_destroy(string_store* ss)
+{
+    if (!ss || !ss->head) {
+        return;
+    }
+
+    string_store_node* curr = ss->head;
+    string_store_node* next = NULL;
+    do {
+        next = curr->next;
+        free(curr);
+        curr = next;
+    } while (curr);
+}
+
+static inline void add_node(string_store* ss)
+{
+    string_store_node* node = malloc(sizeof(string_store_node));
+    ss->tail->next          = node;
+    ss->tail                = node;
+    ss->tail_off            = 0;
+    ss->num++;
+}
+
+strview string_store_cstr(string_store* ss, const char* cstr, u64 clen)
+{
+    CHECK_FATAL(!ss, "ss is null");
+    CHECK_FATAL(!cstr, "ss is null");
+
+    if (STRING_STORE_NODE_SIZE - ss->tail_off < clen) {
+        // we need another node
+        add_node(ss);
+    }
+
+    char* ptr = TAIL_BUF_OFF(ss);
+    memcpy(ptr, cstr, clen);
+    return (strview){.ptr = ptr, .len = clen};
+}

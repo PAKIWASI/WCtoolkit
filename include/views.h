@@ -1,10 +1,9 @@
 #ifndef WC_VIEWS_H
 #define WC_VIEWS_H
 
-#include "chain_arena.h"
-#include "common.h"
-#include "arena.h"
 #include "String.h"
+#include "arena.h"
+#include "common.h"
 
 
 typedef struct {
@@ -24,19 +23,27 @@ void strview_print(strview sv);
 
 
 
+#define STRING_STORE_NODE_SIZE 1024
 
-// append-only, immutable string storage with chain arena backing
+
+typedef struct string_store_node {
+    char                      buf[STRING_STORE_NODE_SIZE];
+    struct string_store_node* next;
+} string_store_node;
+
+// append-only, immutable string storage with a chain arena-like backing
 // you get strviews over the immutable strings
 typedef struct {
-    ChainArena arena;
+    string_store_node* tail;
+    string_store_node* head;
+    u32                tail_off; // how much of th tail node is used
+    u32                num;      // total number of nodes
 } string_store;
 
-string_store* string_store_create(u64 cap)
-{
+void string_store_create(string_store* ss);
 
-}
+void string_store_destroy(string_store* ss);
 
-
-
+strview string_store_cstr(string_store* ss, const char* cstr, u64 clen);
 
 #endif // WC_VIEWS_H

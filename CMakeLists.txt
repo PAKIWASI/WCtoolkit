@@ -29,7 +29,7 @@ set(CMAKE_C_FLAGS_DEBUG
 set(CMAKE_EXE_LINKER_FLAGS_DEBUG
 "-fsanitize=address -fsanitize=undefined")
 
-# DebugNoSan: debug info, no sanitizers - clean for codelldb
+# DebugNoSan: debug info, no sanitizers - clean for lldb/gdb
 set(CMAKE_C_FLAGS_DEBUGNOSAN
 "-g -O0 -fno-omit-frame-pointer -march=native")
 set(CMAKE_EXE_LINKER_FLAGS_DEBUGNOSAN "")
@@ -58,6 +58,7 @@ set(LIB_SOURCES
     src/Stack.c
     src/String.c
     src/wc_errno.c
+    src/views.c
 )
 
 
