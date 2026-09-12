@@ -59,7 +59,7 @@ expensive frees.
 Parameters:
   Arena *arena    |    The arena to be cleared.
 */
-static inline void arena_clear(Arena* arena) __attribute__((nonnull(1)))
+static inline __attribute__((nonnull(1))) void arena_clear(Arena* arena)
 {
     CHECK_FATAL(!arena, "arena is null");
     arena->idx = 0;
@@ -71,7 +71,7 @@ Free the memory allocated for the entire arena region.
 Parameters:
   Arena *arena    |    The arena to be destroyed.
 */
-static inline void arena_release(Arena* arena) __attribute__((nonnull(1)))
+static inline __attribute__((nonnull(1))) void arena_release(Arena* arena)
 {
     CHECK_FATAL(!arena, "arena is null");
     free(arena->base);
@@ -123,14 +123,14 @@ u8* arena_alloc_aligned(Arena* arena, u64 size, u32 alignment) __attribute__((no
 
 
 // Get used capacity
-static inline u64 arena_used(Arena* arena) __attribute__((nonnull(1)))
+static inline __attribute__((nonnull(1))) u64 arena_used(Arena* arena)
 {
     CHECK_FATAL(!arena, "arena is null");
     return arena->idx;
 }
 
 // Get remaining capacity
-static inline u64 arena_remaining(Arena* arena) __attribute__((nonnull(1)))
+static inline __attribute__((nonnull(1))) u64 arena_remaining(Arena* arena)
 {
     CHECK_FATAL(!arena, "arena is null");
     return arena->size - arena->idx;
@@ -146,7 +146,7 @@ typedef struct {
 } ArenaScratch;
 
 
-static inline ArenaScratch arena_scratch_begin(Arena* arena) __attribute__((nonnull(1)))
+static inline __attribute__((nonnull(1))) ArenaScratch arena_scratch_begin(Arena* arena)
 {
     CHECK_FATAL(!arena, "arena is null");
     return (ArenaScratch){ .arena = arena, .mark = arena->idx };

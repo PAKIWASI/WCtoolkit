@@ -188,21 +188,21 @@ void genVec_move(genVec* dest, genVec** src) __attribute__((nonnull(1, 2)));
 
 
 // Get number of elements in vector.
-static inline u64 genVec_size(const genVec* vec) __attribute__((nonnull(1)))
+static inline __attribute__((nonnull(1))) u64 genVec_size(const genVec* vec)
 {
     CHECK_FATAL(!vec, "vec is null");
     return vec->size;
 }
 
 // Get total capacity of vector.
-static inline u64 genVec_capacity(const genVec* vec) __attribute__((nonnull(1)))
+static inline __attribute__((nonnull(1))) u64 genVec_capacity(const genVec* vec)
 {
     CHECK_FATAL(!vec, "vec is null");
     return vec->capacity;
 }
 
 // Check if vector is empty.
-static inline b8 genVec_empty(const genVec* vec) __attribute__((nonnull(1)))
+static inline __attribute__((nonnull(1))) b8 genVec_empty(const genVec* vec)
 {
     CHECK_FATAL(!vec, "vec is null");
     return vec->size == 0;

@@ -104,17 +104,17 @@ void hashmap_clear(hashmap* map) __attribute__((nonnull(1)));
 void hashmap_copy(hashmap* dest, const hashmap* src) __attribute__((nonnull(1, 2)));
 
 
-static inline u64 hashmap_size(const hashmap* map) __attribute__((nonnull(1)))
+static inline __attribute__((nonnull(1))) u64 hashmap_size(const hashmap* map)
 {
     CHECK_FATAL(!map, "map is null");
     return map->size;
 }
-static inline u64 hashmap_capacity(const hashmap* map) __attribute__((nonnull(1)))
+static inline __attribute__((nonnull(1))) u64 hashmap_capacity(const hashmap* map)
 {
     CHECK_FATAL(!map, "map is null");
     return map->capacity;
 }
-static inline b8 hashmap_empty(const hashmap* map) __attribute__((nonnull(1)))
+static inline __attribute__((nonnull(1))) b8 hashmap_empty(const hashmap* map)
 {
     CHECK_FATAL(!map, "map is null");
     return map->size == 0;

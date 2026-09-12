@@ -82,19 +82,19 @@ void hashset_clear(hashset* set) __attribute__((nonnull(1)));
 void hashset_copy(hashset* dest, const hashset* src) __attribute__((nonnull(1, 2)));
 
 
-static inline u64 hashset_size(const hashset* set) __attribute__((nonnull(1)))
+static inline __attribute__((nonnull(1))) u64 hashset_size(const hashset* set)
 {
     CHECK_FATAL(!set, "set is null");
     return set->size;
 }
 
-static inline u64 hashset_capacity(const hashset* set) __attribute__((nonnull(1)))
+static inline __attribute__((nonnull(1))) u64 hashset_capacity(const hashset* set)
 {
     CHECK_FATAL(!set, "set is null");
     return set->capacity;
 }
 
-static inline b8 hashset_empty(const hashset* set) __attribute__((nonnull(1)))
+static inline __attribute__((nonnull(1))) b8 hashset_empty(const hashset* set)
 {
     CHECK_FATAL(!set, "set is null");
     return set->size == 0;

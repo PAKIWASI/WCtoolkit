@@ -23,9 +23,9 @@ void      stack_pop(Stack* stk, u8* popped) __attribute__((nonnull(1)));
 void      stack_peek(Stack* stk, u8* peek) __attribute__((nonnull(1, 2)));
 const u8* stack_peek_ptr(const Stack* stk) __attribute__((nonnull(1)));
 
-static inline u64 stack_size(const Stack* stk) __attribute__((nonnull(1)))     { return genVec_size(stk);     }
-static inline u8  stack_empty(const Stack* stk) __attribute__((nonnull(1)))    { return genVec_empty(stk);    }
-static inline u64 stack_capacity(const Stack* stk) __attribute__((nonnull(1))) { return genVec_capacity(stk); }
+static inline __attribute__((nonnull(1))) u64 stack_size(const Stack* stk) { return genVec_size(stk);     }
+static inline __attribute__((nonnull(1))) u8 stack_empty(const Stack* stk) { return genVec_empty(stk);    }
+static inline __attribute__((nonnull(1))) u64 stack_capacity(const Stack* stk) { return genVec_capacity(stk); }
 
 void stack_print(Stack* stk, print_fn print_fn) __attribute__((nonnull(1, 2)));
 

@@ -771,14 +771,14 @@ genVec* genVec_subarr(const genVec* vec, u64 start, u64 len)
 }
 
 
-void genVec_print(const genVec* vec, print_fn print_fn)
+void genVec_print(const genVec* vec, print_fn fn)
 {
     CHECK_FATAL(!vec, "vec is null");
-    CHECK_FATAL(!print_fn, "print func is null");
+    CHECK_FATAL(!fn, "print func is null");
 
     printf("[ ");
     for (u64 i = 0; i < vec->size; i++) {
-        print_fn(GET_PTR(vec, i));
+        fn(GET_PTR(vec, i));
         putchar(' ');
     }
     putchar(']');
@@ -790,7 +790,15 @@ void genVec_copy(genVec* dest, const genVec* src)
     CHECK_FATAL(!dest, "dest is null");
     CHECK_FATAL(!src, "src is null");
 
-    \ \ \ \ if\ \(dest\ ==\ src\)\ \{\n\ \ \ \ \ \ \ \ return;\n\ \ \ \ }\n\n\ \ \ \ //\ Copy\ all\ fields\ \(including\ ops\ pointer\)\n\ \ \ \ memcpy\(dest,\ src,\ sizeof\(genVec\)\);\n\n\ \ \ \ dest->data\ =\ malloc\(GET_SCALED\(src,\ src->capacity\)\);\n\ \ \ \ CHECK_FATAL\(!dest->data,\ "dest\ data\ malloc\ failed"\);
+    if (dest == src) {
+        return;
+    }
+
+    // Copy all fields (including ops pointer)
+    memcpy(dest, src, sizeof(genVec));
+
+    dest->data = malloc(GET_SCALED(src, src->capacity));
+    CHECK_FATAL(!dest->data, "dest data malloc failed");
 
     if (IS_POD(src)) {
         memcpy(dest->data, src->data, GET_SCALED(src, src->size));

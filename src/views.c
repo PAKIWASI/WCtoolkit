@@ -93,7 +93,7 @@ strview string_store_cstr(string_store* ss, const char* cstr, u64 clen)
 
     char* ptr = TAIL_BUF_OFF(ss);
     memcpy(ptr, cstr, clen);
-    ss->tail_off += clen;
+    ss->tail_off += (u32)clen;
     return (strview){.ptr = ptr, .len = clen};
 }
 

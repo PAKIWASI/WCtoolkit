@@ -2,6 +2,7 @@
 #include "wc_test.h"
 #include "String.h"
 #include <stdlib.h>
+#include <string.h>
 
 
 // TODO: test SSO
@@ -393,7 +394,7 @@ static void test_to_cstr_buf_basic(void)
 static void test_to_cstr_buf_nul_terminated(void)
 {
     String* s = string_from_cstr("abc");
-    char buf[8] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+    char buf[8]; memset(buf, 0xFF, sizeof(buf));
     string_to_cstr_buf(s, buf, 8);
     WC_ASSERT_EQ_INT(buf[3], '\0');
     string_destroy(s);
@@ -402,9 +403,9 @@ static void test_to_cstr_buf_nul_terminated(void)
 static void test_to_cstr_buf_empty_string(void)
 {
     String* s = string_create();
-    char buf[8] = {0xFF};
+    char buf[8]; memset(buf, 0xFF, sizeof(buf));
     string_to_cstr_buf(s, buf, 8);
-    WC_ASSERT_EQ_INT(buf[7], '\0');
+    WC_ASSERT_EQ_INT(buf[0], '\0');
     string_destroy(s);
 }
 

@@ -147,7 +147,7 @@ No need to call matrix_destroy - freed when arena is cleared/released
 Usage:
     Matrix* mat = MATRIX_ARENA(arena, 3, 3);
 */
-static inline Matrixf* matrix_arena_alloc(Arena* arena, u64 m, u64 n) __attribute__((nonnull(1)))
+static inline __attribute__((nonnull(1))) Matrixf* matrix_arena_alloc(Arena* arena, u64 m, u64 n)
 {
     CHECK_FATAL(m == 0 && n == 0, "n == m == 0");
 
@@ -171,7 +171,7 @@ Usage:
     Matrix* mat = MATRIX_ARENA_ARR(arena, 3, 3, (float[9]){1,2,3,4,5,6,7,8,9});
 */
 
-static inline Matrixf* matrix_arena_arr_alloc(Arena* arena, u64 m, u64 n, const float* arr) __attribute__((nonnull(1, 4)))
+static inline __attribute__((nonnull(1, 4))) Matrixf* matrix_arena_arr_alloc(Arena* arena, u64 m, u64 n, const float* arr)
 {
     CHECK_FATAL(m == 0 || n == 0, "matrix dims must be > 0");
     CHECK_FATAL(!arr, "input arr is null");

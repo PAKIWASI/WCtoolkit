@@ -56,7 +56,7 @@ u32 pcg32_rand_r(pcg32_random_t* rng)
     // This creates a 32-bit value from the 64-bit state
     u32 xorshifted = (u32)(((oldstate >> 18) ^ oldstate) >> 27);
     // Use top 5 bits to decide rotation amount (0-31)
-    u32 rot = oldstate >> 59;
+    u32 rot = (u32)(oldstate >> 59);
     // rotate x by r -> (x >> r) | (x << (32 - r))
     // Random rotation: Rotate xorshifted right by rot bits:
     // xorshifted >> rot: Shift right by rot

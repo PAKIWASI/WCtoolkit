@@ -1,5 +1,11 @@
 # WCtoolkit — Task Tracker
 
+> RECOVERY CHECKPOINT (see CHECKPOINT.md): build is GREEN on gcc under -Werror, 378/378
+> tests pass. This was pre-Phase-5 crash recovery + gcc-clean work, not tracker items.
+> Outstanding: ASan reports ~86 fixture leaks in hashset/hashmap tests (pre-existing).
+> 9-6 now closeable on gcc; Clang unverified this session. Phase 5 not started.
+
+
 ## Phase 0 — Regression gate
 - [x] 0-A: Add `wc_errno` empty-stack tests to `stack_queue_test.c`
 - [x] 0-A: Add `wc_errno` empty-vec tests to `gen_vector_test.c`

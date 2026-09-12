@@ -403,7 +403,7 @@ void matrix_print(const Matrixf* mat)
         }
 
         // Print element
-        printf("%f ", mat->data[i]);
+        printf("%f ", (double)mat->data[i]);
     }
 
     // Close last row

@@ -35,9 +35,9 @@ const u8* queue_peek_ptr(const Queue* q) __attribute__((nonnull(1)));
 
 void      queue_print(Queue* q, print_fn print_fn) __attribute__((nonnull(1, 2)));
 
-static inline u64 queue_size(const Queue* q) __attribute__((nonnull(1)))     { CHECK_FATAL(!q, "queue is null"); return q->size;                    }
-static inline u8  queue_empty(const Queue* q) __attribute__((nonnull(1)))    { CHECK_FATAL(!q, "queue is null"); return q->size == 0;               }
-static inline u64 queue_capacity(const Queue* q) __attribute__((nonnull(1))) { CHECK_FATAL(!q, "queue is null"); return genVec_capacity(q->arr);    }
+static inline __attribute__((nonnull(1))) u64 queue_size(const Queue* q) { CHECK_FATAL(!q, "queue is null"); return q->size;                    }
+static inline __attribute__((nonnull(1))) u8 queue_empty(const Queue* q) { CHECK_FATAL(!q, "queue is null"); return q->size == 0;               }
+static inline __attribute__((nonnull(1))) u64 queue_capacity(const Queue* q) { CHECK_FATAL(!q, "queue is null"); return genVec_capacity(q->arr);    }
 
 
 #endif // QUEUE_H

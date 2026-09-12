@@ -43,7 +43,7 @@ void bitVec_set(bitVec* bvec, u64 i)
     }
 
     u8* byte = (u8*)genVec_get_ptr(bvec->arr, byte_index);
-    *byte |= (1 << bit_index);
+    *byte |= (u8)(1u << bit_index);
 
     if (i + 1 > bvec->size) {
         bvec->size = i + 1;
@@ -60,7 +60,7 @@ void bitVec_clear(bitVec* bvec, u64 i)
     u64 bit_index  = i % 8;
 
     u8* byte = (u8*)genVec_get_ptr(bvec->arr, byte_index);
-    *byte &= ~(1 << bit_index);
+    *byte &= (u8)~(1u << bit_index);
 }
 
 // Test bit i (returns 1 or 0)
@@ -85,7 +85,7 @@ void bitVec_toggle(bitVec* bvec, u64 i)
     u64 bit_index  = i % 8;
 
     u8* byte = (u8*)genVec_get_ptr(bvec->arr, byte_index);
-    *byte ^= (1 << bit_index);
+    *byte ^= (u8)(1u << bit_index);
 }
 
 

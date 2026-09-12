@@ -190,7 +190,7 @@ static inline void wc_print_u64(const u8* elm)
 }
 static inline void wc_print_float(const u8* elm)
 {
-    printf("%.2f ", *(float*)elm);
+    printf("%.2f ", (double)*(float*)elm);
 }
 static inline void wc_print_char(const u8* elm)
 {

@@ -9,9 +9,9 @@
 
 
 #define QUEUE_MIN_CAP   4
-#define QUEUE_GROWTH    1.5
-#define QUEUE_SHRINK_AT 0.25
-#define QUEUE_SHRINK_BY 0.5
+#define QUEUE_GROWTH    1.5f
+#define QUEUE_SHRINK_AT 0.25f
+#define QUEUE_SHRINK_BY 0.5f
 
 
 #define HEAD_UPDATE(q)                                    \
@@ -223,10 +223,10 @@ const u8* queue_peek_ptr(const Queue* q)
     return genVec_get_ptr(q->arr, q->head);
 }
 
-void queue_print(Queue* q, print_fn print_fn)
+void queue_print(Queue* q, print_fn print)
 {
     CHECK_FATAL(!q, "queue is empty");
-    CHECK_FATAL(!print_fn, "print_fn is empty");
+    CHECK_FATAL(!print, "print_fn is empty");
 
     u64 h   = q->head;
     u64 cap = genVec_capacity(q->arr);
@@ -235,7 +235,7 @@ void queue_print(Queue* q, print_fn print_fn)
     if (q->size != 0) {
         for (u64 i = 0; i < q->size; i++) {
             const u8* out = genVec_get_ptr(q->arr, h);
-            print_fn(out);
+            print(out);
             putchar(' ');
             h = (h + 1) % cap;
         }

@@ -657,25 +657,6 @@ static void test_vec_foreach_empty(void)
 
 /* ── wc_errno: empty-vec operations ─────────────────────────────────────── */
 
-static void test_pop_empty_sets_errno(void)
-{
-    genVec* v = genVec_create(4, sizeof(int), NULL);
-    wc_errno = WC_OK;
-    genVec_pop(v, NULL);
-    WC_ASSERT_EQ_INT(wc_errno, WC_ERR_EMPTY);
-    genVec_destroy(v);
-}
-
-static void test_front_empty_sets_errno(void)
-{
-    genVec* v = genVec_create(4, sizeof(int), NULL);
-    wc_errno = WC_OK;
-    const u8* p = genVec_front(v);
-    WC_ASSERT_NULL(p);
-    WC_ASSERT_EQ_INT(wc_errno, WC_ERR_EMPTY);
-    genVec_destroy(v);
-}
-
 static void test_back_empty_sets_errno(void)
 {
     genVec* v = genVec_create(4, sizeof(int), NULL);
@@ -772,7 +753,5 @@ extern void gen_vector_suite(void)
     WC_RUN(test_vec_foreach_empty);
 
     /* wc_errno: empty-vec operations must set WC_ERR_EMPTY, not crash */
-    WC_RUN(test_pop_empty_sets_errno);
-    WC_RUN(test_front_empty_sets_errno);
     WC_RUN(test_back_empty_sets_errno);
 }

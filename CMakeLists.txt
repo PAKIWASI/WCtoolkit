@@ -36,7 +36,7 @@ message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 
 # Debug: sanitizers + no optimisation
 set(CMAKE_C_FLAGS_DEBUG
-"-g -O0 -fno-omit-frame-pointer -fsanitize=address -fsanitize=undefined -march=native -Rpass=loop-vectorize")
+"-g -O0 -fno-omit-frame-pointer -fsanitize=address -fsanitize=undefined -march=native")
 set(CMAKE_EXE_LINKER_FLAGS_DEBUG
 "-fsanitize=address -fsanitize=undefined")
 
@@ -49,20 +49,27 @@ set(VALID_BUILD_TYPES Debug Release DebugNoSan)
 set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS ${VALID_BUILD_TYPES})
 
 # Release: full optimisation
-set(CMAKE_C_FLAGS_RELEASE                           # this flag doesn't work in debug with Asan
-"-O3 -DNDEBUG -march=native -Rpass=loop-vectorize -Rpass-missed=loop-vectorize -ffast-math")
+set(CMAKE_C_FLAGS_RELEASE
+"-O3 -DNDEBUG -march=native -ffast-math")
 set(CMAKE_EXE_LINKER_FLAGS_RELEASE "")
+
+# Clang-only vectorization diagnostics — gcc rejects -Rpass. Re-add per compiler.
+if(CMAKE_C_COMPILER_ID STREQUAL "Clang")
+  string(APPEND CMAKE_C_FLAGS_DEBUG " -Rpass=loop-vectorize")
+  string(APPEND CMAKE_C_FLAGS_RELEASE " -Rpass=loop-vectorize -Rpass-missed=loop-vectorize")
+endif()
 
 
 # Warnings — mirrors .clangd so the editor and the actual build agree,
-# plus a few extra checks .clangd doesn't carry (-Wpedantic, -Wcast-align,
+# plus a few extra checks .clangd doesn't carry (-Wcast-align,
 # -Wsign-conversion, -Wdouble-promotion, -Wimplicit-fallthrough, -Wundef).
+# NOTE: -Wpedantic intentionally omitted. The macro layer (wc_macros.h) relies on
+# GNU statement-expressions ({ ... }), supported by both gcc and clang (our only targets).
 option(WC_WARNINGS_AS_ERRORS "Treat warnings as errors" ON)
 
 set(WC_WARN_FLAGS
     -Wall
     -Wextra
-    -Wpedantic
     -Wshadow
     -Wconversion
     -Wsign-conversion

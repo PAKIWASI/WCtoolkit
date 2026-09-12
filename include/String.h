@@ -97,7 +97,7 @@ void string_remove_char(String* str, u64 i) __attribute__((nonnull(1)));
 void string_remove_range(String* str, u64 start, u64 len) __attribute__((nonnull(1)));
 
 // Remove all chars (keep allocation).
-static inline void string_clear(String* str) __attribute__((nonnull(1)))
+static inline __attribute__((nonnull(1))) void string_clear(String* str)
 {
     CHECK_FATAL(!str, "str is null");
     str->size = 0;
@@ -106,19 +106,19 @@ static inline void string_clear(String* str) __attribute__((nonnull(1)))
 
 //  Access
 
-static inline char string_char_at(const String* str, u64 i) __attribute__((nonnull(1)))
+static inline __attribute__((nonnull(1))) char string_char_at(const String* str, u64 i)
 {
     CHECK_FATAL(!str, "str is null");
     CHECK_FATAL(i >= str->size, "index out of bounds");
     return ((str->stk[STR_SSO_SIZE - 1] != '\0') ? (str)->stk : (str)->heap)[i];
 }
 
-static inline char string_char_at_unsafe(const String* str, u64 i) __attribute__((nonnull(1)))
+static inline __attribute__((nonnull(1))) char string_char_at_unsafe(const String* str, u64 i)
 {
     return ((str->stk[STR_SSO_SIZE - 1] != '\0') ? (str)->stk : (str)->heap)[i];
 }
 
-static inline void string_set_char(String* str, u64 i, char c) __attribute__((nonnull(1)))
+static inline __attribute__((nonnull(1))) void string_set_char(String* str, u64 i, char c)
 {
     CHECK_FATAL(!str, "str is null");
     CHECK_FATAL(i >= str->size, "index out of bounds");
@@ -130,7 +130,7 @@ static inline void string_set_char(String* str, u64 i, char c) __attribute__((no
 
 // 0 == equal, <0 == str1 < str2, >0 == str1 > str2
 int              string_compare(const String* s1, const String* s2) __attribute__((nonnull(1, 2)));
-static inline b8 string_equals(const String* s1, const String* s2) __attribute__((nonnull(1, 2)))
+static inline __attribute__((nonnull(1, 2))) b8 string_equals(const String* s1, const String* s2)
 {
     return string_compare(s1, s2) == 0;
 }
@@ -154,25 +154,25 @@ void string_print(const String* str) __attribute__((nonnull(1)));
 
 //  Inline helpers
 
-static inline u64 string_len(const String* str) __attribute__((nonnull(1)))
+static inline __attribute__((nonnull(1))) u64 string_len(const String* str)
 {
     CHECK_FATAL(!str, "str is null");
     return str->size;
 }
 
-static inline u64 string_capacity(const String* str) __attribute__((nonnull(1)))
+static inline __attribute__((nonnull(1))) u64 string_capacity(const String* str)
 {
     CHECK_FATAL(!str, "str is null");
     return str->capacity;
 }
 
-static inline b8 string_empty(const String* str) __attribute__((nonnull(1)))
+static inline __attribute__((nonnull(1))) b8 string_empty(const String* str)
 {
     CHECK_FATAL(!str, "str is null");
     return str->size == 0;
 }
 
-static inline b8 string_is_sso(const String* str) __attribute__((nonnull(1)))
+static inline __attribute__((nonnull(1))) b8 string_is_sso(const String* str)
 {
     CHECK_FATAL(!str, "str is null");
     return str->stk[STR_SSO_SIZE - 1] != '\0';

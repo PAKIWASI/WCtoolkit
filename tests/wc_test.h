@@ -111,7 +111,7 @@ extern int wc_test_failed;
         long long _b = (long long)(b);                                                        \
         if (_a != _b) {                                                                       \
             char _msg[256];                                                                   \
-            snprintf(_msg, sizeof(_msg), #a " == " #b "  (got %lld, expected %lld)", _a, _b); \
+            snprintf(_msg, sizeof(_msg), "%s == %s  (got %lld, expected %lld)", #a, #b, _a, _b); \
             WC_ASSERT_CORE(0, _msg);                                                          \
         }                                                                                     \
     } while (0)
@@ -122,7 +122,8 @@ extern int wc_test_failed;
         long long _b = (long long)(b);                                          \
         if (_a == _b) {                                                         \
             char _msg[256];                                                     \
-            snprintf(_msg, sizeof(_msg), #a " != " #b "  (both are %lld)", _a); \
+            snprintf(_msg, sizeof(_msg), "%s != %s  (both are %lld)", #a, #b, _a); \
+            (void)_b;                                                           \
             WC_ASSERT_CORE(0, _msg);                                            \
         }                                                                       \
     } while (0)
@@ -133,7 +134,7 @@ extern int wc_test_failed;
         unsigned long long _b = (unsigned long long)(b);                                      \
         if (_a != _b) {                                                                       \
             char _msg[256];                                                                   \
-            snprintf(_msg, sizeof(_msg), #a " == " #b "  (got %llu, expected %llu)", _a, _b); \
+            snprintf(_msg, sizeof(_msg), "%s == %s  (got %llu, expected %llu)", #a, #b, _a, _b); \
             WC_ASSERT_CORE(0, _msg);                                                          \
         }                                                                                     \
     } while (0)
@@ -145,7 +146,7 @@ extern int wc_test_failed;
         const char* _b = (const char*)(b);                                                        \
         if (strcmp(_a, _b) != 0) {                                                                \
             char _msg[256];                                                                       \
-            snprintf(_msg, sizeof(_msg), #a " == " #b "  (got \"%s\", expected \"%s\")", _a, _b); \
+            snprintf(_msg, sizeof(_msg), "%s == %s  (got \"%s\", expected \"%s\")", #a, #b, _a, _b); \
             WC_ASSERT_CORE(0, _msg);                                                              \
         }                                                                                         \
     } while (0)
@@ -182,16 +183,17 @@ extern int wc_test_failed;
  * Print summary and return exit code.
  * Put this as the last statement in main():  return WC_REPORT();
  */
-#define WC_REPORT()                                                                                          \
-    ({                                                                                                       \
-        printf("\n");                                                                                        \
-        if (wc_failed == 0) {                                                                                \
-            printf(WC_GREEN "All %d tests passed." WC_RESET "\n", wc_total);                                 \
-        } else {                                                                                             \
-            printf(WC_RED "%d/%d tests FAILED." WC_RESET "  (%d passed)\n", wc_failed, wc_total, wc_passed); \
-        }                                                                                                    \
-        (wc_failed > 0) ? 1 : 0;                                                                             \
-    })
+static inline int wc_report(void)
+{
+    printf("\n");
+    if (wc_failed == 0) {
+        printf(WC_GREEN "All %d tests passed." WC_RESET "\n", wc_total);
+    } else {
+        printf(WC_RED "%d/%d tests FAILED." WC_RESET "  (%d passed)\n", wc_failed, wc_total, wc_passed);
+    }
+    return (wc_failed > 0) ? 1 : 0;
+}
+#define WC_REPORT() wc_report()
 
 
 #endif // WC_TEST_H

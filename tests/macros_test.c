@@ -5,9 +5,11 @@
 #include "hashset.h"
 #include "hashmap.h"
 #include "Queue.h"
+#include "Stack.h"
 #include "String.h"
 #include "gen_vector.h"
 #include <stdlib.h>
+#include <string.h>
 
 /* -- Helpers --------------------------------------------------------------- */
 
@@ -26,6 +28,22 @@ static int cmp_int(const u8* a, const u8* b, u64 size)
 
 /* -- Phase 1-D: SET_INSERT_MOVE ------------------------------------------- */
 
+/* move: copy the int value into the set slot, free the heap source, null it */
+static void int_move(u8* dest, u8** src)
+{
+    memcpy(dest, *src, sizeof(int));
+    free(*src);
+    *src = NULL;
+}
+
+/* del: the set stores the int by value; nothing extra to free */
+static void int_del(u8* elm)
+{
+    (void)elm;
+}
+
+static const container_ops int_move_ops = { NULL, int_move, int_del };
+
 /*
  * Before the fix, SET_INSERT_MOVE referenced (vec) instead of (set),
  * causing a compile error or silently binding to an unrelated variable.
@@ -33,7 +51,7 @@ static int cmp_int(const u8* a, const u8* b, u64 size)
  */
 static void test_set_insert_move_compiles_and_works(void)
 {
-    hashset* set = hashset_create(sizeof(int), hash_int, cmp_int, NULL);
+    hashset* set = hashset_create(sizeof(int), hash_int, cmp_int, &int_move_ops);
 
     int* val = malloc(sizeof(int));
     *val = 42;

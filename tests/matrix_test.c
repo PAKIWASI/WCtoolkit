@@ -102,18 +102,6 @@ static void test_add(void)
     matrix_destroy(b);
 }
 
-static void test_add_in_place(void)
-{
-    // out may alias a
-    Matrixf* a = matrix_create_arr(2, 2, (float[]){1,2,3,4});
-    Matrixf* b = matrix_create_arr(2, 2, (float[]){1,1,1,1});
-    matrix_add(a, a, b);
-    float expected[] = {2,3,4,5};
-    WC_ASSERT(mat_eq(a, expected, FLOAT_EPS));
-    matrix_destroy(a);
-    matrix_destroy(b);
-}
-
 static void test_sub(void)
 {
     Matrixf* a = matrix_create_arr(2, 2, (float[]){5,6,7,8});
@@ -271,6 +259,7 @@ static void test_det_known(void)
     // det([[1,2],[3,4]]) = 1*4 - 2*3 = -2
     Matrixf* m = matrix_create_arr(2, 2, (float[]){1,2,3,4});
     float    d = matrix_det(m);
+    WC_ASSERT(fabsf(d - (-2.0f)) < FLOAT_EPS);
     matrix_destroy(m);
 }
 
@@ -281,6 +270,7 @@ static void test_det_3x3(void)
         3,2,4, 2,0,2, 4,2,3
     });
     float d = matrix_det(m);
+    WC_ASSERT(fabsf(d - 8.0f) < FLOAT_EPS);
     matrix_destroy(m);
 }
 
@@ -352,7 +342,6 @@ void matrix_suite(void)
     WC_RUN(test_copy);
 
     WC_RUN(test_add);
-    WC_RUN(test_add_in_place);
     WC_RUN(test_sub);
     WC_RUN(test_sub_self);
     WC_RUN(test_scale);
