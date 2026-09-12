@@ -28,12 +28,9 @@ strview strview_cstr_arena(Arena* a, const char* cstr, u64 clen)
 
 void strview_print(strview sv)
 {
-    putchar('\"');
     for (u64 i = 0; i < sv.len; i++) {
         putchar(sv.ptr[i]);
     }
-    putchar('\"');
-    putchar('\n');
 }
 
 
@@ -70,6 +67,9 @@ void string_store_destroy(string_store* ss)
 static inline void add_node(string_store* ss)
 {
     string_store_node* node = malloc(sizeof(string_store_node));
+    CHECK_FATAL(!node, "node malloc failed");
+
+    node->next              = NULL; // must terminate the chain for string_store_destroy
     ss->tail->next          = node;
     ss->tail                = node;
     ss->tail_off            = 0;
@@ -82,11 +82,18 @@ strview string_store_cstr(string_store* ss, const char* cstr, u64 clen)
     CHECK_FATAL(!cstr, "ss is null");
 
     if (STRING_STORE_NODE_SIZE - ss->tail_off < clen) {
+        // TODO: strings larger than a whole node aren't supported yet — the
+        // `heap` union member exists for this but is unused. Fail loudly
+        // instead of silently overflowing the fixed-size node buffer below.
+        CHECK_FATAL(clen > STRING_STORE_NODE_SIZE,
+                    "string_store_cstr: string longer than STRING_STORE_NODE_SIZE not yet supported");
         // we need another node
         add_node(ss);
     }
 
     char* ptr = TAIL_BUF_OFF(ss);
     memcpy(ptr, cstr, clen);
+    ss->tail_off += clen;
     return (strview){.ptr = ptr, .len = clen};
 }
+

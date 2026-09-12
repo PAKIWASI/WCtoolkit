@@ -53,7 +53,10 @@
  */
 
 #include "String.h"
+#include "common.h"
 #include "gen_vector.h"
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 
@@ -78,8 +81,8 @@ static inline void str_copy(u8* dest, const u8* src)
     String* s = (String*)src;
     memcpy(d, s, sizeof(String));
 
-    if (s->capacity == STR_SSO_SIZE) {
-        return; // str stored inline, we have everything 
+    if (s->capacity == STR_SSO_SIZE - 1) {
+        return; // str stored inline, we have everything
     }
 
     // src owns resources, copy them

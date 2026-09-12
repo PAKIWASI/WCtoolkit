@@ -728,15 +728,40 @@ typedef struct {
     u64         len;
 } strview;
 
-
-
 strview strview_from_string(String* str);
 
 strview strview_from_string_explicit(String* str, u64 off, u64 len);
 
+// allocate a cstr to an arena and return a view over it
+// kinda like an append only store
 strview strview_cstr_arena(Arena* a, const char* cstr, u64 clen);
 
 void strview_print(strview sv);
+
+
+
+#define STRING_STORE_NODE_SIZE 1024
+
+
+typedef struct string_store_node {
+    char                      buf[STRING_STORE_NODE_SIZE];
+    struct string_store_node* next;
+} string_store_node;
+
+// append-only, immutable string storage with a chain arena-like backing
+// you get strviews over the immutable strings
+typedef struct {
+    string_store_node* tail;
+    string_store_node* head;
+    u32                tail_off; // how much of th tail node is used
+    u32                num;      // total number of nodes
+} string_store;
+
+void string_store_create(string_store* ss);
+
+void string_store_destroy(string_store* ss);
+
+strview string_store_cstr(string_store* ss, const char* cstr, u64 clen);
 
 #endif /* WC_VIEWS_H */
 
@@ -1498,6 +1523,7 @@ u8* arena_alloc_aligned(Arena* arena, u64 size, u32 alignment)
 #define WC_VIEWS_IMPL
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 
@@ -1512,8 +1538,6 @@ strview strview_from_string_explicit(String* str, u64 off, u64 len)
     return (strview){.ptr = string_data_ptr(str) + off, .len = len};
 }
 
-// store raw cstr in arena and return a view over it
-// supposted to be immutable string storage + view
 strview strview_cstr_arena(Arena* a, const char* cstr, u64 clen)
 {
     char* p = ARENA_ALLOC_N(a, char, clen + 1); // for NULL Terminator
@@ -1523,12 +1547,65 @@ strview strview_cstr_arena(Arena* a, const char* cstr, u64 clen)
 
 void strview_print(strview sv)
 {
-    putchar('\"');
     for (u64 i = 0; i < sv.len; i++) {
         putchar(sv.ptr[i]);
     }
-    putchar('\"');
-    putchar('\n');
+}
+
+
+
+#define TAIL_BUF_OFF(ss) ((ss)->tail->buf + (ss)->tail_off)
+
+void string_store_create(string_store* ss)
+{
+    string_store_node* node = malloc(sizeof(string_store_node));
+    CHECK_FATAL(!node, "node malloc failed");
+
+    node->next   = NULL;
+    ss->head     = node;
+    ss->tail     = node;
+    ss->tail_off = 0;
+    ss->num      = 1;
+}
+
+void string_store_destroy(string_store* ss)
+{
+    if (!ss || !ss->head) {
+        return;
+    }
+
+    string_store_node* curr = ss->head;
+    string_store_node* next = NULL;
+    do {
+        next = curr->next;
+        free(curr);
+        curr = next;
+    } while (curr);
+}
+
+static inline void add_node(string_store* ss)
+{
+    string_store_node* node = malloc(sizeof(string_store_node));
+    ss->tail->next          = node;
+    ss->tail                = node;
+    ss->tail_off            = 0;
+    ss->num++;
+}
+
+strview string_store_cstr(string_store* ss, const char* cstr, u64 clen)
+{
+    CHECK_FATAL(!ss, "ss is null");
+    CHECK_FATAL(!cstr, "ss is null");
+
+    if (STRING_STORE_NODE_SIZE - ss->tail_off < clen) {
+        // we need another node
+        add_node(ss);
+    }
+
+    char* ptr = TAIL_BUF_OFF(ss);
+    memcpy(ptr, cstr, clen);
+    ss->tail_off += clen;
+    return (strview){.ptr = ptr, .len = clen};
 }
 
 #endif /* WC_VIEWS_IMPL */

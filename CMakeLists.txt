@@ -1,6 +1,17 @@
 cmake_minimum_required(VERSION 3.20)
 
-set(CMAKE_C_COMPILER clang)
+# Prefer clang, fall back to gcc, but don't fight a compiler the caller
+# already picked with -DCMAKE_C_COMPILER=... — this must run before
+# project() since that's what actually locks the compiler in.
+if(NOT CMAKE_C_COMPILER)
+  find_program(WC_CLANG_PATH clang)
+  find_program(WC_GCC_PATH gcc)
+  if(WC_CLANG_PATH)
+    set(CMAKE_C_COMPILER ${WC_CLANG_PATH})
+  elseif(WC_GCC_PATH)
+    set(CMAKE_C_COMPILER ${WC_GCC_PATH})
+  endif()
+endif()
 
 project(
     WCtoolkit
@@ -43,6 +54,37 @@ set(CMAKE_C_FLAGS_RELEASE                           # this flag doesn't work in 
 set(CMAKE_EXE_LINKER_FLAGS_RELEASE "")
 
 
+# Warnings — mirrors .clangd so the editor and the actual build agree,
+# plus a few extra checks .clangd doesn't carry (-Wpedantic, -Wcast-align,
+# -Wsign-conversion, -Wdouble-promotion, -Wimplicit-fallthrough, -Wundef).
+option(WC_WARNINGS_AS_ERRORS "Treat warnings as errors" ON)
+
+set(WC_WARN_FLAGS
+    -Wall
+    -Wextra
+    -Wpedantic
+    -Wshadow
+    -Wconversion
+    -Wsign-conversion
+    -Wcast-align
+    -Wnull-dereference
+    -Wdouble-promotion
+    -Wformat=2
+    -Wimplicit-fallthrough
+    -Wundef
+    -Wstrict-prototypes
+    -Wold-style-definition
+    -Wwrite-strings
+    -Wpointer-arith
+)
+
+if(WC_WARNINGS_AS_ERRORS)
+  list(APPEND WC_WARN_FLAGS -Werror)
+endif()
+
+message(STATUS "Warnings-as-errors: ${WC_WARNINGS_AS_ERRORS}")
+
+
 # Shared source list
 set(LIB_SOURCES
     src/arena.c
@@ -68,6 +110,7 @@ add_executable(main
     ${LIB_SOURCES}
 )
 target_include_directories(main PRIVATE include)
+target_compile_options(main PRIVATE ${WC_WARN_FLAGS})
 
 
 # Test executable
@@ -87,6 +130,7 @@ add_executable(tests
     ${LIB_SOURCES}
 )
 target_include_directories(tests PRIVATE include tests)
+target_compile_options(tests PRIVATE ${WC_WARN_FLAGS})
 target_link_libraries(tests m)
 
 # Register with CTest so `ctest` works from the build directory
@@ -112,5 +156,3 @@ add_test(NAME unit_tests COMMAND tests)
 # )
 # target_include_directories(leetcode PRIVATE include)
 # target_link_libraries(leetcode)
-
-

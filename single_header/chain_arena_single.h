@@ -420,7 +420,7 @@ static inline b8 genVec_empty(const genVec* vec)
 #endif
 
 #ifndef ARENA_NODE_INLINE_SIZE
-#define ARENA_NODE_INLINE_SIZE (nKB(4)) // 4096 bytes
+#define ARENA_NODE_INLINE_SIZE (nKB(4) - 8) // 4096 bytes
 #endif
 
 typedef struct ArenaNode {
@@ -440,6 +440,8 @@ typedef struct {
     u64         node_used_mark;  // that node's `used` value at scratch start
     u64         arena_used_mark; // arena->used at scratch start
 } ChainArenaScratch;
+
+// TODO: any node release strategies
 
 
 ChainArena* chain_arena_create(void);

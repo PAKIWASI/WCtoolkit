@@ -11,6 +11,9 @@
 #include "hashmap.h"
 #include "String.h"
 #include "wc_helpers.h"
+#include "views.h"
+#include "arena.h"
+#include "chain_arena.h"
 
 #include <time.h>
 #include <string.h>
@@ -95,19 +98,25 @@ static void bench_push_cx(void)
 
 static void bench_clear_pod(void)
 {
-    genVec* v = genVec_init(CLEAR_N, sizeof(int), NULL);
-    int val   = 7;
-    for (int i = 0; i < CLEAR_N; i++) genVec_push(v, (u8*)&val);
+    u64 total_ns = 0;
+    int val      = 7;
 
-    u64 t0 = ns_now();
     for (int r = 0; r < CLEAR_REP; r++) {
-        genVec_clear(v);
+        genVec* v = genVec_init(CLEAR_N, sizeof(int), NULL);
         for (int i = 0; i < CLEAR_N; i++) genVec_push(v, (u8*)&val);
-    }
-    u64 t1 = ns_now();
 
-    bench("clear POD (500k ints) x20", (u64)CLEAR_REP * CLEAR_N, t0, t1);
-    genVec_destroy(v);
+        u64 t0 = ns_now();
+        genVec_clear(v);
+        u64 t1 = ns_now();
+        total_ns += t1 - t0;
+        genVec_destroy(v);
+    }
+
+    u64 ns_per = total_ns / ((u64)CLEAR_REP * CLEAR_N);
+    printf("  %-44s %6llu ns/op  (%d ops)\n",
+           "clear POD (500k ints) x20",
+           (unsigned long long)ns_per,
+           CLEAR_REP * CLEAR_N);
 }
 
 static void bench_clear_cx(void)
@@ -361,7 +370,7 @@ static void bench_map_put_cx(void)
 {
     // String -> String map (both key and val have copy/del via wc_str_ops)
     hashmap* map = hashmap_create(sizeof(String), sizeof(String),
-                                  NULL, NULL, &wc_str_ops, &wc_str_ops);
+                                  wyhash_str, str_cmp, &wc_str_ops, &wc_str_ops);
 
     u64 t0 = ns_now();
     for (int i = 0; i < MAP_N; i++) {
@@ -401,7 +410,7 @@ static void bench_map_get_pod(void)
 static void bench_map_get_cx(void)
 {
     hashmap* map = hashmap_create(sizeof(String), sizeof(String),
-                                  NULL, NULL, &wc_str_ops, &wc_str_ops);
+                                  wyhash_str, str_cmp, &wc_str_ops, &wc_str_ops);
     for (int i = 0; i < MAP_N; i++) {
         char buf[32];
         snprintf(buf, sizeof(buf), "key_%d", i);
@@ -441,18 +450,23 @@ static void bench_map_get_cx(void)
 
 static void bench_map_clear_pod(void)
 {
-    hashmap* map = hashmap_create(sizeof(int), sizeof(int), NULL, NULL, NULL, NULL);
-    for (int i = 0; i < MCLR_N; i++) hashmap_put(map, (u8*)&i, (u8*)&i);
+    u64 total_ns = 0;
 
-    u64 t0 = ns_now();
     for (int r = 0; r < MCLR_REP; r++) {
-        hashmap_clear(map);
+        hashmap* map = hashmap_create(sizeof(int), sizeof(int), NULL, NULL, NULL, NULL);
         for (int i = 0; i < MCLR_N; i++) hashmap_put(map, (u8*)&i, (u8*)&i);
-    }
-    u64 t1 = ns_now();
 
-    bench("hashmap_clear POD (200k) x20", (u64)MCLR_REP * MCLR_N, t0, t1);
-    hashmap_destroy(map);
+        u64 t0 = ns_now();
+        hashmap_clear(map);
+        u64 t1 = ns_now();
+        total_ns += t1 - t0;
+        hashmap_destroy(map);
+    }
+
+    u64 ns_per = total_ns / ((u64)MCLR_REP * MCLR_N);
+    printf("  %-44s %6llu ns/op  (%d reps of 200k)\n",
+           "hashmap_clear POD (200k) x20",
+           (unsigned long long)ns_per, MCLR_REP);
 }
 
 static void bench_map_clear_cx(void)
@@ -461,7 +475,7 @@ static void bench_map_clear_cx(void)
 
     for (int r = 0; r < MCLR_REP; r++) {
         hashmap* map = hashmap_create(sizeof(String), sizeof(String),
-                                      NULL, NULL, &wc_str_ops, &wc_str_ops);
+                                      wyhash_str, str_cmp, &wc_str_ops, &wc_str_ops);
         for (int i = 0; i < MCLR_N; i++) {
             char buf[32];
             snprintf(buf, sizeof(buf), "k%d", i);
@@ -592,6 +606,279 @@ void suite_pop(void)
     WC_RUN(bench_pop_cx);
 }
 
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SUITE: complex owned type (struct owning a String AND a genVec)
+//
+// This is the case a plain memcpy-based container can't handle at all, and
+// where move semantics (as opposed to always-copy semantics) matter most:
+// a value that owns *two* independent heap allocations.
+//
+//   typedef struct { String name; genVec scores; } Person;
+//
+// bench_complex_push_copy — construct a Person on the stack each iteration,
+//   genVec_push() it (invokes person_copy: deep-copies both the String's
+//   heap buffer and the genVec's heap buffer), then destroy the stack copy.
+//   This is what you pay every time if all you have is copy semantics
+//   (e.g. inserting by value with no move constructor).
+//
+// bench_complex_push_move — heap-allocate a Person* shell each iteration,
+//   genVec_push_move() it (invokes person_move: one memcpy of the 40-ish
+//   byte Person shell, free the old shell, done — the String's and
+//   genVec's underlying buffers are never touched, ownership just
+//   relocates). This is the toolkit's move path doing what copying can't:
+//   O(1) transfer regardless of how much data the owned members hold.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+#define PERSON_N        200000
+#define PERSON_SCORES_N 64 // enough ints to force genVec's heap path and matter
+
+// Long enough to blow past String's SSO inline capacity (23 bytes) so the
+// name always owns a real heap buffer too — otherwise we'd only be
+// benchmarking the genVec field.
+static inline int person_name_fmt(char* buf, u64 bufsize, int i)
+{
+    return snprintf(buf, bufsize, "person_number_%d_with_a_reasonably_long_name", i);
+}
+
+typedef struct {
+    String name;
+    genVec scores;
+} Person;
+
+static void person_init(Person* p, int i)
+{
+    char buf[64];
+    person_name_fmt(buf, sizeof(buf), i);
+    string_create_stk(&p->name, buf);
+
+    genVec_init_stk((u64)PERSON_SCORES_N, sizeof(int), NULL, &p->scores);
+    for (int j = 0; j < PERSON_SCORES_N; j++) {
+        int v = i + j;
+        genVec_push(&p->scores, (u8*)&v);
+    }
+}
+
+static void person_del(u8* elm)
+{
+    Person* p = (Person*)elm;
+    string_destroy_stk(&p->name);
+    genVec_destroy_stk(&p->scores);
+}
+
+static void person_copy(u8* dest, const u8* src)
+{
+    const Person* s = (const Person*)src;
+    Person*       d = (Person*)dest;
+
+    // string_copy is safe on raw/uninitialised dest memory (dest is fully
+    // re-initialised, not read first).
+    string_copy(&d->name, &s->name);
+
+    // genVec_copy is NOT safe on raw dest — it assumes dest is already a
+    // live, valid genVec and destroys its old contents first. Bring dest
+    // into a valid empty state so that destroy is a safe no-op, matching
+    // the idiom the toolkit's own wc_vec_ops.copy_fn effectively achieves.
+    genVec_init_stk(0, sizeof(int), NULL, &d->scores);
+    genVec_copy(&d->scores, &s->scores);
+}
+
+static void person_move(u8* dest, u8** src)
+{
+    Person* s = *(Person**)src;
+    memcpy(dest, s, sizeof(Person)); // shell only — name/scores buffers just change owner
+    free(s);
+    *src = NULL;
+}
+
+static const container_ops person_ops = { person_copy, person_move, person_del };
+
+static void bench_complex_push_copy(void)
+{
+    genVec* v = genVec_init((u64)PERSON_N, sizeof(Person), &person_ops);
+
+    // Build every source Person up front — this construction cost (string
+    // heap alloc + genVec growth) is identical in the move benchmark below,
+    // so it must NOT be inside the timed region or it drowns out the one
+    // thing we're actually comparing: what genVec_push does with it.
+    Person* pool = malloc((u64)PERSON_N * sizeof(Person));
+    CHECK_FATAL(!pool, "malloc failed");
+    for (int i = 0; i < PERSON_N; i++) person_init(&pool[i], i);
+
+    u64 t0 = ns_now();
+    for (int i = 0; i < PERSON_N; i++) {
+        genVec_push(v, (u8*)&pool[i]); // copy path: deep-copies name + scores
+    }
+    u64 t1 = ns_now();
+
+    WC_ASSERT_EQ_U64(v->size, (u64)PERSON_N);
+    bench("push complex (copy: String+genVec)", PERSON_N, t0, t1);
+
+    for (int i = 0; i < PERSON_N; i++) person_del((u8*)&pool[i]);
+    free(pool);
+    genVec_destroy(v);
+}
+
+static void bench_complex_push_move(void)
+{
+    genVec* v = genVec_init((u64)PERSON_N, sizeof(Person), &person_ops);
+
+    // Same construction cost as the copy benchmark, just heap-shelled and
+    // pre-built outside the timed region for the same reason.
+    Person** pool = malloc((u64)PERSON_N * sizeof(Person*));
+    CHECK_FATAL(!pool, "malloc failed");
+    for (int i = 0; i < PERSON_N; i++) {
+        pool[i] = malloc(sizeof(Person));
+        CHECK_FATAL(!pool[i], "malloc failed");
+        person_init(pool[i], i);
+    }
+
+    u64 t0 = ns_now();
+    for (int i = 0; i < PERSON_N; i++) {
+        genVec_push_move(v, (u8**)&pool[i]); // move path: O(1) shell relocation
+    }
+    u64 t1 = ns_now();
+
+    WC_ASSERT_EQ_U64(v->size, (u64)PERSON_N);
+    bench("push complex (move: String+genVec)", PERSON_N, t0, t1);
+
+    free(pool); // each pool[i] already freed+nulled by person_move
+    genVec_destroy(v);
+}
+
+void suite_complex_owned_type(void)
+{
+    WC_SUITE("complex owned type  (struct owning a String + a genVec)");
+    WC_RUN(bench_complex_push_copy);
+    WC_RUN(bench_complex_push_move);
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SUITE: string storage strategies
+//
+// Compares four ways to accumulate many short, immutable strings:
+//   - string_store   append-only, chained fixed-size buffer (bump allocator,
+//                    node reuse, no per-string malloc, no individual free)
+//   - chain_arena    generic chained bump arena (same idea, not string-specific)
+//   - Arena          single fixed-size bump arena (no chaining/growth)
+//   - malloc         one malloc+memcpy per string, one free per string
+//   - String (SSO)   the toolkit's dynamic string type (heap alloc per String,
+//                    plus a second heap alloc once a string exceeds SSO size)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+#define STRSTORE_N 500000
+
+// Deterministic pseudo-varied lengths so we're not just measuring one code path.
+static inline int strstore_fmt(char* buf, u64 bufsize, int i)
+{
+    return snprintf(buf, bufsize, "key_%d_%s", i, (i % 7 == 0) ? "abcdefghij" : "x");
+}
+
+static void bench_ss_string_store(void)
+{
+    string_store ss;
+    string_store_create(&ss);
+
+    char buf[64];
+    u64  t0 = ns_now();
+    for (int i = 0; i < STRSTORE_N; i++) {
+        int len = strstore_fmt(buf, sizeof(buf), i);
+        (void)string_store_cstr(&ss, buf, (u64)len);
+    }
+    u64 t1 = ns_now();
+
+    bench("string_store_cstr", STRSTORE_N, t0, t1);
+    string_store_destroy(&ss);
+}
+
+static void bench_ss_chain_arena(void)
+{
+    ChainArena* ca = chain_arena_create();
+
+    char buf[64];
+    u64  t0 = ns_now();
+    for (int i = 0; i < STRSTORE_N; i++) {
+        int   len = strstore_fmt(buf, sizeof(buf), i);
+        char* p   = (char*)chain_arena_alloc(ca, (u64)len);
+        memcpy(p, buf, (u64)len);
+    }
+    u64 t1 = ns_now();
+
+    bench("chain_arena_alloc + memcpy", STRSTORE_N, t0, t1);
+    chain_arena_release(ca);
+}
+
+static void bench_ss_arena(void)
+{
+    // Sized generously up front — Arena doesn't grow, unlike the other three.
+    Arena* a = arena_create(STRSTORE_N * 32ULL);
+
+    char buf[64];
+    u64  t0 = ns_now();
+    for (int i = 0; i < STRSTORE_N; i++) {
+        int   len = strstore_fmt(buf, sizeof(buf), i);
+        char* p   = (char*)arena_alloc(a, (u64)len);
+        memcpy(p, buf, (u64)len);
+    }
+    u64 t1 = ns_now();
+
+    bench("Arena (fixed) alloc + memcpy", STRSTORE_N, t0, t1);
+    arena_release(a);
+}
+
+static void bench_ss_malloc(void)
+{
+    char** ptrs = malloc(STRSTORE_N * sizeof(char*));
+    CHECK_FATAL(!ptrs, "malloc failed");
+
+    char buf[64];
+    u64  t0 = ns_now();
+    for (int i = 0; i < STRSTORE_N; i++) {
+        int   len = strstore_fmt(buf, sizeof(buf), i);
+        char* p   = malloc((u64)len);
+        memcpy(p, buf, (u64)len);
+        ptrs[i] = p;
+    }
+    u64 t1 = ns_now();
+
+    bench("malloc + memcpy (1 free/string)", STRSTORE_N, t0, t1);
+
+    for (int i = 0; i < STRSTORE_N; i++) {
+        free(ptrs[i]);
+    }
+    free(ptrs);
+}
+
+static void bench_ss_string_sso(void)
+{
+    genVec* v = genVec_init(STRSTORE_N, sizeof(String), &wc_str_ops);
+
+    char buf[64];
+    u64  t0 = ns_now();
+    for (int i = 0; i < STRSTORE_N; i++) {
+        strstore_fmt(buf, sizeof(buf), i);
+        String s;
+        string_create_stk(&s, buf);
+        genVec_push(v, (u8*)&s);
+        string_destroy_stk(&s);
+    }
+    u64 t1 = ns_now();
+
+    bench("String (SSO) create + push+copy", STRSTORE_N, t0, t1);
+    genVec_destroy(v);
+}
+
+void suite_string_storage(void)
+{
+    WC_SUITE("string storage strategies  (500k mixed-length strings)");
+    WC_RUN(bench_ss_string_store);
+    WC_RUN(bench_ss_chain_arena);
+    WC_RUN(bench_ss_arena);
+    WC_RUN(bench_ss_malloc);
+    WC_RUN(bench_ss_string_sso);
+}
+
 extern int speed_suite(void)
 {
     printf("\n=== WCtoolkit speed tests ===\n");
@@ -605,6 +892,8 @@ extern int speed_suite(void)
     suite_init_val();
     suite_map_put_get();
     suite_map_clear();
+    suite_string_storage();
+    suite_complex_owned_type();
 
     return WC_REPORT();
 }

@@ -27,7 +27,10 @@ void strview_print(strview sv);
 
 
 typedef struct string_store_node {
-    char                      buf[STRING_STORE_NODE_SIZE];
+    union {
+        char  buf[STRING_STORE_NODE_SIZE];
+        char* heap;
+    };
     struct string_store_node* next;
 } string_store_node;
 

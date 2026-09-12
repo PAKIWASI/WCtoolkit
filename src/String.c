@@ -69,8 +69,9 @@ String* string_from_string(const String* other)
     String* s = malloc(sizeof(String));
     CHECK_FATAL(!s, "malloc failed");
 
-    s->size     = 0;
-    s->capacity = STR_SSO_SIZE - 1;
+    s->size                  = 0;
+    s->capacity              = STR_SSO_SIZE - 1;
+    s->stk[STR_SSO_SIZE - 1] = 1; // mark SSO mode before GET_STR() is used below
 
     if (other->size > 0) {
         ensure_capacity(s, other->size);
@@ -153,10 +154,11 @@ void string_copy(String* dest, const String* src)
         return;
     }
 
-    string_destroy_stk(dest);
-
-    dest->size     = 0;
-    dest->capacity = STR_SSO_SIZE - 1;
+    // dest is documented as "re-initialised": callers may pass raw/uninitialised
+    // memory , so we must not read dest's old state before it has ever been initialised.
+    dest->size                  = 0;
+    dest->capacity              = STR_SSO_SIZE - 1;
+    dest->stk[STR_SSO_SIZE - 1] = 1; // mark SSO mode before GET_STR() is used below
 
     if (src->size > 0) {
         ensure_capacity(dest, src->size);

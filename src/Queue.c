@@ -1,6 +1,7 @@
 #include "Queue.h"
 #include "common.h"
 #include "gen_vector.h"
+#include "wc_errno.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -186,7 +187,7 @@ void enqueue_move(Queue* q, u8** x)
 void dequeue(Queue* q, u8* out)
 {
     CHECK_FATAL(!q, "queue is null");
-    CHECK_FATAL(q->size == 0, "cannot dequeue from empty queue");
+    WC_SET_RET(WC_ERR_EMPTY, q->size == 0, );
 
     if (out) {
         genVec_get(q->arr, q->head, out);
@@ -209,7 +210,7 @@ void queue_peek(Queue* q, u8* peek)
 {
     CHECK_FATAL(!q, "queue is null");
     CHECK_FATAL(!peek, "peek is null");
-    CHECK_FATAL(q->size == 0, "cannot peek empty queue");
+    WC_SET_RET(WC_ERR_EMPTY, q->size == 0, );
 
     genVec_get(q->arr, q->head, peek);
 }
@@ -217,7 +218,7 @@ void queue_peek(Queue* q, u8* peek)
 const u8* queue_peek_ptr(Queue* q)
 {
     CHECK_FATAL(!q, "queue is null");
-    CHECK_FATAL(q->size == 0, "cannot peek empty queue");
+    WC_SET_RET(WC_ERR_EMPTY, q->size == 0, NULL);
 
     return genVec_get_ptr(q->arr, q->head);
 }
