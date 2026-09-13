@@ -27,6 +27,7 @@
 
 // LOGGING/ERRORS
 
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -42,21 +43,26 @@
 
 // TODO: warm paths ?
 
-#define WARN(fmt, ...)                                            \
-    do {                                                          \
-        printf(WC_COLOR_YELLOW "[WARN]"                              \
-                            " %s:%d:%s(): " fmt "\n" WC_COLOR_RESET, \
-               __FILE__, __LINE__, __func__, ##__VA_ARGS__);      \
+#define WARN(fmt, ...)                                                  \
+    do {                                                                \
+        printf(WC_COLOR_YELLOW "[WARN]"                                 \
+                               " %s:%d:%s(): " fmt "\n" WC_COLOR_RESET, \
+               __FILE__, __LINE__, __func__, ##__VA_ARGS__);            \
     } while (0)
 
-#define FATAL(fmt, ...)                                         \
-    do {                                                        \
-        fprintf(stderr,                                         \
-                WC_COLOR_RED "[FATAL]"                             \
-                          " %s:%d:%s(): " fmt "\n" WC_COLOR_RESET, \
-                __FILE__, __LINE__, __func__, ##__VA_ARGS__);   \
-        exit(EXIT_FAILURE);                                     \
-    } while (0)
+__attribute__((noreturn, format(printf, 4, 5))) static inline void
+wc_fatal_report(const char* file, int line, const char* func, const char* fmt, ...)
+{
+    fprintf(stderr, WC_COLOR_RED "[FATAL] %s:%d:%s(): ", file, line, func);
+    va_list args;
+    va_start(args, fmt);
+    vfprintf(stderr, fmt, args);
+    va_end(args);
+    fprintf(stderr, "\n" WC_COLOR_RESET);
+    exit(EXIT_FAILURE);
+}
+
+#define FATAL(fmt, ...) wc_fatal_report(__FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__)
 
 #define CHECK_WARN(cond, fmt, ...)                           \
     do {                                                     \
@@ -73,38 +79,46 @@
         }                                                    \
     } while (0)
 
+#ifdef NDEBUG
+#define CHECK_FATAL(cond, fmt, ...) ((void)0)
+#else
 #define CHECK_FATAL(cond, fmt, ...)                           \
     do {                                                      \
         if (__builtin_expect(!!(cond), 0)) {                  \
             FATAL("Check: (%s): " fmt, #cond, ##__VA_ARGS__); \
         }                                                     \
     } while (0)
+#endif
 
-#define LOG(fmt, ...)                                       \
-    do {                                                    \
-        printf(WC_COLOR_CYAN "[LOG]"                           \
-                          " : %s(): " fmt "\n" WC_COLOR_RESET, \
-               __func__, ##__VA_ARGS__);                    \
+#define LOG(fmt, ...)                                             \
+    do {                                                          \
+        printf(WC_COLOR_CYAN "[LOG]"                              \
+                             " : %s(): " fmt "\n" WC_COLOR_RESET, \
+               __func__, ##__VA_ARGS__);                          \
     } while (0)
 
 
-#define MALLOC(size, cap, name) ({\
-    void* _mlcd = malloc(size * cap);\
-    CHECK_FATAL(!_mlcd, "\"" #name "\"" " malloc failed");\
-    _mlcd;\
-})
+#define MALLOC(size, cap, name)                \
+    ({                                         \
+        void* _mlcd = malloc(size * cap);      \
+        CHECK_FATAL(!_mlcd, "\"" #name "\""    \
+                            " malloc failed"); \
+        _mlcd;                                 \
+    })
 
 
 // TYPES
 
-#include <stdint.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 typedef uint8_t  u8;
 typedef uint8_t  b8;
 typedef uint16_t u16;
 typedef uint32_t u32;
 typedef uint64_t u64;
+
+#define WC_NOT_FOUND ((u64) - 1)
 
 // #define false ((b8)0)
 // #define true  ((b8)1)
@@ -192,7 +206,7 @@ static inline void wc_print_u64(const u8* elm)
 }
 static inline void wc_print_float(const u8* elm)
 {
-    printf("%.2f ", *(float*)elm);
+    printf("%.2f ", (double)*(float*)elm);
 }
 static inline void wc_print_char(const u8* elm)
 {
@@ -270,6 +284,9 @@ float fast_pow(float base, float exp);
 #ifndef WC_RANDOM_H
 #define WC_RANDOM_H
 
+﻿#ifndef RANDOM_H
+#define RANDOM_H
+
 /*
     This Implimentation is Based on:
     *Really* minimal PCG32 code / (c) 2014 M.E. O'Neill / pcg-random.org
@@ -315,7 +332,7 @@ float fast_pow(float base, float exp);
 typedef struct {
     u64 state;    // RNG state - advances with each random number generated
     u64 inc;      // Sequence selector - must be odd (ensures full period LCG)
-} pcg32_random_t;
+} WC_Pcg32;
 
 
 // Default initializer with pre-chosen values for state and increment.
@@ -769,23 +786,23 @@ float fast_pow(float base, float exp) {
 #ifndef WC_RANDOM_IMPL
 #define WC_RANDOM_IMPL
 
-#include <bits/time.h>
+﻿#include <bits/time.h>
 #include <stdint.h>
 #include <time.h>
 
 
 
-static void pcg32_rand_seed_r(pcg32_random_t* rng, u64 seed, u64 seq);
-static u32 pcg32_rand_r(pcg32_random_t* rng);
-static u32 pcg32_rand_bounded_r(pcg32_random_t* rng, u32 bound);
+static void pcg32_rand_seed_r(WC_Pcg32* rng, u64 seed, u64 seq);
+static u32 pcg32_rand_r(WC_Pcg32* rng);
+static u32 pcg32_rand_bounded_r(WC_Pcg32* rng, u32 bound);
 
 
 
 // Initialize global state
-static pcg32_random_t global_rng = PCG32_INITIALIZER;
+static WC_Pcg32 global_rng = PCG32_INITIALIZER;
 
 
-void pcg32_rand_seed_r(pcg32_random_t* rng, u64 seed, u64 seq)
+void pcg32_rand_seed_r(WC_Pcg32* rng, u64 seed, u64 seq)
 {
     rng->state = 0;
     //Set increment from sequence number. 
@@ -806,7 +823,7 @@ void pcg32_rand_seed(u64 seed, u64 seq)
     pcg32_rand_seed_r(&global_rng, seed, seq);
 }
 
-u32 pcg32_rand_r(pcg32_random_t* rng)
+u32 pcg32_rand_r(WC_Pcg32* rng)
 {
     // Save old state
     u64 oldstate = rng->state;
@@ -823,7 +840,7 @@ u32 pcg32_rand_r(pcg32_random_t* rng)
     // This creates a 32-bit value from the 64-bit state
     u32 xorshifted = (u32)(((oldstate >> 18) ^ oldstate) >> 27);
     // Use top 5 bits to decide rotation amount (0-31)
-    u32 rot = oldstate >> 59;
+    u32 rot = (u32)(oldstate >> 59);
     // rotate x by r -> (x >> r) | (x << (32 - r))
     // Random rotation: Rotate xorshifted right by rot bits:
     // xorshifted >> rot: Shift right by rot
@@ -839,7 +856,7 @@ u32 pcg32_rand(void)
 
 
 
-u32 pcg32_rand_bounded_r(pcg32_random_t* rng, u32 bound)
+u32 pcg32_rand_bounded_r(WC_Pcg32* rng, u32 bound)
 {
     // To avoid bias, we need to make the range of the RNG a multiple of
     // bound, which we do by dropping output less than a threshold.

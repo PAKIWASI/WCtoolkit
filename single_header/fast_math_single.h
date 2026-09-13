@@ -27,6 +27,7 @@
 
 // LOGGING/ERRORS
 
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -42,21 +43,26 @@
 
 // TODO: warm paths ?
 
-#define WARN(fmt, ...)                                            \
-    do {                                                          \
-        printf(WC_COLOR_YELLOW "[WARN]"                              \
-                            " %s:%d:%s(): " fmt "\n" WC_COLOR_RESET, \
-               __FILE__, __LINE__, __func__, ##__VA_ARGS__);      \
+#define WARN(fmt, ...)                                                  \
+    do {                                                                \
+        printf(WC_COLOR_YELLOW "[WARN]"                                 \
+                               " %s:%d:%s(): " fmt "\n" WC_COLOR_RESET, \
+               __FILE__, __LINE__, __func__, ##__VA_ARGS__);            \
     } while (0)
 
-#define FATAL(fmt, ...)                                         \
-    do {                                                        \
-        fprintf(stderr,                                         \
-                WC_COLOR_RED "[FATAL]"                             \
-                          " %s:%d:%s(): " fmt "\n" WC_COLOR_RESET, \
-                __FILE__, __LINE__, __func__, ##__VA_ARGS__);   \
-        exit(EXIT_FAILURE);                                     \
-    } while (0)
+__attribute__((noreturn, format(printf, 4, 5))) static inline void
+wc_fatal_report(const char* file, int line, const char* func, const char* fmt, ...)
+{
+    fprintf(stderr, WC_COLOR_RED "[FATAL] %s:%d:%s(): ", file, line, func);
+    va_list args;
+    va_start(args, fmt);
+    vfprintf(stderr, fmt, args);
+    va_end(args);
+    fprintf(stderr, "\n" WC_COLOR_RESET);
+    exit(EXIT_FAILURE);
+}
+
+#define FATAL(fmt, ...) wc_fatal_report(__FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__)
 
 #define CHECK_WARN(cond, fmt, ...)                           \
     do {                                                     \
@@ -73,38 +79,46 @@
         }                                                    \
     } while (0)
 
+#ifdef NDEBUG
+#define CHECK_FATAL(cond, fmt, ...) ((void)0)
+#else
 #define CHECK_FATAL(cond, fmt, ...)                           \
     do {                                                      \
         if (__builtin_expect(!!(cond), 0)) {                  \
             FATAL("Check: (%s): " fmt, #cond, ##__VA_ARGS__); \
         }                                                     \
     } while (0)
+#endif
 
-#define LOG(fmt, ...)                                       \
-    do {                                                    \
-        printf(WC_COLOR_CYAN "[LOG]"                           \
-                          " : %s(): " fmt "\n" WC_COLOR_RESET, \
-               __func__, ##__VA_ARGS__);                    \
+#define LOG(fmt, ...)                                             \
+    do {                                                          \
+        printf(WC_COLOR_CYAN "[LOG]"                              \
+                             " : %s(): " fmt "\n" WC_COLOR_RESET, \
+               __func__, ##__VA_ARGS__);                          \
     } while (0)
 
 
-#define MALLOC(size, cap, name) ({\
-    void* _mlcd = malloc(size * cap);\
-    CHECK_FATAL(!_mlcd, "\"" #name "\"" " malloc failed");\
-    _mlcd;\
-})
+#define MALLOC(size, cap, name)                \
+    ({                                         \
+        void* _mlcd = malloc(size * cap);      \
+        CHECK_FATAL(!_mlcd, "\"" #name "\""    \
+                            " malloc failed"); \
+        _mlcd;                                 \
+    })
 
 
 // TYPES
 
-#include <stdint.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 typedef uint8_t  u8;
 typedef uint8_t  b8;
 typedef uint16_t u16;
 typedef uint32_t u32;
 typedef uint64_t u64;
+
+#define WC_NOT_FOUND ((u64) - 1)
 
 // #define false ((b8)0)
 // #define true  ((b8)1)
@@ -192,7 +206,7 @@ static inline void wc_print_u64(const u8* elm)
 }
 static inline void wc_print_float(const u8* elm)
 {
-    printf("%.2f ", *(float*)elm);
+    printf("%.2f ", (double)*(float*)elm);
 }
 static inline void wc_print_char(const u8* elm)
 {

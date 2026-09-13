@@ -2,15 +2,15 @@
 #define WC_ARENA_SINGLE_H
 
 /*
- * Arena_single.h
+ * arena_single.h
  * Auto-generated single-header library.
  *
  * In EXACTLY ONE .c file, before including this header:
  *     #define WC_IMPLEMENTATION
- *     #include "Arena_single.h"
+ *     #include "arena_single.h"
  *
  * All other files just:
- *     #include "Arena_single.h"
+ *     #include "arena_single.h"
  */
 
 /* ===== common.h ===== */
@@ -27,6 +27,7 @@
 
 // LOGGING/ERRORS
 
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -42,21 +43,26 @@
 
 // TODO: warm paths ?
 
-#define WARN(fmt, ...)                                            \
-    do {                                                          \
-        printf(WC_COLOR_YELLOW "[WARN]"                              \
-                            " %s:%d:%s(): " fmt "\n" WC_COLOR_RESET, \
-               __FILE__, __LINE__, __func__, ##__VA_ARGS__);      \
+#define WARN(fmt, ...)                                                  \
+    do {                                                                \
+        printf(WC_COLOR_YELLOW "[WARN]"                                 \
+                               " %s:%d:%s(): " fmt "\n" WC_COLOR_RESET, \
+               __FILE__, __LINE__, __func__, ##__VA_ARGS__);            \
     } while (0)
 
-#define FATAL(fmt, ...)                                         \
-    do {                                                        \
-        fprintf(stderr,                                         \
-                WC_COLOR_RED "[FATAL]"                             \
-                          " %s:%d:%s(): " fmt "\n" WC_COLOR_RESET, \
-                __FILE__, __LINE__, __func__, ##__VA_ARGS__);   \
-        exit(EXIT_FAILURE);                                     \
-    } while (0)
+__attribute__((noreturn, format(printf, 4, 5))) static inline void
+wc_fatal_report(const char* file, int line, const char* func, const char* fmt, ...)
+{
+    fprintf(stderr, WC_COLOR_RED "[FATAL] %s:%d:%s(): ", file, line, func);
+    va_list args;
+    va_start(args, fmt);
+    vfprintf(stderr, fmt, args);
+    va_end(args);
+    fprintf(stderr, "\n" WC_COLOR_RESET);
+    exit(EXIT_FAILURE);
+}
+
+#define FATAL(fmt, ...) wc_fatal_report(__FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__)
 
 #define CHECK_WARN(cond, fmt, ...)                           \
     do {                                                     \
@@ -73,38 +79,46 @@
         }                                                    \
     } while (0)
 
+#ifdef NDEBUG
+#define CHECK_FATAL(cond, fmt, ...) ((void)0)
+#else
 #define CHECK_FATAL(cond, fmt, ...)                           \
     do {                                                      \
         if (__builtin_expect(!!(cond), 0)) {                  \
             FATAL("Check: (%s): " fmt, #cond, ##__VA_ARGS__); \
         }                                                     \
     } while (0)
+#endif
 
-#define LOG(fmt, ...)                                       \
-    do {                                                    \
-        printf(WC_COLOR_CYAN "[LOG]"                           \
-                          " : %s(): " fmt "\n" WC_COLOR_RESET, \
-               __func__, ##__VA_ARGS__);                    \
+#define LOG(fmt, ...)                                             \
+    do {                                                          \
+        printf(WC_COLOR_CYAN "[LOG]"                              \
+                             " : %s(): " fmt "\n" WC_COLOR_RESET, \
+               __func__, ##__VA_ARGS__);                          \
     } while (0)
 
 
-#define MALLOC(size, cap, name) ({\
-    void* _mlcd = malloc(size * cap);\
-    CHECK_FATAL(!_mlcd, "\"" #name "\"" " malloc failed");\
-    _mlcd;\
-})
+#define MALLOC(size, cap, name)                \
+    ({                                         \
+        void* _mlcd = malloc(size * cap);      \
+        CHECK_FATAL(!_mlcd, "\"" #name "\""    \
+                            " malloc failed"); \
+        _mlcd;                                 \
+    })
 
 
 // TYPES
 
-#include <stdint.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 typedef uint8_t  u8;
 typedef uint8_t  b8;
 typedef uint16_t u16;
 typedef uint32_t u32;
 typedef uint64_t u64;
+
+#define WC_NOT_FOUND ((u64) - 1)
 
 // #define false ((b8)0)
 // #define true  ((b8)1)
@@ -192,7 +206,7 @@ static inline void wc_print_u64(const u8* elm)
 }
 static inline void wc_print_float(const u8* elm)
 {
-    printf("%.2f ", *(float*)elm);
+    printf("%.2f ", (double)*(float*)elm);
 }
 static inline void wc_print_char(const u8* elm)
 {
@@ -249,8 +263,8 @@ static inline void wc_print_cstr(const u8* elm)
  * WHAT SETS wc_errno
  * ------------------
  *   Arena_alloc, Arena_alloc_aligned      WC_ERR_FULL    Arena exhausted
- *   genVec_pop, genVec_front, genVec_back WC_ERR_EMPTY   vec is empty
- *   deQueue, Queue_peek, Queue_peek_ptr   WC_ERR_EMPTY   Queue is empty
+ *   GenVec_pop, GenVec_front, GenVec_back WC_ERR_EMPTY   vec is empty
+ *   Queue_pop, Queue_peek, Queue_peek_ptr WC_ERR_EMPTY   Queue is empty
  *   Stack_pop, Stack_peek                 WC_ERR_EMPTY   Stack is empty
  */
 
@@ -321,7 +335,7 @@ static inline void wc_perror(const char* prefix)
 
 #endif /* WC_WC_ERRNO_H */
 
-/* ===== Arena.h ===== */
+/* ===== arena.h ===== */
 #ifndef WC_ARENA_H
 #define WC_ARENA_H
 
@@ -355,13 +369,13 @@ Parameters:
 Return:
   Pointer to Arena on success, NULL on failure
 */
-Arena* Arena_create(u64 capacity);
+Arena* Arena_create(u64 capacity) __attribute__((warn_unused_result));
 
 /*
 Initialize an Arena object with pointers to the Arena and a
 pre-allocated region(base ptr), as well as the size of the provided
 region. Good for using the Stack instead of the heap.
-The Arena and the data may be Stack initialized, so no Arena_release.
+The Arena and the data may be Stack initialized, so no Arena_destroy.
 Note that ARENA_DEFAULT_SIZE is not used.
 
 Parameters:
@@ -369,10 +383,11 @@ Parameters:
   u8*    data     |   The region to be Arena-fyed.
   u64    size     |   The size of the region in bytes.
 */
-void Arena_create_arr_stk(Arena* Arena, u8* data, u64 size);
+void Arena_create_arr_stk(Arena* arena, u64 size, u8* data) __attribute__((nonnull(1, 3)));
 
 
-void Arena_create_stk(Arena* Arena, u64 capacity);
+
+void Arena_create_stk(Arena* arena, u64 capacity) __attribute__((nonnull(1)));
 
 /*
 Reset the pointer to the Arena region to the beginning
@@ -382,9 +397,8 @@ expensive frees.
 Parameters:
   Arena *Arena    |    The Arena to be cleared.
 */
-static inline void Arena_clear(Arena* Arena)
+static inline __attribute__((nonnull(1))) void Arena_clear(Arena* Arena)
 {
-    CHECK_FATAL(!Arena, "Arena is null");
     Arena->idx = 0;
 }
 
@@ -394,9 +408,8 @@ Free the memory allocated for the entire Arena region.
 Parameters:
   Arena *Arena    |    The Arena to be destroyed.
 */
-static inline void Arena_release(Arena* Arena)
+static inline __attribute__((nonnull(1))) void Arena_destroy(Arena* Arena)
 {
-    CHECK_FATAL(!Arena, "Arena is null");
     free(Arena->base);
     free(Arena);
 }
@@ -419,7 +432,7 @@ Return:
   Pointer to Arena region segment on success, NULL on
   failure.
 */
-u8* Arena_alloc(Arena* Arena, u64 size);
+u8* Arena_alloc(Arena* Arena, u64 size) __attribute__((nonnull(1), alloc_size(2)));
 
 /*
 Same as Arena_alloc, except you can specify a memory
@@ -442,20 +455,18 @@ Return:
   Pointer to Arena region segment on success, NULL on
   failure.
 */
-u8* Arena_alloc_aligned(Arena* Arena, u64 size, u32 alignment);
+u8* Arena_alloc_aligned(Arena* Arena, u64 size, u32 alignment) __attribute__((nonnull(1), alloc_size(2)));
 
 
 // Get used capacity
-static inline u64 Arena_used(Arena* Arena)
+static inline __attribute__((nonnull(1))) u64 Arena_used(Arena* Arena)
 {
-    CHECK_FATAL(!Arena, "Arena is null");
     return Arena->idx;
 }
 
 // Get remaining capacity
-static inline u64 Arena_remaining(Arena* Arena)
+static inline __attribute__((nonnull(1))) u64 Arena_remaining(Arena* Arena)
 {
-    CHECK_FATAL(!Arena, "Arena is null");
     return Arena->size - Arena->idx;
 }
 
@@ -469,9 +480,8 @@ typedef struct {
 } ArenaScratch;
 
 
-static inline ArenaScratch Arena_scratch_begin(Arena* Arena)
+static inline __attribute__((nonnull(1))) ArenaScratch Arena_scratch_begin(Arena* Arena)
 {
-    CHECK_FATAL(!Arena, "Arena is null");
     return (ArenaScratch){ .Arena = Arena, .mark = Arena->idx };
 }
 
@@ -483,11 +493,19 @@ static inline void Arena_scratch_end(ArenaScratch scratch)
     }
 }
 
-// macro for automatic cleanup Arena_scratch
-#define ARENA_SCRATCH(Arena_ptr) \
-    for (ArenaScratch __nme__ = Arena_scratch_begin(Arena_ptr); \
-         (__nme__ ).Arena != NULL; \
-         Arena_scratch_end((__nme__ )), (__nme__).Arena = NULL)
+static inline void wc_Arena_scratch_cleanup(ArenaScratch* s)
+{
+    if (s && s->Arena) {
+        s->Arena->idx = s->mark;
+        s->Arena = NULL;
+    }
+}
+
+// macro for automatic cleanup Arena_scratch — safe with return/break/goto
+#define ARENA_SCRATCH(Arena_ptr)                                                                             \
+    for (int _as_once = 1; _as_once; _as_once = 0)                                                          \
+        for (ArenaScratch __attribute__((cleanup(wc_Arena_scratch_cleanup))) _as_s = Arena_scratch_begin(Arena_ptr); \
+             _as_once; _as_once = 0)
 
 /* USAGE:
 // Manual:
@@ -504,7 +522,7 @@ ARENA_SCRATCH(Arena) {
 
 // USEFULL MACROS
 
-#define ARENA_CREATE_STK_ARR(Arena, n) (Arena_create_arr_stk((Arena), (u8[nKB(n)]){0}, nKB(n)))
+#define ARENA_CREATE_STK_ARR(Arena, n) (Arena_create_arr_stk((Arena), nKB(n), (u8[nKB(n)]){0}))
 
 // typed allocation
 #define ARENA_ALLOC(Arena, T) ((T*)Arena_alloc((Arena), sizeof(T)))
@@ -540,7 +558,7 @@ _Thread_local wc_err wc_errno = WC_OK;
 
 #endif /* WC_WC_ERRNO_IMPL */
 
-/* ===== Arena.c ===== */
+/* ===== arena.c ===== */
 #ifndef WC_ARENA_IMPL
 #define WC_ARENA_IMPL
 
@@ -581,72 +599,68 @@ Arena* Arena_create(u64 capacity)
         capacity = ARENA_DEFAULT_SIZE;
     }
 
-    Arena* Arena = (Arena*)malloc(sizeof(Arena));
-    CHECK_FATAL(!Arena, "Arena malloc failed");
+    Arena* arena = (Arena*)malloc(sizeof(Arena));
+    CHECK_FATAL(!arena, "Arena malloc failed");
 
-    Arena->base = (u8*)malloc(capacity);
-    CHECK_FATAL(!Arena->base, "Arena base malloc failed");
+    arena->base = (u8*)malloc(capacity);
+    CHECK_FATAL(!arena->base, "Arena base malloc failed");
 
-    Arena->idx = 0;
-    Arena->size = capacity;
+    arena->idx = 0;
+    arena->size = capacity;
 
-    return Arena;
+    return arena;
 }
 
-void Arena_create_stk(Arena* Arena, u64 capacity)
+void Arena_create_stk(Arena* arena, u64 capacity)
 {
     if (capacity == 0) {
         capacity = ARENA_DEFAULT_SIZE;
     }
 
-    Arena->base = (u8*)malloc(capacity);
-    CHECK_FATAL(!Arena->base, "Arena base malloc failed");
+    arena->base = (u8*)malloc(capacity);
+    CHECK_FATAL(!arena->base, "Arena base malloc failed");
 
-    Arena->idx  = 0;
-    Arena->size = capacity;
+    arena->idx  = 0;
+    arena->size = capacity;
 }
 
-void Arena_create_arr_stk(Arena* Arena, u8* data, u64 size)
+void Arena_create_arr_stk(Arena* arena, u64 size, u8* data)
 {
-    CHECK_FATAL(!Arena, "Arena is null");
-    CHECK_FATAL(!data, "data is null");
     CHECK_FATAL(size == 0, "size can't be zero");
 
-    Arena->base = data;
-    Arena->idx = 0;
-    Arena->size = size;
+    arena->base = data;
+    arena->idx = 0;
+    arena->size = size;
 }
 
-u8* Arena_alloc(Arena* Arena, u64 size)
+u8* Arena_alloc(Arena* arena, u64 size)
 {
-    CHECK_FATAL(!Arena, "Arena is null");
     CHECK_FATAL(size == 0, "can't have allocation of size = 0");
 
     // Align the current index first
-    u64 aligned_idx = ALIGN_UP_DEFAULT(Arena->idx);
-    WC_SET_RET(WC_ERR_FULL, Arena->size - aligned_idx < size, NULL);
+    u64 aligned_idx = ALIGN_UP_DEFAULT(arena->idx);
+    WC_SET_RET(WC_ERR_FULL, arena->size - aligned_idx < size, NULL);
 
-    u8* ptr = ARENA_PTR(Arena, aligned_idx);
-    Arena->idx = aligned_idx + size;
+    u8* ptr = ARENA_PTR(arena, aligned_idx);
+    arena->idx = aligned_idx + size;
 
     return ptr;
 }
 
-u8* Arena_alloc_aligned(Arena* Arena, u64 size, u32 alignment)
+u8* Arena_alloc_aligned(Arena* arena, u64 size, u32 alignment)
 {
 
-    CHECK_FATAL(!Arena, "Arena is null");
     CHECK_FATAL(size == 0, "can't have allocation of size = 0");
     CHECK_FATAL((alignment & (alignment - 1)) != 0,
                 "alignment must be power of two");
 
 
-    u64 aligned_idx = ALIGN_UP(Arena->idx, alignment);
+    u64 aligned_idx = ALIGN_UP(arena->idx, alignment);
 
-    WC_SET_RET(WC_ERR_FULL, Arena->size - aligned_idx < size, NULL);
+    WC_SET_RET(WC_ERR_FULL, arena->size - aligned_idx < size, NULL);
 
-    u8* ptr = ARENA_PTR(Arena, aligned_idx);
-    Arena->idx = aligned_idx + size;
+    u8* ptr = ARENA_PTR(arena, aligned_idx);
+    arena->idx = aligned_idx + size;
 
     return ptr;
 }

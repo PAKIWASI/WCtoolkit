@@ -57,8 +57,8 @@
  * WHAT SETS wc_errno
  * ------------------
  *   Arena_alloc, Arena_alloc_aligned      WC_ERR_FULL    Arena exhausted
- *   genVec_pop, genVec_front, genVec_back WC_ERR_EMPTY   vec is empty
- *   deQueue, Queue_peek, Queue_peek_ptr   WC_ERR_EMPTY   Queue is empty
+ *   GenVec_pop, GenVec_front, GenVec_back WC_ERR_EMPTY   vec is empty
+ *   Queue_pop, Queue_peek, Queue_peek_ptr WC_ERR_EMPTY   Queue is empty
  *   Stack_pop, Stack_peek                 WC_ERR_EMPTY   Stack is empty
  */
 

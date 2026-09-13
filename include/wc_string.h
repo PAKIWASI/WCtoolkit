@@ -75,6 +75,15 @@ void String_to_cstr_buf(const String* str, char* buff, u64 n) __attribute__((non
 // Return a raw pointer into the internal buffer (no NUL terminator).
 char* String_data_ptr(const String* str) __attribute__((nonnull(1)));
 
+// Guarantee a '\0' sits one byte past the last real character, WITHOUT
+// touching str->size (str->size is not a "logical length excluding the
+// NUL" convention anywhere else in this API, and this function keeps it
+// that way). Grows exactly like String_append_char would if the String
+// is already full (SSO->heap conversion, or a heap realloc) so the NUL
+// always lands in real, owned memory rather than the SSO mode-flag byte.
+// See TEMP_CSTR_READ below for the typical use case.
+void String_ensure_null_term(String* str) __attribute__((nonnull(1)));
+
 
 //  Modification
 
@@ -171,31 +180,15 @@ __attribute__((nonnull(1))) static inline b8 String_is_sso(const String* str)
     return str->stk[STR_SSO_SIZE - 1] != '\0';
 }
 
-// TODO: do something like ensure_null_term(str) that just puts a \0 at strlen position,
-// no need to increment len, just a \0 at +1 out of range spot
-
-/*
- Macro to temporarily NUL-terminate a String for read-only C APIs.
- Safe with break/return/goto using cleanup attribute (gcc/clang)
-
- Usage:
-   TEMP_CSTR_READ(s) {
-       printf("%s\n", String_data_ptr(s));
-   }
-*/
-static inline void wctemp_cstr_read_cleanup(String** s)
+// Read-only pointer into the buffer. Unlike String_data_ptr, this never
+// returns NULL for an empty String. It's meant to be used AFTER
+// String_ensure_null_term, where index 0 is guaranteed to hold at least a '\0',
+// even when size == 0. Calling this without a prior String_ensure_null_term on 
+// a fresh/empty String reads uninitialised memory.
+__attribute__((nonnull(1))) static inline const char* String_cstr_view(const String* str)
 {
-    if (s && *s) {
-        String_pop_char(*s);
-    }
+    return String_is_sso(str) ? str->stk : str->heap;
 }
-
-#define TEMP_CSTR_READ(str)                                                      \
-    for (int _tcr_once = 1; _tcr_once; _tcr_once = 0)                            \
-        for (String* __attribute__((cleanup(wctemp_cstr_read_cleanup))) _tcr_s = \
-                 ((str) ? (String_append_char((str), '\0'), (str)) : NULL);      \
-             _tcr_once; _tcr_once = 0)
-
 
 
 #endif // STRING_H

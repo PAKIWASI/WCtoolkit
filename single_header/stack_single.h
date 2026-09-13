@@ -2,15 +2,15 @@
 #define WC_STACK_SINGLE_H
 
 /*
- * Stack_single.h
+ * stack_single.h
  * Auto-generated single-header library.
  *
  * In EXACTLY ONE .c file, before including this header:
  *     #define WC_IMPLEMENTATION
- *     #include "Stack_single.h"
+ *     #include "stack_single.h"
  *
  * All other files just:
- *     #include "Stack_single.h"
+ *     #include "stack_single.h"
  */
 
 /* ===== common.h ===== */
@@ -27,6 +27,7 @@
 
 // LOGGING/ERRORS
 
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -42,21 +43,26 @@
 
 // TODO: warm paths ?
 
-#define WARN(fmt, ...)                                            \
-    do {                                                          \
-        printf(WC_COLOR_YELLOW "[WARN]"                              \
-                            " %s:%d:%s(): " fmt "\n" WC_COLOR_RESET, \
-               __FILE__, __LINE__, __func__, ##__VA_ARGS__);      \
+#define WARN(fmt, ...)                                                  \
+    do {                                                                \
+        printf(WC_COLOR_YELLOW "[WARN]"                                 \
+                               " %s:%d:%s(): " fmt "\n" WC_COLOR_RESET, \
+               __FILE__, __LINE__, __func__, ##__VA_ARGS__);            \
     } while (0)
 
-#define FATAL(fmt, ...)                                         \
-    do {                                                        \
-        fprintf(stderr,                                         \
-                WC_COLOR_RED "[FATAL]"                             \
-                          " %s:%d:%s(): " fmt "\n" WC_COLOR_RESET, \
-                __FILE__, __LINE__, __func__, ##__VA_ARGS__);   \
-        exit(EXIT_FAILURE);                                     \
-    } while (0)
+__attribute__((noreturn, format(printf, 4, 5))) static inline void
+wc_fatal_report(const char* file, int line, const char* func, const char* fmt, ...)
+{
+    fprintf(stderr, WC_COLOR_RED "[FATAL] %s:%d:%s(): ", file, line, func);
+    va_list args;
+    va_start(args, fmt);
+    vfprintf(stderr, fmt, args);
+    va_end(args);
+    fprintf(stderr, "\n" WC_COLOR_RESET);
+    exit(EXIT_FAILURE);
+}
+
+#define FATAL(fmt, ...) wc_fatal_report(__FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__)
 
 #define CHECK_WARN(cond, fmt, ...)                           \
     do {                                                     \
@@ -73,38 +79,46 @@
         }                                                    \
     } while (0)
 
+#ifdef NDEBUG
+#define CHECK_FATAL(cond, fmt, ...) ((void)0)
+#else
 #define CHECK_FATAL(cond, fmt, ...)                           \
     do {                                                      \
         if (__builtin_expect(!!(cond), 0)) {                  \
             FATAL("Check: (%s): " fmt, #cond, ##__VA_ARGS__); \
         }                                                     \
     } while (0)
+#endif
 
-#define LOG(fmt, ...)                                       \
-    do {                                                    \
-        printf(WC_COLOR_CYAN "[LOG]"                           \
-                          " : %s(): " fmt "\n" WC_COLOR_RESET, \
-               __func__, ##__VA_ARGS__);                    \
+#define LOG(fmt, ...)                                             \
+    do {                                                          \
+        printf(WC_COLOR_CYAN "[LOG]"                              \
+                             " : %s(): " fmt "\n" WC_COLOR_RESET, \
+               __func__, ##__VA_ARGS__);                          \
     } while (0)
 
 
-#define MALLOC(size, cap, name) ({\
-    void* _mlcd = malloc(size * cap);\
-    CHECK_FATAL(!_mlcd, "\"" #name "\"" " malloc failed");\
-    _mlcd;\
-})
+#define MALLOC(size, cap, name)                \
+    ({                                         \
+        void* _mlcd = malloc(size * cap);      \
+        CHECK_FATAL(!_mlcd, "\"" #name "\""    \
+                            " malloc failed"); \
+        _mlcd;                                 \
+    })
 
 
 // TYPES
 
-#include <stdint.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 typedef uint8_t  u8;
 typedef uint8_t  b8;
 typedef uint16_t u16;
 typedef uint32_t u32;
 typedef uint64_t u64;
+
+#define WC_NOT_FOUND ((u64) - 1)
 
 // #define false ((b8)0)
 // #define true  ((b8)1)
@@ -192,7 +206,7 @@ static inline void wc_print_u64(const u8* elm)
 }
 static inline void wc_print_float(const u8* elm)
 {
-    printf("%.2f ", *(float*)elm);
+    printf("%.2f ", (double)*(float*)elm);
 }
 static inline void wc_print_char(const u8* elm)
 {
@@ -205,34 +219,150 @@ static inline void wc_print_cstr(const u8* elm)
 
 #endif /* WC_COMMON_H */
 
+/* ===== wc_errno.h ===== */
+#ifndef WC_WC_ERRNO_H
+#define WC_WC_ERRNO_H
+
+#include <stdio.h>
+
+
+/* wc_errno.h — Error reporting for WCtoolkit
+ * ============================================
+ *
+ * Two tiers:
+ *
+ *   CHECK_FATAL  Programmer errors: null pointer, out of bounds, OOM.
+ *                Crashes with a message. These are bugs, not conditions.
+ *
+ *   wc_errno     Expected conditions: pop on empty, Arena full.
+ *                Function returns NULL / 0 / void. wc_errno says why.
+ *                Ignore it if you don't care. Check it if you do.
+ *
+ *
+ * USAGE
+ * -----
+ *   // Check a single call:
+ *   wc_errno = WC_OK;
+ *   u8* p = Arena_alloc(Arena, size);
+ *   if (!p && wc_errno == WC_ERR_FULL) { ... }
+ *
+ *   // Check a batch — wc_errno stays set if any call failed:
+ *   wc_errno = WC_OK;
+ *   float* a = (float*)Arena_alloc(Arena, 256);
+ *   float* b = (float*)Arena_alloc(Arena, 256);
+ *   if (wc_errno) { wc_perror("alloc"); }
+ *
+ *
+ * RULES
+ * -----
+ *   1. Successful calls do NOT clear wc_errno — clear it yourself.
+ *   2. Check the return value first. wc_errno tells you WHY, not WHETHER.
+ *   3. wc_errno is thread-local. Each thread has its own copy.
+ *
+ *
+ * WHAT SETS wc_errno
+ * ------------------
+ *   Arena_alloc, Arena_alloc_aligned      WC_ERR_FULL    Arena exhausted
+ *   GenVec_pop, GenVec_front, GenVec_back WC_ERR_EMPTY   vec is empty
+ *   Queue_pop, Queue_peek, Queue_peek_ptr WC_ERR_EMPTY   Queue is empty
+ *   Stack_pop, Stack_peek                 WC_ERR_EMPTY   Stack is empty
+ */
+
+
+typedef enum {
+    WC_OK        = 0,
+    WC_ERR_FULL,       // Arena exhausted / container at capacity
+    WC_ERR_EMPTY,      // pop or peek on empty container
+    WC_ERR_INVALID_OP, // call to a function with preconditions not met
+} wc_err;
+
+static inline const char* wc_strerror(wc_err e)
+{
+    switch (e) {
+        case WC_OK:             return "ok";
+        case WC_ERR_FULL:       return "full";
+        case WC_ERR_EMPTY:      return "empty";
+        case WC_ERR_INVALID_OP: return "invalid op";
+        default:                return "unknown";
+    }
+}
+
+/* Defined in wc_errno.c:
+ *   _Thread_local wc_err wc_errno = WC_OK;
+ */
+extern _Thread_local wc_err wc_errno;
+
+/* Print last error — same pattern as perror(3).
+ *   wc_perror("Arena_alloc");  ->  "Arena_alloc: full"
+ */
+static inline void wc_perror(const char* prefix)
+{
+    if (prefix && prefix[0]) {
+        fprintf(stderr, "%s: %s\n", prefix, wc_strerror(wc_errno));
+    } else {
+        fprintf(stderr, "%s\n", wc_strerror(wc_errno));
+    }
+}
+
+
+/* Internal macros (library use only)
+ * ------------------------------------
+ * WC_SET_RET — replaces CHECK_WARN_RET at expected-condition sites.
+ * Sets wc_errno silently and returns. No print.
+ *
+ *   WC_SET_RET(WC_ERR_EMPTY, vec->size == 0, );     void return
+ *   WC_SET_RET(WC_ERR_FULL,  cond,           NULL); pointer return
+ */
+#define WC_SET_RET(err_code, cond, ret) \
+    do {                                \
+        if (cond) {                     \
+            wc_errno = (err_code);      \
+            return ret;                 \
+        }                               \
+    } while (0)
+
+/* WC_PROPAGATE_RET — exit immediately if a callee already set wc_errno.
+ *
+ *   some_internal_fn(vec);
+ *   WC_PROPAGATE_RET( );   // exits if some_internal_fn set wc_errno
+ */
+#define WC_PROPAGATE_RET(ret)    \
+    do {                         \
+        if (wc_errno != WC_OK) { \
+            return ret;          \
+        }                        \
+    } while (0)
+
+#endif /* WC_WC_ERRNO_H */
+
 /* ===== gen_vector.h ===== */
 #ifndef WC_GEN_VECTOR_H
 #define WC_GEN_VECTOR_H
 
 /*          TLDR
- * genVec is a value-based generic vector.
+ * GenVec is a value-based generic vector.
  * Elements are stored inline and managed via user-supplied
  * copy/move/destructor callbacks.
  *
  * This avoids pointer ownership ambiguity and improves cache locality.
  *
- * Callbacks are grouped into a shared genVec_ops struct (vtable).
+ * Callbacks are grouped into a shared GenVec_ops struct (vtable).
  * Define one static ops instance per type and share it across all
  * vectors of that type —  improves cache locality when many vectors of the same type exist.
  *
  * Example:
- *   static const genVec_ops String_ops = { str_copy, str_move, str_del };
- *   genVec* vec = genVec_init(8, sizeof(String), &String_ops);
+ *   static const GenVec_ops String_ops = { str_copy, str_move, str_del };
+ *   GenVec* vec = GenVec_create(8, sizeof(String), &String_ops);
  *
  * For POD types (int, float, flat structs) pass NULL for ops:
- *   genVec* vec = genVec_init(8, sizeof(int), NULL);
+ *   GenVec* vec = GenVec_create(8, sizeof(int), NULL);
  */
 
 
-// genVec growth settings
+// GenVec growth settings
 
 #ifndef GENVEC_GROWTH
-    #define GENVEC_GROWTH 1.5F      // vec capacity multiplier
+#define GENVEC_GROWTH 1.5F // vec capacity multiplier
 #endif
 
 
@@ -243,18 +373,22 @@ typedef struct {
     // Pointer to shared type-ops vtable (or NULL for POD types)
     const container_ops* ops;
 
-    u64 size;       // Number of elements currently in vector
-    u64 capacity;   // Total allocated capacity (in elements)
-    u32 data_size;  // Size of each element in bytes
-} genVec;
+    u64 size;      // Number of elements currently in vector
+    u64 capacity;  // Total allocated capacity (in elements)
+    u32 data_size; // Size of each element in bytes
 
-// 8 8 8 8 4 '4'  = 40 bytes
+    // Cache: 1 if ops==NULL (POD fast path)
+    b8 is_pod;
+} GenVec;
+
+// 8 8 8 8 4 1 '3'  = 40 bytes
+_Static_assert(sizeof(GenVec) == 40, "GenVec layout drifted from expected 40 bytes");
 
 
 // Convenience: access ops callbacks safely
 #define VEC_COPY_FN(vec) ((vec)->ops ? (vec)->ops->copy_fn : NULL)
 #define VEC_MOVE_FN(vec) ((vec)->ops ? (vec)->ops->move_fn : NULL)
-#define VEC_DEL_FN(vec)  ((vec)->ops ? (vec)->ops->del_fn  : NULL)
+#define VEC_DEL_FN(vec)  ((vec)->ops ? (vec)->ops->del_fn : NULL)
 
 
 
@@ -262,45 +396,49 @@ typedef struct {
 // ===========================
 
 // Initialize vector with capacity n.
-// ops: pointer to a shared genVec_ops vtable, or NULL for POD types.
-genVec* genVec_init(u64 n, u32 data_size, const container_ops* ops);
+// ops: pointer to a shared GenVec_ops vtable, or NULL for POD types.
+GenVec* GenVec_create(u64 n, u32 data_size, const container_ops* ops) __attribute__((warn_unused_result));
 
 // Initialize vector on Stack (struct on Stack, data on heap).
-void genVec_init_stk(u64 n, u32 data_size, const container_ops* ops, genVec* vec);
+void GenVec_create_stk(GenVec* vec, u64 n, u32 data_size, const container_ops* ops) __attribute__((nonnull(1)));
 
 // Initialize vector of size n with all elements set to val.
-genVec* genVec_init_val(u64 n, const u8* val, u32 data_size, const container_ops* ops);
+GenVec* GenVec_create_val(u64 n, const u8* val, u32 data_size, const container_ops* ops) __attribute__((nonnull(2), warn_unused_result));
 
-void genVec_init_val_stk(u64 n, const u8* val, u32 data_size, const container_ops* ops, genVec* vec);
+// TODO: GCC does not allow 'nonnull' attribute in this position on a function definition (for the static inline ones (the ones with nonnull in the function definition))
 
-genVec* genVec_init_arr(u64 n, u32 data_size, const container_ops* ops, u8* arr);
+void GenVec_create_val_stk(GenVec* vec, u64 n, const u8* val, u32 data_size, const container_ops* ops)
+    __attribute__((nonnull(1, 3)));
+
+GenVec* GenVec_create_arr(u64 n, u32 data_size, const container_ops* ops, u8* arr) __attribute__((nonnull(4), warn_unused_result));
 
 // Vector COMPLETELY on Stack (can't grow in size).
 // You provide a Stack-allocated array which becomes the internal array.
-// should only use if you need genVec operations on C array
+// should only use if you need GenVec operations on C array
 // WARNING: crashes when size == capacity and you try to push.
-void genVec_init_stk_arr(u64 n, u8* arr, u32 data_size, const container_ops* ops, genVec* vec);
+void GenVec_create_stk_arr(GenVec* vec, u64 n, u8* arr, u32 data_size, const container_ops* ops)
+    __attribute__((nonnull(1, 3)));
 
 // Destroy heap-allocated vector and clean up all elements.
-void genVec_destroy(genVec* vec);
+void GenVec_destroy(GenVec* vec) __attribute__((nonnull(1)));
 
 // Destroy Stack-allocated vector (cleans up data, but not vec itself).
-void genVec_destroy_stk(genVec* vec);
+void GenVec_destroy_stk(GenVec* vec) __attribute__((nonnull(1)));
 
 // Remove all elements (calls del_fn on each), keep capacity.
-void genVec_clear(genVec* vec);
+void GenVec_clear(GenVec* vec) __attribute__((nonnull(1)));
 
 // Remove all elements and free memory, shrink capacity to 0.
-void genVec_reset(genVec* vec);
+void GenVec_reset(GenVec* vec) __attribute__((nonnull(1)));
 
 // Ensure vector has at least new_capacity space (never shrinks).
-void genVec_reserve(genVec* vec, u64 new_capacity);
+void GenVec_reserve(GenVec* vec, u64 new_capacity) __attribute__((nonnull(1)));
 
 // Grow to new_capacity and fill new slots with val.
-void genVec_reserve_val(genVec* vec, u64 new_capacity, const u8* val);
+void GenVec_reserve_val(GenVec* vec, u64 new_capacity, const u8* val) __attribute__((nonnull(1, 3)));
 
 // Shrink vector to its size (reallocates).
-void genVec_shrink_to_fit(genVec* vec);
+void GenVec_shrink_to_fit(GenVec* vec) __attribute__((nonnull(1)));
 
 
 
@@ -308,139 +446,158 @@ void genVec_shrink_to_fit(genVec* vec);
 // ===========================
 
 // Append element to end (makes deep copy if copy_fn provided).
-void genVec_push(genVec* vec, const u8* data);
+void GenVec_push(GenVec* vec, const u8* data) __attribute__((nonnull(1, 2)));
 
 // Append element to end, transfer ownership (nulls original pointer).
-void genVec_push_move(genVec* vec, u8** data);
+void GenVec_push_move(GenVec* vec, u8** data) __attribute__((nonnull(1, 2)));
 
 // Remove element from end. If popped is provided, copies element before deletion.
 // Note: del_fn is called regardless to clean up owned resources.
-void genVec_pop(genVec* vec, u8* popped);
+void GenVec_pop(GenVec* vec, u8* popped) __attribute__((nonnull(1)));
 
 // If order doesn't matter, O(1) deletion from middle
-void genVec_swap_pop(genVec* vec, u64 i, u8* out);
+void GenVec_swap_pop(GenVec* vec, u64 i, u8* out) __attribute__((nonnull(1)));
 
 // swap element at i with element at j
-void genVec_swap(genVec* vec, u64 i, u64 j);
+void GenVec_swap(GenVec* vec, u64 i, u64 j) __attribute__((nonnull(1)));
 
 // Copy element at index i into out buffer.
-void genVec_get(const genVec* vec, u64 i, u8* out);
+void GenVec_get(const GenVec* vec, u64 i, u8* out) __attribute__((nonnull(1, 3)));
 
 // Get pointer to element at index i.
 // Note: Pointer invalidated by push/insert/remove operations.
-const u8* genVec_get_ptr(const genVec* vec, u64 i);
+const u8* GenVec_get_ptr(const GenVec* vec, u64 i) __attribute__((nonnull(1)));
 
 // Get MUTABLE pointer to element at index i.
 // Note: Pointer invalidated by push/insert/remove operations.
-u8* genVec_get_ptr_mut(const genVec* vec, u64 i);
+u8* GenVec_get_ptr_mut(GenVec* vec, u64 i) __attribute__((nonnull(1)));
+
+// UNCHECKED variants — same as above but with the bounds CHECK_FATAL elided.
+// Preconditions are NOT validated: caller must guarantee i < vec->size.
+// Use on hot paths where the check is provably redundant (macros, internal loops).
+const u8* GenVec_get_ptr_unsafe(const GenVec* vec, u64 i) __attribute__((nonnull(1)));
+
+u8* GenVec_get_ptr_mut_unsafe(GenVec* vec, u64 i) __attribute__((nonnull(1)));
 
 // Replace element at index i with data (cleans up old element).
-void genVec_replace(genVec* vec, u64 i, const u8* data);
+void GenVec_replace(GenVec* vec, u64 i, const u8* data) __attribute__((nonnull(1, 3)));
 
 // Replace element at index i, transfer ownership (cleans up old element).
-void genVec_replace_move(genVec* vec, u64 i, u8** data);
+void GenVec_replace_move(GenVec* vec, u64 i, u8** data) __attribute__((nonnull(1, 3)));
 
 // Insert element at index i, shifting elements right.
-void genVec_insert(genVec* vec, u64 i, const u8* data);
+void GenVec_insert(GenVec* vec, u64 i, const u8* data) __attribute__((nonnull(1, 3)));
 
 // Insert element at index i with ownership transfer, shifting elements right.
-void genVec_insert_move(genVec* vec, u64 i, u8** data);
+void GenVec_insert_move(GenVec* vec, u64 i, u8** data) __attribute__((nonnull(1, 3)));
 
 // Insert num_data elements from data array into vec at index i.
-void genVec_insert_multi(genVec* vec, u64 i, const u8* data, u64 num_data);
+void GenVec_insert_multi(GenVec* vec, u64 i, const u8* data, u64 num_data) __attribute__((nonnull(1, 3)));
 
 // Insert (move) num_data elements from data starting at index i.
-void genVec_insert_multi_move(genVec* vec, u64 i, u8** data, u64 num_data);
+void GenVec_insert_multi_move(GenVec* vec, u64 i, u8** data, u64 num_data) __attribute__((nonnull(1, 3)));
 
 // Remove element at index i, optionally copy to out, shift elements left.
-void genVec_remove(genVec* vec, u64 i, u8* out);
+void GenVec_remove(GenVec* vec, u64 i, u8* out) __attribute__((nonnull(1)));
 
 // Remove elements in range [start, start + len)
-void genVec_remove_range(genVec* vec, u64 start, u64 len);
+void GenVec_remove_range(GenVec* vec, u64 start, u64 len) __attribute__((nonnull(1)));
 
 // Get pointer to first element.
-const u8* genVec_front(const genVec* vec);
+const u8* GenVec_front(const GenVec* vec) __attribute__((nonnull(1)));
 
 // Get pointer to last element.
-const u8* genVec_back(const genVec* vec);
+const u8* GenVec_back(const GenVec* vec) __attribute__((nonnull(1)));
 
 // Search
 // ===========================
 
 // if cmp_fn = NULL, then use memcmp
-u64 genVec_find(const genVec* vec, u8* elm, compare_fn cmp_fn);
+u64 GenVec_find(const GenVec* vec, u8* elm, compare_fn cmp_fn) __attribute__((nonnull(1, 2)));
 
-genVec* genVec_subarr(const genVec* vec, u64 start, u64 len);
+GenVec* GenVec_subarr(const GenVec* vec, u64 start, u64 len) __attribute__((nonnull(1), warn_unused_result));
 
 
 // Utility
 // ===========================
 
 // Print all elements using provided print function.
-void genVec_print(const genVec* vec, print_fn fn);
+void GenVec_print(const GenVec* vec, print_fn fn) __attribute__((nonnull(1, 2)));
 
 // Deep copy src vector into dest.
-// Note: cleans up dest (if already inited).
-void genVec_copy(genVec* dest, const genVec* src);
+// REQUIRES: dest must be uninitialized (or already destroyed/reset) before calling.
+// This does NOT clean up any existing dest->data / elements — it overwrites
+// dest's fields directly. Calling this on an already-populated dest leaks
+// its old buffer and skips del_fn on its old elements.
+void GenVec_copy(GenVec* dest, const GenVec* src) __attribute__((nonnull(1, 2)));
 
 // Transfer ownership from src to dest.
 // Note: src must be heap-allocated.
-void genVec_move(genVec* dest, genVec** src);
+void GenVec_move(GenVec* dest, GenVec** src) __attribute__((nonnull(1, 2)));
 
 
 // Get number of elements in vector.
-static inline u64 genVec_size(const genVec* vec)
+static inline __attribute__((nonnull(1))) u64 GenVec_size(const GenVec* vec)
 {
-    CHECK_FATAL(!vec, "vec is null");
     return vec->size;
 }
 
 // Get total capacity of vector.
-static inline u64 genVec_capacity(const genVec* vec)
+static inline __attribute__((nonnull(1))) u64 GenVec_capacity(const GenVec* vec)
 {
-    CHECK_FATAL(!vec, "vec is null");
     return vec->capacity;
 }
 
-// Check if vector is empty.
-static inline b8 genVec_empty(const genVec* vec)
+// Check if vector is empty
+static inline __attribute__((nonnull(1))) b8 GenVec_empty(const GenVec* vec)
 {
-    CHECK_FATAL(!vec, "vec is null");
     return vec->size == 0;
 }
 
 #endif /* WC_GEN_VECTOR_H */
 
-/* ===== Stack.h ===== */
+/* ===== stack.h ===== */
 #ifndef WC_STACK_H
 #define WC_STACK_H
 
-// Stack is just a thin wrapper around genVec
-typedef genVec Stack;
+// Stack is just a thin wrapper around GenVec
+typedef GenVec Stack;
 
 
-Stack* Stack_create(u64 n, u32 data_size, const container_ops* ops);
-Stack* Stack_create_val(u64 n, const u8* val, u32 data_size, const container_ops* ops);
+Stack* Stack_create(u64 n, u32 data_size, const container_ops* ops) __attribute__((warn_unused_result));
+Stack* Stack_create_val(u64 n, const u8* val, u32 data_size, const container_ops* ops) __attribute__((nonnull(2), warn_unused_result));
 
-void Stack_destroy(Stack* stk);
-void Stack_clear(Stack* stk);
-void Stack_reset(Stack* stk);
+void Stack_destroy(Stack* stk) __attribute__((nonnull(1)));
+void Stack_clear(Stack* stk) __attribute__((nonnull(1)));
+void Stack_reset(Stack* stk) __attribute__((nonnull(1)));
 
-void      Stack_push(Stack* stk, const u8* x);
-void      Stack_push_move(Stack* stk, u8** x);
-void      Stack_pop(Stack* stk, u8* popped);
-void      Stack_peek(Stack* stk, u8* peek);
-const u8* Stack_peek_ptr(Stack* stk);
+void      Stack_push(Stack* stk, const u8* x) __attribute__((nonnull(1, 2)));
+void      Stack_push_move(Stack* stk, u8** x) __attribute__((nonnull(1, 2)));
+void      Stack_pop(Stack* stk, u8* popped) __attribute__((nonnull(1)));
+void      Stack_peek(Stack* stk, u8* peek) __attribute__((nonnull(1, 2)));
+const u8* Stack_peek_ptr(const Stack* stk) __attribute__((nonnull(1)));
 
-static inline u64 Stack_size(Stack* stk)     { return genVec_size(stk);     }
-static inline u8  Stack_empty(Stack* stk)    { return genVec_empty(stk);    }
-static inline u64 Stack_capacity(Stack* stk) { return genVec_capacity(stk); }
+static inline __attribute__((nonnull(1))) u64 Stack_size(const Stack* stk) { return GenVec_size(stk);     }
+static inline __attribute__((nonnull(1))) u8 Stack_empty(const Stack* stk) { return GenVec_empty(stk);    }
+static inline __attribute__((nonnull(1))) u64 Stack_capacity(const Stack* stk) { return GenVec_capacity(stk); }
 
-void Stack_print(Stack* stk, print_fn print_fn);
+void Stack_print(Stack* stk, print_fn print_fn) __attribute__((nonnull(1, 2)));
 
 #endif /* WC_STACK_H */
 
 #ifdef WC_IMPLEMENTATION
+
+/* ===== wc_errno.c ===== */
+#ifndef WC_WC_ERRNO_IMPL
+#define WC_WC_ERRNO_IMPL
+
+/* One definition of the thread-local error variable.
+ * Every translation unit that includes wc_error.h sees the extern declaration.
+ * This file provides the actual storage.
+ */
+_Thread_local wc_err wc_errno = WC_OK;
+
+#endif /* WC_WC_ERRNO_IMPL */
 
 /* ===== gen_vector.c ===== */
 #ifndef WC_GEN_VECTOR_IMPL
@@ -448,7 +605,7 @@ void Stack_print(Stack* stk, print_fn print_fn);
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <String.h>
+#include <string.h>
 
 
 #define GENVEC_MIN_CAPACITY 4
@@ -464,7 +621,7 @@ void Stack_print(Stack* stk, print_fn print_fn);
 #define MAYBE_GROW(vec)                                 \
     do {                                                \
         if (!vec->data || vec->size >= vec->capacity) { \
-            genVec_grow(vec);                           \
+            GenVec_grow(vec);                           \
         }                                               \
     } while (0)
 
@@ -474,21 +631,22 @@ void Stack_print(Stack* stk, print_fn print_fn);
 #define MOVE_FN(vec) VEC_MOVE_FN(vec)
 #define DEL_FN(vec)  VEC_DEL_FN(vec)
 
-#define IS_POD(vec) (vec->ops == NULL)
+#define IS_POD(vec)   (vec->is_pod)    // cached at init (6-M) — consume this everywhere
+#define CALC_POD(ops) ((ops) == NULL)  // derive from ops — ONLY valid at init time
 
 
 // private functions
 
-static void genVec_grow(genVec* vec);
+static void GenVec_grow(GenVec* vec);
 
 
 // API Implementation
 
-genVec* genVec_init(u64 n, u32 data_size, const container_ops* ops)
+GenVec* GenVec_create(u64 n, u32 data_size, const container_ops* ops)
 {
     CHECK_FATAL(data_size == 0, "data_size can't be 0");
 
-    genVec* vec = malloc(sizeof(genVec));
+    GenVec* vec = malloc(sizeof(GenVec));
     CHECK_FATAL(!vec, "vec init failed");
 
     // Only allocate memory if n > 0, otherwise data can be NULL
@@ -503,14 +661,14 @@ genVec* genVec_init(u64 n, u32 data_size, const container_ops* ops)
     vec->capacity  = n;
     vec->data_size = data_size;
     vec->ops       = ops;
+    vec->is_pod    = CALC_POD(ops);
 
     return vec;
 }
 
 
-void genVec_init_stk(u64 n, u32 data_size, const container_ops* ops, genVec* vec)
+void GenVec_create_stk(GenVec* vec, u64 n, u32 data_size, const container_ops* ops)
 {
-    CHECK_FATAL(!vec, "vec is null");
     CHECK_FATAL(data_size == 0, "data_size can't be 0");
 
     vec->data = (n > 0) ? malloc(data_size * n) : NULL;
@@ -520,19 +678,19 @@ void genVec_init_stk(u64 n, u32 data_size, const container_ops* ops, genVec* vec
     vec->capacity  = n;
     vec->data_size = data_size;
     vec->ops       = ops;
+    vec->is_pod    = CALC_POD(ops);
 }
 
 
-genVec* genVec_init_val(u64 n, const u8* val, u32 data_size, const container_ops* ops)
+GenVec* GenVec_create_val(u64 n, const u8* val, u32 data_size, const container_ops* ops)
 {
-    CHECK_FATAL(!val, "val can't be null");
     CHECK_FATAL(n == 0, "cant init with val if n = 0");
 
-    genVec* vec = genVec_init(n, data_size, ops);
+    GenVec* vec = GenVec_create(n, data_size, ops);
 
-    vec->size = n; // capacity set to n in genVec_init
+    vec->size = n; // capacity set to n in GenVec_create
 
-    if (IS_POD(vec)) {
+    if (vec->is_pod) {
         for (u64 i = 0; i < n; i++) {
             memcpy(GET_PTR(vec, i), val, data_size);
         }
@@ -553,16 +711,15 @@ genVec* genVec_init_val(u64 n, const u8* val, u32 data_size, const container_ops
 }
 
 
-void genVec_init_val_stk(u64 n, const u8* val, u32 data_size, const container_ops* ops, genVec* vec)
+void GenVec_create_val_stk(GenVec* vec, u64 n, const u8* val, u32 data_size, const container_ops* ops)
 {
-    CHECK_FATAL(!val, "val can't be null");
     CHECK_FATAL(n == 0, "cant init with val if n = 0");
 
-    genVec_init_stk(n, data_size, ops, vec);
+    GenVec_create_stk(vec, n, data_size, ops);
 
     vec->size = n;
 
-    if (IS_POD(vec)) {
+    if (vec->is_pod) {
         for (u64 i = 0; i < n; i++) {
             memcpy(GET_PTR(vec, i), val, data_size);
         }
@@ -581,9 +738,9 @@ void genVec_init_val_stk(u64 n, const u8* val, u32 data_size, const container_op
 }
 
 
-genVec* genVec_init_arr(u64 n, u32 data_size, const container_ops* ops, u8* arr)
+GenVec* GenVec_create_arr(u64 n, u32 data_size, const container_ops* ops, u8* arr)
 {
-    genVec* v = genVec_init(n, data_size, ops);
+    GenVec* v = GenVec_create(n, data_size, ops);
 
     memcpy(v->data, arr, n * data_size);
     v->size = n;
@@ -592,37 +749,33 @@ genVec* genVec_init_arr(u64 n, u32 data_size, const container_ops* ops, u8* arr)
 }
 
 
-void genVec_init_stk_arr(u64 n, u8* arr, u32 data_size, const container_ops* ops, genVec* vec)
+void GenVec_create_stk_arr(GenVec* vec, u64 n, u8* arr, u32 data_size, const container_ops* ops)
 {
-    CHECK_FATAL(!arr, "arr is null");
-    CHECK_FATAL(!vec, "vec is null");
-    CHECK_FATAL(n == 0, "size of arr can't be 0");
-    CHECK_FATAL(data_size == 0, "data_size of arr can't be 0");
+    CHECK_FATAL(n == 0 || data_size == 0, "size/data_size of arr can't be 0");
 
     vec->data      = arr;
     vec->size      = 0;
     vec->capacity  = n;
     vec->data_size = data_size;
     vec->ops       = ops;
+    vec->is_pod    = CALC_POD(ops);
 }
 
 
-void genVec_destroy(genVec* vec)
+void GenVec_destroy(GenVec* vec)
 {
-    genVec_destroy_stk(vec);
+    GenVec_destroy_stk(vec);
     free(vec);
 }
 
 
-void genVec_destroy_stk(genVec* vec)
+void GenVec_destroy_stk(GenVec* vec)
 {
-    CHECK_FATAL(!vec, "vec is null");
-
     if (!vec->data) {
         return;
     }
 
-    if (!IS_POD(vec)) {
+    if (!vec->is_pod) {
         delete_fn del = vec->ops->del_fn;
         if (del) {
             for (u64 i = 0; i < vec->size; i++) {
@@ -636,11 +789,9 @@ void genVec_destroy_stk(genVec* vec)
 }
 
 
-void genVec_clear(genVec* vec)
+void GenVec_clear(GenVec* vec)
 {
-    CHECK_FATAL(!vec, "vec is null");
-
-    if (!IS_POD(vec)) {
+    if (!vec->is_pod) {
         delete_fn del = vec->ops->del_fn;
         if (del) {
             for (u64 i = 0; i < vec->size; i++) {
@@ -653,11 +804,9 @@ void genVec_clear(genVec* vec)
 }
 
 
-void genVec_reset(genVec* vec)
+void GenVec_reset(GenVec* vec)
 {
-    CHECK_FATAL(!vec, "vec is null");
-
-    if (!IS_POD(vec)) {
+    if (!vec->is_pod) {
         delete_fn del = vec->ops->del_fn;
         if (del) {
             for (u64 i = 0; i < vec->size; i++) {
@@ -673,10 +822,8 @@ void genVec_reset(genVec* vec)
 }
 
 
-void genVec_reserve(genVec* vec, u64 new_capacity)
+void GenVec_reserve(GenVec* vec, u64 new_capacity)
 {
-    CHECK_FATAL(!vec, "vec is null");
-
     if (new_capacity <= vec->capacity) {
         return;
     }
@@ -689,15 +836,13 @@ void genVec_reserve(genVec* vec, u64 new_capacity)
 }
 
 
-void genVec_reserve_val(genVec* vec, u64 new_capacity, const u8* val)
+void GenVec_reserve_val(GenVec* vec, u64 new_capacity, const u8* val)
 {
-    CHECK_FATAL(!vec, "vec is null");
-    CHECK_FATAL(!val, "val is null");
     CHECK_FATAL(new_capacity < vec->size, "new_capacity must be >= current size");
 
-    genVec_reserve(vec, new_capacity);
+    GenVec_reserve(vec, new_capacity);
 
-    if (IS_POD(vec)) {
+    if (vec->is_pod) {
         for (u64 i = vec->size; i < new_capacity; i++) {
             memcpy(GET_PTR(vec, i), val, vec->data_size);
         }
@@ -717,10 +862,8 @@ void genVec_reserve_val(genVec* vec, u64 new_capacity, const u8* val)
 }
 
 
-void genVec_shrink_to_fit(genVec* vec)
+void GenVec_shrink_to_fit(GenVec* vec)
 {
-    CHECK_FATAL(!vec, "vec is null");
-
     u64 min_cap  = vec->size > GENVEC_MIN_CAPACITY ? vec->size : GENVEC_MIN_CAPACITY;
     u64 curr_cap = vec->capacity;
 
@@ -736,14 +879,11 @@ void genVec_shrink_to_fit(genVec* vec)
 }
 
 
-void genVec_push(genVec* vec, const u8* data)
+void GenVec_push(GenVec* vec, const u8* data)
 {
-    CHECK_FATAL(!vec, "vec is null");
-    CHECK_FATAL(!data, "data is null");
-
     MAYBE_GROW(vec);
 
-    if (IS_POD(vec)) {
+    if (vec->is_pod) {
         memcpy(GET_PTR(vec, vec->size), data, vec->data_size);
     } else {
         copy_fn copy = vec->ops->copy_fn;
@@ -758,15 +898,13 @@ void genVec_push(genVec* vec, const u8* data)
 }
 
 
-void genVec_push_move(genVec* vec, u8** data)
+void GenVec_push_move(GenVec* vec, u8** data)
 {
-    CHECK_FATAL(!vec, "vec is null");
-    CHECK_FATAL(!data, "data is null");
     CHECK_FATAL(!*data, "*data is null");
 
     MAYBE_GROW(vec);
 
-    if (IS_POD(vec)) {
+    if (vec->is_pod) {
         memcpy(GET_PTR(vec, vec->size), *data, vec->data_size);
         *data = NULL;
     } else {
@@ -783,15 +921,14 @@ void genVec_push_move(genVec* vec, u8** data)
 }
 
 
-void genVec_pop(genVec* vec, u8* popped)
+void GenVec_pop(GenVec* vec, u8* popped)
 {
-    CHECK_FATAL(!vec, "vec is null");
-    CHECK_FATAL(vec->size == 0, "cannot pop from empty vector");
+    WC_SET_RET(WC_ERR_EMPTY, vec->size == 0, );
 
     u8* last_elm = GET_PTR(vec, vec->size - 1);
 
     if (popped) {
-        if (IS_POD(vec)) {
+        if (vec->is_pod) {
             memcpy(popped, last_elm, vec->data_size);
         } else {
             copy_fn copy = vec->ops->copy_fn;
@@ -803,7 +940,7 @@ void genVec_pop(genVec* vec, u8* popped)
         }
     }
 
-    if (!IS_POD(vec)) {
+    if (!vec->is_pod) {
         delete_fn del = vec->ops->del_fn;
         if (del) {
             del(last_elm);
@@ -813,13 +950,12 @@ void genVec_pop(genVec* vec, u8* popped)
     vec->size--;
 }
 
-void genVec_swap_pop(genVec* vec, u64 i, u8* out)
+void GenVec_swap_pop(GenVec* vec, u64 i, u8* out)
 {
-    CHECK_FATAL(!vec, "vec is null");
     CHECK_FATAL(i >= vec->size, "index out of bounds");
 
     if (out) {
-        if (IS_POD(vec)) {
+        if (vec->is_pod) {
             memcpy(out, GET_PTR(vec, i), vec->data_size);
         } else {
             copy_fn copy = vec->ops->copy_fn;
@@ -831,7 +967,7 @@ void genVec_swap_pop(genVec* vec, u64 i, u8* out)
         }
     }
 
-    if (!IS_POD(vec)) {
+    if (!vec->is_pod) {
         delete_fn del = vec->ops->del_fn;
         if (del) {
             del(GET_PTR(vec, i));
@@ -844,9 +980,8 @@ void genVec_swap_pop(genVec* vec, u64 i, u8* out)
     vec->size--;
 }
 
-void genVec_swap(genVec* vec, u64 i, u64 j)
+void GenVec_swap(GenVec* vec, u64 i, u64 j)
 {
-    CHECK_FATAL(!vec, "vec is null");
     CHECK_FATAL(i >= vec->size || j >= vec->size, "index out of bounds");
 
     if (i == j) {
@@ -867,13 +1002,11 @@ void genVec_swap(genVec* vec, u64 i, u64 j)
 }
 
 
-void genVec_get(const genVec* vec, u64 i, u8* out)
+void GenVec_get(const GenVec* vec, u64 i, u8* out)
 {
-    CHECK_FATAL(!vec, "vec is null");
-    CHECK_FATAL(!out, "out is null");
     CHECK_FATAL(i >= vec->size, "index out of bounds");
 
-    if (IS_POD(vec)) {
+    if (vec->is_pod) {
         memcpy(out, GET_PTR(vec, i), vec->data_size);
     } else {
         copy_fn copy = vec->ops->copy_fn;
@@ -886,33 +1019,43 @@ void genVec_get(const genVec* vec, u64 i, u8* out)
 }
 
 
-const u8* genVec_get_ptr(const genVec* vec, u64 i)
+const u8* GenVec_get_ptr(const GenVec* vec, u64 i)
 {
-    CHECK_FATAL(!vec, "vec is null");
     CHECK_FATAL(i >= vec->size, "index out of bounds");
 
     return GET_PTR(vec, i);
 }
 
 
-u8* genVec_get_ptr_mut(const genVec* vec, u64 i)
+u8* GenVec_get_ptr_mut(GenVec* vec, u64 i)
 {
-    CHECK_FATAL(!vec, "vec is null");
     CHECK_FATAL(i >= vec->size, "index out of bounds");
 
     return GET_PTR(vec, i);
 }
 
 
-void genVec_replace(genVec* vec, u64 i, const u8* data)
+const u8* GenVec_get_ptr_unsafe(const GenVec* vec, u64 i)
 {
-    CHECK_FATAL(!vec, "vec is null");
+    // Preconditions NOT validated — caller guarantees i < vec->size.
+    return GET_PTR(vec, i);
+}
+
+
+u8* GenVec_get_ptr_mut_unsafe(GenVec* vec, u64 i)
+{
+    // Preconditions NOT validated — caller guarantees i < vec->size.
+    return GET_PTR(vec, i);
+}
+
+
+void GenVec_replace(GenVec* vec, u64 i, const u8* data)
+{
     CHECK_FATAL(i >= vec->size, "index out of bounds");
-    CHECK_FATAL(!data, "data is null");
 
     u8* to_replace = GET_PTR(vec, i);
 
-    if (IS_POD(vec)) {
+    if (vec->is_pod) {
         memcpy(to_replace, data, vec->data_size);
     } else {
         delete_fn del = vec->ops->del_fn;
@@ -929,16 +1072,13 @@ void genVec_replace(genVec* vec, u64 i, const u8* data)
 }
 
 
-void genVec_replace_move(genVec* vec, u64 i, u8** data)
+void GenVec_replace_move(GenVec* vec, u64 i, u8** data)
 {
-    CHECK_FATAL(!vec, "vec is null");
-    CHECK_FATAL(i >= vec->size, "index out of bounds");
-    CHECK_FATAL(!data, "need a valid data variable");
-    CHECK_FATAL(!*data, "need a valid *data variable");
+    CHECK_FATAL(i >= vec->size || !*data, "index out of bounds / need a valid *data variable");
 
     u8* to_replace = GET_PTR(vec, i);
 
-    if (IS_POD(vec)) {
+    if (vec->is_pod) {
         memcpy(to_replace, *data, vec->data_size);
         *data = NULL;
     } else {
@@ -957,10 +1097,8 @@ void genVec_replace_move(genVec* vec, u64 i, u8** data)
 }
 
 
-void genVec_insert(genVec* vec, u64 i, const u8* data)
+void GenVec_insert(GenVec* vec, u64 i, const u8* data)
 {
-    CHECK_FATAL(!vec, "vec is null");
-    CHECK_FATAL(!data, "data is null");
     CHECK_FATAL(i > vec->size, "index out of bounds");
 
     u64 elements_to_shift = vec->size - i;
@@ -971,7 +1109,7 @@ void genVec_insert(genVec* vec, u64 i, const u8* data)
     u8* dest = GET_PTR(vec, i + 1);
     memmove(dest, src, GET_SCALED(vec, elements_to_shift));
 
-    if (IS_POD(vec)) {
+    if (vec->is_pod) {
         memcpy(src, data, vec->data_size);
     } else {
         copy_fn copy = vec->ops->copy_fn;
@@ -986,12 +1124,9 @@ void genVec_insert(genVec* vec, u64 i, const u8* data)
 }
 
 
-void genVec_insert_move(genVec* vec, u64 i, u8** data)
+void GenVec_insert_move(GenVec* vec, u64 i, u8** data)
 {
-    CHECK_FATAL(!vec, "vec is null");
-    CHECK_FATAL(!data, "data ptr is null");
-    CHECK_FATAL(!*data, "*data is null");
-    CHECK_FATAL(i > vec->size, "index out of bounds");
+    CHECK_FATAL(!*data || i > vec->size, "*data is null / index out of bounds");
 
     u64 elements_to_shift = vec->size - i;
 
@@ -1001,7 +1136,7 @@ void genVec_insert_move(genVec* vec, u64 i, u8** data)
     u8* dest = GET_PTR(vec, i + 1);
     memmove(dest, src, GET_SCALED(vec, elements_to_shift));
 
-    if (IS_POD(vec)) {
+    if (vec->is_pod) {
         memcpy(src, *data, vec->data_size);
         *data = NULL;
     } else {
@@ -1018,17 +1153,14 @@ void genVec_insert_move(genVec* vec, u64 i, u8** data)
 }
 
 
-void genVec_insert_multi(genVec* vec, u64 i, const u8* data, u64 num_data)
+void GenVec_insert_multi(GenVec* vec, u64 i, const u8* data, u64 num_data)
 {
-    CHECK_FATAL(!vec, "vec is null");
-    CHECK_FATAL(!data, "data is null");
-    CHECK_FATAL(num_data == 0, "num_data can't be 0");
-    CHECK_FATAL(i > vec->size, "index out of bounds");
+    CHECK_FATAL(num_data == 0 || i > vec->size, "num_data can't be 0 / index out of bounds");
 
     u64 elements_to_shift = vec->size - i;
 
     vec->size += num_data;
-    genVec_reserve(vec, vec->size);
+    GenVec_reserve(vec, vec->size);
 
     u8* src = GET_PTR(vec, i);
     if (elements_to_shift > 0) {
@@ -1036,7 +1168,7 @@ void genVec_insert_multi(genVec* vec, u64 i, const u8* data, u64 num_data)
         memmove(dest, src, GET_SCALED(vec, elements_to_shift));
     }
 
-    if (IS_POD(vec)) {
+    if (vec->is_pod) {
         memcpy(src, data, GET_SCALED(vec, num_data));
     } else {
         copy_fn copy = vec->ops->copy_fn;
@@ -1051,18 +1183,14 @@ void genVec_insert_multi(genVec* vec, u64 i, const u8* data, u64 num_data)
 }
 
 
-void genVec_insert_multi_move(genVec* vec, u64 i, u8** data, u64 num_data)
+void GenVec_insert_multi_move(GenVec* vec, u64 i, u8** data, u64 num_data)
 {
-    CHECK_FATAL(!vec, "vec is null");
-    CHECK_FATAL(!data, "data is null");
-    CHECK_FATAL(!*data, "*data is null");
-    CHECK_FATAL(num_data == 0, "num_data can't be 0");
-    CHECK_FATAL(i > vec->size, "index out of bounds");
+    CHECK_FATAL(!*data || num_data == 0 || i > vec->size, "*data is null / num_data can't be 0 / index out of bounds");
 
     u64 elements_to_shift = vec->size - i;
 
     vec->size += num_data;
-    genVec_reserve(vec, vec->size);
+    GenVec_reserve(vec, vec->size);
 
     u8* src = GET_PTR(vec, i);
     if (elements_to_shift > 0) {
@@ -1070,18 +1198,30 @@ void genVec_insert_multi_move(genVec* vec, u64 i, u8** data, u64 num_data)
         memmove(dest, src, GET_SCALED(vec, elements_to_shift));
     }
 
-    memcpy(src, *data, GET_SCALED(vec, num_data));
+    if (vec->is_pod) {
+        memcpy(src, *data, GET_SCALED(vec, num_data));
+    } else {
+        move_fn move = vec->ops->move_fn;
+        if (move) {
+            for (u64 j = 0; j < num_data; j++) {
+                u8* elm_src = *data + (size_t)(j * vec->data_size);
+                move(GET_PTR(vec, j + i), &elm_src);
+            }
+        } else {
+            memcpy(src, *data, GET_SCALED(vec, num_data));
+        }
+    }
+
     *data = NULL;
 }
 
 
-void genVec_remove(genVec* vec, u64 i, u8* out)
+void GenVec_remove(GenVec* vec, u64 i, u8* out)
 {
-    CHECK_FATAL(!vec, "vec is null");
     CHECK_FATAL(i >= vec->size, "index out of bounds");
 
     if (out) {
-        if (IS_POD(vec)) {
+        if (vec->is_pod) {
             memcpy(out, GET_PTR(vec, i), vec->data_size);
         } else {
             copy_fn copy = vec->ops->copy_fn;
@@ -1093,7 +1233,7 @@ void genVec_remove(genVec* vec, u64 i, u8* out)
         }
     }
 
-    if (!IS_POD(vec)) {
+    if (!vec->is_pod) {
         delete_fn del = vec->ops->del_fn;
         if (del) {
             del(GET_PTR(vec, i));
@@ -1117,9 +1257,8 @@ void genVec_remove(genVec* vec, u64 i, u8* out)
     len = 3
     end = 1 + 3 - 1 = 3
 */
-void genVec_remove_range(genVec* vec, u64 start, u64 len)
+void GenVec_remove_range(GenVec* vec, u64 start, u64 len)
 {
-    CHECK_FATAL(!vec, "vec is null");
     if (len == 0) {
         return;
     }
@@ -1129,7 +1268,7 @@ void genVec_remove_range(genVec* vec, u64 start, u64 len)
         len = vec->size - start;
     }
 
-    if (!IS_POD(vec)) {
+    if (!vec->is_pod) {
         delete_fn del = vec->ops->del_fn;
         if (del) {
             for (u64 i = 0; i < len; i++) {
@@ -1146,27 +1285,22 @@ void genVec_remove_range(genVec* vec, u64 start, u64 len)
 }
 
 
-const u8* genVec_front(const genVec* vec)
+const u8* GenVec_front(const GenVec* vec)
 {
-    CHECK_FATAL(!vec, "vec is null");
-    CHECK_FATAL(vec->size == 0, "cannot get front of empty vector");
+    WC_SET_RET(WC_ERR_EMPTY, vec->size == 0, NULL);
     return GET_PTR(vec, 0);
 }
 
 
-const u8* genVec_back(const genVec* vec)
+const u8* GenVec_back(const GenVec* vec)
 {
-    CHECK_FATAL(!vec, "vec is null");
-    CHECK_FATAL(vec->size == 0, "cannot get back of empty vector");
+    WC_SET_RET(WC_ERR_EMPTY, vec->size == 0, NULL);
     return GET_PTR(vec, vec->size - 1);
 }
 
 
-u64 genVec_find(const genVec* vec, u8* elm, compare_fn cmp_fn)
+u64 GenVec_find(const GenVec* vec, u8* elm, compare_fn cmp_fn)
 {
-    CHECK_FATAL(!vec, "vec is null");
-    CHECK_FATAL(!elm, "elm is null");
-
     for (u64 i = 0; i < vec->size; i++) {
         if (cmp_fn) {
             if (cmp_fn(GET_PTR(vec, i), elm, vec->data_size) == 0) {
@@ -1179,23 +1313,22 @@ u64 genVec_find(const genVec* vec, u8* elm, compare_fn cmp_fn)
         }
     }
 
-    return (u64)-1;
+    return WC_NOT_FOUND;
 }
 
 
-genVec* genVec_subarr(const genVec* vec, u64 start, u64 len)
+GenVec* GenVec_subarr(const GenVec* vec, u64 start, u64 len)
 {
-    CHECK_FATAL(!vec, "vec is null");
     CHECK_FATAL(start >= vec->size, "out of bounds");
 
     if (start + len >= vec->size) {
         len = vec->size - start;
     }
 
-    genVec* v = genVec_init(len, vec->data_size, vec->ops);
+    GenVec* v = GenVec_create(len, vec->data_size, vec->ops);
 
     if (len > 0) {
-        if (IS_POD(vec)) {
+        if (vec->is_pod) {
             memcpy(GET_PTR(v, 0), GET_PTR(vec, start), len * vec->data_size);
         } else {
             copy_fn copy = vec->ops->copy_fn;
@@ -1215,40 +1348,30 @@ genVec* genVec_subarr(const genVec* vec, u64 start, u64 len)
 }
 
 
-void genVec_print(const genVec* vec, print_fn print_fn)
+void GenVec_print(const GenVec* vec, print_fn fn)
 {
-    CHECK_FATAL(!vec, "vec is null");
-    CHECK_FATAL(!print_fn, "print func is null");
-
     printf("[ ");
     for (u64 i = 0; i < vec->size; i++) {
-        print_fn(GET_PTR(vec, i));
+        fn(GET_PTR(vec, i));
         putchar(' ');
     }
     putchar(']');
 }
 
 
-void genVec_copy(genVec* dest, const genVec* src)
+void GenVec_copy(GenVec* dest, const GenVec* src)
 {
-    CHECK_FATAL(!dest, "dest is null");
-    CHECK_FATAL(!src, "src is null");
-
     if (dest == src) {
         return;
     }
 
-    genVec_destroy_stk(dest);
-
     // Copy all fields (including ops pointer)
-    memcpy(dest, src, sizeof(genVec));
+    memcpy(dest, src, sizeof(GenVec));
 
-    // TODO: fix for copying into uninited memory ?
-    // dest->data = calloc(src->capacity, src->data_size);
     dest->data = malloc(GET_SCALED(src, src->capacity));
-    CHECK_FATAL(!dest->data, "dest data calloc failed");
+    CHECK_FATAL(!dest->data, "dest data malloc failed");
 
-    if (IS_POD(src)) {
+    if (src->is_pod) {
         memcpy(dest->data, src->data, GET_SCALED(src, src->size));
     } else {
         copy_fn copy = src->ops->copy_fn;
@@ -1263,18 +1386,16 @@ void genVec_copy(genVec* dest, const genVec* src)
 }
 
 
-void genVec_move(genVec* dest, genVec** src)
+void GenVec_move(GenVec* dest, GenVec** src)
 {
-    CHECK_FATAL(!src, "src is null");
     CHECK_FATAL(!*src, "*src is null");
-    CHECK_FATAL(!dest, "dest is null");
 
     if (dest == *src) {
         *src = NULL;
         return;
     }
 
-    memcpy(dest, *src, sizeof(genVec));
+    memcpy(dest, *src, sizeof(GenVec));
 
     (*src)->data = NULL;
     free(*src);
@@ -1282,7 +1403,7 @@ void genVec_move(genVec* dest, genVec** src)
 }
 
 
-static void genVec_grow(genVec* vec)
+static void GenVec_grow(GenVec* vec)
 {
     u64 new_cap;
     if (vec->capacity < GENVEC_MIN_CAPACITY) {
@@ -1303,64 +1424,66 @@ static void genVec_grow(genVec* vec)
 
 #endif /* WC_GEN_VECTOR_IMPL */
 
-/* ===== Stack.c ===== */
+/* ===== stack.c ===== */
 #ifndef WC_STACK_IMPL
 #define WC_STACK_IMPL
 
 Stack* Stack_create(u64 n, u32 data_size, const container_ops* ops)
 {
-    return genVec_init(n, data_size, ops);
+    return GenVec_create(n, data_size, ops);
 }
 
 Stack* Stack_create_val(u64 n, const u8* val, u32 data_size, const container_ops* ops)
 {
-    return genVec_init_val(n, val, data_size, ops);
+    return GenVec_create_val(n, val, data_size, ops);
 }
 
 
 void Stack_destroy(Stack* stk)
 {
-    genVec_destroy(stk);
+    GenVec_destroy(stk);
 }
 
 void Stack_clear(Stack* stk)
 {
-    genVec_clear(stk);
+    GenVec_clear(stk);
 }
 
 void Stack_reset(Stack* stk)
 {
-    genVec_reset(stk);
+    GenVec_reset(stk);
 }
 
 void Stack_push(Stack* stk, const u8* x)
 {
-    genVec_push(stk, x);
+    GenVec_push(stk, x);
 }
 
 void Stack_push_move(Stack* stk, u8** x)
 {
-    genVec_push_move(stk, x);
+    GenVec_push_move(stk, x);
 }
 
 void Stack_pop(Stack* stk, u8* popped)
 {
-    genVec_pop(stk, popped);
+    GenVec_pop(stk, popped);
 }
 
 void Stack_peek(Stack* stk, u8* peek)
 {
-    genVec_get(stk, genVec_size(stk) - 1, peek);
+    WC_SET_RET(WC_ERR_EMPTY, Stack_empty(stk), );
+    GenVec_get(stk, GenVec_size(stk) - 1, peek);
 }
 
-const u8* Stack_peek_ptr(Stack* stk)
+const u8* Stack_peek_ptr(const Stack* stk)
 {
-    return genVec_get_ptr(stk, genVec_size(stk) - 1);
+    WC_SET_RET(WC_ERR_EMPTY, Stack_empty(stk), NULL);
+    return GenVec_get_ptr(stk, GenVec_size(stk) - 1);
 }
 
-void Stack_print(Stack* stk, print_fn print_fn)
+void Stack_print(Stack* stk, print_fn print)
 {
-    genVec_print(stk, print_fn);
+    GenVec_print(stk, print);
 }
 
 #endif /* WC_STACK_IMPL */

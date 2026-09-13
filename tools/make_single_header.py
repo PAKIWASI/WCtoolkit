@@ -64,23 +64,23 @@ COMPONENTS = [
 DEPENDENCIES: dict[str, list[str]] = {
     "common":           [],
     "wc_errno":         [],
-    "wc_macros":        [],
+    "wc_macros":        ["wc_helpers", "hashmap", "hashset", "queue"],
     "fast_math":        ["common"],
-    "gen_vector":       ["common" ],
-    "String":           ["common"],
-    "Arena":            ["common", "wc_errno"],
-    "chain_Arena":      ["gen_vector"],
+    "gen_vector":       ["common", "wc_errno"],
+    "wc_string":        ["common"],
+    "arena":            ["common", "wc_errno"],
+    "chain_arena":      ["gen_vector"],
     "views":            ["wc_string", "arena"],
     "bit_vector":       ["gen_vector"],
-    "Stack":            ["gen_vector"],
-    "Queue":            ["gen_vector"],
+    "stack":            ["gen_vector"],
+    "queue":            ["gen_vector"],
     "map_setup":        ["wc_string"],
     "random":           ["fast_math"],
     "hashmap":          ["map_setup"],
     "hashset":          ["map_setup"],
     "matrix":           ["arena"],
     "matrix_generic":   ["arena"],
-    "wc_helpers":       ["wc_string"],
+    "wc_helpers":       ["wc_string", "gen_vector"],
 }
 
 
@@ -383,5 +383,3 @@ Available components:
 
 if __name__ == "__main__":
     main()
-
-

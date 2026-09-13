@@ -1,6 +1,6 @@
 #include "common.h"
-#include "wc_test.h"
 #include "wc_string.h"
+#include "wc_test.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -150,7 +150,7 @@ static void test_remove_range(void)
 static void test_pop_char(void)
 {
     String* s = String_from_cstr("abc");
-    char c = String_pop_char(s);
+    char    c = String_pop_char(s);
     WC_ASSERT_EQ_INT(c, 'c');
     WC_ASSERT_EQ_U64(String_len(s), 2);
     WC_ASSERT(String_equals_cstr(s, "ab"));
@@ -215,8 +215,8 @@ static void test_find_cstr(void)
 {
     String* s = String_from_cstr("hello world");
     WC_ASSERT_EQ_U64(String_find_cstr(s, "world"), 6);
-    WC_ASSERT_EQ_U64(String_find_cstr(s, "xyz"),   WC_NOT_FOUND);
-    WC_ASSERT_EQ_U64(String_find_cstr(s, ""),       0);
+    WC_ASSERT_EQ_U64(String_find_cstr(s, "xyz"), WC_NOT_FOUND);
+    WC_ASSERT_EQ_U64(String_find_cstr(s, ""), 0);
     String_destroy(s);
 }
 
@@ -247,7 +247,7 @@ static void test_copy_independence(void)
 
 static void test_move_nulls_src(void)
 {
-    String* src  = String_from_cstr("move me");
+    String* src = String_from_cstr("move me");
     String  dest;
     String_create_stk(&dest, "");
     String_move(&dest, &src);
@@ -384,8 +384,8 @@ static void test_insert_empty_String_noop(void)
 
 static void test_to_cstr_buf_basic(void)
 {
-    String* s = String_from_cstr("hello");
-    char buf[16] = {0};
+    String* s       = String_from_cstr("hello");
+    char    buf[16] = {0};
     String_to_cstr_buf(s, buf, sizeof(buf));
     WC_ASSERT_EQ_STR(buf, "hello");
     String_destroy(s);
@@ -394,7 +394,8 @@ static void test_to_cstr_buf_basic(void)
 static void test_to_cstr_buf_nul_terminated(void)
 {
     String* s = String_from_cstr("abc");
-    char buf[8]; memset(buf, 0xFF, sizeof(buf));
+    char    buf[8];
+    memset(buf, 0xFF, sizeof(buf));
     String_to_cstr_buf(s, buf, 8);
     WC_ASSERT_EQ_INT(buf[3], '\0');
     String_destroy(s);
@@ -403,7 +404,8 @@ static void test_to_cstr_buf_nul_terminated(void)
 static void test_to_cstr_buf_empty_String(void)
 {
     String* s = String_create();
-    char buf[8]; memset(buf, 0xFF, sizeof(buf));
+    char    buf[8];
+    memset(buf, 0xFF, sizeof(buf));
     String_to_cstr_buf(s, buf, 8);
     WC_ASSERT_EQ_INT(buf[0], '\0');
     String_destroy(s);
@@ -415,7 +417,7 @@ static void test_to_cstr_buf_empty_String(void)
 static void test_data_ptr_non_empty(void)
 {
     String* s = String_from_cstr("hello");
-    char* p = String_data_ptr(s);
+    char*   p = String_data_ptr(s);
     WC_ASSERT_NOT_NULL(p);
     WC_ASSERT_EQ_INT(p[0], 'h');
     WC_ASSERT_EQ_INT(p[4], 'o');
@@ -432,33 +434,120 @@ static void test_data_ptr_empty_returns_null(void)
 static void test_data_ptr_mutation(void)
 {
     String* s = String_from_cstr("hello");
-    char* p = String_data_ptr(s);
-    p[0] = 'H';
+    char*   p = String_data_ptr(s);
+    p[0]      = 'H';
     WC_ASSERT(String_equals_cstr(s, "Hello"));
     String_destroy(s);
 }
 
 
-// TEMP_CSTR_READ macro
+// TEMP_CSTR_READ macro / String_ensure_null_term
 
 static void test_temp_cstr_read(void)
 {
-    String* s = String_from_cstr("test");
-    u64 len_before = String_len(s);
-    char captured[16] = {0};
+    String* s            = String_from_cstr("test");
+    u64     len_before   = String_len(s);
+    char    captured[16] = {0};
 
-    TEMP_CSTR_READ(s) {
-        /* Inside the block, s has a trailing NUL appended */
-        WC_ASSERT_EQ_U64(String_len(s), len_before + 1);
-        const char* ptr = String_data_ptr(s);
-        WC_ASSERT_NOT_NULL(ptr);
-        for (u64 i = 0; i < len_before; i++) { captured[i] = ptr[i]; }
-        captured[len_before] = '\0';
+    String_ensure_null_term(s);
+    /* size is NOT touched anymore — only a trailing '\0' is guaranteed */
+    WC_ASSERT_EQ_U64(String_len(s), len_before);
+    const char* ptr = String_cstr_view(s);
+    WC_ASSERT_NOT_NULL(ptr);
+    WC_ASSERT_EQ_STR(ptr, "test");
+    for (u64 i = 0; i < len_before; i++) {
+        captured[i] = ptr[i];
     }
+    captured[len_before] = '\0';
 
-    /* After block: NUL removed, length restored */
+    /* nothing to undo: length was never changed */
     WC_ASSERT_EQ_U64(String_len(s), len_before);
     WC_ASSERT_EQ_STR(captured, "test");
+    String_destroy(s);
+}
+
+static void test_temp_cstr_read_empty(void)
+{
+    /* String_data_ptr would return NULL here; String_cstr_view must not. */
+    String* s = String_create();
+
+    String_ensure_null_term(s);
+    WC_ASSERT_EQ_U64(String_len(s), 0);
+    const char* ptr = String_cstr_view(s);
+    WC_ASSERT_NOT_NULL(ptr);
+    WC_ASSERT_EQ_STR(ptr, "");
+
+    WC_ASSERT_EQ_U64(String_len(s), 0);
+    String_destroy(s);
+}
+
+static void test_ensure_null_term_direct(void)
+{
+    String* s          = String_from_cstr("abc");
+    u64     len_before = String_len(s);
+    u64     cap_before = String_capacity(s);
+
+    String_ensure_null_term(s);
+
+    /* size/capacity unaffected when there's already spare room */
+    WC_ASSERT_EQ_U64(String_len(s), len_before);
+    WC_ASSERT_EQ_U64(String_capacity(s), cap_before);
+    WC_ASSERT_EQ_STR(String_cstr_view(s), "abc");
+
+    /* idempotent: calling it again changes nothing */
+    String_ensure_null_term(s);
+    WC_ASSERT_EQ_U64(String_len(s), len_before);
+    WC_ASSERT_EQ_STR(String_cstr_view(s), "abc");
+
+    String_destroy(s);
+}
+
+static void test_ensure_null_term_sso_boundary(void)
+{
+    /* Exactly STR_SSO_SIZE - 1 (23) chars: fills SSO capacity exactly,
+       so index `size` IS the mode-flag byte -> must force SSO->heap
+       conversion before writing the '\0', or the flag would be corrupted. */
+    char buf[STR_SSO_SIZE]; /* 24 chars + we'll only use 23 + NUL */
+    for (u64 i = 0; i < STR_SSO_SIZE - 1; i++) {
+        buf[i] = 'x';
+    }
+    buf[STR_SSO_SIZE - 1] = '\0';
+
+    String* s = String_from_cstr(buf);
+    WC_ASSERT_EQ_U64(String_len(s), STR_SSO_SIZE - 1);
+    WC_ASSERT_TRUE(String_is_sso(s)); /* still SSO: size == capacity, not yet over */
+
+    String_ensure_null_term(s);
+
+    /* forced to convert to heap to get a safe byte past the last char */
+    WC_ASSERT_FALSE(String_is_sso(s));
+    WC_ASSERT_EQ_U64(String_len(s), STR_SSO_SIZE - 1); /* size still untouched */
+    WC_ASSERT_TRUE(String_capacity(s) > STR_SSO_SIZE - 1);
+    WC_ASSERT_EQ_STR(String_cstr_view(s), buf);
+
+    String_destroy(s);
+}
+
+static void test_ensure_null_term_heap_boundary(void)
+{
+    /* Same boundary case, but already on the heap: String_grow's realloc
+       path instead of stk_to_heap's malloc path. */
+    String* s = String_create();
+    String_reserve(s, STR_SSO_SIZE); /* forces immediate heap allocation */
+    WC_ASSERT_FALSE(String_is_sso(s));
+
+    u64 cap = String_capacity(s);
+    for (u64 i = 0; i < cap; i++) {
+        String_append_char(s, 'y');
+    }
+    WC_ASSERT_EQ_U64(String_len(s), cap); /* exactly full */
+
+    String_ensure_null_term(s);
+
+    WC_ASSERT_EQ_U64(String_len(s), cap);     /* untouched */
+    WC_ASSERT_TRUE(String_capacity(s) > cap); /* grew via realloc */
+    WC_ASSERT_EQ_U64(strlen(String_cstr_view(s)), cap);
+
     String_destroy(s);
 }
 
@@ -517,7 +606,9 @@ static void test_sso_stays_sso_up_to_limit(void)
 {
     String* s = String_create();
     // Usable SSO capacity is STR_SSO_SIZE - 1 (last byte reserved for the mode flag)
-    for (int i = 0; i < STR_SSO_SIZE - 1; i++) { String_append_char(s, 'a'); }
+    for (int i = 0; i < STR_SSO_SIZE - 1; i++) {
+        String_append_char(s, 'a');
+    }
     WC_ASSERT_TRUE(String_is_sso(s));
     WC_ASSERT_EQ_U64(String_len(s), (u64)(STR_SSO_SIZE - 1));
     String_destroy(s);
@@ -526,7 +617,9 @@ static void test_sso_stays_sso_up_to_limit(void)
 static void test_sso_promotes_at_overflow(void)
 {
     String* s = String_create();
-    for (int i = 0; i < STR_SSO_SIZE; i++) { String_append_char(s, 'b'); }
+    for (int i = 0; i < STR_SSO_SIZE; i++) {
+        String_append_char(s, 'b');
+    }
     WC_ASSERT_FALSE(String_is_sso(s));
     WC_ASSERT_EQ_U64(String_len(s), (u64)STR_SSO_SIZE);
     String_destroy(s);
@@ -598,6 +691,10 @@ void String_suite(void)
     WC_RUN(test_data_ptr_mutation);
 
     WC_RUN(test_temp_cstr_read);
+    WC_RUN(test_temp_cstr_read_empty);
+    WC_RUN(test_ensure_null_term_direct);
+    WC_RUN(test_ensure_null_term_sso_boundary);
+    WC_RUN(test_ensure_null_term_heap_boundary);
     WC_RUN(test_append_String_move_nulls_src);
 
     WC_RUN(test_copy_into_heap_String);

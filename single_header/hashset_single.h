@@ -27,6 +27,7 @@
 
 // LOGGING/ERRORS
 
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -42,21 +43,26 @@
 
 // TODO: warm paths ?
 
-#define WARN(fmt, ...)                                            \
-    do {                                                          \
-        printf(WC_COLOR_YELLOW "[WARN]"                              \
-                            " %s:%d:%s(): " fmt "\n" WC_COLOR_RESET, \
-               __FILE__, __LINE__, __func__, ##__VA_ARGS__);      \
+#define WARN(fmt, ...)                                                  \
+    do {                                                                \
+        printf(WC_COLOR_YELLOW "[WARN]"                                 \
+                               " %s:%d:%s(): " fmt "\n" WC_COLOR_RESET, \
+               __FILE__, __LINE__, __func__, ##__VA_ARGS__);            \
     } while (0)
 
-#define FATAL(fmt, ...)                                         \
-    do {                                                        \
-        fprintf(stderr,                                         \
-                WC_COLOR_RED "[FATAL]"                             \
-                          " %s:%d:%s(): " fmt "\n" WC_COLOR_RESET, \
-                __FILE__, __LINE__, __func__, ##__VA_ARGS__);   \
-        exit(EXIT_FAILURE);                                     \
-    } while (0)
+__attribute__((noreturn, format(printf, 4, 5))) static inline void
+wc_fatal_report(const char* file, int line, const char* func, const char* fmt, ...)
+{
+    fprintf(stderr, WC_COLOR_RED "[FATAL] %s:%d:%s(): ", file, line, func);
+    va_list args;
+    va_start(args, fmt);
+    vfprintf(stderr, fmt, args);
+    va_end(args);
+    fprintf(stderr, "\n" WC_COLOR_RESET);
+    exit(EXIT_FAILURE);
+}
+
+#define FATAL(fmt, ...) wc_fatal_report(__FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__)
 
 #define CHECK_WARN(cond, fmt, ...)                           \
     do {                                                     \
@@ -73,38 +79,46 @@
         }                                                    \
     } while (0)
 
+#ifdef NDEBUG
+#define CHECK_FATAL(cond, fmt, ...) ((void)0)
+#else
 #define CHECK_FATAL(cond, fmt, ...)                           \
     do {                                                      \
         if (__builtin_expect(!!(cond), 0)) {                  \
             FATAL("Check: (%s): " fmt, #cond, ##__VA_ARGS__); \
         }                                                     \
     } while (0)
+#endif
 
-#define LOG(fmt, ...)                                       \
-    do {                                                    \
-        printf(WC_COLOR_CYAN "[LOG]"                           \
-                          " : %s(): " fmt "\n" WC_COLOR_RESET, \
-               __func__, ##__VA_ARGS__);                    \
+#define LOG(fmt, ...)                                             \
+    do {                                                          \
+        printf(WC_COLOR_CYAN "[LOG]"                              \
+                             " : %s(): " fmt "\n" WC_COLOR_RESET, \
+               __func__, ##__VA_ARGS__);                          \
     } while (0)
 
 
-#define MALLOC(size, cap, name) ({\
-    void* _mlcd = malloc(size * cap);\
-    CHECK_FATAL(!_mlcd, "\"" #name "\"" " malloc failed");\
-    _mlcd;\
-})
+#define MALLOC(size, cap, name)                \
+    ({                                         \
+        void* _mlcd = malloc(size * cap);      \
+        CHECK_FATAL(!_mlcd, "\"" #name "\""    \
+                            " malloc failed"); \
+        _mlcd;                                 \
+    })
 
 
 // TYPES
 
-#include <stdint.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 typedef uint8_t  u8;
 typedef uint8_t  b8;
 typedef uint16_t u16;
 typedef uint32_t u32;
 typedef uint64_t u64;
+
+#define WC_NOT_FOUND ((u64) - 1)
 
 // #define false ((b8)0)
 // #define true  ((b8)1)
@@ -192,7 +206,7 @@ static inline void wc_print_u64(const u8* elm)
 }
 static inline void wc_print_float(const u8* elm)
 {
-    printf("%.2f ", *(float*)elm);
+    printf("%.2f ", (double)*(float*)elm);
 }
 static inline void wc_print_char(const u8* elm)
 {
@@ -205,9 +219,9 @@ static inline void wc_print_cstr(const u8* elm)
 
 #endif /* WC_COMMON_H */
 
-/* ===== String.h ===== */
-#ifndef WC_STRING_H
-#define WC_STRING_H
+/* ===== wc_string.h ===== */
+#ifndef WC_WC_STRING_H
+#define WC_WC_STRING_H
 
 #ifndef STRING_GROWTH
 #define STRING_GROWTH 1.5F // capacity multiplier on grow
@@ -225,107 +239,113 @@ typedef struct {
     u64 capacity;
 } String;
 
-// 24 8 8 = 40 bytes (same as genVec)
-
+_Static_assert(sizeof(String) == 40, "String must be 40 bytes");
 
 
 
 //  Construction / Destruction
 
 // Create an empty String on the heap.
-String* String_create(void);
+String* String_create(void) __attribute__((warn_unused_result));
 
 // Create a String on the heap from a cstr.
-String* String_from_cstr(const char* cstr);
+String* String_from_cstr(const char* cstr) __attribute__((warn_unused_result));
 
 // Create a copy of another heap-allocated String.
-String* String_from_String(const String* other);
+String* String_from_String(const String* other) __attribute__((nonnull(1), warn_unused_result));
 
 // Initialise a String whose struct lives on the Stack (data may be on heap).
-void String_create_stk(String* str, const char* cstr);
+void String_create_stk(String* str, const char* cstr) __attribute__((nonnull(1)));
 
 // Destroy a heap-allocated String (frees struct + data).
-void String_destroy(String* str);
+void String_destroy(String* str) __attribute__((nonnull(1)));
 
 // Destroy only the internal data of a Stack-allocated String.
-void String_destroy_stk(String* str);
+void String_destroy_stk(String* str) __attribute__((nonnull(1)));
 
 // Move: transfer ownership from *src to dest, nulling *src.
 // *src must be heap-allocated.
-void String_move(String* dest, String** src);
+void String_move(String* dest, String** src) __attribute__((nonnull(1, 2)));
 
 // Deep copy src into dest (dest is re-initialised).
-void String_copy(String* dest, const String* src);
+// SAFE ON: raw/uninitialized dest. Never reads dest before writing it.
+void String_copy(String* dest, const String* src) __attribute__((nonnull(1, 2)));
 
 
 //  Capacity
 
 // Ensure capacity >= new_cap (never shrinks).
-void String_reserve(String* str, u64 new_cap);
+void String_reserve(String* str, u64 new_cap) __attribute__((nonnull(1)));
 
 // Reserve capacity and fill new slots with c.
-void String_reserve_char(String* str, u64 new_cap, char c);
+void String_reserve_char(String* str, u64 new_cap, char c) __attribute__((nonnull(1)));
 
 // Shrink allocation to exactly fit current size.
-void String_shrink_to_fit(String* str);
+void String_shrink_to_fit(String* str) __attribute__((nonnull(1)));
 
 
 //  Conversion
 
 // Return a malloc'd NUL-terminated copy — caller must free().
-char* String_to_cstr(const String* str);
+char* String_to_cstr(const String* str) __attribute__((nonnull(1), warn_unused_result));
 
-void String_to_cstr_buf(const String* str, char* buff, u64 n);
+void String_to_cstr_buf(const String* str, char* buff, u64 n) __attribute__((nonnull(1, 2)));
 
 // Return a raw pointer into the internal buffer (no NUL terminator).
-char* String_data_ptr(const String* str);
+char* String_data_ptr(const String* str) __attribute__((nonnull(1)));
+
+// Guarantee a '\0' sits one byte past the last real character, WITHOUT
+// touching str->size (str->size is not a "logical length excluding the
+// NUL" convention anywhere else in this API, and this function keeps it
+// that way). Grows exactly like String_append_char would if the String
+// is already full (SSO->heap conversion, or a heap realloc) so the NUL
+// always lands in real, owned memory rather than the SSO mode-flag byte.
+// See TEMP_CSTR_READ below for the typical use case.
+void String_ensure_null_term(String* str) __attribute__((nonnull(1)));
 
 
 //  Modification
 
-void String_append_char(String* str, char c);
-void String_append_cstr(String* str, const char* cstr);
-void String_append_String(String* str, const String* other);
+void String_append_char(String* str, char c) __attribute__((nonnull(1)));
+void String_append_cstr(String* str, const char* cstr) __attribute__((nonnull(1, 2)));
+void String_append_String(String* str, const String* other) __attribute__((nonnull(1, 2)));
 // Append other then destroy it (nulls *other).
-void String_append_String_move(String* str, String** other);
+void String_append_String_move(String* str, String** other) __attribute__((nonnull(1, 2)));
 
-char String_pop_char(String* str);
+char String_pop_char(String* str) __attribute__((nonnull(1)));
 
-void String_insert_char(String* str, u64 i, char c);
-void String_insert_cstr(String* str, u64 i, const char* cstr);
-void String_insert_String(String* str, u64 i, const String* other);
+void String_insert_char(String* str, u64 i, char c) __attribute__((nonnull(1)));
+void String_insert_cstr(String* str, u64 i, const char* cstr) __attribute__((nonnull(1, 3)));
+void String_insert_String(String* str, u64 i, const String* other) __attribute__((nonnull(1, 3)));
 
-void String_remove_char(String* str, u64 i);
+void String_remove_char(String* str, u64 i) __attribute__((nonnull(1)));
 
 // TODO: test
 // Remove chars in range [start, start + len)
-void String_remove_range(String* str, u64 start, u64 len);
+void String_remove_range(String* str, u64 start, u64 len) __attribute__((nonnull(1)));
 
 // Remove all chars (keep allocation).
-static inline void String_clear(String* str)
+__attribute__((nonnull(1))) static inline void String_clear(String* str)
 {
-    CHECK_FATAL(!str, "str is null");
     str->size = 0;
 }
 
 
 //  Access
 
-static inline char String_char_at(const String* str, u64 i)
+__attribute__((nonnull(1))) static inline char String_char_at(const String* str, u64 i)
 {
-    CHECK_FATAL(!str, "str is null");
     CHECK_FATAL(i >= str->size, "index out of bounds");
     return ((str->stk[STR_SSO_SIZE - 1] != '\0') ? (str)->stk : (str)->heap)[i];
 }
 
-static inline char String_char_at_unsafe(const String* str, u64 i)
+__attribute__((nonnull(1))) static inline char String_char_at_unsafe(const String* str, u64 i)
 {
     return ((str->stk[STR_SSO_SIZE - 1] != '\0') ? (str)->stk : (str)->heap)[i];
 }
 
-static inline void String_set_char(String* str, u64 i, char c)
+__attribute__((nonnull(1))) static inline void String_set_char(String* str, u64 i, char c)
 {
-    CHECK_FATAL(!str, "str is null");
     CHECK_FATAL(i >= str->size, "index out of bounds");
     ((str->stk[STR_SSO_SIZE - 1] != '\0') ? str->stk : str->heap)[i] = c;
 }
@@ -334,75 +354,68 @@ static inline void String_set_char(String* str, u64 i, char c)
 //  Comparison
 
 // 0 == equal, <0 == str1 < str2, >0 == str1 > str2
-int              String_compare(const String* s1, const String* s2);
-static inline b8 String_equals(const String* s1, const String* s2)
+int String_compare(const String* s1, const String* s2) __attribute__((nonnull(1, 2)));
+__attribute__((nonnull(1, 2))) static inline b8 String_equals(const String* s1, const String* s2)
 {
     return String_compare(s1, s2) == 0;
 }
-b8 String_equals_cstr(const String* str, const char* cstr);
+b8 String_equals_cstr(const String* str, const char* cstr) __attribute__((nonnull(1, 2)));
 
 
 //  Search
 
-// Returns index, or (u64)-1 if not found.
-u64 String_find_char(const String* str, char c);
-u64 String_find_cstr(const String* str, const char* substr);
+// Returns index, or WC_NOT_FOUND if not found.
+u64 String_find_char(const String* str, char c) __attribute__((nonnull(1)));
+u64 String_find_cstr(const String* str, const char* substr) __attribute__((nonnull(1, 2)));
 
 // Return a heap-allocated subString starting at `start` of `length` chars.
-String* String_substr(const String* str, u64 start, u64 length);
+String* String_substr(const String* str, u64 start, u64 length) __attribute__((nonnull(1), warn_unused_result));
 
 
 //  I/O
 
-void String_print(const String* str);
+void String_print(const String* str) __attribute__((nonnull(1)));
 
 
 //  Inline helpers
 
-static inline u64 String_len(const String* str)
+__attribute__((nonnull(1))) static inline u64 String_len(const String* str)
 {
-    CHECK_FATAL(!str, "str is null");
     return str->size;
 }
 
-static inline u64 String_capacity(const String* str)
+__attribute__((nonnull(1))) static inline u64 String_capacity(const String* str)
 {
-    CHECK_FATAL(!str, "str is null");
     return str->capacity;
 }
 
-static inline b8 String_empty(const String* str)
+__attribute__((nonnull(1))) static inline b8 String_empty(const String* str)
 {
-    CHECK_FATAL(!str, "str is null");
     return str->size == 0;
 }
 
-static inline b8 String_is_sso(const String* str)
+__attribute__((nonnull(1))) static inline b8 String_is_sso(const String* str)
 {
-    CHECK_FATAL(!str, "str is null");
     return str->stk[STR_SSO_SIZE - 1] != '\0';
 }
 
+// Read-only pointer into the buffer. Unlike String_data_ptr, this never
+// returns NULL for an empty String. It's meant to be used AFTER
+// String_ensure_null_term, where index 0 is guaranteed to hold at least a '\0',
+// even when size == 0. Calling this without a prior String_ensure_null_term on 
+// a fresh/empty String reads uninitialised memory.
+__attribute__((nonnull(1))) static inline const char* String_cstr_view(const String* str)
+{
+    return String_is_sso(str) ? str->stk : str->heap;
+}
 
-/*
- Macro to temporarily NUL-terminate a String for read-only C APIs.
-Note: Do NOT break/return/goto inside the block.
-
- Usage:
-   TEMP_CSTR_READ(s) {
-       printf("%s\n", String_data_ptr(s));
-   }
-*/
-#define TEMP_CSTR_READ(str) \
-    for (u8 _once = 0; (_once == 0) && (String_append_char((str), '\0'), 1); _once++, String_pop_char((str)))
-
-#endif /* WC_STRING_H */
+#endif /* WC_WC_STRING_H */
 
 /* ===== map_setup.h ===== */
 #ifndef WC_MAP_SETUP_H
 #define WC_MAP_SETUP_H
 
-#include <String.h>
+#include <string.h>
 
 
 typedef u64 (*custom_hash_fn)(const u8* key, u64 size);
@@ -420,7 +433,7 @@ typedef enum {
 ====================WYHASH====================
 */
 // wyhash v4 — public domain, Wang Yi
-// Best default for hashmaps: fast, excellent avalanche, low collision rate.
+// Best default for HashMaps: fast, excellent avalanche, low collision rate.
 // Beats FNV1a and MurmurHash3 on all key sizes.
 
 static inline u64 wyr8(const u8* p)
@@ -504,14 +517,14 @@ static inline int default_compare(const u8* a, const u8* b, u64 size)
 
 // wyhash variants for String
 
-static u64 wyhash_str(const u8* key, u64 size)
+__attribute__((unused)) static u64 wyhash_str(const u8* key, u64 size)
 {
     (void)size;
     String* str = (String*)key;
     return wyhash((const u8*)String_data_ptr(str), String_len(str));
 }
 
-static u64 wyhash_str_ptr(const u8* key, u64 size)
+__attribute__((unused)) static u64 wyhash_str_ptr(const u8* key, u64 size)
 {
     (void)size;
     String* str = *(String**)key;
@@ -542,70 +555,87 @@ typedef struct {
     u64            size;
     u64            capacity;
     u32            elm_size;
-    u8*            scratch;  // 2 * elm_size bytes — stage (first half) + RH swap (second half)
+    u8*            scratch; // 2 * elm_size bytes — stage (first half) + RH swap (second half)
     custom_hash_fn hash_fn;
     compare_fn     cmp_fn;
 
     // Shared ops vtable for elements.
     // Pass NULL for POD types (int, float, flat structs).
     const container_ops* ops;
-} hashset;
+} HashSet;
 
 
 // Safely extract callbacks — always NULL-safe on ops itself.
 #define SET_COPY(ops) ((ops) ? (ops)->copy_fn : NULL)
 #define SET_MOVE(ops) ((ops) ? (ops)->move_fn : NULL)
-#define SET_DEL(ops)  ((ops) ? (ops)->del_fn  : NULL)
+#define SET_DEL(ops)  ((ops) ? (ops)->del_fn : NULL)
 
 
-// Create a new hashset.
+// Create a new HashSet.
 // hash_fn and cmp_fn default to wyhash / default_compare if NULL.
 // ops: pass NULL for POD types.
-hashset* hashset_create(u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
-                        const container_ops* ops);
+HashSet* HashSet_create(u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn, const container_ops* ops)
+    __attribute__((warn_unused_result));
+void HashSet_create_stk(HashSet* set, u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn, const container_ops* ops)
+    __attribute__((nonnull(1)));
 
-void hashset_destroy(hashset* set);
+void HashSet_destroy(HashSet* set) __attribute__((nonnull(1)));
+void HashSet_destroy_stk(HashSet* set) __attribute__((nonnull(1)));
 
 // Insert element — COPY semantics.
 // Returns 1 if already existed (no-op), 0 if newly inserted.
-b8 hashset_insert(hashset* set, const u8* elm);
+b8 HashSet_insert(HashSet* set, const u8* elm) __attribute__((nonnull(1, 2)));
 
 // Insert element — MOVE semantics (elm is nulled on insert, or freed if duplicate).
 // Returns 1 if already existed (elm freed), 0 if newly inserted.
-b8 hashset_insert_move(hashset* set, u8** elm);
+b8 HashSet_insert_move(HashSet* set, u8** elm) __attribute__((nonnull(1, 2)));
 
 // Returns 1 if found, 0 if not.
-b8 hashset_has(const hashset* set, const u8* elm);
+b8 HashSet_has(const HashSet* set, const u8* elm) __attribute__((nonnull(1, 2)));
 
-// Returns 1 if found and removed, 0 if not found.
-b8 hashset_remove(hashset* set, const u8* elm);
+// Get pointer to element in-place. Returns NULL if not found.
+const u8* HashSet_get_ptr(const HashSet* set, const u8* elm) __attribute__((nonnull(1, 2)));
 
-// Print all elements.
-void hashset_print(const hashset* set, print_fn print);
-
-// Remove all elements, keep capacity.
-void hashset_clear(hashset* set);
-
-// Deep copy src into dest
-// dest should be pre-inited
-void hashset_copy(hashset* dest, const hashset* src);
-
-
-static inline u64 hashset_size(const hashset* set)
+__attribute__((nonnull(1, 2))) static inline u8* HashSet_get_ptr_mut(HashSet* set, const u8* elm)
 {
-    CHECK_FATAL(!set, "set is null");
-    return set->size;
+    return (u8*)HashSet_get_ptr(set, elm);
 }
 
-static inline u64 hashset_capacity(const hashset* set)
+// Bucket iteration accessors
+__attribute__((nonnull(1))) static inline u64 HashSet_bucket_count(const HashSet* set)
 {
-    CHECK_FATAL(!set, "set is null");
     return set->capacity;
 }
 
-static inline b8 hashset_empty(const hashset* set)
+b8        HashSet_bucket_occupied(const HashSet* set, u64 i) __attribute__((nonnull(1)));
+const u8* HashSet_bucket_elm_ptr(const HashSet* set, u64 i) __attribute__((nonnull(1)));
+
+// Returns 1 if found and removed, 0 if not found.
+b8 HashSet_remove(HashSet* set, const u8* elm) __attribute__((nonnull(1, 2)));
+
+// Print all elements.
+void HashSet_print(const HashSet* set, print_fn print) __attribute__((nonnull(1, 2)));
+
+// Remove all elements, keep capacity.
+void HashSet_clear(HashSet* set) __attribute__((nonnull(1)));
+
+// Deep copy src into dest
+// SAFE ON: raw/uninitialized dest. Never reads dest before writing it.
+void HashSet_copy(HashSet* dest, const HashSet* src) __attribute__((nonnull(1, 2)));
+
+
+static inline __attribute__((nonnull(1))) u64 HashSet_size(const HashSet* set)
 {
-    CHECK_FATAL(!set, "set is null");
+    return set->size;
+}
+
+static inline __attribute__((nonnull(1))) u64 HashSet_capacity(const HashSet* set)
+{
+    return set->capacity;
+}
+
+static inline __attribute__((nonnull(1))) b8 HashSet_empty(const HashSet* set)
+{
     return set->size == 0;
 }
 
@@ -613,13 +643,13 @@ static inline b8 hashset_empty(const hashset* set)
 
 #ifdef WC_IMPLEMENTATION
 
-/* ===== String.c ===== */
-#ifndef WC_STRING_IMPL
-#define WC_STRING_IMPL
+/* ===== wc_string.c ===== */
+#ifndef WC_WC_STRING_IMPL
+#define WC_WC_STRING_IMPL
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <String.h>
+#include <string.h>
 
 
 //  Internal macros
@@ -680,13 +710,12 @@ String* String_from_cstr(const char* cstr)
 
 String* String_from_String(const String* other)
 {
-    CHECK_FATAL(!other, "other is null");
-
     String* s = malloc(sizeof(String));
     CHECK_FATAL(!s, "malloc failed");
 
-    s->size     = 0;
-    s->capacity = STR_SSO_SIZE - 1;
+    s->size                  = 0;
+    s->capacity              = STR_SSO_SIZE - 1;
+    s->stk[STR_SSO_SIZE - 1] = 1; // mark SSO mode before GET_STR() is used below
 
     if (other->size > 0) {
         ensure_capacity(s, other->size);
@@ -699,8 +728,6 @@ String* String_from_String(const String* other)
 
 void String_create_stk(String* s, const char* cstr)
 {
-    CHECK_FATAL(!s, "str is null");
-
     s->size                  = 0;
     s->stk[STR_SSO_SIZE - 1] = 1;                // mark SSO mode
     s->capacity              = STR_SSO_SIZE - 1; // last byte reserved for the SSO flag
@@ -721,15 +748,12 @@ void String_create_stk(String* s, const char* cstr)
 
 void String_destroy(String* s)
 {
-    CHECK_FATAL(!s, "str is null");
     String_destroy_stk(s);
     free(s);
 }
 
 void String_destroy_stk(String* s)
 {
-    CHECK_FATAL(!s, "str is null");
-
     if (!IS_SSO(s)) {
         free(s->heap);
     }
@@ -741,9 +765,7 @@ void String_destroy_stk(String* s)
 
 void String_move(String* dest, String** src)
 {
-    CHECK_FATAL(!src, "src ptr is null");
     CHECK_FATAL(!*src, "*src is null");
-    CHECK_FATAL(!dest, "dest is null");
 
     if (dest == *src) {
         *src = NULL;
@@ -762,17 +784,15 @@ void String_move(String* dest, String** src)
 
 void String_copy(String* dest, const String* src)
 {
-    CHECK_FATAL(!src, "src is null");
-    CHECK_FATAL(!dest, "dest is null");
-
     if (src == dest) {
         return;
     }
 
-    String_destroy_stk(dest);
-
-    dest->size     = 0;
-    dest->capacity = STR_SSO_SIZE - 1;
+    // dest is documented as "re-initialised": callers may pass raw/uninitialised
+    // memory , so we must not read dest's old state before it has ever been initialised.
+    dest->size                  = 0;
+    dest->capacity              = STR_SSO_SIZE - 1;
+    dest->stk[STR_SSO_SIZE - 1] = 1; // mark SSO mode before GET_STR() is used below
 
     if (src->size > 0) {
         ensure_capacity(dest, src->size);
@@ -786,8 +806,6 @@ void String_copy(String* dest, const String* src)
 
 void String_reserve(String* s, u64 new_cap)
 {
-    CHECK_FATAL(!s, "str is null");
-
     if (new_cap <= s->capacity) {
         return;
     }
@@ -796,7 +814,6 @@ void String_reserve(String* s, u64 new_cap)
 
 void String_reserve_char(String* s, u64 new_cap, char c)
 {
-    CHECK_FATAL(!s, "str is null");
     if (new_cap <= s->capacity) {
         // Fill from current size up to new_cap within existing allocation.
         char* buf = GET_STR(s);
@@ -819,8 +836,6 @@ void String_reserve_char(String* s, u64 new_cap, char c)
 
 void String_shrink_to_fit(String* s)
 {
-    CHECK_FATAL(!s, "str is null");
-
     if (IS_SSO(s)) {
         return;
     } // already optimal
@@ -852,8 +867,6 @@ void String_shrink_to_fit(String* s)
 
 char* String_to_cstr(const String* s)
 {
-    CHECK_FATAL(!s, "str is null");
-
     char* out = malloc(s->size + 1);
     CHECK_FATAL(!out, "malloc failed");
 
@@ -867,8 +880,6 @@ char* String_to_cstr(const String* s)
 
 void String_to_cstr_buf(const String* str, char* buff, u64 n)
 {
-    CHECK_FATAL(!str, "str is null");
-    CHECK_FATAL(!buff, "buff is null");
     CHECK_FATAL(n < str->size + 1, "buffer not enough");
 
     if (str->size > 0) {
@@ -879,7 +890,6 @@ void String_to_cstr_buf(const String* str, char* buff, u64 n)
 
 char* String_data_ptr(const String* s)
 {
-    CHECK_FATAL(!s, "str is null");
     if (s->size == 0) {
         return NULL;
     }
@@ -887,21 +897,29 @@ char* String_data_ptr(const String* s)
     return (char*)(IS_SSO(s) ? s->stk : s->heap);
 }
 
+// Same growth path as String_append_char, minus the size++: writes '\0'
+// at index s->size and leaves size untouched. Safe against the SSO
+// mode-flag byte because MAYBE_GROW_STR converts to heap (or reallocs
+// the heap buffer) whenever size == capacity, before we ever write —
+// so the write always lands one past the last real char, never on the
+// flag byte at stk[STR_SSO_SIZE - 1].
+void String_ensure_null_term(String* s)
+{
+    MAYBE_GROW_STR(s);
+    GET_STR_CHAR(s, s->size) = '\0';
+}
+
 
 //  Modification
 
 void String_append_char(String* s, char c)
 {
-    CHECK_FATAL(!s, "str is null");
     MAYBE_GROW_STR(s);
     GET_STR_CHAR(s, s->size++) = c;
 }
 
 void String_append_cstr(String* s, const char* cstr)
 {
-    CHECK_FATAL(!s, "str is null");
-    CHECK_FATAL(!cstr, "cstr is null");
-
     u64 len = cstr_len(cstr);
     if (len == 0) {
         return;
@@ -914,9 +932,6 @@ void String_append_cstr(String* s, const char* cstr)
 
 void String_append_String(String* s, const String* other)
 {
-    CHECK_FATAL(!s, "str is null");
-    CHECK_FATAL(!other, "other is null");
-
     if (other->size == 0) {
         return;
     }
@@ -928,8 +943,6 @@ void String_append_String(String* s, const String* other)
 
 void String_append_String_move(String* s, String** other)
 {
-    CHECK_FATAL(!s, "str is null");
-    CHECK_FATAL(!other, "other ptr is null");
     CHECK_FATAL(!*other, "*other is null");
 
     if ((*other)->size > 0) {
@@ -942,7 +955,6 @@ void String_append_String_move(String* s, String** other)
 
 char String_pop_char(String* s)
 {
-    CHECK_FATAL(!s, "str is null");
     CHECK_FATAL(s->size == 0, "cannot pop from empty String");
 
     char c = GET_STR_CHAR(s, --s->size);
@@ -951,7 +963,6 @@ char String_pop_char(String* s)
 
 void String_insert_char(String* s, u64 i, char c)
 {
-    CHECK_FATAL(!s, "str is null");
     CHECK_FATAL(i > s->size, "index out of bounds");
 
     MAYBE_GROW_STR(s);
@@ -967,8 +978,6 @@ void String_insert_char(String* s, u64 i, char c)
 
 void String_insert_cstr(String* s, u64 i, const char* cstr)
 {
-    CHECK_FATAL(!s, "str is null");
-    CHECK_FATAL(!cstr, "cstr is null");
     CHECK_FATAL(i > s->size, "index out of bounds");
 
     u64 len = cstr_len(cstr);
@@ -989,8 +998,6 @@ void String_insert_cstr(String* s, u64 i, const char* cstr)
 
 void String_insert_String(String* s, u64 i, const String* other)
 {
-    CHECK_FATAL(!s, "str is null");
-    CHECK_FATAL(!other, "other is null");
     CHECK_FATAL(i > s->size, "index out of bounds");
 
     if (other->size == 0) {
@@ -1012,7 +1019,6 @@ void String_insert_String(String* s, u64 i, const String* other)
 
 void String_remove_char(String* s, u64 i)
 {
-    CHECK_FATAL(!s, "str is null");
     CHECK_FATAL(i >= s->size, "index out of bounds");
 
     char* buf = GET_STR(s);
@@ -1033,7 +1039,6 @@ void String_remove_char(String* s, u64 i)
 
 void String_remove_range(String* s, u64 start, u64 len)
 {
-    CHECK_FATAL(!s, "str is null");
     CHECK_FATAL(start >= s->size, "start out of bounds");
 
     if (len == 0) {
@@ -1057,9 +1062,6 @@ void String_remove_range(String* s, u64 start, u64 len)
 
 int String_compare(const String* s1, const String* s2)
 {
-    CHECK_FATAL(!s1, "str1 is null");
-    CHECK_FATAL(!s2, "str2 is null");
-
     u64 min_len = s1->size < s2->size ? s1->size : s2->size;
 
     if (min_len > 0) {
@@ -1080,9 +1082,6 @@ int String_compare(const String* s1, const String* s2)
 
 b8 String_equals_cstr(const String* s, const char* cstr)
 {
-    CHECK_FATAL(!s, "str is null");
-    CHECK_FATAL(!cstr, "cstr is null");
-
     u64 len = cstr_len(cstr);
 
     if (s->size != len) {
@@ -1100,27 +1099,22 @@ b8 String_equals_cstr(const String* s, const char* cstr)
 
 u64 String_find_char(const String* s, char c)
 {
-    CHECK_FATAL(!s, "str is null");
-
     if (s->size == 0) {
-        return (u64)-1;
+        return WC_NOT_FOUND;
     }
     const char* buf = GET_STR(s);
     const char* p   = memchr(buf, (unsigned char)c, s->size);
-    return p ? (u64)(p - buf) : (u64)-1;
+    return p ? (u64)(p - buf) : WC_NOT_FOUND;
 }
 
 u64 String_find_cstr(const String* s, const char* substr)
 {
-    CHECK_FATAL(!s, "str is null");
-    CHECK_FATAL(!substr, "substr is null");
-
     u64 len = cstr_len(substr);
     if (len == 0) {
         return 0;
     }
     if (len > s->size) {
-        return (u64)-1;
+        return WC_NOT_FOUND;
     }
 
     const char* buf = GET_STR(s);
@@ -1129,12 +1123,11 @@ u64 String_find_cstr(const String* s, const char* substr)
             return i;
         }
     }
-    return (u64)-1;
+    return WC_NOT_FOUND;
 }
 
 String* String_substr(const String* s, u64 start, u64 length)
 {
-    CHECK_FATAL(!s, "str is null");
     CHECK_FATAL(start >= s->size, "start out of bounds");
 
     if (start + length > s->size) {
@@ -1157,8 +1150,6 @@ String* String_substr(const String* s, u64 start, u64 length)
 
 void String_print(const String* s)
 {
-    CHECK_FATAL(!s, "str is null");
-
     putchar('"');
     const char* buf = GET_STR(s);
     for (u64 i = 0; i < s->size; i++) {
@@ -1237,7 +1228,7 @@ static inline void ensure_capacity(String* s, u64 needed)
     }
 }
 
-#endif /* WC_STRING_IMPL */
+#endif /* WC_WC_STRING_IMPL */
 
 /* ===== hashset.c ===== */
 #ifndef WC_HASHSET_IMPL
@@ -1245,7 +1236,7 @@ static inline void ensure_capacity(String* s, u64 needed)
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <String.h>
+#include <string.h>
 
 
 #define GET_ELM(set, i) ((set)->elms + ((u64)(set)->elm_size * (i)))
@@ -1260,7 +1251,7 @@ static inline void ensure_capacity(String* s, u64 needed)
 #define BUCKET_EMPTY 0
 
 // scratch layout: [0 .. elm_size) = stage,  [elm_size .. 2*elm_size) = swap
-// stage: where hashset_insert copies the incoming elm before calling set_insert
+// stage: where HashSet_insert copies the incoming elm before calling set_insert
 // swap:  where set_insert saves a displaced resident during Robin Hood eviction
 // The two halves are alternated each eviction to avoid aliasing (elm pointer
 // is always in the half that set_insert is NOT currently writing into).
@@ -1272,26 +1263,22 @@ static inline void ensure_capacity(String* s, u64 needed)
 ====================PRIVATE DECLARATIONS====================
 */
 
-static u64         set_lookup(const hashset* set, const u8* elm, LOOKUP_RES* res, u8* out_psl);
-static void        set_insert(hashset* set, u8* elm, u8 psl, u64 idx);
-static void        set_resize(hashset* set, u64 new_capacity);
-static inline void set_maybe_resize(hashset* set);
+static u64         set_lookup(const HashSet* set, const u8* elm, LOOKUP_RES* res, u8* out_psl);
+static void        set_insert(HashSet* set, u8* elm, u8 psl, u64 idx);
+static void        set_resize(HashSet* set, u64 new_capacity);
+static inline void set_maybe_resize(HashSet* set);
 
 
 /*
 ====================PUBLIC FUNCTIONS====================
 */
 
-hashset* hashset_create(u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
-                        const container_ops* ops)
+void HashSet_create_stk(HashSet* set, u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn, const container_ops* ops)
 {
     CHECK_FATAL(elm_size == 0, "elm_size can't be 0");
 
-    hashset* set = malloc(sizeof(hashset));
-    CHECK_FATAL(!set, "set malloc failed");
-
     set->elms = malloc((u64)HASHMAP_INIT_CAPACITY * elm_size);
-    CHECK_FATAL(!set->elms, "elms calloc failed");
+    CHECK_FATAL(!set->elms, "elms malloc failed");
     set->psls = calloc(HASHMAP_INIT_CAPACITY, sizeof(u8));
     CHECK_FATAL(!set->psls, "psls calloc failed");
 
@@ -1307,36 +1294,28 @@ hashset* hashset_create(u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
     set->cmp_fn  = cmp_fn  ? cmp_fn  : default_compare;
 
     set->ops = ops;
+}
+
+HashSet* HashSet_create(u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
+                        const container_ops* ops)
+{
+    HashSet* set = malloc(sizeof(HashSet));
+    CHECK_FATAL(!set, "set malloc failed");
+
+    HashSet_create_stk(set, elm_size, hash_fn, cmp_fn, ops);
 
     return set;
 }
 
 
-void hashset_destroy(hashset* set)
+void HashSet_destroy(HashSet* set)
 {
-    CHECK_FATAL(!set, "set is null");
-
-    delete_fn e_del = SET_DEL(set->ops);
-
-    if (e_del) {
-        for (u64 i = 0; i < set->capacity; i++) {
-            if (*GET_PSL(set, i) == BUCKET_EMPTY) {
-                continue;
-            }
-            e_del(GET_ELM(set, i));
-        }
-    }
-
-    free(set->elms);
-    free(set->psls);
-    free(set->scratch);
+    HashSet_destroy_stk(set);
     free(set);
 }
 
-void hashset_destroy_stk(hashset* set)
+void HashSet_destroy_stk(HashSet* set)
 {
-    CHECK_FATAL(!set, "set is null");
-
     delete_fn e_del = SET_DEL(set->ops);
 
     if (e_del) {
@@ -1356,10 +1335,8 @@ void hashset_destroy_stk(hashset* set)
 
 // Insert element — COPY semantics.
 // Returns 1 if already existed (no-op), 0 if newly inserted.
-b8 hashset_insert(hashset* set, const u8* elm)
+b8 HashSet_insert(HashSet* set, const u8* elm)
 {
-    CHECK_FATAL(!set || !elm, "args null");
-
     copy_fn e_cp = SET_COPY(set->ops);
 
     LOOKUP_RES res;
@@ -1386,9 +1363,9 @@ b8 hashset_insert(hashset* set, const u8* elm)
 
 // Insert element — MOVE semantics (elm is nulled on insert, or freed if duplicate).
 // Returns 1 if already existed (elm freed), 0 if newly inserted.
-b8 hashset_insert_move(hashset* set, u8** elm)
+b8 HashSet_insert_move(HashSet* set, u8** elm)
 {
-    CHECK_FATAL(!set || !elm || !*elm, "args null");
+    CHECK_FATAL(!*elm, "*elm null");
 
     move_fn   e_mv  = SET_MOVE(set->ops);
     delete_fn e_del = SET_DEL(set->ops);
@@ -1419,14 +1396,32 @@ b8 hashset_insert_move(hashset* set, u8** elm)
 
 
 // Returns 1 if found, 0 if not.
-b8 hashset_has(const hashset* set, const u8* elm)
+b8 HashSet_has(const HashSet* set, const u8* elm)
 {
-    CHECK_FATAL(!set || !elm, "null arg");
-
     LOOKUP_RES res;
-    u8             out_psl;
+    u8         out_psl;
     set_lookup(set, elm, &res, &out_psl);
     return res == FOUND;
+}
+
+const u8* HashSet_get_ptr(const HashSet* set, const u8* elm)
+{
+    LOOKUP_RES res;
+    u8         out_psl;
+    u64        slot = set_lookup(set, elm, &res, &out_psl);
+    return (res == FOUND) ? GET_ELM(set, slot) : NULL;
+}
+
+b8 HashSet_bucket_occupied(const HashSet* set, u64 i)
+{
+    CHECK_FATAL(i >= set->capacity, "index out of bounds");
+    return *GET_PSL(set, i) != BUCKET_EMPTY;
+}
+
+const u8* HashSet_bucket_elm_ptr(const HashSet* set, u64 i)
+{
+    CHECK_FATAL(i >= set->capacity, "index out of bounds");
+    return GET_ELM(set, i);
 }
 
 
@@ -1434,10 +1429,8 @@ b8 hashset_has(const hashset* set, const u8* elm)
 // Uses Robin Hood backward-shift deletion to maintain the probe-sequence invariant
 // without tombstones: after removing a slot, shift subsequent entries back one
 // position as long as they have PSL > 1 (i.e. they are not at their home slot).
-b8 hashset_remove(hashset* set, const u8* elm)
+b8 HashSet_remove(HashSet* set, const u8* elm)
 {
-    CHECK_FATAL(!set || !elm, "null arg");
-
     LOOKUP_RES res;
     u8             out_psl;
     u64            slot = set_lookup(set, elm, &res, &out_psl);
@@ -1476,10 +1469,8 @@ b8 hashset_remove(hashset* set, const u8* elm)
 
 
 // Print all elements.
-void hashset_print(const hashset* set, print_fn print)
+void HashSet_print(const HashSet* set, print_fn print)
 {
-    CHECK_FATAL(!set || !print, "null arg");
-
     printf("\t=========\n");
     printf("\tSize: %lu / Capacity: %lu\n", set->size, set->capacity);
     printf("\t=========\n");
@@ -1498,10 +1489,8 @@ void hashset_print(const hashset* set, print_fn print)
 
 
 // Remove all elements, keep capacity.
-void hashset_clear(hashset* set)
+void HashSet_clear(HashSet* set)
 {
-    CHECK_FATAL(!set, "set is null");
-
     delete_fn e_del = SET_DEL(set->ops);
 
     for (u64 i = 0; i < set->capacity; i++) {
@@ -1520,11 +1509,11 @@ void hashset_clear(hashset* set)
 
 // Deep copy src into dest
 // Ownership: dest gets independently owned copies of all elements.
-void hashset_copy(hashset* dest, const hashset* src)
+void HashSet_copy(HashSet* dest, const HashSet* src)
 {
-    CHECK_FATAL(!dest || !src, "null arg");
-
-    hashset_destroy_stk(dest);
+    if (dest == src) {
+        return;
+    }
 
     dest->elms = calloc(src->capacity, src->elm_size);
     CHECK_FATAL(!dest->elms, "copy elms calloc failed");
@@ -1563,7 +1552,7 @@ void hashset_copy(hashset* dest, const hashset* src)
 ====================PRIVATE FUNCTIONS====================
 */
 
-static inline void set_maybe_resize(hashset* set)
+static inline void set_maybe_resize(HashSet* set)
 {
     // integer multiply avoids float — equivalent to load > 0.75
     if (set->size * 4 >= set->capacity * 3) {
@@ -1572,7 +1561,7 @@ static inline void set_maybe_resize(hashset* set)
 }
 
 
-static u64 set_lookup(const hashset* set, const u8* elm, LOOKUP_RES* res, u8* out_psl)
+static u64 set_lookup(const HashSet* set, const u8* elm, LOOKUP_RES* res, u8* out_psl)
 {
     u64 idx = SET_IDX(set, elm);
     u8  psl = 1; // stored PSL=1 means real probe distance 0 (home slot)
@@ -1604,7 +1593,7 @@ static u64 set_lookup(const hashset* set, const u8* elm, LOOKUP_RES* res, u8* ou
 }
 
 
-static void set_insert(hashset* set, u8* elm, u8 psl, u64 idx)
+static void set_insert(HashSet* set, u8* elm, u8 psl, u64 idx)
 {
     // elm is already owned (either staged copy or moved pointer).
     // Alternates between the two scratch halves on each Robin Hood eviction
@@ -1612,7 +1601,7 @@ static void set_insert(hashset* set, u8* elm, u8 psl, u64 idx)
     u8* cur = STAGE_ELM(set);
     u8* swp = SWAP_ELM(set);
 
-    // elm may already be STAGE_ELM (called from hashset_insert/insert_move);
+    // elm may already be STAGE_ELM (called from HashSet_insert/insert_move);
     // only copy if it isn't already there.
     if (elm != cur) {
         memcpy(cur, elm, set->elm_size);
@@ -1652,7 +1641,7 @@ static void set_insert(hashset* set, u8* elm, u8 psl, u64 idx)
 }
 
 
-static void set_resize(hashset* set, u64 new_capacity)
+static void set_resize(HashSet* set, u64 new_capacity)
 {
     if (new_capacity < HASHMAP_INIT_CAPACITY) {
         new_capacity = HASHMAP_INIT_CAPACITY;

@@ -251,6 +251,18 @@ char* String_data_ptr(const String* s)
     return (char*)(IS_SSO(s) ? s->stk : s->heap);
 }
 
+// Same growth path as String_append_char, minus the size++: writes '\0'
+// at index s->size and leaves size untouched. Safe against the SSO
+// mode-flag byte because MAYBE_GROW_STR converts to heap (or reallocs
+// the heap buffer) whenever size == capacity, before we ever write —
+// so the write always lands one past the last real char, never on the
+// flag byte at stk[STR_SSO_SIZE - 1].
+void String_ensure_null_term(String* s)
+{
+    MAYBE_GROW_STR(s);
+    GET_STR_CHAR(s, s->size) = '\0';
+}
+
 
 //  Modification
 
