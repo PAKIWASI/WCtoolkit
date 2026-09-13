@@ -3,6 +3,7 @@
 #include "matrix.h"
 #include "arena.h"
 #include <math.h>
+#include <stdlib.h>
 
 #define FLOAT_EPS 1e-3f
 
@@ -84,6 +85,12 @@ static void test_copy(void)
     /* independence */
     src->data[0] = 99.0f;
     matrix_destroy(src);
+
+    // matrix_copy always mallocs a fresh buffer into dest->data, replacing
+    // the stack buffer `d` that matrix_create_stk originally pointed dest
+    // at. dest is now heap-owning, but there's no matrix_destroy_stk() to
+    // pair with a stack-created Matrixf, so free the buffer directly.
+    free(dest.data);
 }
 
 

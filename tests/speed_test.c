@@ -7,6 +7,7 @@
  *
  */
 #include "common.h"
+#include "map_setup.h"
 #include "wc_test.h"
 #include "gen_vector.h"
 #include "hashmap.h"
@@ -218,6 +219,9 @@ static void bench_vec_copy_pod(void)
 
     u64 t0 = ns_now();
     for (int r = 0; r < COPY_REP; r++) {
+        // GenVec_copy expects dest to be raw/empty (it overwrites without
+        // freeing) — release the previous rep's buffer first or it leaks.
+        if (r > 0) GenVec_destroy_stk(&dest);
         GenVec_copy(&dest, src);
     }
     u64 t1 = ns_now();
@@ -246,6 +250,8 @@ static void bench_vec_copy_cx(void)
 
     u64 t0 = ns_now();
     for (int r = 0; r < COPY_REP; r++) {
+        // Same as the POD case: dest must be released before each re-copy.
+        if (r > 0) GenVec_destroy_stk(&dest);
         GenVec_copy(&dest, src);
     }
     u64 t1 = ns_now();
@@ -901,5 +907,3 @@ extern int speed_suite(void)
 
     return WC_REPORT();
 }
-
-

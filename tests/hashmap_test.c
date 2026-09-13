@@ -6,6 +6,7 @@
 #include "wc_helpers.h"
 #include "wc_macros.h"
 #include <stdio.h>
+#include <stdlib.h>
 
 
 /* ── Map constructors ────────────────────────────────────────────────────── */
@@ -24,6 +25,18 @@ static HashMap* str_str_map(void)
 {
     return HashMap_create(sizeof(String), sizeof(String),
                           wyhash_str, str_cmp, &wc_str_ops, &wc_str_ops);
+}
+
+// HashMap_copy expects dest to be raw/uninitialised memory — it overwrites
+// dest's fields wholesale without freeing anything dest might already own.
+// Passing a HashMap already produced by int_map()/str_str_map() (which have
+// live, allocated buffers) leaks those buffers. Use this to get an
+// uninitialised shell instead; HashMap_copy fills it in completely.
+static HashMap* raw_map(void)
+{
+    HashMap* m = malloc(sizeof(HashMap));
+    WC_ASSERT_NOT_NULL(m);
+    return m;
 }
 
 
@@ -391,7 +404,7 @@ static void test_copy_int_map(void)
     }
 
     // dest must be uninitialised — HashMap_copy allocates everything
-    HashMap* dest = int_map();
+    HashMap* dest = raw_map();
     HashMap_copy(dest, src);
     WC_ASSERT_EQ_U64(HashMap_size(dest), HashMap_size(src));
 
@@ -412,7 +425,7 @@ static void test_copy_independence(void)
     int k = 1, v = 10;
     HashMap_put(src, (u8*)&k, (u8*)&v);
 
-    HashMap* dest = int_map();
+    HashMap* dest = raw_map();
     HashMap_copy(dest, src);
 
     int v2 = 99;
@@ -436,7 +449,7 @@ static void test_copy_str_str_map(void)
     MAP_PUT_STR_STR(src, "city",  "London");
     MAP_PUT_STR_STR(src, "color", "blue");
 
-    HashMap* dest = str_str_map();
+    HashMap* dest = raw_map();
     HashMap_copy(dest, src);
     WC_ASSERT_EQ_U64(HashMap_size(dest), 3);
 
@@ -455,7 +468,7 @@ static void test_copy_str_str_map(void)
 static void test_copy_empty_map(void)
 {
     HashMap* src = int_map();
-    HashMap* dest = int_map();
+    HashMap* dest = raw_map();
     HashMap_copy(dest, src);
     WC_ASSERT_EQ_U64(HashMap_size(dest), 0);
     WC_ASSERT_EQ_U64(HashMap_capacity(dest), HashMap_capacity(src));
@@ -470,7 +483,7 @@ static void test_copy_then_del_src_key(void)
     int k = 5, v = 50;
     HashMap_put(src, (u8*)&k, (u8*)&v);
 
-    HashMap* dest = int_map();
+    HashMap* dest = raw_map();
     HashMap_copy(dest, src);
 
     HashMap_del(src, (u8*)&k, NULL);
@@ -900,5 +913,3 @@ void HashMap_suite(void)
     WC_RUN(test_str_str_del_frees_both);
     WC_RUN(test_str_str_clear_frees_all);
 }
-
-

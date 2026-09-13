@@ -225,8 +225,12 @@ static void test_create_of_String_by_pointer(void)
 
     String* a = String_from_cstr("a");
     String* b = String_from_cstr("b");
-    VEC_PUSH(v, a);
-    VEC_PUSH(v, b);
+    // VEC_PUSH copies (via wc_str_ptr_ops' copy_fn, which deep-duplicates
+    // the String) — that would leave `a`/`b` themselves un-freed and
+    // unowned. VEC_PUSH_MOVE transfers ownership into the vector instead,
+    // matching the "frees each heap String on destroy" intent above.
+    VEC_PUSH_MOVE(v, a);
+    VEC_PUSH_MOVE(v, b);
     WC_ASSERT_EQ_U64(v->size, 2);
 
     GenVec_destroy(v);

@@ -6,6 +6,7 @@
 #include "hashset.h"
 #include "wc_helpers.h"
 #include <stdio.h>
+#include <stdlib.h>
 
 
 /* ── Set constructors ────────────────────────────────────────────────────── */
@@ -18,6 +19,18 @@ static HashSet* int_set(void)
 static HashSet* str_set(void)
 {
     return HashSet_create(sizeof(String), wyhash_str, str_cmp, &wc_str_ops);
+}
+
+// HashSet_copy expects dest to be raw/uninitialised memory — it overwrites
+// dest's fields wholesale without freeing anything dest might already own.
+// Passing a HashSet already produced by int_set()/str_set() (which have
+// live, allocated buffers) leaks those buffers. Use this to get an
+// uninitialised shell instead; HashSet_copy fills it in completely.
+static HashSet* raw_set(void)
+{
+    HashSet* s = malloc(sizeof(HashSet));
+    WC_ASSERT_NOT_NULL(s);
+    return s;
 }
 
 
@@ -327,7 +340,7 @@ static void test_copy_int_set(void)
     }
 
     // dest must be uninitialised — HashSet_copy allocates everything
-    HashSet* dest = int_set();
+    HashSet* dest = raw_set();
     HashSet_copy(dest, src);
     WC_ASSERT_EQ_U64(HashSet_size(dest), HashSet_size(src));
 
@@ -346,7 +359,7 @@ static void test_copy_independence(void)
     int x = 1;
     HashSet_insert(src, (u8*)&x);
 
-    HashSet* dest = int_set();
+    HashSet* dest = raw_set();
     HashSet_copy(dest, src);
 
     int y = 99;
@@ -372,7 +385,7 @@ static void test_copy_str_set(void)
         String_destroy_stk(&sv);
     }
 
-    HashSet* dest = str_set();
+    HashSet* dest = raw_set();
     HashSet_copy(dest, src);
     WC_ASSERT_EQ_U64(HashSet_size(dest), 3);
 
@@ -390,7 +403,7 @@ static void test_copy_empty_set(void)
 {
     HashSet* src = int_set();
 
-    HashSet* dest = int_set();
+    HashSet* dest = raw_set();
     HashSet_copy(dest, src);
     WC_ASSERT_EQ_U64(HashSet_size(dest), 0);
     WC_ASSERT_EQ_U64(HashSet_capacity(dest), HashSet_capacity(src));
@@ -406,7 +419,7 @@ static void test_copy_then_remove_src_elm(void)
     int x = 5;
     HashSet_insert(src, (u8*)&x);
 
-    HashSet* dest = int_set();
+    HashSet* dest = raw_set();
     HashSet_copy(dest, src);
 
     HashSet_remove(src, (u8*)&x);
@@ -632,7 +645,7 @@ static void test_copy_str_set_deep(void)
     SET_INSERT_CSTR(src, "alpha");
     SET_INSERT_CSTR(src, "beta");
 
-    HashSet* dest = HashSet_create(sizeof(String), wyhash_str, str_cmp, &wc_str_ops);
+    HashSet* dest = raw_set();
     HashSet_copy(dest, src);
     WC_ASSERT_EQ_U64(HashSet_size(dest), 2);
 
@@ -773,5 +786,3 @@ void HashSet_suite(void)
     WC_RUN(test_set_foreach_empty);
     WC_RUN(test_set_foreach_after_remove);
 }
-
-
