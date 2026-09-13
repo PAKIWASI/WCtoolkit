@@ -43,7 +43,7 @@ void StringStore_create(StringStore* ss)
     CHECK_FATAL(!node, "node malloc failed");
 
     node->next      = NULL;
-    node->owns_heap = 0;
+    node->owns_heap = false;
     ss->head        = node;
     ss->tail        = node;
     ss->tail_off    = 0;
@@ -71,7 +71,7 @@ static inline void add_node(StringStore* ss)
     CHECK_FATAL(!node, "node malloc failed");
 
     node->next              = NULL; // must terminate the chain for StringStore_destroy
-    node->owns_heap         = 0;
+    node->owns_heap         = false;
     ss->tail->next          = node;
     ss->tail                = node;
     ss->tail_off            = 0;
@@ -89,7 +89,7 @@ StrView StringStore_cstr(StringStore* ss, const char* cstr, u64 clen)
         CHECK_FATAL(!node, "node malloc failed");
 
         node->heap      = malloc(clen);
-        node->owns_heap = 1; // `heap` is live; StringStore_destroy must free it
+        node->owns_heap = true; // `heap` is live; StringStore_destroy must free it
         CHECK_FATAL(!node->heap, "overflow node malloc failed");
 
         memcpy(node->heap, cstr, clen);

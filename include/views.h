@@ -1,9 +1,9 @@
 #ifndef WC_VIEWS_H
 #define WC_VIEWS_H
 
-#include "wc_string.h"
 #include "arena.h"
 #include "common.h"
+#include "wc_string.h"
 
 
 // NOT COPYABLE: non-owning view into an Arena or StringStore.
@@ -33,9 +33,7 @@ typedef struct StringStore_node {
         char* heap;
     };
     struct StringStore_node* next;
-    // 1 → `heap` is live (overflow node), 0 → `buf` is live. Without this flag
-    // StringStore_destroy cannot tell which union member to free.
-    int owns_heap;
+    bool                     owns_heap;
 } StringStore_node;
 
 // append-only, immutable String storage with a chain Arena-like backing
@@ -43,8 +41,8 @@ typedef struct StringStore_node {
 typedef struct {
     StringStore_node* tail;
     StringStore_node* head;
-    u32                tail_off; // how much of th tail node is used
-    u32                num;      // total number of nodes
+    u32               tail_off; // how much of th tail node is used
+    u32               num;      // total number of nodes
 } StringStore;
 
 void StringStore_create(StringStore* ss) __attribute__((nonnull(1)));
