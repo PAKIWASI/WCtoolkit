@@ -1,6 +1,7 @@
-﻿#include "wc_test.h"
+﻿#include "common.h"
+#include "wc_test.h"
 #include "matrix.h"
-#include "Arena.h"
+#include "arena.h"
 #include <math.h>
 
 #define FLOAT_EPS 1e-3f

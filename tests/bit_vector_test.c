@@ -1,5 +1,6 @@
-#include "wc_test.h"
 #include "bit_vector.h"
+#include "common.h"
+#include "wc_test.h"
 
 
 /* ── Creation / destruction ──────────────────────────────────────────────── */
@@ -40,24 +41,24 @@ static void test_set_multiple_bits_same_byte(void)
 static void test_set_crosses_byte_boundary(void)
 {
     BitVec* bv = BitVec_create();
-    BitVec_set(bv, 7);   /* last bit of byte 0 */
-    BitVec_set(bv, 8);   /* first bit of byte 1 */
-    BitVec_set(bv, 15);  /* last bit of byte 1 */
+    BitVec_set(bv, 7);  /* last bit of byte 0 */
+    BitVec_set(bv, 8);  /* first bit of byte 1 */
+    BitVec_set(bv, 15); /* last bit of byte 1 */
     WC_ASSERT_EQ_U64(BitVec_size_bytes(bv), 2);
-    WC_ASSERT_EQ_INT(BitVec_test(bv, 7),  1);
-    WC_ASSERT_EQ_INT(BitVec_test(bv, 8),  1);
+    WC_ASSERT_EQ_INT(BitVec_test(bv, 7), 1);
+    WC_ASSERT_EQ_INT(BitVec_test(bv, 8), 1);
     WC_ASSERT_EQ_INT(BitVec_test(bv, 15), 1);
-    WC_ASSERT_EQ_INT(BitVec_test(bv, 6),  0);
-    WC_ASSERT_EQ_INT(BitVec_test(bv, 9),  0);
+    WC_ASSERT_EQ_INT(BitVec_test(bv, 6), 0);
+    WC_ASSERT_EQ_INT(BitVec_test(bv, 9), 0);
     BitVec_destroy(bv);
 }
 
 static void test_set_far_bit_allocates_bytes(void)
 {
     BitVec* bv = BitVec_create();
-    BitVec_set(bv, 31);  /* bit 31 → byte 3 */
+    BitVec_set(bv, 31); /* bit 31 → byte 3 */
     WC_ASSERT_EQ_U64(BitVec_size_bytes(bv), 4);
-    WC_ASSERT_EQ_U64(BitVec_size_bits(bv),  32);
+    WC_ASSERT_EQ_U64(BitVec_size_bits(bv), 32);
     WC_ASSERT_EQ_INT(BitVec_test(bv, 31), 1);
     WC_ASSERT_EQ_INT(BitVec_test(bv, 30), 0);
     BitVec_destroy(bv);
@@ -112,8 +113,8 @@ static void test_clear_does_not_affect_other_bytes(void)
 static void test_clear_already_zero_is_noop(void)
 {
     BitVec* bv = BitVec_create();
-    BitVec_set(bv, 7);    /* allocate byte 0 */
-    BitVec_clear(bv, 3);  /* bit 3 was never set */
+    BitVec_set(bv, 7);   /* allocate byte 0 */
+    BitVec_clear(bv, 3); /* bit 3 was never set */
     WC_ASSERT_EQ_INT(BitVec_test(bv, 3), 0);
     WC_ASSERT_EQ_INT(BitVec_test(bv, 7), 1);
     BitVec_destroy(bv);
@@ -172,7 +173,7 @@ static void test_toggle_does_not_disturb_neighbours(void)
 static void test_push_appends_set_bit(void)
 {
     BitVec* bv = BitVec_create();
-    BitVec_push(bv);   /* bit 0 = 1 */
+    BitVec_push(bv); /* bit 0 = 1 */
     WC_ASSERT_EQ_U64(BitVec_size_bits(bv), 1);
     WC_ASSERT_EQ_INT(BitVec_test(bv, 0), 1);
     BitVec_destroy(bv);
@@ -181,7 +182,9 @@ static void test_push_appends_set_bit(void)
 static void test_push_multiple(void)
 {
     BitVec* bv = BitVec_create();
-    for (int i = 0; i < 9; i++) BitVec_push(bv);
+    for (int i = 0; i < 9; i++) {
+        BitVec_push(bv);
+    }
     WC_ASSERT_EQ_U64(BitVec_size_bits(bv), 9);
     WC_ASSERT_EQ_U64(BitVec_size_bytes(bv), 2); /* 9 bits → 2 bytes */
     BitVec_destroy(bv);
@@ -200,11 +203,13 @@ static void test_pop_reduces_size(void)
 static void test_pop_across_byte_boundary(void)
 {
     BitVec* bv = BitVec_create();
-    for (int i = 0; i < 8; i++) BitVec_push(bv); /* fill byte 0 */
-    BitVec_push(bv);                               /* byte 1, bit 0 */
+    for (int i = 0; i < 8; i++) {
+        BitVec_push(bv); /* fill byte 0 */
+    }
+    BitVec_push(bv); /* byte 1, bit 0 */
     WC_ASSERT_EQ_U64(BitVec_size_bytes(bv), 2);
-    BitVec_pop(bv);  /* pops the bit in byte 1 */
-    WC_ASSERT_EQ_U64(BitVec_size_bits(bv),  8);
+    BitVec_pop(bv); /* pops the bit in byte 1 */
+    WC_ASSERT_EQ_U64(BitVec_size_bits(bv), 8);
     WC_ASSERT_EQ_U64(BitVec_size_bytes(bv), 1); /* byte 1 freed */
     BitVec_destroy(bv);
 }
@@ -219,7 +224,7 @@ static void test_size_bits_tracks_highest_set(void)
     WC_ASSERT_EQ_U64(BitVec_size_bits(bv), 1);
     BitVec_set(bv, 10);
     WC_ASSERT_EQ_U64(BitVec_size_bits(bv), 11);
-    BitVec_set(bv, 5);   /* lower index, must not shrink size */
+    BitVec_set(bv, 5); /* lower index, must not shrink size */
     WC_ASSERT_EQ_U64(BitVec_size_bits(bv), 11);
     BitVec_destroy(bv);
 }
@@ -252,11 +257,15 @@ static void test_large_bit_index(void)
 static void test_set_clear_all_bits_in_byte(void)
 {
     BitVec* bv = BitVec_create();
-    for (int i = 0; i < 8; i++) BitVec_set(bv, (u64)i);
+    for (int i = 0; i < 8; i++) {
+        BitVec_set(bv, (u64)i);
+    }
     for (int i = 0; i < 8; i++) {
         WC_ASSERT_EQ_INT(BitVec_test(bv, (u64)i), 1);
     }
-    for (int i = 0; i < 8; i++) BitVec_clear(bv, (u64)i);
+    for (int i = 0; i < 8; i++) {
+        BitVec_clear(bv, (u64)i);
+    }
     for (int i = 0; i < 8; i++) {
         WC_ASSERT_EQ_INT(BitVec_test(bv, (u64)i), 0);
     }

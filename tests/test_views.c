@@ -1,9 +1,10 @@
+#include "common.h"
 #include "views.h"
+#include "wc_string.h"
 #include "wc_test.h"
 
-#include <stdio.h>
 #include <stdlib.h>
-#include <String.h>
+#include <string.h>
 
 
 // Helpers 

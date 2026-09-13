@@ -1,7 +1,11 @@
+#include "common.h"
+#include "map_setup.h"
 #include "wc_macros.h"
+#include "wc_string.h"
 #include "wc_test.h"
-#include "HashSet.h"
+#include "hashset.h"
 #include "wc_helpers.h"
+#include <stdio.h>
 
 
 /* ── Set constructors ────────────────────────────────────────────────────── */

@@ -1,7 +1,11 @@
+#include "common.h"
+#include "map_setup.h"
+#include "wc_string.h"
 #include "wc_test.h"
-#include "HashMap.h"
+#include "hashmap.h"
 #include "wc_helpers.h"
 #include "wc_macros.h"
+#include <stdio.h>
 
 
 /* ── Map constructors ────────────────────────────────────────────────────── */

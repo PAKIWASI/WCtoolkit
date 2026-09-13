@@ -1,8 +1,8 @@
 #include "common.h"
 #include "wc_test.h"
-#include "String.h"
+#include "wc_string.h"
 #include <stdlib.h>
-#include <String.h>
+#include <string.h>
 
 
 // TODO: test SSO

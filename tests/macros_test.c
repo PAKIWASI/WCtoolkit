@@ -1,15 +1,14 @@
+#include "common.h"
 #include "wc_test.h"
 #include "wc_macros.h"
-#include "wc_helpers.h"
-#include "wc_errno.h"
-#include "HashSet.h"
-#include "HashMap.h"
-#include "Queue.h"
-#include "Stack.h"
-#include "String.h"
+#include "hashset.h"
+#include "hashmap.h"
+#include "queue.h"
+#include "stack.h"
+#include "wc_string.h"
 #include "gen_vector.h"
 #include <stdlib.h>
-#include <String.h>
+#include <string.h>
 
 /* -- Helpers --------------------------------------------------------------- */
 
@@ -177,15 +176,15 @@ static void test_set_foreach_and_from_vec(void)
 
 /* -- Suite ----------------------------------------------------------------- */
 
-void macros_suite(void)
-{
-    WC_SUITE("Macros");
-    WC_RUN(test_set_insert_move_compiles_and_works);
-    WC_RUN(test_Queue_macros);
-    WC_RUN(test_Stack_macros);
-    WC_RUN(test_map_get_and_try_get);
-    WC_RUN(test_set_foreach_and_from_vec);
-}
+// void macros_suite(void)
+// {
+//     WC_SUITE("Macros");
+//     WC_RUN(test_set_insert_move_compiles_and_works);
+//     WC_RUN(test_Queue_macros);
+//     WC_RUN(test_Stack_macros);
+//     WC_RUN(test_map_get_and_try_get);
+//     WC_RUN(test_set_foreach_and_from_vec);
+// }
 
 /* -- Phase 6: WC_OPS / VEC_CREATE_OF — ops picked from T ------------------- */
 

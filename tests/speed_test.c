@@ -6,17 +6,20 @@
  * complex paths directly, and see before/after if you revert is_pod.
  *
  */
+#include "common.h"
 #include "wc_test.h"
 #include "gen_vector.h"
-#include "HashMap.h"
-#include "String.h"
+#include "hashmap.h"
+#include "wc_string.h"
 #include "wc_helpers.h"
 #include "views.h"
-#include "Arena.h"
-#include "chain_Arena.h"
+#include "arena.h"
+#include "chain_arena.h"
 
+#include <bits/time.h>
+#include <stdlib.h>
 #include <time.h>
-#include <String.h>
+#include <string.h>
 #include <stdio.h>
 
 
@@ -26,7 +29,7 @@ static inline u64 ns_now(void)
 {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (u64)ts.tv_sec * 1000000000ULL + (u64)ts.tv_nsec;
+    return ((u64)ts.tv_sec * 1000000000ULL) + (u64)ts.tv_nsec;
 }
 
 // Prints "  label: X ns/op  (N ops)" and returns ns/op
@@ -103,7 +106,8 @@ static void bench_clear_pod(void)
 
     for (int r = 0; r < CLEAR_REP; r++) {
         GenVec* v = GenVec_create(CLEAR_N, sizeof(int), NULL);
-        for (int i = 0; i < CLEAR_N; i++) GenVec_push(v, (u8*)&val);
+        for (int i = 0; i < CLEAR_N; i++) { GenVec_push(v, (u8*)&val);
+}
 
         u64 t0 = ns_now();
         GenVec_clear(v);

@@ -52,7 +52,7 @@
  */
 
 #include <stdio.h>
-#include <String.h>
+#include <string.h>
 
 
 #ifdef WC_TEST_MAIN

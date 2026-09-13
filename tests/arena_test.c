@@ -1,6 +1,6 @@
 #include "common.h"
 #include "wc_test.h"
-#include "Arena.h"
+#include "arena.h"
 #include "wc_errno.h"
 
 
@@ -151,7 +151,7 @@ static void test_stk_Arena(void)
 {
     u8    buf[256];
     Arena a;
-    Arena_create_arr_stk(buf, 256, &a);
+    Arena_create_arr_stk(&a, 256, buf);
     WC_ASSERT_EQ_U64(a.size, 256);
     WC_ASSERT_EQ_U64(a.idx,  0);
 

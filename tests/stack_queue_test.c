@@ -1,6 +1,7 @@
+#include "common.h"
 #include "wc_test.h"
-#include "Stack.h"
-#include "Queue.h"
+#include "stack.h"
+#include "queue.h"
 #include "wc_errno.h"
 
 
