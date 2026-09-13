@@ -65,15 +65,15 @@ _Static_assert(sizeof(GenVec) == 40, "GenVec layout drifted from expected 40 byt
 GenVec* GenVec_create(u64 n, u32 data_size, const container_ops* ops) __attribute__((warn_unused_result));
 
 // Initialize vector on Stack (struct on Stack, data on heap).
-void GenVec_create_stk(u64 n, u32 data_size, const container_ops* ops, GenVec* vec) __attribute__((nonnull(4)));
+void GenVec_create_stk(GenVec* vec, u64 n, u32 data_size, const container_ops* ops) __attribute__((nonnull(1)));
 
 // Initialize vector of size n with all elements set to val.
 GenVec* GenVec_create_val(u64 n, const u8* val, u32 data_size, const container_ops* ops) __attribute__((nonnull(2), warn_unused_result));
 
 // TODO: GCC does not allow 'nonnull' attribute in this position on a function definition (for the static inline ones (the ones with nonnull in the function definition))
 
-void GenVec_create_val_stk(u64 n, const u8* val, u32 data_size, const container_ops* ops, GenVec* vec)
-    __attribute__((nonnull(2, 5)));
+void GenVec_create_val_stk(GenVec* vec, u64 n, const u8* val, u32 data_size, const container_ops* ops)
+    __attribute__((nonnull(1, 3)));
 
 GenVec* GenVec_create_arr(u64 n, u32 data_size, const container_ops* ops, u8* arr) __attribute__((nonnull(4), warn_unused_result));
 
@@ -81,8 +81,8 @@ GenVec* GenVec_create_arr(u64 n, u32 data_size, const container_ops* ops, u8* ar
 // You provide a Stack-allocated array which becomes the internal array.
 // should only use if you need GenVec operations on C array
 // WARNING: crashes when size == capacity and you try to push.
-void GenVec_create_stk_arr(u64 n, u8* arr, u32 data_size, const container_ops* ops, GenVec* vec)
-    __attribute__((nonnull(2, 5)));
+void GenVec_create_stk_arr(GenVec* vec, u64 n, u8* arr, u32 data_size, const container_ops* ops)
+    __attribute__((nonnull(1, 3)));
 
 // Destroy heap-allocated vector and clean up all elements.
 void GenVec_destroy(GenVec* vec) __attribute__((nonnull(1)));

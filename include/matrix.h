@@ -24,7 +24,7 @@ Matrixf* matrix_create(u64 m, u64 n) __attribute__((warn_unused_result));
 Matrixf* matrix_create_arr(u64 m, u64 n, const float* arr) __attribute__((nonnull(3), warn_unused_result));
 
 // create matrix with everything on the Stack
-void matrix_create_stk(u64 m, u64 n, float* data, Matrixf* mat) __attribute__((nonnull(3, 4)));
+void matrix_create_stk(Matrixf* mat, u64 m, u64 n, float* data) __attribute__((nonnull(1, 4)));
 
 // destroy the matrix created with matrix_create or matrix_create_arr
 // DO NOT use on Stack-allocated matrices (created with matrix_create_stk)

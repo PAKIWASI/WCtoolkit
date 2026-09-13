@@ -79,7 +79,7 @@ static void bench_push_cx(void)
     u64 t0 = ns_now();
     for (int i = 0; i < PUSH_N; i++) {
         String s;
-        String_create_stk("hello", &s);
+        String_create_stk(&s, "hello");
         GenVec_push(v, (u8*)&s);
         String_destroy_stk(&s); // push deep-copied it; we own the original
     }
@@ -131,7 +131,7 @@ static void bench_clear_cx(void)
         GenVec* v = GenVec_create(CLEAR_N, sizeof(String), &wc_str_ops);
         for (int i = 0; i < CLEAR_N; i++) {
             String s;
-            String_create_stk("hi", &s);
+            String_create_stk(&s, "hi");
             GenVec_push(v, (u8*)&s);
             String_destroy_stk(&s);
         }
@@ -181,7 +181,7 @@ static void bench_destroy_cx(void)
         GenVec* v = GenVec_create(DESTROY_N, sizeof(String), &wc_str_ops);
         for (int i = 0; i < DESTROY_N; i++) {
             String s;
-            String_create_stk("world", &s);
+            String_create_stk(&s, "world");
             GenVec_push(v, (u8*)&s);
             String_destroy_stk(&s);
         }
@@ -234,7 +234,7 @@ static void bench_vec_copy_cx(void)
     GenVec* src = GenVec_create(COPY_N, sizeof(String), &wc_str_ops);
     for (int i = 0; i < COPY_N; i++) {
         String s;
-        String_create_stk("copy", &s);
+        String_create_stk(&s, "copy");
         GenVec_push(src, (u8*)&s);
         String_destroy_stk(&s);
     }
@@ -280,7 +280,7 @@ static void bench_init_val_cx(void)
 {
     // Use a short String so it stays SSO; this tests the copy_fn broadcast.
     String val;
-    String_create_stk("init", &val);
+    String_create_stk(&val, "init");
 
     u64 t0 = ns_now();
     for (int r = 0; r < INITVAL_REP; r++) {
@@ -330,7 +330,7 @@ static void bench_remove_range_cx(void)
         GenVec* v = GenVec_create(RANGE_N, sizeof(String), &wc_str_ops);
         for (int i = 0; i < RANGE_N; i++) {
             String s;
-            String_create_stk("range", &s);
+            String_create_stk(&s, "range");
             GenVec_push(v, (u8*)&s);
             String_destroy_stk(&s);
         }
@@ -381,8 +381,8 @@ static void bench_map_put_cx(void)
         char buf[32];
         snprintf(buf, sizeof(buf), "key_%d", i);
         String k, v;
-        String_create_stk(buf, &k);
-        String_create_stk("val", &v);
+        String_create_stk(&k, buf);
+        String_create_stk(&v, "val");
         HashMap_put(map, (u8*)&k, (u8*)&v);
         String_destroy_stk(&k);
         String_destroy_stk(&v);
@@ -419,8 +419,8 @@ static void bench_map_get_cx(void)
         char buf[32];
         snprintf(buf, sizeof(buf), "key_%d", i);
         String k, v;
-        String_create_stk(buf, &k);
-        String_create_stk("val", &v);
+        String_create_stk(&k, buf);
+        String_create_stk(&v, "val");
         HashMap_put(map, (u8*)&k, (u8*)&v);
         String_destroy_stk(&k);
         String_destroy_stk(&v);
@@ -432,7 +432,7 @@ static void bench_map_get_cx(void)
         char buf[32];
         snprintf(buf, sizeof(buf), "key_%d", i);
         String k, out;
-        String_create_stk(buf, &k);
+        String_create_stk(&k, buf);
         hits += HashMap_get(map, (u8*)&k, (u8*)&out);
         String_destroy_stk(&k);
         String_destroy_stk(&out);
@@ -484,8 +484,8 @@ static void bench_map_clear_cx(void)
             char buf[32];
             snprintf(buf, sizeof(buf), "k%d", i);
             String k, v;
-            String_create_stk(buf, &k);
-            String_create_stk("v", &v);
+            String_create_stk(&k, buf);
+            String_create_stk(&v, "v");
             HashMap_put(map, (u8*)&k, (u8*)&v);
             String_destroy_stk(&k);
             String_destroy_stk(&v);
@@ -531,7 +531,7 @@ static void bench_pop_cx(void)
     GenVec* v = GenVec_create(POP_N, sizeof(String), &wc_str_ops);
     for (int i = 0; i < POP_N; i++) {
         String s;
-        String_create_stk("pop", &s);
+        String_create_stk(&s, "pop");
         GenVec_push(v, (u8*)&s);
         String_destroy_stk(&s);
     }
@@ -654,9 +654,9 @@ static void person_init(Person* p, int i)
 {
     char buf[64];
     person_name_fmt(buf, sizeof(buf), i);
-    String_create_stk(buf, &p->name);
+    String_create_stk(&p->name, buf);
 
-    GenVec_create_stk((u64)PERSON_SCORES_N, sizeof(int), NULL, &p->scores);
+    GenVec_create_stk(&p->scores, (u64)PERSON_SCORES_N, sizeof(int), NULL);
     for (int j = 0; j < PERSON_SCORES_N; j++) {
         int v = i + j;
         GenVec_push(&p->scores, (u8*)&v);
@@ -683,7 +683,7 @@ static void person_copy(u8* dest, const u8* src)
     // live, valid GenVec and destroys its old contents first. Bring dest
     // into a valid empty state so that destroy is a safe no-op, matching
     // the idiom the toolkit's own wc_vec_ops.copy_fn effectively achieves.
-    GenVec_create_stk(0, sizeof(int), NULL, &d->scores);
+    GenVec_create_stk(&d->scores, 0, sizeof(int), NULL);
     GenVec_copy(&d->scores, &s->scores);
 }
 
@@ -863,7 +863,7 @@ static void bench_ss_String_sso(void)
     for (int i = 0; i < STRSTORE_N; i++) {
         strstore_fmt(buf, sizeof(buf), i);
         String s;
-        String_create_stk(buf, &s);
+        String_create_stk(&s, buf);
         GenVec_push(v, (u8*)&s);
         String_destroy_stk(&s);
     }

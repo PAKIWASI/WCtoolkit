@@ -49,7 +49,7 @@ ChainArena* chain_Arena_create(void)
     ChainArena* Arena = malloc(sizeof(ChainArena));
     CHECK_FATAL(!Arena, "Arena malloc failed");
 
-    GenVec_create_stk(NODES_INIT_SIZE, sizeof(ArenaNode*), &chain_ops_ptr, &Arena->nodes);
+    GenVec_create_stk(&Arena->nodes, NODES_INIT_SIZE, sizeof(ArenaNode*), &chain_ops_ptr);
     GenVec_push_move(&Arena->nodes, (u8**)&n);   // initial node
 
     Arena->used = 0;

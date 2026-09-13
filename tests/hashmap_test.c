@@ -443,7 +443,7 @@ static void test_copy_str_str_map(void)
     HashMap_destroy(src); // src gone — dest must still be intact
 
     String k;
-    String_create_stk("city", &k);
+    String_create_stk(&k, "city");
     String* found = (String*)HashMap_get_ptr(dest, (u8*)&k);
     WC_ASSERT_NOT_NULL(found);
     WC_ASSERT_TRUE(String_equals_cstr(found, "London"));
@@ -581,7 +581,7 @@ static void test_str_val_put_copy(void)
     HashMap* m = int_str_map();
     int k = 1;
     String sv;
-    String_create_stk("hello", &sv);
+    String_create_stk(&sv, "hello");
     HashMap_put(m, (u8*)&k, (u8*)&sv);
 
     String* got = (String*)HashMap_get_ptr(m, (u8*)&k);
@@ -598,7 +598,7 @@ static void test_str_val_independence(void)
     HashMap* m = int_str_map();
     int k = 1;
     String sv;
-    String_create_stk("original", &sv);
+    String_create_stk(&sv, "original");
     HashMap_put(m, (u8*)&k, (u8*)&sv);
     String_append_cstr(&sv, "_mutated");
 
@@ -661,7 +661,7 @@ static void test_str_val_del_with_out(void)
     MAP_PUT_INT_STR(m, k, "goodbye");
 
     String out;
-    String_create_stk("", &out);
+    String_create_stk(&out, "");
     HashMap_del(m, (u8*)&k, (u8*)&out);
     WC_ASSERT_TRUE(String_equals_cstr(&out, "goodbye"));
 
@@ -705,7 +705,7 @@ static void test_str_key_lookup(void)
     WC_ASSERT_NULL(v1);
 
     String key;
-    String_create_stk("name", &key);
+    String_create_stk(&key, "name");
     String* found = (String*)HashMap_get_ptr(m, (u8*)&key);
     WC_ASSERT_NOT_NULL(found);
     WC_ASSERT_TRUE(String_equals_cstr(found, "Alice"));
@@ -718,7 +718,7 @@ static void test_str_key_miss(void)
 {
     HashMap* m = str_str_map();
     String k;
-    String_create_stk("missing", &k);
+    String_create_stk(&k, "missing");
     WC_ASSERT_FALSE(HashMap_has(m, (u8*)&k));
     String_destroy_stk(&k);
     HashMap_destroy(m);
@@ -733,7 +733,7 @@ static void test_str_key_update_discards_dup_key(void)
 
     WC_ASSERT_EQ_U64(HashMap_size(m), 1);
     String k;
-    String_create_stk("lang", &k);
+    String_create_stk(&k, "lang");
     String* v = (String*)HashMap_get_ptr(m, (u8*)&k);
     WC_ASSERT_TRUE(String_equals_cstr(v, "C11"));
     String_destroy_stk(&k);
@@ -746,7 +746,7 @@ static void test_str_key_del(void)
     MAP_PUT_STR_STR(m, "fruit", "apple");
 
     String k;
-    String_create_stk("fruit", &k);
+    String_create_stk(&k, "fruit");
     WC_ASSERT_TRUE(HashMap_del(m, (u8*)&k, NULL));
     WC_ASSERT_FALSE(HashMap_has(m, (u8*)&k));
     WC_ASSERT_EQ_U64(HashMap_size(m), 0);
@@ -760,13 +760,13 @@ static void test_str_key_put_key_move(void)
     HashMap* m = str_str_map();
     String*  k = String_from_cstr("animal");
     String   v;
-    String_create_stk("cat", &v);
+    String_create_stk(&v, "cat");
 
     HashMap_put_key_move(m, (u8**)&k, (u8*)&v);
     WC_ASSERT_NULL(k);
 
     String lookup;
-    String_create_stk("animal", &lookup);
+    String_create_stk(&lookup, "animal");
     String* stored = (String*)HashMap_get_ptr(m, (u8*)&lookup);
     WC_ASSERT_NOT_NULL(stored);
     WC_ASSERT_TRUE(String_equals_cstr(stored, "cat"));
@@ -791,7 +791,7 @@ static void test_str_str_resize_preserves_data(void)
         snprintf(key_buf, sizeof(key_buf), "key%d", i);
         snprintf(val_buf, sizeof(val_buf), "val%d", i);
         String k;
-        String_create_stk(key_buf, &k);
+        String_create_stk(&k, key_buf);
         String* v = (String*)HashMap_get_ptr(m, (u8*)&k);
         WC_ASSERT_NOT_NULL(v);
         WC_ASSERT_TRUE(String_equals_cstr(v, val_buf));
@@ -807,7 +807,7 @@ static void test_str_str_del_frees_both(void)
     MAP_PUT_STR_STR(m, "x", "y");
 
     String k;
-    String_create_stk("x", &k);
+    String_create_stk(&k, "x");
     WC_ASSERT_TRUE(HashMap_del(m, (u8*)&k, NULL));
     WC_ASSERT_EQ_U64(HashMap_size(m), 0);
     String_destroy_stk(&k);
@@ -828,7 +828,7 @@ static void test_str_str_clear_frees_all(void)
     // Usable after clear
     MAP_PUT_STR_STR(m, "after", "clear");
     String k;
-    String_create_stk("after", &k);
+    String_create_stk(&k, "after");
     WC_ASSERT_TRUE(HashMap_has(m, (u8*)&k));
     String_destroy_stk(&k);
     HashMap_destroy(m);

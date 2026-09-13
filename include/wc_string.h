@@ -36,7 +36,7 @@ String* String_from_cstr(const char* cstr) __attribute__((warn_unused_result));
 String* String_from_String(const String* other) __attribute__((nonnull(1), warn_unused_result));
 
 // Initialise a String whose struct lives on the Stack (data may be on heap).
-void String_create_stk(const char* cstr, String* str) __attribute__((nonnull(2)));
+void String_create_stk(String* str, const char* cstr) __attribute__((nonnull(1)));
 
 // Destroy a heap-allocated String (frees struct + data).
 void String_destroy(String* str) __attribute__((nonnull(1)));

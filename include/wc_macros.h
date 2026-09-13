@@ -82,8 +82,8 @@
     }
 
 // Stack variants
-#define VEC_STK(T, cap, vec)         GenVec_create_stk((cap), sizeof(T), NULL, (vec))
-#define VEC_CX_STK(T, cap, ops, vec) GenVec_create_stk((cap), sizeof(T), (ops), (vec))
+#define VEC_STK(T, cap, vec)         GenVec_create_stk((vec), (cap), sizeof(T), NULL)
+#define VEC_CX_STK(T, cap, ops, vec) GenVec_create_stk((vec), (cap), sizeof(T), (ops))
 
 /* Create vector from an initializer list
 Usage:

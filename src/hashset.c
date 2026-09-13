@@ -40,8 +40,7 @@ static inline void set_maybe_resize(HashSet* set);
 ====================PUBLIC FUNCTIONS====================
 */
 
-void HashSet_create_stk(u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
-                        const container_ops* ops, HashSet* set)
+void HashSet_create_stk(HashSet* set, u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn, const container_ops* ops)
 {
     CHECK_FATAL(elm_size == 0, "elm_size can't be 0");
 
@@ -70,7 +69,7 @@ HashSet* HashSet_create(u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
     HashSet* set = malloc(sizeof(HashSet));
     CHECK_FATAL(!set, "set malloc failed");
 
-    HashSet_create_stk(elm_size, hash_fn, cmp_fn, ops, set);
+    HashSet_create_stk(set, elm_size, hash_fn, cmp_fn, ops);
 
     return set;
 }

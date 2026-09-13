@@ -82,7 +82,7 @@ Queue* Queue_create_val(u64 n, const u8* val, u32 data_size, const container_ops
 }
 
 
-void Queue_create_stk(u64 n, u32 data_size, const container_ops* ops, Queue* q)
+void Queue_create_stk(Queue* q, u64 n, u32 data_size, const container_ops* ops)
 {
     CHECK_FATAL(n == 0 || data_size == 0, "n/data_size can't be 0");
 

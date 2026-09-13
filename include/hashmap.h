@@ -53,9 +53,9 @@ typedef struct {
 // key_ops / val_ops: pass NULL for POD types.
 HashMap* HashMap_create(u32 key_size, u32 val_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
                         const container_ops* key_ops, const container_ops* val_ops) __attribute__((warn_unused_result));
-void     HashMap_create_stk(u32 key_size, u32 val_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
-                            const container_ops* key_ops, const container_ops* val_ops, HashMap* map)
-    __attribute__((nonnull(7)));
+void     HashMap_create_stk(HashMap* map, u32 key_size, u32 val_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
+                            const container_ops* key_ops, const container_ops* val_ops)
+    __attribute__((nonnull(1)));
 
 void HashMap_destroy(HashMap* map) __attribute__((nonnull(1)));
 void HashMap_destroy_stk(HashMap* map) __attribute__((nonnull(1)));

@@ -22,7 +22,7 @@ static void test_create_empty(void)
 static void test_create_stk(void)
 {
     String s;
-    String_create_stk("hello", &s);
+    String_create_stk(&s, "hello");
     WC_ASSERT_EQ_U64(String_len(&s), 5);
     WC_ASSERT(String_equals_cstr(&s, "hello"));
     String_destroy_stk(&s);
@@ -249,7 +249,7 @@ static void test_move_nulls_src(void)
 {
     String* src  = String_from_cstr("move me");
     String  dest;
-    String_create_stk("", &dest);
+    String_create_stk(&dest, "");
     String_move(&dest, &src);
     WC_ASSERT_NULL(src);
     WC_ASSERT(String_equals_cstr(&dest, "move me"));

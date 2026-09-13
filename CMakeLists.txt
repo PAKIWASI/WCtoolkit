@@ -69,7 +69,7 @@ set(WC_WARN_FLAGS
     -Wformat=2
     -Wconversion
     -Wpointer-arith
-    -Wwrite-Strings
+    -Wwrite-strings
     -Wsign-conversion
     -Wnull-dereference
     -Wstrict-prototypes
@@ -94,18 +94,18 @@ message(STATUS "Warnings-as-errors: ${WC_WARNINGS_AS_ERRORS}")
 
 # Shared source list
 set(LIB_SOURCES
-    src/Arena.c
-    src/chain_Arena.c
+    src/arena.c
+    src/chain_arena.c
     src/bit_vector.c
     src/fast_math.c
     src/gen_vector.c
     src/hashmap.c
     src/hashset.c
     src/matrix.c
-    src/Queue.c
+    src/queue.c
     src/random.c
-    src/Stack.c
-    src/String.c
+    src/stack.c
+    src/wc_string.c
     src/wc_errno.c
     src/views.c
 )
@@ -123,12 +123,12 @@ target_compile_options(main PRIVATE ${WC_WARN_FLAGS})
 # Test executable
 add_executable(tests
     tests/test_main.c
-    tests/String_test.c
-    tests/Arena_test.c
+    tests/string_test.c
+    tests/arena_test.c
     tests/gen_vector_test.c
     tests/hashmap_test.c
     tests/hashset_test.c
-    tests/Stack_Queue_test.c
+    tests/stack_queue_test.c
     tests/matrix_test.c
     tests/bit_vector_test.c
     tests/fast_math_test.c

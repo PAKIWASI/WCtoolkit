@@ -58,7 +58,7 @@ String* String_from_cstr(const char* cstr)
     String* s = malloc(sizeof(String));
     CHECK_FATAL(!s, "malloc failed");
 
-    String_create_stk(cstr, s);
+    String_create_stk(s, cstr);
     return s;
 }
 
@@ -80,7 +80,7 @@ String* String_from_String(const String* other)
     return s;
 }
 
-void String_create_stk(const char* cstr, String* s)
+void String_create_stk(String* s, const char* cstr)
 {
     s->size                  = 0;
     s->stk[STR_SSO_SIZE - 1] = 1;                // mark SSO mode

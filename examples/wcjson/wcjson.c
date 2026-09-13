@@ -30,7 +30,7 @@ wcjson* wcjson_create_from_file(const char* filename)
 
     wcjson* json = malloc(sizeof(wcjson));
     CHECK_FATAL(!json, "wcjson malloc failed");
-    Arena_create_stk((u64)size * 2, &json->Arena);
+    Arena_create_stk(&json->Arena, (u64)size * 2);
 
     jsmntok_t* tokens;
     int num_tokens = jsmn_parse_json(raw_json, (u32)size, &tokens);

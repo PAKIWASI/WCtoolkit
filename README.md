@@ -101,21 +101,21 @@ Arena Arena;
 ARENA_CREATE_STK_ARR(&Arena, 4);        // 4KB on the Stack
 
 GenVec vec;
-GenVec_create_stk(8, sizeof(int), NULL, &vec);   // receiver-last
+GenVec_create_stk(&vec, 8, sizeof(int), NULL);   // receiver-first
 
 String str;
-String_create_stk("hello", &str);
+String_create_stk(&str, "hello");
 
 // cleanup destroys only the data buffer — NOT the struct itself
 GenVec_destroy_stk(&vec);
 String_destroy_stk(&str);
 ```
 
-The `_stk` suffix always means: *you own the struct, the library only manages its contents*. `destroy` frees the container struct plus its data; `destroy_stk` frees only the data and leaves the struct in a valid, reusable empty state. All `_create_stk` functions take the receiver as the **last** parameter.
+The `_stk` suffix always means: *you own the struct, the library only manages its contents*. `destroy` frees the container struct plus its data; `destroy_stk` frees only the data and leaves the struct in a valid, reusable empty state. All `_create_stk` functions take the receiver as the **first** parameter, matching every other function in the library that operates on an existing instance.
 
 ### API Conventions
 
-- **Receiver first** for operations (`GenVec_push(vec, x)`), **dest first** for copies (`GenVec_copy(dest, src)`); `_create_stk` takes the receiver **last**.
+- **Receiver first, always**: operations (`GenVec_push(vec, x)`), copies/moves (`GenVec_copy(dest, src)`, `GenVec_move(dest, &src)`), and `_create_stk` constructors (`GenVec_create_stk(vec, n, data_size, ops)`) all take the instance being acted on as the first argument. Only heap constructors that return a fresh pointer (`GenVec_create(...)`) have no receiver to put there.
 - **Moves are `T**`**: a move transfers ownership and nulls the source — `String_move(dest, &src)`, `GenVec_push_move(vec, &ptr)`. After a move, `src == NULL`.
 - **`_move` variants exist wherever ownership transfers**: `push_move`, `insert_move`, `replace_move`, `put_move`, `append_String_move`. The plain variants copy.
 - **Optional out-params are last and nullable**: `GenVec_remove(vec, i, NULL)` discards the element; pass a buffer to receive it.

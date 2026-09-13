@@ -185,7 +185,7 @@ ARENA_SCRATCH(Arena) {
 
 // USEFULL MACROS
 
-#define ARENA_CREATE_STK_ARR(Arena, n) (Arena_create_arr_stk((u8[nKB(n)]){0}, nKB(n), (Arena)))
+#define ARENA_CREATE_STK_ARR(Arena, n) (Arena_create_arr_stk((Arena), nKB(n), (u8[nKB(n)]){0}))
 
 // typed allocation
 #define ARENA_ALLOC(Arena, T) ((T*)Arena_alloc((Arena), sizeof(T)))

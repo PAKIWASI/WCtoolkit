@@ -56,7 +56,7 @@ static void test_init_val(void)
 static void test_init_stk(void)
 {
     GenVec v;
-    GenVec_create_stk(4, sizeof(int), NULL, &v);
+    GenVec_create_stk(&v, 4, sizeof(int), NULL);
     WC_ASSERT_EQ_U64(GenVec_size(&v), 0);
     WC_ASSERT_EQ_U64(GenVec_capacity(&v), 4);
     GenVec_destroy_stk(&v);
@@ -288,7 +288,7 @@ static void test_copy(void)
     push_ints(src, 4);
 
     GenVec dest;
-    GenVec_create_stk(0, sizeof(int), NULL, &dest);
+    GenVec_create_stk(&dest, 0, sizeof(int), NULL);
     GenVec_copy(&dest, src);
 
     WC_ASSERT_EQ_U64(GenVec_size(&dest), 4);
@@ -328,7 +328,7 @@ static void test_move_nulls_src(void)
     push_ints(src, 4);
 
     GenVec dest;
-    GenVec_create_stk(0, sizeof(int), NULL, &dest);
+    GenVec_create_stk(&dest, 0, sizeof(int), NULL);
     GenVec_move(&dest, &src);
 
     WC_ASSERT_NULL(src);
@@ -606,7 +606,7 @@ static void test_init_val_stk(void)
 {
     GenVec v;
     int val = 7;
-    GenVec_create_val_stk(5, (u8*)&val, sizeof(int), NULL, &v);
+    GenVec_create_val_stk(&v, 5, (u8*)&val, sizeof(int), NULL);
     WC_ASSERT_EQ_U64(GenVec_size(&v), 5);
     for (u64 i = 0; i < 5; i++) {
         WC_ASSERT_EQ_INT(VEC_AT(&v, int, i), 7);

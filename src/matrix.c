@@ -2,7 +2,7 @@
 #include "common.h"
 #include <stdio.h>
 #include <stdlib.h>
-#include <String.h>
+#include <string.h>
 
 
 
@@ -28,7 +28,7 @@ Matrixf* matrix_create_arr(u64 m, u64 n, const float* arr)
     return mat;
 }
 
-void matrix_create_stk(u64 m, u64 n, float* data, Matrixf* mat)
+void matrix_create_stk(Matrixf* mat, u64 m, u64 n, float* data)
 {
     // we can do this on the Stack
     mat->data = data; // copying stk ptr 
@@ -166,7 +166,7 @@ void matrix_xply_2(Matrixf* restrict out, const Matrixf* restrict a, const Matri
     // Transpose B for cache-friendly access
     Matrixf b_T;
     float  data[n * k]; // random vals
-    matrix_create_stk(n, k, data, &b_T);
+    matrix_create_stk(&b_T, n, k, data);
     matrix_T(&b_T, b); // transpose sets all vals
 
     memset(out->data, 0, sizeof(float) * m * n);
@@ -267,8 +267,8 @@ float matrix_det(const Matrixf* mat)
     Matrixf L, U;
     float  Ldata[n * n]; // random vals
     float  Udata[n * n];
-    matrix_create_stk(n, n, Ldata, &L);
-    matrix_create_stk(n, n, Udata, &U);
+    matrix_create_stk(&L, n, n, Ldata);
+    matrix_create_stk(&U, n, n, Udata);
 
     // Perform LU decomposition
     matrix_LU_Decomp(&L, &U, mat); // L and U set to zero

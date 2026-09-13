@@ -42,8 +42,8 @@ typedef struct {
 // ops: pass NULL for POD types.
 HashSet* HashSet_create(u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn, const container_ops* ops)
     __attribute__((warn_unused_result));
-void HashSet_create_stk(u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn, const container_ops* ops, HashSet* set)
-    __attribute__((nonnull(5)));
+void HashSet_create_stk(HashSet* set, u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn, const container_ops* ops)
+    __attribute__((nonnull(1)));
 
 void HashSet_destroy(HashSet* set) __attribute__((nonnull(1)));
 void HashSet_destroy_stk(HashSet* set) __attribute__((nonnull(1)));

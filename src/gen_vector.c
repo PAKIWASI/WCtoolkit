@@ -66,7 +66,7 @@ GenVec* GenVec_create(u64 n, u32 data_size, const container_ops* ops)
 }
 
 
-void GenVec_create_stk(u64 n, u32 data_size, const container_ops* ops, GenVec* vec)
+void GenVec_create_stk(GenVec* vec, u64 n, u32 data_size, const container_ops* ops)
 {
     CHECK_FATAL(data_size == 0, "data_size can't be 0");
 
@@ -110,11 +110,11 @@ GenVec* GenVec_create_val(u64 n, const u8* val, u32 data_size, const container_o
 }
 
 
-void GenVec_create_val_stk(u64 n, const u8* val, u32 data_size, const container_ops* ops, GenVec* vec)
+void GenVec_create_val_stk(GenVec* vec, u64 n, const u8* val, u32 data_size, const container_ops* ops)
 {
     CHECK_FATAL(n == 0, "cant init with val if n = 0");
 
-    GenVec_create_stk(n, data_size, ops, vec);
+    GenVec_create_stk(vec, n, data_size, ops);
 
     vec->size = n;
 
@@ -148,7 +148,7 @@ GenVec* GenVec_create_arr(u64 n, u32 data_size, const container_ops* ops, u8* ar
 }
 
 
-void GenVec_create_stk_arr(u64 n, u8* arr, u32 data_size, const container_ops* ops, GenVec* vec)
+void GenVec_create_stk_arr(GenVec* vec, u64 n, u8* arr, u32 data_size, const container_ops* ops)
 {
     CHECK_FATAL(n == 0 || data_size == 0, "size/data_size of arr can't be 0");
 
