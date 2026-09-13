@@ -27,13 +27,13 @@ _Static_assert(sizeof(String) == 40, "String must be 40 bytes");
 //  Construction / Destruction
 
 // Create an empty string on the heap.
-String* string_create(void);
+String* string_create(void) __attribute__((warn_unused_result));
 
 // Create a string on the heap from a cstr.
-String* string_from_cstr(const char* cstr);
+String* string_from_cstr(const char* cstr) __attribute__((warn_unused_result));
 
 // Create a copy of another heap-allocated string.
-String* string_from_string(const String* other) __attribute__((nonnull(1)));
+String* string_from_string(const String* other) __attribute__((nonnull(1), warn_unused_result));
 
 // Initialise a String whose struct lives on the stack (data may be on heap).
 void string_create_stk(const char* cstr, String* str) __attribute__((nonnull(2)));
@@ -68,7 +68,7 @@ void string_shrink_to_fit(String* str) __attribute__((nonnull(1)));
 //  Conversion
 
 // Return a malloc'd NUL-terminated copy — caller must free().
-char* string_to_cstr(const String* str) __attribute__((nonnull(1)));
+char* string_to_cstr(const String* str) __attribute__((nonnull(1), warn_unused_result));
 
 void string_to_cstr_buf(const String* str, char* buff, u64 n) __attribute__((nonnull(1, 2)));
 
@@ -141,7 +141,7 @@ u64 string_find_char(const String* str, char c) __attribute__((nonnull(1)));
 u64 string_find_cstr(const String* str, const char* substr) __attribute__((nonnull(1, 2)));
 
 // Return a heap-allocated substring starting at `start` of `length` chars.
-String* string_substr(const String* str, u64 start, u64 length) __attribute__((nonnull(1)));
+String* string_substr(const String* str, u64 start, u64 length) __attribute__((nonnull(1), warn_unused_result));
 
 
 //  I/O

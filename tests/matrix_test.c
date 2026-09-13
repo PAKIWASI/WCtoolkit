@@ -1,4 +1,4 @@
-#include "wc_test.h"
+﻿#include "wc_test.h"
 #include "matrix.h"
 #include "arena.h"
 #include <math.h>
@@ -293,7 +293,7 @@ static void test_arena_alloc(void)
     WC_ASSERT_NOT_NULL(m->data);
     WC_ASSERT_EQ_U64(m->m, 3);
     WC_ASSERT_EQ_U64(m->n, 3);
-    arena_release(arena);
+    arena_destroy(arena);
 }
 
 static void test_arena_arr_alloc(void)
@@ -302,7 +302,7 @@ static void test_arena_arr_alloc(void)
     float  src[] = {1,2,3,4};
     Matrixf* m   = matrix_arena_arr_alloc(arena, 2, 2, src);
     WC_ASSERT(mat_eq(m, src, FLOAT_EPS));
-    arena_release(arena);
+    arena_destroy(arena);
 }
 
 static void test_arena_scratch_temporaries(void)
@@ -323,7 +323,7 @@ static void test_arena_scratch_temporaries(void)
     // t1 and t2 memory reclaimed; result still holds correct values
     float expected[] = {5,6,7,8};
     WC_ASSERT(mat_eq(result, expected, FLOAT_EPS));
-    arena_release(arena);
+    arena_destroy(arena);
 }
 
 

@@ -1,5 +1,5 @@
-/*
- * speed_test.c — Performance tests for genVec and hashmap
+﻿/*
+ * speed_test.c — Performance tests for GenVec and HashMap
  *
  * Tests are grouped by the operation changed. Each test runs the operation
  * N times and prints nanoseconds per operation so you can compare POD vs
@@ -8,7 +8,7 @@
  */
 #include "wc_test.h"
 #include "gen_vector.h"
-#include "hashmap.h"
+#include "HashMap.h"
 #include "String.h"
 #include "wc_helpers.h"
 #include "views.h"
@@ -54,37 +54,37 @@ static u64 bench(const char* label, u64 n_ops, u64 start, u64 end)
 
 static void bench_push_pod(void)
 {
-    genVec* v = genVec_create(PUSH_N, sizeof(int), NULL);
+    GenVec* v = GenVec_create(PUSH_N, sizeof(int), NULL);
     int val   = 42;
 
     u64 t0 = ns_now();
     for (int i = 0; i < PUSH_N; i++) {
-        genVec_push(v, (u8*)&val);
+        GenVec_push(v, (u8*)&val);
     }
     u64 t1 = ns_now();
 
     WC_ASSERT_EQ_U64(v->size, PUSH_N);
     bench("push POD (int)", PUSH_N, t0, t1);
-    genVec_destroy(v);
+    GenVec_destroy(v);
 }
 
 static void bench_push_cx(void)
 {
     // Each element is a String by value (SSO path for short strings).
-    genVec* v = genVec_create(PUSH_N, sizeof(String), &wc_str_ops);
+    GenVec* v = GenVec_create(PUSH_N, sizeof(String), &wc_str_ops);
 
     u64 t0 = ns_now();
     for (int i = 0; i < PUSH_N; i++) {
         String s;
         string_create_stk("hello", &s);
-        genVec_push(v, (u8*)&s);
+        GenVec_push(v, (u8*)&s);
         string_destroy_stk(&s); // push deep-copied it; we own the original
     }
     u64 t1 = ns_now();
 
     WC_ASSERT_EQ_U64(v->size, PUSH_N);
     bench("push CX (String, copy)", PUSH_N, t0, t1);
-    genVec_destroy(v);
+    GenVec_destroy(v);
 }
 
 
@@ -102,14 +102,14 @@ static void bench_clear_pod(void)
     int val      = 7;
 
     for (int r = 0; r < CLEAR_REP; r++) {
-        genVec* v = genVec_create(CLEAR_N, sizeof(int), NULL);
-        for (int i = 0; i < CLEAR_N; i++) genVec_push(v, (u8*)&val);
+        GenVec* v = GenVec_create(CLEAR_N, sizeof(int), NULL);
+        for (int i = 0; i < CLEAR_N; i++) GenVec_push(v, (u8*)&val);
 
         u64 t0 = ns_now();
-        genVec_clear(v);
+        GenVec_clear(v);
         u64 t1 = ns_now();
         total_ns += t1 - t0;
-        genVec_destroy(v);
+        GenVec_destroy(v);
     }
 
     u64 ns_per = total_ns / ((u64)CLEAR_REP * CLEAR_N);
@@ -124,18 +124,18 @@ static void bench_clear_cx(void)
     u64 total_ns = 0;
 
     for (int r = 0; r < CLEAR_REP; r++) {
-        genVec* v = genVec_create(CLEAR_N, sizeof(String), &wc_str_ops);
+        GenVec* v = GenVec_create(CLEAR_N, sizeof(String), &wc_str_ops);
         for (int i = 0; i < CLEAR_N; i++) {
             String s;
             string_create_stk("hi", &s);
-            genVec_push(v, (u8*)&s);
+            GenVec_push(v, (u8*)&s);
             string_destroy_stk(&s);
         }
         u64 t0 = ns_now();
-        genVec_clear(v);
+        GenVec_clear(v);
         u64 t1 = ns_now();
         total_ns += t1 - t0;
-        genVec_destroy(v);
+        GenVec_destroy(v);
     }
 
     u64 ns_per = total_ns / ((u64)CLEAR_REP * CLEAR_N);
@@ -154,10 +154,10 @@ static void bench_destroy_pod(void)
     int val = 1;
 
     for (int r = 0; r < DESTROY_REP; r++) {
-        genVec* v = genVec_create(DESTROY_N, sizeof(int), NULL);
-        for (int i = 0; i < DESTROY_N; i++) genVec_push(v, (u8*)&val);
+        GenVec* v = GenVec_create(DESTROY_N, sizeof(int), NULL);
+        for (int i = 0; i < DESTROY_N; i++) GenVec_push(v, (u8*)&val);
         u64 t0 = ns_now();
-        genVec_destroy(v);
+        GenVec_destroy(v);
         u64 t1 = ns_now();
         total_ns += t1 - t0;
     }
@@ -174,15 +174,15 @@ static void bench_destroy_cx(void)
     u64 total_ns = 0;
 
     for (int r = 0; r < DESTROY_REP; r++) {
-        genVec* v = genVec_create(DESTROY_N, sizeof(String), &wc_str_ops);
+        GenVec* v = GenVec_create(DESTROY_N, sizeof(String), &wc_str_ops);
         for (int i = 0; i < DESTROY_N; i++) {
             String s;
             string_create_stk("world", &s);
-            genVec_push(v, (u8*)&s);
+            GenVec_push(v, (u8*)&s);
             string_destroy_stk(&s);
         }
         u64 t0 = ns_now();
-        genVec_destroy(v);
+        GenVec_destroy(v);
         u64 t1 = ns_now();
         total_ns += t1 - t0;
     }
@@ -196,7 +196,7 @@ static void bench_destroy_cx(void)
 
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SUITE 3: genVec_copy (bulk copy — can SIMD after fix)
+// SUITE 3: GenVec_copy (bulk copy — can SIMD after fix)
 // ═══════════════════════════════════════════════════════════════════════════════
 
 #define COPY_N   1000000
@@ -204,52 +204,52 @@ static void bench_destroy_cx(void)
 
 static void bench_vec_copy_pod(void)
 {
-    genVec* src = genVec_create(COPY_N, sizeof(int), NULL);
+    GenVec* src = GenVec_create(COPY_N, sizeof(int), NULL);
     int val = 99;
-    for (int i = 0; i < COPY_N; i++) genVec_push(src, (u8*)&val);
+    for (int i = 0; i < COPY_N; i++) GenVec_push(src, (u8*)&val);
 
-    genVec dest;
+    GenVec dest;
     memset(&dest, 0, sizeof(dest));
     // dest.is_pod = 1; // init dest so destroy_stk is safe on first call inside copy
 
     u64 t0 = ns_now();
     for (int r = 0; r < COPY_REP; r++) {
-        genVec_copy(&dest, src);
+        GenVec_copy(&dest, src);
     }
     u64 t1 = ns_now();
 
     WC_ASSERT_EQ_U64(dest.size, COPY_N);
-    bench("genVec_copy POD (1M ints) x20", (u64)COPY_REP * COPY_N, t0, t1);
+    bench("GenVec_copy POD (1M ints) x20", (u64)COPY_REP * COPY_N, t0, t1);
 
-    genVec_destroy_stk(&dest);
-    genVec_destroy(src);
+    GenVec_destroy_stk(&dest);
+    GenVec_destroy(src);
 }
 
 static void bench_vec_copy_cx(void)
 {
-    genVec* src = genVec_create(COPY_N, sizeof(String), &wc_str_ops);
+    GenVec* src = GenVec_create(COPY_N, sizeof(String), &wc_str_ops);
     for (int i = 0; i < COPY_N; i++) {
         String s;
         string_create_stk("copy", &s);
-        genVec_push(src, (u8*)&s);
+        GenVec_push(src, (u8*)&s);
         string_destroy_stk(&s);
     }
 
-    genVec dest;
+    GenVec dest;
     memset(&dest, 0, sizeof(dest));
     dest.ops    = &wc_str_ops;
     // dest.is_pod = 0;
 
     u64 t0 = ns_now();
     for (int r = 0; r < COPY_REP; r++) {
-        genVec_copy(&dest, src);
+        GenVec_copy(&dest, src);
     }
     u64 t1 = ns_now();
 
-    bench("genVec_copy CX (1M String) x20", (u64)COPY_REP * COPY_N, t0, t1);
+    bench("GenVec_copy CX (1M String) x20", (u64)COPY_REP * COPY_N, t0, t1);
 
-    genVec_destroy_stk(&dest);
-    genVec_destroy(src);
+    GenVec_destroy_stk(&dest);
+    GenVec_destroy(src);
 }
 
 
@@ -265,8 +265,8 @@ static void bench_init_val_pod(void)
     int val = 42;
     u64 t0  = ns_now();
     for (int r = 0; r < INITVAL_REP; r++) {
-        genVec* v = genVec_create_val(INITVAL_N, (u8*)&val, sizeof(int), NULL);
-        genVec_destroy(v);
+        GenVec* v = GenVec_create_val(INITVAL_N, (u8*)&val, sizeof(int), NULL);
+        GenVec_destroy(v);
     }
     u64 t1 = ns_now();
     bench("init_val POD (2M ints) x10", (u64)INITVAL_REP * INITVAL_N, t0, t1);
@@ -280,8 +280,8 @@ static void bench_init_val_cx(void)
 
     u64 t0 = ns_now();
     for (int r = 0; r < INITVAL_REP; r++) {
-        genVec* v = genVec_create_val(INITVAL_N, (u8*)&val, sizeof(String), &wc_str_ops);
-        genVec_destroy(v);
+        GenVec* v = GenVec_create_val(INITVAL_N, (u8*)&val, sizeof(String), &wc_str_ops);
+        GenVec_destroy(v);
     }
     u64 t1 = ns_now();
 
@@ -303,13 +303,13 @@ static void bench_remove_range_pod(void)
     int val = 5;
 
     for (int r = 0; r < RANGE_REP; r++) {
-        genVec* v = genVec_create(RANGE_N, sizeof(int), NULL);
-        for (int i = 0; i < RANGE_N; i++) genVec_push(v, (u8*)&val);
+        GenVec* v = GenVec_create(RANGE_N, sizeof(int), NULL);
+        for (int i = 0; i < RANGE_N; i++) GenVec_push(v, (u8*)&val);
         u64 t0 = ns_now();
-        genVec_remove_range(v, 0, RANGE_N);
+        GenVec_remove_range(v, 0, RANGE_N);
         u64 t1 = ns_now();
         total_ns += t1 - t0;
-        genVec_destroy(v);
+        GenVec_destroy(v);
     }
 
     u64 ns_per = total_ns / ((u64)RANGE_REP * RANGE_N);
@@ -323,18 +323,18 @@ static void bench_remove_range_cx(void)
     u64 total_ns = 0;
 
     for (int r = 0; r < RANGE_REP; r++) {
-        genVec* v = genVec_create(RANGE_N, sizeof(String), &wc_str_ops);
+        GenVec* v = GenVec_create(RANGE_N, sizeof(String), &wc_str_ops);
         for (int i = 0; i < RANGE_N; i++) {
             String s;
             string_create_stk("range", &s);
-            genVec_push(v, (u8*)&s);
+            GenVec_push(v, (u8*)&s);
             string_destroy_stk(&s);
         }
         u64 t0 = ns_now();
-        genVec_remove_range(v, 0, RANGE_N);
+        GenVec_remove_range(v, 0, RANGE_N);
         u64 t1 = ns_now();
         total_ns += t1 - t0;
-        genVec_destroy(v);
+        GenVec_destroy(v);
     }
 
     u64 ns_per = total_ns / ((u64)RANGE_REP * RANGE_N);
@@ -345,7 +345,7 @@ static void bench_remove_range_cx(void)
 
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SUITE 6: hashmap_put + hashmap_get (hot path)
+// SUITE 6: HashMap_put + HashMap_get (hot path)
 // ═══════════════════════════════════════════════════════════════════════════════
 
 #define MAP_N 500000
@@ -353,23 +353,23 @@ static void bench_remove_range_cx(void)
 static void bench_map_put_pod(void)
 {
     // int -> int map
-    hashmap* map = hashmap_create(sizeof(int), sizeof(int), NULL, NULL, NULL, NULL);
+    HashMap* map = HashMap_create(sizeof(int), sizeof(int), NULL, NULL, NULL, NULL);
 
     u64 t0 = ns_now();
     for (int i = 0; i < MAP_N; i++) {
-        hashmap_put(map, (u8*)&i, (u8*)&i);
+        HashMap_put(map, (u8*)&i, (u8*)&i);
     }
     u64 t1 = ns_now();
 
     WC_ASSERT_EQ_U64(map->size, MAP_N);
-    bench("hashmap_put POD int->int", MAP_N, t0, t1);
-    hashmap_destroy(map);
+    bench("HashMap_put POD int->int", MAP_N, t0, t1);
+    HashMap_destroy(map);
 }
 
 static void bench_map_put_cx(void)
 {
     // String -> String map (both key and val have copy/del via wc_str_ops)
-    hashmap* map = hashmap_create(sizeof(String), sizeof(String),
+    HashMap* map = HashMap_create(sizeof(String), sizeof(String),
                                   wyhash_str, str_cmp, &wc_str_ops, &wc_str_ops);
 
     u64 t0 = ns_now();
@@ -379,37 +379,37 @@ static void bench_map_put_cx(void)
         String k, v;
         string_create_stk(buf, &k);
         string_create_stk("val", &v);
-        hashmap_put(map, (u8*)&k, (u8*)&v);
+        HashMap_put(map, (u8*)&k, (u8*)&v);
         string_destroy_stk(&k);
         string_destroy_stk(&v);
     }
     u64 t1 = ns_now();
 
-    bench("hashmap_put CX String->String", MAP_N, t0, t1);
-    hashmap_destroy(map);
+    bench("HashMap_put CX String->String", MAP_N, t0, t1);
+    HashMap_destroy(map);
 }
 
 static void bench_map_get_pod(void)
 {
-    hashmap* map = hashmap_create(sizeof(int), sizeof(int), NULL, NULL, NULL, NULL);
-    for (int i = 0; i < MAP_N; i++) hashmap_put(map, (u8*)&i, (u8*)&i);
+    HashMap* map = HashMap_create(sizeof(int), sizeof(int), NULL, NULL, NULL, NULL);
+    for (int i = 0; i < MAP_N; i++) HashMap_put(map, (u8*)&i, (u8*)&i);
 
     int out  = 0;
     int hits = 0;
     u64 t0   = ns_now();
     for (int i = 0; i < MAP_N; i++) {
-        hits += hashmap_get(map, (u8*)&i, (u8*)&out);
+        hits += HashMap_get(map, (u8*)&i, (u8*)&out);
     }
     u64 t1 = ns_now();
 
     WC_ASSERT_EQ_INT(hits, MAP_N);
-    bench("hashmap_get POD int->int", MAP_N, t0, t1);
-    hashmap_destroy(map);
+    bench("HashMap_get POD int->int", MAP_N, t0, t1);
+    HashMap_destroy(map);
 }
 
 static void bench_map_get_cx(void)
 {
-    hashmap* map = hashmap_create(sizeof(String), sizeof(String),
+    HashMap* map = HashMap_create(sizeof(String), sizeof(String),
                                   wyhash_str, str_cmp, &wc_str_ops, &wc_str_ops);
     for (int i = 0; i < MAP_N; i++) {
         char buf[32];
@@ -417,7 +417,7 @@ static void bench_map_get_cx(void)
         String k, v;
         string_create_stk(buf, &k);
         string_create_stk("val", &v);
-        hashmap_put(map, (u8*)&k, (u8*)&v);
+        HashMap_put(map, (u8*)&k, (u8*)&v);
         string_destroy_stk(&k);
         string_destroy_stk(&v);
     }
@@ -429,20 +429,20 @@ static void bench_map_get_cx(void)
         snprintf(buf, sizeof(buf), "key_%d", i);
         String k, out;
         string_create_stk(buf, &k);
-        hits += hashmap_get(map, (u8*)&k, (u8*)&out);
+        hits += HashMap_get(map, (u8*)&k, (u8*)&out);
         string_destroy_stk(&k);
         string_destroy_stk(&out);
     }
     u64 t1 = ns_now();
 
     WC_ASSERT_EQ_INT(hits, MAP_N);
-    bench("hashmap_get CX String->String", MAP_N, t0, t1);
-    hashmap_destroy(map);
+    bench("HashMap_get CX String->String", MAP_N, t0, t1);
+    HashMap_destroy(map);
 }
 
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SUITE 7: hashmap_clear / hashmap_destroy (bulk del loop)
+// SUITE 7: HashMap_clear / HashMap_destroy (bulk del loop)
 // ═══════════════════════════════════════════════════════════════════════════════
 
 #define MCLR_N   200000
@@ -453,19 +453,19 @@ static void bench_map_clear_pod(void)
     u64 total_ns = 0;
 
     for (int r = 0; r < MCLR_REP; r++) {
-        hashmap* map = hashmap_create(sizeof(int), sizeof(int), NULL, NULL, NULL, NULL);
-        for (int i = 0; i < MCLR_N; i++) hashmap_put(map, (u8*)&i, (u8*)&i);
+        HashMap* map = HashMap_create(sizeof(int), sizeof(int), NULL, NULL, NULL, NULL);
+        for (int i = 0; i < MCLR_N; i++) HashMap_put(map, (u8*)&i, (u8*)&i);
 
         u64 t0 = ns_now();
-        hashmap_clear(map);
+        HashMap_clear(map);
         u64 t1 = ns_now();
         total_ns += t1 - t0;
-        hashmap_destroy(map);
+        HashMap_destroy(map);
     }
 
     u64 ns_per = total_ns / ((u64)MCLR_REP * MCLR_N);
     printf("  %-44s %6llu ns/op  (%d reps of 200k)\n",
-           "hashmap_clear POD (200k) x20",
+           "HashMap_clear POD (200k) x20",
            (unsigned long long)ns_per, MCLR_REP);
 }
 
@@ -474,7 +474,7 @@ static void bench_map_clear_cx(void)
     u64 total_ns = 0;
 
     for (int r = 0; r < MCLR_REP; r++) {
-        hashmap* map = hashmap_create(sizeof(String), sizeof(String),
+        HashMap* map = HashMap_create(sizeof(String), sizeof(String),
                                       wyhash_str, str_cmp, &wc_str_ops, &wc_str_ops);
         for (int i = 0; i < MCLR_N; i++) {
             char buf[32];
@@ -482,20 +482,20 @@ static void bench_map_clear_cx(void)
             String k, v;
             string_create_stk(buf, &k);
             string_create_stk("v", &v);
-            hashmap_put(map, (u8*)&k, (u8*)&v);
+            HashMap_put(map, (u8*)&k, (u8*)&v);
             string_destroy_stk(&k);
             string_destroy_stk(&v);
         }
         u64 t0 = ns_now();
-        hashmap_clear(map);
+        HashMap_clear(map);
         u64 t1 = ns_now();
         total_ns += t1 - t0;
-        hashmap_destroy(map);
+        HashMap_destroy(map);
     }
 
     u64 ns_per = total_ns / ((u64)MCLR_REP * MCLR_N);
     printf("  %-44s %6llu ns/op  (%d reps of 200k)\n",
-           "hashmap_clear CX String (200k) x20",
+           "HashMap_clear CX String (200k) x20",
            (unsigned long long)ns_per, MCLR_REP);
 }
 
@@ -508,37 +508,37 @@ static void bench_map_clear_cx(void)
 
 static void bench_pop_pod(void)
 {
-    genVec* v = genVec_create(POP_N, sizeof(int), NULL);
+    GenVec* v = GenVec_create(POP_N, sizeof(int), NULL);
     int val   = 1;
-    for (int i = 0; i < POP_N; i++) genVec_push(v, (u8*)&val);
+    for (int i = 0; i < POP_N; i++) GenVec_push(v, (u8*)&val);
 
     int out = 0;
     u64 t0  = ns_now();
-    for (int i = 0; i < POP_N; i++) genVec_pop(v, (u8*)&out);
+    for (int i = 0; i < POP_N; i++) GenVec_pop(v, (u8*)&out);
     u64 t1 = ns_now();
 
     WC_ASSERT_EQ_U64(v->size, 0);
     bench("pop POD (int)", POP_N, t0, t1);
-    genVec_destroy(v);
+    GenVec_destroy(v);
 }
 
 static void bench_pop_cx(void)
 {
-    genVec* v = genVec_create(POP_N, sizeof(String), &wc_str_ops);
+    GenVec* v = GenVec_create(POP_N, sizeof(String), &wc_str_ops);
     for (int i = 0; i < POP_N; i++) {
         String s;
         string_create_stk("pop", &s);
-        genVec_push(v, (u8*)&s);
+        GenVec_push(v, (u8*)&s);
         string_destroy_stk(&s);
     }
 
     u64 t0 = ns_now();
-    for (int i = 0; i < POP_N; i++) genVec_pop(v, NULL);
+    for (int i = 0; i < POP_N; i++) GenVec_pop(v, NULL);
     u64 t1 = ns_now();
 
     WC_ASSERT_EQ_U64(v->size, 0);
     bench("pop CX (String, del)", POP_N, t0, t1);
-    genVec_destroy(v);
+    GenVec_destroy(v);
 }
 
 
@@ -564,7 +564,7 @@ void suite_clear_destroy(void)
 
 void suite_copy(void)
 {
-    WC_SUITE("genVec_copy  (bulk memcpy vs per-element copy_fn)");
+    WC_SUITE("GenVec_copy  (bulk memcpy vs per-element copy_fn)");
     WC_RUN(bench_vec_copy_pod);
     WC_RUN(bench_vec_copy_cx);
 }
@@ -585,7 +585,7 @@ void suite_remove_range(void)
 
 void suite_map_put_get(void)
 {
-    WC_SUITE("hashmap put / get  (hot path)");
+    WC_SUITE("HashMap put / get  (hot path)");
     WC_RUN(bench_map_put_pod);
     WC_RUN(bench_map_put_cx);
     WC_RUN(bench_map_get_pod);
@@ -594,7 +594,7 @@ void suite_map_put_get(void)
 
 void suite_map_clear(void)
 {
-    WC_SUITE("hashmap_clear  (bulk del loop)");
+    WC_SUITE("HashMap_clear  (bulk del loop)");
     WC_RUN(bench_map_clear_pod);
     WC_RUN(bench_map_clear_cx);
 }
@@ -608,34 +608,34 @@ void suite_pop(void)
 
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SUITE: complex owned type (struct owning a String AND a genVec)
+// SUITE: complex owned type (struct owning a String AND a GenVec)
 //
 // This is the case a plain memcpy-based container can't handle at all, and
 // where move semantics (as opposed to always-copy semantics) matter most:
 // a value that owns *two* independent heap allocations.
 //
-//   typedef struct { String name; genVec scores; } Person;
+//   typedef struct { String name; GenVec scores; } Person;
 //
 // bench_complex_push_copy — construct a Person on the stack each iteration,
-//   genVec_push() it (invokes person_copy: deep-copies both the String's
-//   heap buffer and the genVec's heap buffer), then destroy the stack copy.
+//   GenVec_push() it (invokes person_copy: deep-copies both the String's
+//   heap buffer and the GenVec's heap buffer), then destroy the stack copy.
 //   This is what you pay every time if all you have is copy semantics
 //   (e.g. inserting by value with no move constructor).
 //
 // bench_complex_push_move — heap-allocate a Person* shell each iteration,
-//   genVec_push_move() it (invokes person_move: one memcpy of the 40-ish
+//   GenVec_push_move() it (invokes person_move: one memcpy of the 40-ish
 //   byte Person shell, free the old shell, done — the String's and
-//   genVec's underlying buffers are never touched, ownership just
+//   GenVec's underlying buffers are never touched, ownership just
 //   relocates). This is the toolkit's move path doing what copying can't:
 //   O(1) transfer regardless of how much data the owned members hold.
 // ═══════════════════════════════════════════════════════════════════════════════
 
 #define PERSON_N        200000
-#define PERSON_SCORES_N 64 // enough ints to force genVec's heap path and matter
+#define PERSON_SCORES_N 64 // enough ints to force GenVec's heap path and matter
 
 // Long enough to blow past String's SSO inline capacity (23 bytes) so the
 // name always owns a real heap buffer too — otherwise we'd only be
-// benchmarking the genVec field.
+// benchmarking the GenVec field.
 static inline int person_name_fmt(char* buf, u64 bufsize, int i)
 {
     return snprintf(buf, bufsize, "person_number_%d_with_a_reasonably_long_name", i);
@@ -643,7 +643,7 @@ static inline int person_name_fmt(char* buf, u64 bufsize, int i)
 
 typedef struct {
     String name;
-    genVec scores;
+    GenVec scores;
 } Person;
 
 static void person_init(Person* p, int i)
@@ -652,10 +652,10 @@ static void person_init(Person* p, int i)
     person_name_fmt(buf, sizeof(buf), i);
     string_create_stk(buf, &p->name);
 
-    genVec_create_stk((u64)PERSON_SCORES_N, sizeof(int), NULL, &p->scores);
+    GenVec_create_stk((u64)PERSON_SCORES_N, sizeof(int), NULL, &p->scores);
     for (int j = 0; j < PERSON_SCORES_N; j++) {
         int v = i + j;
-        genVec_push(&p->scores, (u8*)&v);
+        GenVec_push(&p->scores, (u8*)&v);
     }
 }
 
@@ -663,7 +663,7 @@ static void person_del(u8* elm)
 {
     Person* p = (Person*)elm;
     string_destroy_stk(&p->name);
-    genVec_destroy_stk(&p->scores);
+    GenVec_destroy_stk(&p->scores);
 }
 
 static void person_copy(u8* dest, const u8* src)
@@ -675,12 +675,12 @@ static void person_copy(u8* dest, const u8* src)
     // re-initialised, not read first).
     string_copy(&d->name, &s->name);
 
-    // genVec_copy is NOT safe on raw dest — it assumes dest is already a
-    // live, valid genVec and destroys its old contents first. Bring dest
+    // GenVec_copy is NOT safe on raw dest — it assumes dest is already a
+    // live, valid GenVec and destroys its old contents first. Bring dest
     // into a valid empty state so that destroy is a safe no-op, matching
     // the idiom the toolkit's own wc_vec_ops.copy_fn effectively achieves.
-    genVec_create_stk(0, sizeof(int), NULL, &d->scores);
-    genVec_copy(&d->scores, &s->scores);
+    GenVec_create_stk(0, sizeof(int), NULL, &d->scores);
+    GenVec_copy(&d->scores, &s->scores);
 }
 
 static void person_move(u8* dest, u8** src)
@@ -695,33 +695,33 @@ static const container_ops person_ops = { person_copy, person_move, person_del }
 
 static void bench_complex_push_copy(void)
 {
-    genVec* v = genVec_create((u64)PERSON_N, sizeof(Person), &person_ops);
+    GenVec* v = GenVec_create((u64)PERSON_N, sizeof(Person), &person_ops);
 
     // Build every source Person up front — this construction cost (string
-    // heap alloc + genVec growth) is identical in the move benchmark below,
+    // heap alloc + GenVec growth) is identical in the move benchmark below,
     // so it must NOT be inside the timed region or it drowns out the one
-    // thing we're actually comparing: what genVec_push does with it.
+    // thing we're actually comparing: what GenVec_push does with it.
     Person* pool = malloc((u64)PERSON_N * sizeof(Person));
     CHECK_FATAL(!pool, "malloc failed");
     for (int i = 0; i < PERSON_N; i++) person_init(&pool[i], i);
 
     u64 t0 = ns_now();
     for (int i = 0; i < PERSON_N; i++) {
-        genVec_push(v, (u8*)&pool[i]); // copy path: deep-copies name + scores
+        GenVec_push(v, (u8*)&pool[i]); // copy path: deep-copies name + scores
     }
     u64 t1 = ns_now();
 
     WC_ASSERT_EQ_U64(v->size, (u64)PERSON_N);
-    bench("push complex (copy: String+genVec)", PERSON_N, t0, t1);
+    bench("push complex (copy: String+GenVec)", PERSON_N, t0, t1);
 
     for (int i = 0; i < PERSON_N; i++) person_del((u8*)&pool[i]);
     free(pool);
-    genVec_destroy(v);
+    GenVec_destroy(v);
 }
 
 static void bench_complex_push_move(void)
 {
-    genVec* v = genVec_create((u64)PERSON_N, sizeof(Person), &person_ops);
+    GenVec* v = GenVec_create((u64)PERSON_N, sizeof(Person), &person_ops);
 
     // Same construction cost as the copy benchmark, just heap-shelled and
     // pre-built outside the timed region for the same reason.
@@ -735,20 +735,20 @@ static void bench_complex_push_move(void)
 
     u64 t0 = ns_now();
     for (int i = 0; i < PERSON_N; i++) {
-        genVec_push_move(v, (u8**)&pool[i]); // move path: O(1) shell relocation
+        GenVec_push_move(v, (u8**)&pool[i]); // move path: O(1) shell relocation
     }
     u64 t1 = ns_now();
 
     WC_ASSERT_EQ_U64(v->size, (u64)PERSON_N);
-    bench("push complex (move: String+genVec)", PERSON_N, t0, t1);
+    bench("push complex (move: String+GenVec)", PERSON_N, t0, t1);
 
     free(pool); // each pool[i] already freed+nulled by person_move
-    genVec_destroy(v);
+    GenVec_destroy(v);
 }
 
 void suite_complex_owned_type(void)
 {
-    WC_SUITE("complex owned type  (struct owning a String + a genVec)");
+    WC_SUITE("complex owned type  (struct owning a String + a GenVec)");
     WC_RUN(bench_complex_push_copy);
     WC_RUN(bench_complex_push_move);
 }
@@ -758,7 +758,7 @@ void suite_complex_owned_type(void)
 // SUITE: string storage strategies
 //
 // Compares four ways to accumulate many short, immutable strings:
-//   - string_store   append-only, chained fixed-size buffer (bump allocator,
+//   - StringStore   append-only, chained fixed-size buffer (bump allocator,
 //                    node reuse, no per-string malloc, no individual free)
 //   - chain_arena    generic chained bump arena (same idea, not string-specific)
 //   - Arena          single fixed-size bump arena (no chaining/growth)
@@ -775,21 +775,21 @@ static inline int strstore_fmt(char* buf, u64 bufsize, int i)
     return snprintf(buf, bufsize, "key_%d_%s", i, (i % 7 == 0) ? "abcdefghij" : "x");
 }
 
-static void bench_ss_string_store(void)
+static void bench_ss_StringStore(void)
 {
-    string_store ss;
-    string_store_create(&ss);
+    StringStore ss;
+    StringStore_create(&ss);
 
     char buf[64];
     u64  t0 = ns_now();
     for (int i = 0; i < STRSTORE_N; i++) {
         int len = strstore_fmt(buf, sizeof(buf), i);
-        (void)string_store_cstr(&ss, buf, (u64)len);
+        (void)StringStore_cstr(&ss, buf, (u64)len);
     }
     u64 t1 = ns_now();
 
-    bench("string_store_cstr", STRSTORE_N, t0, t1);
-    string_store_destroy(&ss);
+    bench("StringStore_cstr", STRSTORE_N, t0, t1);
+    StringStore_destroy(&ss);
 }
 
 static void bench_ss_chain_arena(void)
@@ -806,7 +806,7 @@ static void bench_ss_chain_arena(void)
     u64 t1 = ns_now();
 
     bench("chain_arena_alloc + memcpy", STRSTORE_N, t0, t1);
-    chain_arena_release(ca);
+    chain_arena_destroy(ca);
 }
 
 static void bench_ss_arena(void)
@@ -824,7 +824,7 @@ static void bench_ss_arena(void)
     u64 t1 = ns_now();
 
     bench("Arena (fixed) alloc + memcpy", STRSTORE_N, t0, t1);
-    arena_release(a);
+    arena_destroy(a);
 }
 
 static void bench_ss_malloc(void)
@@ -852,7 +852,7 @@ static void bench_ss_malloc(void)
 
 static void bench_ss_string_sso(void)
 {
-    genVec* v = genVec_create(STRSTORE_N, sizeof(String), &wc_str_ops);
+    GenVec* v = GenVec_create(STRSTORE_N, sizeof(String), &wc_str_ops);
 
     char buf[64];
     u64  t0 = ns_now();
@@ -860,19 +860,19 @@ static void bench_ss_string_sso(void)
         strstore_fmt(buf, sizeof(buf), i);
         String s;
         string_create_stk(buf, &s);
-        genVec_push(v, (u8*)&s);
+        GenVec_push(v, (u8*)&s);
         string_destroy_stk(&s);
     }
     u64 t1 = ns_now();
 
     bench("String (SSO) create + push+copy", STRSTORE_N, t0, t1);
-    genVec_destroy(v);
+    GenVec_destroy(v);
 }
 
 void suite_string_storage(void)
 {
     WC_SUITE("string storage strategies  (500k mixed-length strings)");
-    WC_RUN(bench_ss_string_store);
+    WC_RUN(bench_ss_StringStore);
     WC_RUN(bench_ss_chain_arena);
     WC_RUN(bench_ss_arena);
     WC_RUN(bench_ss_malloc);

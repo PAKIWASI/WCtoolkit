@@ -1,4 +1,4 @@
-#include "hashset.h"
+#include "HashSet.h"
 #include "common.h"
 #include "map_setup.h"
 #include <stdio.h>
@@ -18,7 +18,7 @@
 #define BUCKET_EMPTY 0
 
 // scratch layout: [0 .. elm_size) = stage,  [elm_size .. 2*elm_size) = swap
-// stage: where hashset_insert copies the incoming elm before calling set_insert
+// stage: where HashSet_insert copies the incoming elm before calling set_insert
 // swap:  where set_insert saves a displaced resident during Robin Hood eviction
 // The two halves are alternated each eviction to avoid aliasing (elm pointer
 // is always in the half that set_insert is NOT currently writing into).
@@ -30,18 +30,18 @@
 ====================PRIVATE DECLARATIONS====================
 */
 
-static u64         set_lookup(const hashset* set, const u8* elm, LOOKUP_RES* res, u8* out_psl);
-static void        set_insert(hashset* set, u8* elm, u8 psl, u64 idx);
-static void        set_resize(hashset* set, u64 new_capacity);
-static inline void set_maybe_resize(hashset* set);
+static u64         set_lookup(const HashSet* set, const u8* elm, LOOKUP_RES* res, u8* out_psl);
+static void        set_insert(HashSet* set, u8* elm, u8 psl, u64 idx);
+static void        set_resize(HashSet* set, u64 new_capacity);
+static inline void set_maybe_resize(HashSet* set);
 
 
 /*
 ====================PUBLIC FUNCTIONS====================
 */
 
-void hashset_create_stk(u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
-                        const container_ops* ops, hashset* set)
+void HashSet_create_stk(u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
+                        const container_ops* ops, HashSet* set)
 {
     CHECK_FATAL(elm_size == 0, "elm_size can't be 0");
 
@@ -64,25 +64,25 @@ void hashset_create_stk(u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
     set->ops = ops;
 }
 
-hashset* hashset_create(u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
+HashSet* HashSet_create(u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
                         const container_ops* ops)
 {
-    hashset* set = malloc(sizeof(hashset));
+    HashSet* set = malloc(sizeof(HashSet));
     CHECK_FATAL(!set, "set malloc failed");
 
-    hashset_create_stk(elm_size, hash_fn, cmp_fn, ops, set);
+    HashSet_create_stk(elm_size, hash_fn, cmp_fn, ops, set);
 
     return set;
 }
 
 
-void hashset_destroy(hashset* set)
+void HashSet_destroy(HashSet* set)
 {
-    hashset_destroy_stk(set);
+    HashSet_destroy_stk(set);
     free(set);
 }
 
-void hashset_destroy_stk(hashset* set)
+void HashSet_destroy_stk(HashSet* set)
 {
     delete_fn e_del = SET_DEL(set->ops);
 
@@ -103,7 +103,7 @@ void hashset_destroy_stk(hashset* set)
 
 // Insert element — COPY semantics.
 // Returns 1 if already existed (no-op), 0 if newly inserted.
-b8 hashset_insert(hashset* set, const u8* elm)
+b8 HashSet_insert(HashSet* set, const u8* elm)
 {
     copy_fn e_cp = SET_COPY(set->ops);
 
@@ -131,7 +131,7 @@ b8 hashset_insert(hashset* set, const u8* elm)
 
 // Insert element — MOVE semantics (elm is nulled on insert, or freed if duplicate).
 // Returns 1 if already existed (elm freed), 0 if newly inserted.
-b8 hashset_insert_move(hashset* set, u8** elm)
+b8 HashSet_insert_move(HashSet* set, u8** elm)
 {
     CHECK_FATAL(!*elm, "*elm null");
 
@@ -164,7 +164,7 @@ b8 hashset_insert_move(hashset* set, u8** elm)
 
 
 // Returns 1 if found, 0 if not.
-b8 hashset_has(const hashset* set, const u8* elm)
+b8 HashSet_has(const HashSet* set, const u8* elm)
 {
     LOOKUP_RES res;
     u8         out_psl;
@@ -172,7 +172,7 @@ b8 hashset_has(const hashset* set, const u8* elm)
     return res == FOUND;
 }
 
-const u8* hashset_get_ptr(const hashset* set, const u8* elm)
+const u8* HashSet_get_ptr(const HashSet* set, const u8* elm)
 {
     LOOKUP_RES res;
     u8         out_psl;
@@ -180,13 +180,13 @@ const u8* hashset_get_ptr(const hashset* set, const u8* elm)
     return (res == FOUND) ? GET_ELM(set, slot) : NULL;
 }
 
-b8 hashset_bucket_occupied(const hashset* set, u64 i)
+b8 HashSet_bucket_occupied(const HashSet* set, u64 i)
 {
     CHECK_FATAL(i >= set->capacity, "index out of bounds");
     return *GET_PSL(set, i) != BUCKET_EMPTY;
 }
 
-const u8* hashset_bucket_elm_ptr(const hashset* set, u64 i)
+const u8* HashSet_bucket_elm_ptr(const HashSet* set, u64 i)
 {
     CHECK_FATAL(i >= set->capacity, "index out of bounds");
     return GET_ELM(set, i);
@@ -197,7 +197,7 @@ const u8* hashset_bucket_elm_ptr(const hashset* set, u64 i)
 // Uses Robin Hood backward-shift deletion to maintain the probe-sequence invariant
 // without tombstones: after removing a slot, shift subsequent entries back one
 // position as long as they have PSL > 1 (i.e. they are not at their home slot).
-b8 hashset_remove(hashset* set, const u8* elm)
+b8 HashSet_remove(HashSet* set, const u8* elm)
 {
     LOOKUP_RES res;
     u8             out_psl;
@@ -237,7 +237,7 @@ b8 hashset_remove(hashset* set, const u8* elm)
 
 
 // Print all elements.
-void hashset_print(const hashset* set, print_fn print)
+void HashSet_print(const HashSet* set, print_fn print)
 {
     printf("\t=========\n");
     printf("\tSize: %lu / Capacity: %lu\n", set->size, set->capacity);
@@ -257,7 +257,7 @@ void hashset_print(const hashset* set, print_fn print)
 
 
 // Remove all elements, keep capacity.
-void hashset_clear(hashset* set)
+void HashSet_clear(HashSet* set)
 {
     delete_fn e_del = SET_DEL(set->ops);
 
@@ -277,7 +277,7 @@ void hashset_clear(hashset* set)
 
 // Deep copy src into dest
 // Ownership: dest gets independently owned copies of all elements.
-void hashset_copy(hashset* dest, const hashset* src)
+void HashSet_copy(HashSet* dest, const HashSet* src)
 {
     if (dest == src) {
         return;
@@ -320,7 +320,7 @@ void hashset_copy(hashset* dest, const hashset* src)
 ====================PRIVATE FUNCTIONS====================
 */
 
-static inline void set_maybe_resize(hashset* set)
+static inline void set_maybe_resize(HashSet* set)
 {
     // integer multiply avoids float — equivalent to load > 0.75
     if (set->size * 4 >= set->capacity * 3) {
@@ -329,7 +329,7 @@ static inline void set_maybe_resize(hashset* set)
 }
 
 
-static u64 set_lookup(const hashset* set, const u8* elm, LOOKUP_RES* res, u8* out_psl)
+static u64 set_lookup(const HashSet* set, const u8* elm, LOOKUP_RES* res, u8* out_psl)
 {
     u64 idx = SET_IDX(set, elm);
     u8  psl = 1; // stored PSL=1 means real probe distance 0 (home slot)
@@ -361,7 +361,7 @@ static u64 set_lookup(const hashset* set, const u8* elm, LOOKUP_RES* res, u8* ou
 }
 
 
-static void set_insert(hashset* set, u8* elm, u8 psl, u64 idx)
+static void set_insert(HashSet* set, u8* elm, u8 psl, u64 idx)
 {
     // elm is already owned (either staged copy or moved pointer).
     // Alternates between the two scratch halves on each Robin Hood eviction
@@ -369,7 +369,7 @@ static void set_insert(hashset* set, u8* elm, u8 psl, u64 idx)
     u8* cur = STAGE_ELM(set);
     u8* swp = SWAP_ELM(set);
 
-    // elm may already be STAGE_ELM (called from hashset_insert/insert_move);
+    // elm may already be STAGE_ELM (called from HashSet_insert/insert_move);
     // only copy if it isn't already there.
     if (elm != cur) {
         memcpy(cur, elm, set->elm_size);
@@ -409,7 +409,7 @@ static void set_insert(hashset* set, u8* elm, u8 psl, u64 idx)
 }
 
 
-static void set_resize(hashset* set, u64 new_capacity)
+static void set_resize(HashSet* set, u64 new_capacity)
 {
     if (new_capacity < HASHMAP_INIT_CAPACITY) {
         new_capacity = HASHMAP_INIT_CAPACITY;

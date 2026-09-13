@@ -1,24 +1,24 @@
 #include "wc_test.h"
-#include "hashmap.h"
+#include "HashMap.h"
 #include "wc_helpers.h"
 #include "wc_macros.h"
 
 
 /* ── Map constructors ────────────────────────────────────────────────────── */
 
-static hashmap* int_map(void)
+static HashMap* int_map(void)
 {
-    return hashmap_create(sizeof(int), sizeof(int), NULL, NULL, NULL, NULL);
+    return HashMap_create(sizeof(int), sizeof(int), NULL, NULL, NULL, NULL);
 }
 
-static hashmap* int_str_map(void)
+static HashMap* int_str_map(void)
 {
-    return hashmap_create(sizeof(int), sizeof(String), NULL, NULL, NULL, &wc_str_ops);
+    return HashMap_create(sizeof(int), sizeof(String), NULL, NULL, NULL, &wc_str_ops);
 }
 
-static hashmap* str_str_map(void)
+static HashMap* str_str_map(void)
 {
-    return hashmap_create(sizeof(String), sizeof(String),
+    return HashMap_create(sizeof(String), sizeof(String),
                           wyhash_str, str_cmp, &wc_str_ops, &wc_str_ops);
 }
 
@@ -29,163 +29,163 @@ static hashmap* str_str_map(void)
 
 static void test_put_and_get(void)
 {
-    hashmap* m = int_map();
+    HashMap* m = int_map();
     int k = 1, v = 100;
-    hashmap_put(m, (u8*)&k, (u8*)&v);
+    HashMap_put(m, (u8*)&k, (u8*)&v);
 
     int out = 0;
-    WC_ASSERT_TRUE(hashmap_get(m, (u8*)&k, (u8*)&out));
+    WC_ASSERT_TRUE(HashMap_get(m, (u8*)&k, (u8*)&out));
     WC_ASSERT_EQ_INT(out, 100);
-    hashmap_destroy(m);
+    HashMap_destroy(m);
 }
 
 static void test_put_update(void)
 {
-    hashmap* m = int_map();
+    HashMap* m = int_map();
     int k = 1, v1 = 10, v2 = 20;
-    hashmap_put(m, (u8*)&k, (u8*)&v1);
-    b8 was_update = hashmap_put(m, (u8*)&k, (u8*)&v2);
+    HashMap_put(m, (u8*)&k, (u8*)&v1);
+    b8 was_update = HashMap_put(m, (u8*)&k, (u8*)&v2);
     WC_ASSERT_TRUE(was_update);
 
     int out = 0;
-    hashmap_get(m, (u8*)&k, (u8*)&out);
+    HashMap_get(m, (u8*)&k, (u8*)&out);
     WC_ASSERT_EQ_INT(out, 20);
-    WC_ASSERT_EQ_U64(hashmap_size(m), 1);
-    hashmap_destroy(m);
+    WC_ASSERT_EQ_U64(HashMap_size(m), 1);
+    HashMap_destroy(m);
 }
 
 static void test_has(void)
 {
-    hashmap* m = int_map();
+    HashMap* m = int_map();
     int k = 5, v = 0;
-    WC_ASSERT_FALSE(hashmap_has(m, (u8*)&k));
-    hashmap_put(m, (u8*)&k, (u8*)&v);
-    WC_ASSERT_TRUE(hashmap_has(m, (u8*)&k));
-    hashmap_destroy(m);
+    WC_ASSERT_FALSE(HashMap_has(m, (u8*)&k));
+    HashMap_put(m, (u8*)&k, (u8*)&v);
+    WC_ASSERT_TRUE(HashMap_has(m, (u8*)&k));
+    HashMap_destroy(m);
 }
 
 static void test_del(void)
 {
-    hashmap* m = int_map();
+    HashMap* m = int_map();
     int k = 3, v = 42;
-    hashmap_put(m, (u8*)&k, (u8*)&v);
-    WC_ASSERT_TRUE(hashmap_del(m, (u8*)&k, NULL));
-    WC_ASSERT_FALSE(hashmap_has(m, (u8*)&k));
-    WC_ASSERT_EQ_U64(hashmap_size(m), 0);
-    hashmap_destroy(m);
+    HashMap_put(m, (u8*)&k, (u8*)&v);
+    WC_ASSERT_TRUE(HashMap_del(m, (u8*)&k, NULL));
+    WC_ASSERT_FALSE(HashMap_has(m, (u8*)&k));
+    WC_ASSERT_EQ_U64(HashMap_size(m), 0);
+    HashMap_destroy(m);
 }
 
 static void test_del_copies_out(void)
 {
-    hashmap* m = int_map();
+    HashMap* m = int_map();
     int k = 7, v = 99, out = 0;
-    hashmap_put(m, (u8*)&k, (u8*)&v);
-    hashmap_del(m, (u8*)&k, (u8*)&out);
+    HashMap_put(m, (u8*)&k, (u8*)&v);
+    HashMap_del(m, (u8*)&k, (u8*)&out);
     WC_ASSERT_EQ_INT(out, 99);
-    hashmap_destroy(m);
+    HashMap_destroy(m);
 }
 
 static void test_del_missing_returns_false(void)
 {
-    hashmap* m = int_map();
+    HashMap* m = int_map();
     int k = 404;
-    WC_ASSERT_FALSE(hashmap_del(m, (u8*)&k, NULL));
-    hashmap_destroy(m);
+    WC_ASSERT_FALSE(HashMap_del(m, (u8*)&k, NULL));
+    HashMap_destroy(m);
 }
 
 static void test_del_on_empty_map(void)
 {
-    hashmap* m = int_map();
+    HashMap* m = int_map();
     int k = 1;
-    WC_ASSERT_FALSE(hashmap_del(m, (u8*)&k, NULL));
-    WC_ASSERT_EQ_U64(hashmap_size(m), 0);
-    hashmap_destroy(m);
+    WC_ASSERT_FALSE(HashMap_del(m, (u8*)&k, NULL));
+    WC_ASSERT_EQ_U64(HashMap_size(m), 0);
+    HashMap_destroy(m);
 }
 
 static void test_get_ptr(void)
 {
-    hashmap* m = int_map();
+    HashMap* m = int_map();
     int k = 2, v = 55;
-    hashmap_put(m, (u8*)&k, (u8*)&v);
-    int* ptr = (int*)hashmap_get_ptr(m, (u8*)&k);
+    HashMap_put(m, (u8*)&k, (u8*)&v);
+    int* ptr = (int*)HashMap_get_ptr(m, (u8*)&k);
     WC_ASSERT_NOT_NULL(ptr);
     WC_ASSERT_EQ_INT(*ptr, 55);
 
     // Mutate through ptr — must be visible via get
     *ptr = 66;
     int out = 0;
-    hashmap_get(m, (u8*)&k, (u8*)&out);
+    HashMap_get(m, (u8*)&k, (u8*)&out);
     WC_ASSERT_EQ_INT(out, 66);
-    hashmap_destroy(m);
+    HashMap_destroy(m);
 }
 
 static void test_get_ptr_missing_returns_null(void)
 {
-    hashmap* m = int_map();
+    HashMap* m = int_map();
     int k = 999;
-    WC_ASSERT_NULL(hashmap_get_ptr(m, (u8*)&k));
-    hashmap_destroy(m);
+    WC_ASSERT_NULL(HashMap_get_ptr(m, (u8*)&k));
+    HashMap_destroy(m);
 }
 
 static void test_get_missing_returns_false(void)
 {
-    hashmap* m = int_map();
+    HashMap* m = int_map();
     int k = 999, out = 0;
-    WC_ASSERT_FALSE(hashmap_get(m, (u8*)&k, (u8*)&out));
-    hashmap_destroy(m);
+    WC_ASSERT_FALSE(HashMap_get(m, (u8*)&k, (u8*)&out));
+    HashMap_destroy(m);
 }
 
 static void test_size_tracks_inserts(void)
 {
-    hashmap* m = int_map();
-    WC_ASSERT_EQ_U64(hashmap_size(m), 0);
-    WC_ASSERT_TRUE(hashmap_empty(m));
+    HashMap* m = int_map();
+    WC_ASSERT_EQ_U64(HashMap_size(m), 0);
+    WC_ASSERT_TRUE(HashMap_empty(m));
 
     for (int i = 0; i < 10; i++) {
         int v = i * 10;
-        hashmap_put(m, (u8*)&i, (u8*)&v);
+        HashMap_put(m, (u8*)&i, (u8*)&v);
     }
-    WC_ASSERT_EQ_U64(hashmap_size(m), 10);
-    WC_ASSERT_FALSE(hashmap_empty(m));
-    hashmap_destroy(m);
+    WC_ASSERT_EQ_U64(HashMap_size(m), 10);
+    WC_ASSERT_FALSE(HashMap_empty(m));
+    HashMap_destroy(m);
 }
 
 static void test_resize_preserves_data(void)
 {
-    hashmap* m = int_map();
+    HashMap* m = int_map();
     for (int i = 0; i < 50; i++) {
         int v = i * 2;
-        hashmap_put(m, (u8*)&i, (u8*)&v);
+        HashMap_put(m, (u8*)&i, (u8*)&v);
     }
-    WC_ASSERT_EQ_U64(hashmap_size(m), 50);
+    WC_ASSERT_EQ_U64(HashMap_size(m), 50);
     for (int i = 0; i < 50; i++) {
         int out = 0;
-        WC_ASSERT_TRUE(hashmap_get(m, (u8*)&i, (u8*)&out));
+        WC_ASSERT_TRUE(HashMap_get(m, (u8*)&i, (u8*)&out));
         WC_ASSERT_EQ_INT(out, i * 2);
     }
-    hashmap_destroy(m);
+    HashMap_destroy(m);
 }
 
 // Robin Hood + backward-shift delete doesn't shrink — no LOAD_FACTOR_SHRINK.
 // Verify correctness after heavy deletion instead.
 static void test_del_correctness_after_many_deletes(void)
 {
-    hashmap* m = int_map();
+    HashMap* m = int_map();
     for (int i = 0; i < 50; i++) {
         int v = i;
-        hashmap_put(m, (u8*)&i, (u8*)&v);
+        HashMap_put(m, (u8*)&i, (u8*)&v);
     }
     for (int i = 0; i < 48; i++) {
-        hashmap_del(m, (u8*)&i, NULL);
+        HashMap_del(m, (u8*)&i, NULL);
     }
-    WC_ASSERT_EQ_U64(hashmap_size(m), 2);
+    WC_ASSERT_EQ_U64(HashMap_size(m), 2);
 
     for (int i = 48; i < 50; i++) {
         int out = 0;
-        WC_ASSERT_TRUE(hashmap_get(m, (u8*)&i, (u8*)&out));
+        WC_ASSERT_TRUE(HashMap_get(m, (u8*)&i, (u8*)&out));
         WC_ASSERT_EQ_INT(out, i);
     }
-    hashmap_destroy(m);
+    HashMap_destroy(m);
 }
 
 
@@ -196,18 +196,18 @@ static void test_del_correctness_after_many_deletes(void)
 static void test_del_reinsert(void)
 {
     // Delete a key then reinsert it — must succeed and be findable
-    hashmap* m = int_map();
+    HashMap* m = int_map();
     int k = 42, v1 = 1, v2 = 2;
-    hashmap_put(m, (u8*)&k, (u8*)&v1);
-    hashmap_del(m, (u8*)&k, NULL);
-    WC_ASSERT_FALSE(hashmap_has(m, (u8*)&k));
+    HashMap_put(m, (u8*)&k, (u8*)&v1);
+    HashMap_del(m, (u8*)&k, NULL);
+    WC_ASSERT_FALSE(HashMap_has(m, (u8*)&k));
 
-    hashmap_put(m, (u8*)&k, (u8*)&v2);
+    HashMap_put(m, (u8*)&k, (u8*)&v2);
     int out = 0;
-    WC_ASSERT_TRUE(hashmap_get(m, (u8*)&k, (u8*)&out));
+    WC_ASSERT_TRUE(HashMap_get(m, (u8*)&k, (u8*)&out));
     WC_ASSERT_EQ_INT(out, 2);
-    WC_ASSERT_EQ_U64(hashmap_size(m), 1);
-    hashmap_destroy(m);
+    WC_ASSERT_EQ_U64(HashMap_size(m), 1);
+    HashMap_destroy(m);
 }
 
 static void test_del_mid_chain(void)
@@ -215,266 +215,266 @@ static void test_del_mid_chain(void)
     // Insert keys that will chain during probing, delete one mid-chain,
     // then verify all remaining keys are still reachable.
     // Backward-shift delete keeps the Robin Hood invariant intact.
-    hashmap* m = int_map();
+    HashMap* m = int_map();
     for (int i = 0; i < 20; i++) {
         int v = i * 10;
-        hashmap_put(m, (u8*)&i, (u8*)&v);
+        HashMap_put(m, (u8*)&i, (u8*)&v);
     }
 
     int mid = 5;
-    hashmap_del(m, (u8*)&mid, NULL);
+    HashMap_del(m, (u8*)&mid, NULL);
 
     for (int i = 0; i < 20; i++) {
         if (i == mid) {
             continue;
         }
         int out = 0;
-        WC_ASSERT_TRUE(hashmap_get(m, (u8*)&i, (u8*)&out));
+        WC_ASSERT_TRUE(HashMap_get(m, (u8*)&i, (u8*)&out));
         WC_ASSERT_EQ_INT(out, i * 10);
     }
-    hashmap_destroy(m);
+    HashMap_destroy(m);
 }
 
 static void test_delete_reinsert_cycle(void)
 {
     // Repeated delete+reinsert must not corrupt or leak
-    hashmap* m = int_map();
+    HashMap* m = int_map();
     int k = 7;
     for (int cycle = 0; cycle < 20; cycle++) {
         int v = cycle;
-        hashmap_put(m, (u8*)&k, (u8*)&v);
+        HashMap_put(m, (u8*)&k, (u8*)&v);
         int out = 0;
-        hashmap_get(m, (u8*)&k, (u8*)&out);
+        HashMap_get(m, (u8*)&k, (u8*)&out);
         WC_ASSERT_EQ_INT(out, cycle);
-        hashmap_del(m, (u8*)&k, NULL);
-        WC_ASSERT_EQ_U64(hashmap_size(m), 0);
+        HashMap_del(m, (u8*)&k, NULL);
+        WC_ASSERT_EQ_U64(HashMap_size(m), 0);
     }
-    hashmap_destroy(m);
+    HashMap_destroy(m);
 }
 
 static void test_del_first_in_chain(void)
 {
     // Deleting the head of a probe chain must leave the rest reachable
-    hashmap* m = int_map();
+    HashMap* m = int_map();
     for (int i = 0; i < 15; i++) {
         int v = i;
-        hashmap_put(m, (u8*)&i, (u8*)&v);
+        HashMap_put(m, (u8*)&i, (u8*)&v);
     }
     int head = 0;
-    hashmap_del(m, (u8*)&head, NULL);
-    WC_ASSERT_FALSE(hashmap_has(m, (u8*)&head));
+    HashMap_del(m, (u8*)&head, NULL);
+    WC_ASSERT_FALSE(HashMap_has(m, (u8*)&head));
 
     for (int i = 1; i < 15; i++) {
         int out = 0;
-        WC_ASSERT_TRUE(hashmap_get(m, (u8*)&i, (u8*)&out));
+        WC_ASSERT_TRUE(HashMap_get(m, (u8*)&i, (u8*)&out));
         WC_ASSERT_EQ_INT(out, i);
     }
-    hashmap_destroy(m);
+    HashMap_destroy(m);
 }
 
 static void test_del_all_then_reinsert(void)
 {
     // Delete every key then reinsert — map must be fully functional
-    hashmap* m = int_map();
+    HashMap* m = int_map();
     for (int i = 0; i < 20; i++) {
         int v = i;
-        hashmap_put(m, (u8*)&i, (u8*)&v);
+        HashMap_put(m, (u8*)&i, (u8*)&v);
     }
     for (int i = 0; i < 20; i++) {
-        hashmap_del(m, (u8*)&i, NULL);
+        HashMap_del(m, (u8*)&i, NULL);
     }
-    WC_ASSERT_EQ_U64(hashmap_size(m), 0);
-    WC_ASSERT_TRUE(hashmap_empty(m));
+    WC_ASSERT_EQ_U64(HashMap_size(m), 0);
+    WC_ASSERT_TRUE(HashMap_empty(m));
 
     for (int i = 0; i < 20; i++) {
         int v = i * 3;
-        hashmap_put(m, (u8*)&i, (u8*)&v);
+        HashMap_put(m, (u8*)&i, (u8*)&v);
     }
-    WC_ASSERT_EQ_U64(hashmap_size(m), 20);
+    WC_ASSERT_EQ_U64(HashMap_size(m), 20);
     for (int i = 0; i < 20; i++) {
         int out = 0;
-        WC_ASSERT_TRUE(hashmap_get(m, (u8*)&i, (u8*)&out));
+        WC_ASSERT_TRUE(HashMap_get(m, (u8*)&i, (u8*)&out));
         WC_ASSERT_EQ_INT(out, i * 3);
     }
-    hashmap_destroy(m);
+    HashMap_destroy(m);
 }
 
 
 /* ════════════════════════════════════════════════════════════════════════════
- * hashmap_clear
+ * HashMap_clear
  * ════════════════════════════════════════════════════════════════════════════ */
 
 static void test_clear_empties_map(void)
 {
-    hashmap* m = int_map();
+    HashMap* m = int_map();
     for (int i = 0; i < 10; i++) {
         int v = i;
-        hashmap_put(m, (u8*)&i, (u8*)&v);
+        HashMap_put(m, (u8*)&i, (u8*)&v);
     }
-    u64 cap_before = hashmap_capacity(m);
-    hashmap_clear(m);
+    u64 cap_before = HashMap_capacity(m);
+    HashMap_clear(m);
 
-    WC_ASSERT_EQ_U64(hashmap_size(m), 0);
-    WC_ASSERT_TRUE(hashmap_empty(m));
-    WC_ASSERT_EQ_U64(hashmap_capacity(m), cap_before); // capacity unchanged
+    WC_ASSERT_EQ_U64(HashMap_size(m), 0);
+    WC_ASSERT_TRUE(HashMap_empty(m));
+    WC_ASSERT_EQ_U64(HashMap_capacity(m), cap_before); // capacity unchanged
     for (int i = 0; i < 10; i++) {
-        WC_ASSERT_FALSE(hashmap_has(m, (u8*)&i));
+        WC_ASSERT_FALSE(HashMap_has(m, (u8*)&i));
     }
-    hashmap_destroy(m);
+    HashMap_destroy(m);
 }
 
 static void test_clear_then_reuse(void)
 {
-    hashmap* m = int_map();
+    HashMap* m = int_map();
     for (int i = 0; i < 10; i++) {
         int v = i;
-        hashmap_put(m, (u8*)&i, (u8*)&v);
+        HashMap_put(m, (u8*)&i, (u8*)&v);
     }
-    hashmap_clear(m);
+    HashMap_clear(m);
 
     for (int i = 100; i < 110; i++) {
         int v = i * 2;
-        hashmap_put(m, (u8*)&i, (u8*)&v);
+        HashMap_put(m, (u8*)&i, (u8*)&v);
     }
-    WC_ASSERT_EQ_U64(hashmap_size(m), 10);
+    WC_ASSERT_EQ_U64(HashMap_size(m), 10);
     for (int i = 100; i < 110; i++) {
         int out = 0;
-        WC_ASSERT_TRUE(hashmap_get(m, (u8*)&i, (u8*)&out));
+        WC_ASSERT_TRUE(HashMap_get(m, (u8*)&i, (u8*)&out));
         WC_ASSERT_EQ_INT(out, i * 2);
     }
-    hashmap_destroy(m);
+    HashMap_destroy(m);
 }
 
 static void test_clear_frees_string_vals(void)
 {
     // clear must properly call del on owned String resources
-    hashmap* m = int_str_map();
+    HashMap* m = int_str_map();
     for (int i = 0; i < 5; i++) {
         String* v = string_from_cstr("owned");
-        hashmap_put_val_move(m, (u8*)&i, (u8**)&v);
+        HashMap_put_val_move(m, (u8*)&i, (u8**)&v);
     }
-    hashmap_clear(m);
-    WC_ASSERT_EQ_U64(hashmap_size(m), 0);
+    HashMap_clear(m);
+    WC_ASSERT_EQ_U64(HashMap_size(m), 0);
 
     // Map must still be usable after clearing owned-resource entries
     int k = 99;
     String* v = string_from_cstr("after_clear");
-    hashmap_put_val_move(m, (u8*)&k, (u8**)&v);
-    WC_ASSERT_TRUE(hashmap_has(m, (u8*)&k));
-    hashmap_destroy(m);
+    HashMap_put_val_move(m, (u8*)&k, (u8**)&v);
+    WC_ASSERT_TRUE(HashMap_has(m, (u8*)&k));
+    HashMap_destroy(m);
 }
 
 static void test_clear_empty_map(void)
 {
     // clear on an already-empty map must be a safe no-op
-    hashmap* m = int_map();
-    hashmap_clear(m);
-    WC_ASSERT_EQ_U64(hashmap_size(m), 0);
-    hashmap_destroy(m);
+    HashMap* m = int_map();
+    HashMap_clear(m);
+    WC_ASSERT_EQ_U64(HashMap_size(m), 0);
+    HashMap_destroy(m);
 }
 
 
 /* ════════════════════════════════════════════════════════════════════════════
- * hashmap_copy
+ * HashMap_copy
  * ════════════════════════════════════════════════════════════════════════════ */
 
 static void test_copy_int_map(void)
 {
-    hashmap* src = int_map();
+    HashMap* src = int_map();
     for (int i = 0; i < 10; i++) {
         int v = i * 3;
-        hashmap_put(src, (u8*)&i, (u8*)&v);
+        HashMap_put(src, (u8*)&i, (u8*)&v);
     }
 
-    // dest must be uninitialised — hashmap_copy allocates everything
-    hashmap* dest = int_map();
-    hashmap_copy(dest, src);
-    WC_ASSERT_EQ_U64(hashmap_size(dest), hashmap_size(src));
+    // dest must be uninitialised — HashMap_copy allocates everything
+    HashMap* dest = int_map();
+    HashMap_copy(dest, src);
+    WC_ASSERT_EQ_U64(HashMap_size(dest), HashMap_size(src));
 
     for (int i = 0; i < 10; i++) {
         int out = 0;
-        WC_ASSERT_TRUE(hashmap_get(dest, (u8*)&i, (u8*)&out));
+        WC_ASSERT_TRUE(HashMap_get(dest, (u8*)&i, (u8*)&out));
         WC_ASSERT_EQ_INT(out, i * 3);
     }
 
-    hashmap_destroy(src);
-    hashmap_destroy(dest);
+    HashMap_destroy(src);
+    HashMap_destroy(dest);
 }
 
 static void test_copy_independence(void)
 {
     // Mutating dest must not affect src
-    hashmap* src = int_map();
+    HashMap* src = int_map();
     int k = 1, v = 10;
-    hashmap_put(src, (u8*)&k, (u8*)&v);
+    HashMap_put(src, (u8*)&k, (u8*)&v);
 
-    hashmap* dest = int_map();
-    hashmap_copy(dest, src);
+    HashMap* dest = int_map();
+    HashMap_copy(dest, src);
 
     int v2 = 99;
-    hashmap_put(dest, (u8*)&k, (u8*)&v2);
+    HashMap_put(dest, (u8*)&k, (u8*)&v2);
 
     int src_out = 0, dest_out = 0;
-    hashmap_get(src,   (u8*)&k, (u8*)&src_out);
-    hashmap_get(dest, (u8*)&k, (u8*)&dest_out);
+    HashMap_get(src,   (u8*)&k, (u8*)&src_out);
+    HashMap_get(dest, (u8*)&k, (u8*)&dest_out);
     WC_ASSERT_EQ_INT(src_out,  10);
     WC_ASSERT_EQ_INT(dest_out, 99);
 
-    hashmap_destroy(src);
-    hashmap_destroy(dest);
+    HashMap_destroy(src);
+    HashMap_destroy(dest);
 }
 
 static void test_copy_str_str_map(void)
 {
     // Deep copy: destroying src must not corrupt dest's String data
-    hashmap* src = str_str_map();
+    HashMap* src = str_str_map();
     MAP_PUT_STR_STR(src, "name",  "Alice");
     MAP_PUT_STR_STR(src, "city",  "London");
     MAP_PUT_STR_STR(src, "color", "blue");
 
-    hashmap* dest = str_str_map();
-    hashmap_copy(dest, src);
-    WC_ASSERT_EQ_U64(hashmap_size(dest), 3);
+    HashMap* dest = str_str_map();
+    HashMap_copy(dest, src);
+    WC_ASSERT_EQ_U64(HashMap_size(dest), 3);
 
-    hashmap_destroy(src); // src gone — dest must still be intact
+    HashMap_destroy(src); // src gone — dest must still be intact
 
     String k;
     string_create_stk("city", &k);
-    String* found = (String*)hashmap_get_ptr(dest, (u8*)&k);
+    String* found = (String*)HashMap_get_ptr(dest, (u8*)&k);
     WC_ASSERT_NOT_NULL(found);
     WC_ASSERT_TRUE(string_equals_cstr(found, "London"));
     string_destroy_stk(&k);
 
-    hashmap_destroy(dest);
+    HashMap_destroy(dest);
 }
 
 static void test_copy_empty_map(void)
 {
-    hashmap* src = int_map();
-    hashmap* dest = int_map();
-    hashmap_copy(dest, src);
-    WC_ASSERT_EQ_U64(hashmap_size(dest), 0);
-    WC_ASSERT_EQ_U64(hashmap_capacity(dest), hashmap_capacity(src));
-    hashmap_destroy(src);
-    hashmap_destroy(dest);
+    HashMap* src = int_map();
+    HashMap* dest = int_map();
+    HashMap_copy(dest, src);
+    WC_ASSERT_EQ_U64(HashMap_size(dest), 0);
+    WC_ASSERT_EQ_U64(HashMap_capacity(dest), HashMap_capacity(src));
+    HashMap_destroy(src);
+    HashMap_destroy(dest);
 }
 
 static void test_copy_then_del_src_key(void)
 {
     // Deleting from src after copy must not affect dest
-    hashmap* src = int_map();
+    HashMap* src = int_map();
     int k = 5, v = 50;
-    hashmap_put(src, (u8*)&k, (u8*)&v);
+    HashMap_put(src, (u8*)&k, (u8*)&v);
 
-    hashmap* dest = int_map();
-    hashmap_copy(dest, src);
+    HashMap* dest = int_map();
+    HashMap_copy(dest, src);
 
-    hashmap_del(src, (u8*)&k, NULL);
-    WC_ASSERT_FALSE(hashmap_has(src,   (u8*)&k));
-    WC_ASSERT_TRUE(hashmap_has(dest, (u8*)&k));
+    HashMap_del(src, (u8*)&k, NULL);
+    WC_ASSERT_FALSE(HashMap_has(src,   (u8*)&k));
+    WC_ASSERT_TRUE(HashMap_has(dest, (u8*)&k));
 
-    hashmap_destroy(src);
-    hashmap_destroy(dest);
+    HashMap_destroy(src);
+    HashMap_destroy(dest);
 }
 
 
@@ -485,10 +485,10 @@ static void test_copy_then_del_src_key(void)
 
 // static void test_foreach_visits_all(void)
 // {
-//     hashmap* m = int_map();
+//     HashMap* m = int_map();
 //     for (int i = 0; i < 8; i++) {
 //         int v = i;
-//         hashmap_put(m, (u8*)&i, (u8*)&v);
+//         HashMap_put(m, (u8*)&i, (u8*)&v);
 //     }
 //
 //     int count = 0, key_sum = 0;
@@ -499,19 +499,19 @@ static void test_copy_then_del_src_key(void)
 //     }
 //     WC_ASSERT_EQ_INT(count,   8);
 //     WC_ASSERT_EQ_INT(key_sum, 0+1+2+3+4+5+6+7);
-//     hashmap_destroy(m);
+//     HashMap_destroy(m);
 // }
 //
 // static void test_foreach_skips_empty(void)
 // {
 //     // Deleted slots must not appear during iteration
-//     hashmap* m = int_map();
+//     HashMap* m = int_map();
 //     for (int i = 0; i < 8; i++) {
 //         int v = i;
-//         hashmap_put(m, (u8*)&i, (u8*)&v);
+//         HashMap_put(m, (u8*)&i, (u8*)&v);
 //     }
 //     for (int i = 0; i < 4; i++) {
-//         hashmap_del(m, (u8*)&i, NULL);
+//         HashMap_del(m, (u8*)&i, NULL);
 //     }
 //
 //     int count = 0;
@@ -521,12 +521,12 @@ static void test_copy_then_del_src_key(void)
 //         (void)v;
 //     }
 //     WC_ASSERT_EQ_INT(count, 4);
-//     hashmap_destroy(m);
+//     HashMap_destroy(m);
 // }
 //
 // static void test_foreach_val_typed(void)
 // {
-//     hashmap* m = int_str_map();
+//     HashMap* m = int_str_map();
 //     MAP_PUT_INT_STR(m, 1, "one");
 //     MAP_PUT_INT_STR(m, 2, "two");
 //     MAP_PUT_INT_STR(m, 3, "three");
@@ -538,34 +538,34 @@ static void test_copy_then_del_src_key(void)
 //         count++;
 //     }
 //     WC_ASSERT_EQ_INT(count, 3);
-//     hashmap_destroy(m);
+//     HashMap_destroy(m);
 // }
 //
 // static void test_foreach_empty_map(void)
 // {
-//     hashmap* m = int_map();
+//     HashMap* m = int_map();
 //     int count = 0;
 //     MAP_FOREACH(m, k, v) {
 //         (void)k; (void)v;
 //         count++;
 //     }
 //     WC_ASSERT_EQ_INT(count, 0);
-//     hashmap_destroy(m);
+//     HashMap_destroy(m);
 // }
 //
 // static void test_foreach_key_val_consistent(void)
 // {
 //     // Every key visited must match its stored val
-//     hashmap* m = int_map();
+//     HashMap* m = int_map();
 //     for (int i = 0; i < 16; i++) {
 //         int v = i * 7;
-//         hashmap_put(m, (u8*)&i, (u8*)&v);
+//         HashMap_put(m, (u8*)&i, (u8*)&v);
 //     }
 //
 //     MAP_FOREACH(m, k, v) {
 //         WC_ASSERT_EQ_INT(*(int*)v, *(int*)k * 7);
 //     }
-//     hashmap_destroy(m);
+//     HashMap_destroy(m);
 // }
 
 /* ════════════════════════════════════════════════════════════════════════════
@@ -574,115 +574,115 @@ static void test_copy_then_del_src_key(void)
 
 static void test_str_val_put_copy(void)
 {
-    hashmap* m = int_str_map();
+    HashMap* m = int_str_map();
     int k = 1;
     String sv;
     string_create_stk("hello", &sv);
-    hashmap_put(m, (u8*)&k, (u8*)&sv);
+    HashMap_put(m, (u8*)&k, (u8*)&sv);
 
-    String* got = (String*)hashmap_get_ptr(m, (u8*)&k);
+    String* got = (String*)HashMap_get_ptr(m, (u8*)&k);
     WC_ASSERT_NOT_NULL(got);
     WC_ASSERT_TRUE(string_equals_cstr(got, "hello"));
 
     string_destroy_stk(&sv);
-    hashmap_destroy(m);
+    HashMap_destroy(m);
 }
 
 static void test_str_val_independence(void)
 {
     // Mutating source after put must not affect stored copy
-    hashmap* m = int_str_map();
+    HashMap* m = int_str_map();
     int k = 1;
     String sv;
     string_create_stk("original", &sv);
-    hashmap_put(m, (u8*)&k, (u8*)&sv);
+    HashMap_put(m, (u8*)&k, (u8*)&sv);
     string_append_cstr(&sv, "_mutated");
 
-    String* stored = (String*)hashmap_get_ptr(m, (u8*)&k);
+    String* stored = (String*)HashMap_get_ptr(m, (u8*)&k);
     WC_ASSERT_TRUE(string_equals_cstr(stored, "original"));
 
     string_destroy_stk(&sv);
-    hashmap_destroy(m);
+    HashMap_destroy(m);
 }
 
 static void test_str_val_move(void)
 {
-    hashmap* m   = int_str_map();
+    HashMap* m   = int_str_map();
     int      k   = 2;
     String*  src = string_from_cstr("moved");
-    hashmap_put_val_move(m, (u8*)&k, (u8**)&src);
+    HashMap_put_val_move(m, (u8*)&k, (u8**)&src);
 
     WC_ASSERT_NULL(src);
-    String* stored = (String*)hashmap_get_ptr(m, (u8*)&k);
+    String* stored = (String*)HashMap_get_ptr(m, (u8*)&k);
     WC_ASSERT_TRUE(string_equals_cstr(stored, "moved"));
-    hashmap_destroy(m);
+    HashMap_destroy(m);
 }
 
 static void test_str_val_update_frees_old(void)
 {
     // Updating a String val must not leak the old heap buffer
-    hashmap* m = int_str_map();
+    HashMap* m = int_str_map();
     int k = 1;
     MAP_PUT_INT_STR(m, k, "first");
     MAP_PUT_INT_STR(m, k, "second");
 
-    WC_ASSERT_EQ_U64(hashmap_size(m), 1);
-    String* stored = (String*)hashmap_get_ptr(m, (u8*)&k);
+    WC_ASSERT_EQ_U64(HashMap_size(m), 1);
+    String* stored = (String*)HashMap_get_ptr(m, (u8*)&k);
     WC_ASSERT_TRUE(string_equals_cstr(stored, "second"));
-    hashmap_destroy(m);
+    HashMap_destroy(m);
 }
 
 static void test_str_val_move_updates_existing(void)
 {
     // put_val_move on an existing key must free old val and store new one
-    hashmap* m = int_str_map();
+    HashMap* m = int_str_map();
     int k = 5;
     MAP_PUT_INT_STR(m, k, "old");
 
     String* v = string_from_cstr("new");
-    hashmap_put_val_move(m, (u8*)&k, (u8**)&v);
+    HashMap_put_val_move(m, (u8*)&k, (u8**)&v);
     WC_ASSERT_NULL(v);
 
-    String* stored = (String*)hashmap_get_ptr(m, (u8*)&k);
+    String* stored = (String*)HashMap_get_ptr(m, (u8*)&k);
     WC_ASSERT_TRUE(string_equals_cstr(stored, "new"));
-    WC_ASSERT_EQ_U64(hashmap_size(m), 1);
-    hashmap_destroy(m);
+    WC_ASSERT_EQ_U64(HashMap_size(m), 1);
+    HashMap_destroy(m);
 }
 
 static void test_str_val_del_with_out(void)
 {
     // del with non-null out must copy the String before destroying it
-    hashmap* m = int_str_map();
+    HashMap* m = int_str_map();
     int k = 3;
     MAP_PUT_INT_STR(m, k, "goodbye");
 
     String out;
     string_create_stk("", &out);
-    hashmap_del(m, (u8*)&k, (u8*)&out);
+    HashMap_del(m, (u8*)&k, (u8*)&out);
     WC_ASSERT_TRUE(string_equals_cstr(&out, "goodbye"));
 
     string_destroy_stk(&out);
-    hashmap_destroy(m);
+    HashMap_destroy(m);
 }
 
 static void test_str_val_many_inserts_and_gets(void)
 {
     // Stress: many int->String pairs across multiple resizes
-    hashmap* m = int_str_map();
+    HashMap* m = int_str_map();
     char buf[32];
     for (int i = 0; i < 60; i++) {
         snprintf(buf, sizeof(buf), "value_%d", i);
         String* v = string_from_cstr(buf);
-        hashmap_put_val_move(m, (u8*)&i, (u8**)&v);
+        HashMap_put_val_move(m, (u8*)&i, (u8**)&v);
     }
-    WC_ASSERT_EQ_U64(hashmap_size(m), 60);
+    WC_ASSERT_EQ_U64(HashMap_size(m), 60);
     for (int i = 0; i < 60; i++) {
         snprintf(buf, sizeof(buf), "value_%d", i);
-        String* stored = (String*)hashmap_get_ptr(m, (u8*)&i);
+        String* stored = (String*)HashMap_get_ptr(m, (u8*)&i);
         WC_ASSERT_NOT_NULL(stored);
         WC_ASSERT_TRUE(string_equals_cstr(stored, buf));
     }
-    hashmap_destroy(m);
+    HashMap_destroy(m);
 }
 
 
@@ -692,148 +692,148 @@ static void test_str_val_many_inserts_and_gets(void)
 
 static void test_str_key_lookup(void)
 {
-    hashmap* m  = str_str_map();
+    HashMap* m  = str_str_map();
     String*  k1 = string_from_cstr("name");
     String*  v1 = string_from_cstr("Alice");
-    hashmap_put_move(m, (u8**)&k1, (u8**)&v1);
+    HashMap_put_move(m, (u8**)&k1, (u8**)&v1);
 
     WC_ASSERT_NULL(k1);
     WC_ASSERT_NULL(v1);
 
     String key;
     string_create_stk("name", &key);
-    String* found = (String*)hashmap_get_ptr(m, (u8*)&key);
+    String* found = (String*)HashMap_get_ptr(m, (u8*)&key);
     WC_ASSERT_NOT_NULL(found);
     WC_ASSERT_TRUE(string_equals_cstr(found, "Alice"));
 
     string_destroy_stk(&key);
-    hashmap_destroy(m);
+    HashMap_destroy(m);
 }
 
 static void test_str_key_miss(void)
 {
-    hashmap* m = str_str_map();
+    HashMap* m = str_str_map();
     String k;
     string_create_stk("missing", &k);
-    WC_ASSERT_FALSE(hashmap_has(m, (u8*)&k));
+    WC_ASSERT_FALSE(HashMap_has(m, (u8*)&k));
     string_destroy_stk(&k);
-    hashmap_destroy(m);
+    HashMap_destroy(m);
 }
 
 static void test_str_key_update_discards_dup_key(void)
 {
     // put_move on an existing key: incoming key freed, new val stored
-    hashmap* m = str_str_map();
+    HashMap* m = str_str_map();
     MAP_PUT_STR_STR(m, "lang", "C");
     MAP_PUT_STR_STR(m, "lang", "C11");
 
-    WC_ASSERT_EQ_U64(hashmap_size(m), 1);
+    WC_ASSERT_EQ_U64(HashMap_size(m), 1);
     String k;
     string_create_stk("lang", &k);
-    String* v = (String*)hashmap_get_ptr(m, (u8*)&k);
+    String* v = (String*)HashMap_get_ptr(m, (u8*)&k);
     WC_ASSERT_TRUE(string_equals_cstr(v, "C11"));
     string_destroy_stk(&k);
-    hashmap_destroy(m);
+    HashMap_destroy(m);
 }
 
 static void test_str_key_del(void)
 {
-    hashmap* m = str_str_map();
+    HashMap* m = str_str_map();
     MAP_PUT_STR_STR(m, "fruit", "apple");
 
     String k;
     string_create_stk("fruit", &k);
-    WC_ASSERT_TRUE(hashmap_del(m, (u8*)&k, NULL));
-    WC_ASSERT_FALSE(hashmap_has(m, (u8*)&k));
-    WC_ASSERT_EQ_U64(hashmap_size(m), 0);
+    WC_ASSERT_TRUE(HashMap_del(m, (u8*)&k, NULL));
+    WC_ASSERT_FALSE(HashMap_has(m, (u8*)&k));
+    WC_ASSERT_EQ_U64(HashMap_size(m), 0);
     string_destroy_stk(&k);
-    hashmap_destroy(m);
+    HashMap_destroy(m);
 }
 
 static void test_str_key_put_key_move(void)
 {
     // put_key_move: key is moved in (nulled), val is copied
-    hashmap* m = str_str_map();
+    HashMap* m = str_str_map();
     String*  k = string_from_cstr("animal");
     String   v;
     string_create_stk("cat", &v);
 
-    hashmap_put_key_move(m, (u8**)&k, (u8*)&v);
+    HashMap_put_key_move(m, (u8**)&k, (u8*)&v);
     WC_ASSERT_NULL(k);
 
     String lookup;
     string_create_stk("animal", &lookup);
-    String* stored = (String*)hashmap_get_ptr(m, (u8*)&lookup);
+    String* stored = (String*)HashMap_get_ptr(m, (u8*)&lookup);
     WC_ASSERT_NOT_NULL(stored);
     WC_ASSERT_TRUE(string_equals_cstr(stored, "cat"));
 
     string_destroy_stk(&v);
     string_destroy_stk(&lookup);
-    hashmap_destroy(m);
+    HashMap_destroy(m);
 }
 
 static void test_str_str_resize_preserves_data(void)
 {
-    hashmap* m = str_str_map();
+    HashMap* m = str_str_map();
     char key_buf[16], val_buf[16];
     for (int i = 0; i < 40; i++) {
         snprintf(key_buf, sizeof(key_buf), "key%d", i);
         snprintf(val_buf, sizeof(val_buf), "val%d", i);
         MAP_PUT_STR_STR(m, key_buf, val_buf);
     }
-    WC_ASSERT_EQ_U64(hashmap_size(m), 40);
+    WC_ASSERT_EQ_U64(HashMap_size(m), 40);
 
     for (int i = 0; i < 40; i++) {
         snprintf(key_buf, sizeof(key_buf), "key%d", i);
         snprintf(val_buf, sizeof(val_buf), "val%d", i);
         String k;
         string_create_stk(key_buf, &k);
-        String* v = (String*)hashmap_get_ptr(m, (u8*)&k);
+        String* v = (String*)HashMap_get_ptr(m, (u8*)&k);
         WC_ASSERT_NOT_NULL(v);
         WC_ASSERT_TRUE(string_equals_cstr(v, val_buf));
         string_destroy_stk(&k);
     }
-    hashmap_destroy(m);
+    HashMap_destroy(m);
 }
 
 static void test_str_str_del_frees_both(void)
 {
     // del on a str->str entry must free both key and val heap buffers
-    hashmap* m = str_str_map();
+    HashMap* m = str_str_map();
     MAP_PUT_STR_STR(m, "x", "y");
 
     String k;
     string_create_stk("x", &k);
-    WC_ASSERT_TRUE(hashmap_del(m, (u8*)&k, NULL));
-    WC_ASSERT_EQ_U64(hashmap_size(m), 0);
+    WC_ASSERT_TRUE(HashMap_del(m, (u8*)&k, NULL));
+    WC_ASSERT_EQ_U64(HashMap_size(m), 0);
     string_destroy_stk(&k);
-    hashmap_destroy(m);
+    HashMap_destroy(m);
 }
 
 static void test_str_str_clear_frees_all(void)
 {
-    hashmap* m = str_str_map();
+    HashMap* m = str_str_map();
     for (int i = 0; i < 10; i++) {
         char buf[16];
         snprintf(buf, sizeof(buf), "k%d", i);
         MAP_PUT_STR_STR(m, buf, "v");
     }
-    hashmap_clear(m);
-    WC_ASSERT_EQ_U64(hashmap_size(m), 0);
+    HashMap_clear(m);
+    WC_ASSERT_EQ_U64(HashMap_size(m), 0);
 
     // Usable after clear
     MAP_PUT_STR_STR(m, "after", "clear");
     String k;
     string_create_stk("after", &k);
-    WC_ASSERT_TRUE(hashmap_has(m, (u8*)&k));
+    WC_ASSERT_TRUE(HashMap_has(m, (u8*)&k));
     string_destroy_stk(&k);
-    hashmap_destroy(m);
+    HashMap_destroy(m);
 }
 
 
 /* ── Suite entry point ───────────────────────────────────────────────────── */
 
-void hashmap_suite(void)
+void HashMap_suite(void)
 {
     WC_SUITE("HashMap — int->int (POD)");
     WC_RUN(test_put_and_get);

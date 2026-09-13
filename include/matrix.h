@@ -18,10 +18,10 @@ typedef struct {
 // ============================================================================
 
 // create heap matrix with m rows and n cols
-Matrixf* matrix_create(u64 m, u64 n);
+Matrixf* matrix_create(u64 m, u64 n) __attribute__((warn_unused_result));
 
 // create heap matrix with m rows and n cols and an array of size m x n
-Matrixf* matrix_create_arr(u64 m, u64 n, const float* arr) __attribute__((nonnull(3)));
+Matrixf* matrix_create_arr(u64 m, u64 n, const float* arr) __attribute__((nonnull(3), warn_unused_result));
 
 // create matrix with everything on the stack
 void matrix_create_stk(u64 m, u64 n, float* data, Matrixf* mat) __attribute__((nonnull(3, 4)));

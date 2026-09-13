@@ -21,7 +21,7 @@ typedef enum {
 ====================WYHASH====================
 */
 // wyhash v4 — public domain, Wang Yi
-// Best default for hashmaps: fast, excellent avalanche, low collision rate.
+// Best default for HashMaps: fast, excellent avalanche, low collision rate.
 // Beats FNV1a and MurmurHash3 on all key sizes.
 
 static inline u64 wyr8(const u8* p)

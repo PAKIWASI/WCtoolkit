@@ -1,4 +1,4 @@
-#ifndef ARENA_H
+﻿#ifndef ARENA_H
 #define ARENA_H
 
 #include "common.h"
@@ -32,13 +32,13 @@ Parameters:
 Return:
   Pointer to arena on success, NULL on failure
 */
-Arena* arena_create(u64 capacity);
+Arena* arena_create(u64 capacity) __attribute__((warn_unused_result));
 
 /*
 Initialize an arena object with pointers to the arena and a
 pre-allocated region(base ptr), as well as the size of the provided
 region. Good for using the stack instead of the heap.
-The arena and the data may be stack initialized, so no arena_release.
+The arena and the data may be stack initialized, so no arena_destroy.
 Note that ARENA_DEFAULT_SIZE is not used.
 
 Parameters:
@@ -71,7 +71,7 @@ Free the memory allocated for the entire arena region.
 Parameters:
   Arena *arena    |    The arena to be destroyed.
 */
-static inline __attribute__((nonnull(1))) void arena_release(Arena* arena)
+static inline __attribute__((nonnull(1))) void arena_destroy(Arena* arena)
 {
     CHECK_FATAL(!arena, "arena is null");
     free(arena->base);
@@ -96,7 +96,7 @@ Return:
   Pointer to arena region segment on success, NULL on
   failure.
 */
-u8* arena_alloc(Arena* arena, u64 size) __attribute__((nonnull(1)));
+u8* arena_alloc(Arena* arena, u64 size) __attribute__((nonnull(1), alloc_size(2)));
 
 /*
 Same as arena_alloc, except you can specify a memory
@@ -119,7 +119,7 @@ Return:
   Pointer to arena region segment on success, NULL on
   failure.
 */
-u8* arena_alloc_aligned(Arena* arena, u64 size, u32 alignment) __attribute__((nonnull(1)));
+u8* arena_alloc_aligned(Arena* arena, u64 size, u32 alignment) __attribute__((nonnull(1), alloc_size(2)));
 
 
 // Get used capacity

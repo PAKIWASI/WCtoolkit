@@ -1,4 +1,4 @@
-#include "random.h"
+﻿#include "random.h"
 #include "common.h"
 #include "fast_math.h"
 
@@ -8,17 +8,17 @@
 
 
 
-static void pcg32_rand_seed_r(pcg32_random_t* rng, u64 seed, u64 seq);
-static u32 pcg32_rand_r(pcg32_random_t* rng);
-static u32 pcg32_rand_bounded_r(pcg32_random_t* rng, u32 bound);
+static void pcg32_rand_seed_r(Pcg32* rng, u64 seed, u64 seq);
+static u32 pcg32_rand_r(Pcg32* rng);
+static u32 pcg32_rand_bounded_r(Pcg32* rng, u32 bound);
 
 
 
 // Initialize global state
-static pcg32_random_t global_rng = PCG32_INITIALIZER;
+static Pcg32 global_rng = PCG32_INITIALIZER;
 
 
-void pcg32_rand_seed_r(pcg32_random_t* rng, u64 seed, u64 seq)
+void pcg32_rand_seed_r(Pcg32* rng, u64 seed, u64 seq)
 {
     rng->state = 0;
     //Set increment from sequence number. 
@@ -39,7 +39,7 @@ void pcg32_rand_seed(u64 seed, u64 seq)
     pcg32_rand_seed_r(&global_rng, seed, seq);
 }
 
-u32 pcg32_rand_r(pcg32_random_t* rng)
+u32 pcg32_rand_r(Pcg32* rng)
 {
     // Save old state
     u64 oldstate = rng->state;
@@ -72,7 +72,7 @@ u32 pcg32_rand(void)
 
 
 
-u32 pcg32_rand_bounded_r(pcg32_random_t* rng, u32 bound)
+u32 pcg32_rand_bounded_r(Pcg32* rng, u32 bound)
 {
     // To avoid bias, we need to make the range of the RNG a multiple of
     // bound, which we do by dropping output less than a threshold.

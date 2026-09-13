@@ -134,6 +134,7 @@ add_executable(tests
     tests/fast_math_test.c
     tests/complex_test.c
     tests/macros_test.c
+    tests/test_views.c
     tests/speed_test.c
     ${LIB_SOURCES}
 )

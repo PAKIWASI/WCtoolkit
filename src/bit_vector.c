@@ -7,38 +7,38 @@
 
 
 
-bitVec* bitVec_create(void)
+BitVec* BitVec_create(void)
 {
-    bitVec* bvec = malloc(sizeof(bitVec));
+    BitVec* bvec = malloc(sizeof(BitVec));
     CHECK_FATAL(!bvec, "bvec init failed");
 
     // u8 is POD — no ops needed
-    bvec->arr = genVec_create(0, sizeof(u8), NULL);
+    bvec->arr = GenVec_create(0, sizeof(u8), NULL);
 
     bvec->size = 0;
 
     return bvec;
 }
 
-void bitVec_destroy(bitVec* bvec)
+void BitVec_destroy(BitVec* bvec)
 {
-    genVec_destroy(bvec->arr);
+    GenVec_destroy(bvec->arr);
 
     free(bvec);
 }
 
 // Set bit i to 1
-void bitVec_set(bitVec* bvec, u64 i)
+void BitVec_set(BitVec* bvec, u64 i)
 {
     u64 byte_index = i / 8;
     u64 bit_index  = i % 8;
 
     while (byte_index >= bvec->arr->size) {
         u8 zero = 0;
-        genVec_push(bvec->arr, &zero);
+        GenVec_push(bvec->arr, &zero);
     }
 
-    u8* byte = (u8*)genVec_get_ptr(bvec->arr, byte_index);
+    u8* byte = (u8*)GenVec_get_ptr(bvec->arr, byte_index);
     *byte |= (u8)(1u << bit_index);
 
     if (i + 1 > bvec->size) {
@@ -47,58 +47,58 @@ void bitVec_set(bitVec* bvec, u64 i)
 }
 
 // Clear bit i (set to 0)
-void bitVec_clear(bitVec* bvec, u64 i)
+void BitVec_clear(BitVec* bvec, u64 i)
 {
     CHECK_FATAL(i >= bvec->size, "index out of bounds");
 
     u64 byte_index = i / 8;
     u64 bit_index  = i % 8;
 
-    u8* byte = (u8*)genVec_get_ptr(bvec->arr, byte_index);
+    u8* byte = (u8*)GenVec_get_ptr(bvec->arr, byte_index);
     *byte &= (u8)~(1u << bit_index);
 }
 
 // Test bit i (returns 1 or 0)
-u8 bitVec_test(const bitVec* bvec, u64 i)
+u8 BitVec_test(const BitVec* bvec, u64 i)
 {
     CHECK_FATAL(i >= bvec->size, "index out of bounds");
 
     u64 byte_index = i / 8;
     u64 bit_index  = i % 8;
 
-    return (*genVec_get_ptr(bvec->arr, byte_index) >> bit_index) & 1;
+    return (*GenVec_get_ptr(bvec->arr, byte_index) >> bit_index) & 1;
 }
 
 // Toggle bit i
-void bitVec_toggle(bitVec* bvec, u64 i)
+void BitVec_toggle(BitVec* bvec, u64 i)
 {
     CHECK_FATAL(i >= bvec->size, "index out of bounds");
 
     u64 byte_index = i / 8;
     u64 bit_index  = i % 8;
 
-    u8* byte = (u8*)genVec_get_ptr(bvec->arr, byte_index);
+    u8* byte = (u8*)GenVec_get_ptr(bvec->arr, byte_index);
     *byte ^= (u8)(1u << bit_index);
 }
 
 
-void bitVec_push(bitVec* bvec)
+void BitVec_push(BitVec* bvec)
 {
-    bitVec_set(bvec, bvec->size);
+    BitVec_set(bvec, bvec->size);
 }
 
 
-void bitVec_pop(bitVec* bvec)
+void BitVec_pop(BitVec* bvec)
 {
     WC_SET_RET(WC_ERR_EMPTY, bvec->size == 0, );
 
     bvec->size--;
     if (bvec->size % 8 == 0) {
-        genVec_pop(bvec->arr, NULL);
+        GenVec_pop(bvec->arr, NULL);
     }
 }
 
-void bitVec_print(bitVec* bvec, u64 byteI)
+void BitVec_print(BitVec* bvec, u64 byteI)
 {
     CHECK_FATAL(byteI >= bvec->arr->size, "index out of bounds");
 
@@ -109,6 +109,6 @@ void bitVec_print(bitVec* bvec, u64 byteI)
     }
 
     for (u8 i = 0; i < bits_to_print; i++) {
-        printf("%d", ((*genVec_get_ptr(bvec->arr, byteI)) >> i) & 1);
+        printf("%d", ((*GenVec_get_ptr(bvec->arr, byteI)) >> i) & 1);
     }
 }

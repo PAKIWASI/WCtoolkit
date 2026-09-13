@@ -12,8 +12,8 @@
  * --------
  *   1.  String by value  (sizeof(String) per slot)
  *   2.  String by pointer (sizeof(String*) per slot)
- *   3.  genVec by value  (sizeof(genVec) per slot)  — vec of vecs
- *   4.  genVec by pointer (sizeof(genVec*) per slot)
+ *   3.  GenVec by value  (sizeof(GenVec) per slot)  — vec of vecs
+ *   4.  GenVec by pointer (sizeof(GenVec*) per slot)
  *   5.  Shared ops instances (define once, reference everywhere)
  *
  * RULES FOR WRITING copy/move/del CALLBACKS
@@ -36,7 +36,7 @@
  *   del_fn(u8* elm)
  *     elm   — raw bytes of the slot
  *     job   — free owned resources (e.g. data buffer) but NOT elm itself
- *             → call string_destroy_stk / genVec_destroy_stk etc.
+ *             → call string_destroy_stk / GenVec_destroy_stk etc.
  *
  * BY POINTER  (slot holds T*, sizeof(T*) = 8 bytes)
  *   copy_fn(u8* dest, const u8* src)
@@ -49,7 +49,7 @@
  *   del_fn(u8* elm)
  *     *(T**)elm  is the pointer stored in the slot
  *     job — fully destroy the heap object
- *           → call string_destroy / genVec_destroy etc.
+ *           → call string_destroy / GenVec_destroy etc.
  */
 
 #include "String.h"
@@ -59,7 +59,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-_Static_assert(sizeof(String) == sizeof(genVec), "String and genVec sizes must match for value-storage helpers");
+_Static_assert(sizeof(String) == sizeof(GenVec), "String and GenVec sizes must match for value-storage helpers");
 
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -155,27 +155,27 @@ static inline int str_cmp_ptr(const u8* a, const u8* b, u64 size)
 
 static inline void vec_copy(u8* dest, const u8* src)
 {
-    genVec_copy((genVec*)dest, (const genVec*)src);
+    GenVec_copy((GenVec*)dest, (const GenVec*)src);
 }
 
 static inline void vec_move(u8* dest, u8** src)
 {
-    memcpy(dest, *src, sizeof(genVec));  // transfer all fields (incl. data ptr and ops ptr)
+    memcpy(dest, *src, sizeof(GenVec));  // transfer all fields (incl. data ptr and ops ptr)
     free(*src);                          // free container struct only
     *src = NULL;
 }
 
 static inline void vec_del(u8* elm)
 {
-    genVec_destroy_stk((genVec*)elm);    // free data buffer, NOT the slot
+    GenVec_destroy_stk((GenVec*)elm);    // free data buffer, NOT the slot
 }
 
 static inline void vec_print_int(const u8* elm)
 {
-    const genVec* v = (const genVec*)elm;
+    const GenVec* v = (const GenVec*)elm;
     printf("[");
     for (u64 i = 0; i < v->size; i++) {
-        printf("%d", *(int*)genVec_get_ptr(v, i));
+        printf("%d", *(int*)GenVec_get_ptr(v, i));
         if (i + 1 < v->size) { printf(", "); }
     }
     printf("]");
@@ -183,31 +183,31 @@ static inline void vec_print_int(const u8* elm)
 
 
 /* ══════════════════════════════════════════════════════════════════════════
- * 4.  GENVEC BY POINTER  (slot holds genVec*)
+ * 4.  GENVEC BY POINTER  (slot holds GenVec*)
  * ══════════════════════════════════════════════════════════════════════════ */
 
 static inline void vec_copy_ptr(u8* dest, const u8* src)
 {
-    genVec* d = malloc(sizeof(genVec));
+    GenVec* d = malloc(sizeof(GenVec));
     CHECK_FATAL(!d, "malloc failed");
-    genVec_copy(d, *(const genVec**)src);
-    *(genVec**)dest = d;
+    GenVec_copy(d, *(const GenVec**)src);
+    *(GenVec**)dest = d;
 }
 
 static inline void vec_move_ptr(u8* dest, u8** src)
 {
-    *(genVec**)dest = *(genVec**)src;
+    *(GenVec**)dest = *(GenVec**)src;
     *src            = NULL;
 }
 
 static inline void vec_del_ptr(u8* elm)
 {
-    genVec_destroy(*(genVec**)elm);
+    GenVec_destroy(*(GenVec**)elm);
 }
 
 static inline void vec_print_int_ptr(const u8* elm)
 {
-    vec_print_int((const u8*)*(const genVec**)elm);
+    vec_print_int((const u8*)*(const GenVec**)elm);
 }
 
 
@@ -218,8 +218,8 @@ static inline void vec_print_int_ptr(const u8* elm)
  * No per-instance overhead — all vectors of the same type share the pointer.
  *
  * Usage:
- *   genVec* v = genVec_create(8, sizeof(String), &wc_str_ops);
- *   hashmap* m = hashmap_create(..., &wc_str_ops, &wc_str_ops);
+ *   GenVec* v = GenVec_create(8, sizeof(String), &wc_str_ops);
+ *   HashMap* m = HashMap_create(..., &wc_str_ops, &wc_str_ops);
  * ══════════════════════════════════════════════════════════════════════════ */
 
 static const container_ops wc_str_ops     = { str_copy,     str_move,     str_del     };

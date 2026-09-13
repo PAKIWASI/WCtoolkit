@@ -5,26 +5,26 @@
 
 
 /*          TLDR
- * genVec is a value-based generic vector.
+ * GenVec is a value-based generic vector.
  * Elements are stored inline and managed via user-supplied
  * copy/move/destructor callbacks.
  *
  * This avoids pointer ownership ambiguity and improves cache locality.
  *
- * Callbacks are grouped into a shared genVec_ops struct (vtable).
+ * Callbacks are grouped into a shared GenVec_ops struct (vtable).
  * Define one static ops instance per type and share it across all
  * vectors of that type —  improves cache locality when many vectors of the same type exist.
  *
  * Example:
- *   static const genVec_ops string_ops = { str_copy, str_move, str_del };
- *   genVec* vec = genVec_create(8, sizeof(String), &string_ops);
+ *   static const GenVec_ops string_ops = { str_copy, str_move, str_del };
+ *   GenVec* vec = GenVec_create(8, sizeof(String), &string_ops);
  *
  * For POD types (int, float, flat structs) pass NULL for ops:
- *   genVec* vec = genVec_create(8, sizeof(int), NULL);
+ *   GenVec* vec = GenVec_create(8, sizeof(int), NULL);
  */
 
 
-// genVec growth settings
+// GenVec growth settings
 
 #ifndef GENVEC_GROWTH
 #define GENVEC_GROWTH 1.5F // vec capacity multiplier
@@ -44,10 +44,10 @@ typedef struct {
 
     // Cache: 1 if ops==NULL (POD fast path)
     b8 is_pod;
-} genVec;
+} GenVec;
 
 // 8 8 8 8 4 1 '3'  = 40 bytes
-_Static_assert(sizeof(genVec) == 40, "genVec layout drifted from expected 40 bytes");
+_Static_assert(sizeof(GenVec) == 40, "GenVec layout drifted from expected 40 bytes");
 
 
 // Convenience: access ops callbacks safely
@@ -61,49 +61,49 @@ _Static_assert(sizeof(genVec) == 40, "genVec layout drifted from expected 40 byt
 // ===========================
 
 // Initialize vector with capacity n.
-// ops: pointer to a shared genVec_ops vtable, or NULL for POD types.
-genVec* genVec_create(u64 n, u32 data_size, const container_ops* ops);
+// ops: pointer to a shared GenVec_ops vtable, or NULL for POD types.
+GenVec* GenVec_create(u64 n, u32 data_size, const container_ops* ops) __attribute__((warn_unused_result));
 
 // Initialize vector on stack (struct on stack, data on heap).
-void genVec_create_stk(u64 n, u32 data_size, const container_ops* ops, genVec* vec) __attribute__((nonnull(4)));
+void GenVec_create_stk(u64 n, u32 data_size, const container_ops* ops, GenVec* vec) __attribute__((nonnull(4)));
 
 // Initialize vector of size n with all elements set to val.
-genVec* genVec_create_val(u64 n, const u8* val, u32 data_size, const container_ops* ops) __attribute__((nonnull(2)));
+GenVec* GenVec_create_val(u64 n, const u8* val, u32 data_size, const container_ops* ops) __attribute__((nonnull(2), warn_unused_result));
 
 // TODO: GCC does not allow 'nonnull' attribute in this position on a function definition (for the static inline ones (the ones with nonnull in the function definition))
 
-void genVec_create_val_stk(u64 n, const u8* val, u32 data_size, const container_ops* ops, genVec* vec)
+void GenVec_create_val_stk(u64 n, const u8* val, u32 data_size, const container_ops* ops, GenVec* vec)
     __attribute__((nonnull(2, 5)));
 
-genVec* genVec_create_arr(u64 n, u32 data_size, const container_ops* ops, u8* arr) __attribute__((nonnull(4)));
+GenVec* GenVec_create_arr(u64 n, u32 data_size, const container_ops* ops, u8* arr) __attribute__((nonnull(4), warn_unused_result));
 
 // Vector COMPLETELY on stack (can't grow in size).
 // You provide a stack-allocated array which becomes the internal array.
-// should only use if you need genVec operations on C array
+// should only use if you need GenVec operations on C array
 // WARNING: crashes when size == capacity and you try to push.
-void genVec_create_stk_arr(u64 n, u8* arr, u32 data_size, const container_ops* ops, genVec* vec)
+void GenVec_create_stk_arr(u64 n, u8* arr, u32 data_size, const container_ops* ops, GenVec* vec)
     __attribute__((nonnull(2, 5)));
 
 // Destroy heap-allocated vector and clean up all elements.
-void genVec_destroy(genVec* vec) __attribute__((nonnull(1)));
+void GenVec_destroy(GenVec* vec) __attribute__((nonnull(1)));
 
 // Destroy stack-allocated vector (cleans up data, but not vec itself).
-void genVec_destroy_stk(genVec* vec) __attribute__((nonnull(1)));
+void GenVec_destroy_stk(GenVec* vec) __attribute__((nonnull(1)));
 
 // Remove all elements (calls del_fn on each), keep capacity.
-void genVec_clear(genVec* vec) __attribute__((nonnull(1)));
+void GenVec_clear(GenVec* vec) __attribute__((nonnull(1)));
 
 // Remove all elements and free memory, shrink capacity to 0.
-void genVec_reset(genVec* vec) __attribute__((nonnull(1)));
+void GenVec_reset(GenVec* vec) __attribute__((nonnull(1)));
 
 // Ensure vector has at least new_capacity space (never shrinks).
-void genVec_reserve(genVec* vec, u64 new_capacity) __attribute__((nonnull(1)));
+void GenVec_reserve(GenVec* vec, u64 new_capacity) __attribute__((nonnull(1)));
 
 // Grow to new_capacity and fill new slots with val.
-void genVec_reserve_val(genVec* vec, u64 new_capacity, const u8* val) __attribute__((nonnull(1, 3)));
+void GenVec_reserve_val(GenVec* vec, u64 new_capacity, const u8* val) __attribute__((nonnull(1, 3)));
 
 // Shrink vector to its size (reallocates).
-void genVec_shrink_to_fit(genVec* vec) __attribute__((nonnull(1)));
+void GenVec_shrink_to_fit(GenVec* vec) __attribute__((nonnull(1)));
 
 
 
@@ -111,103 +111,110 @@ void genVec_shrink_to_fit(genVec* vec) __attribute__((nonnull(1)));
 // ===========================
 
 // Append element to end (makes deep copy if copy_fn provided).
-void genVec_push(genVec* vec, const u8* data) __attribute__((nonnull(1, 2)));
+void GenVec_push(GenVec* vec, const u8* data) __attribute__((nonnull(1, 2)));
 
 // Append element to end, transfer ownership (nulls original pointer).
-void genVec_push_move(genVec* vec, u8** data) __attribute__((nonnull(1, 2)));
+void GenVec_push_move(GenVec* vec, u8** data) __attribute__((nonnull(1, 2)));
 
 // Remove element from end. If popped is provided, copies element before deletion.
 // Note: del_fn is called regardless to clean up owned resources.
-void genVec_pop(genVec* vec, u8* popped) __attribute__((nonnull(1)));
+void GenVec_pop(GenVec* vec, u8* popped) __attribute__((nonnull(1)));
 
 // If order doesn't matter, O(1) deletion from middle
-void genVec_swap_pop(genVec* vec, u64 i, u8* out) __attribute__((nonnull(1)));
+void GenVec_swap_pop(GenVec* vec, u64 i, u8* out) __attribute__((nonnull(1)));
 
 // swap element at i with element at j
-void genVec_swap(genVec* vec, u64 i, u64 j) __attribute__((nonnull(1)));
+void GenVec_swap(GenVec* vec, u64 i, u64 j) __attribute__((nonnull(1)));
 
 // Copy element at index i into out buffer.
-void genVec_get(const genVec* vec, u64 i, u8* out) __attribute__((nonnull(1, 3)));
+void GenVec_get(const GenVec* vec, u64 i, u8* out) __attribute__((nonnull(1, 3)));
 
 // Get pointer to element at index i.
 // Note: Pointer invalidated by push/insert/remove operations.
-const u8* genVec_get_ptr(const genVec* vec, u64 i) __attribute__((nonnull(1)));
+const u8* GenVec_get_ptr(const GenVec* vec, u64 i) __attribute__((nonnull(1)));
 
 // Get MUTABLE pointer to element at index i.
 // Note: Pointer invalidated by push/insert/remove operations.
-u8* genVec_get_ptr_mut(genVec* vec, u64 i) __attribute__((nonnull(1)));
+u8* GenVec_get_ptr_mut(GenVec* vec, u64 i) __attribute__((nonnull(1)));
+
+// UNCHECKED variants — same as above but with the bounds CHECK_FATAL elided.
+// Preconditions are NOT validated: caller must guarantee i < vec->size.
+// Use on hot paths where the check is provably redundant (macros, internal loops).
+const u8* GenVec_get_ptr_unsafe(const GenVec* vec, u64 i) __attribute__((nonnull(1)));
+
+u8* GenVec_get_ptr_mut_unsafe(GenVec* vec, u64 i) __attribute__((nonnull(1)));
 
 // Replace element at index i with data (cleans up old element).
-void genVec_replace(genVec* vec, u64 i, const u8* data) __attribute__((nonnull(1, 3)));
+void GenVec_replace(GenVec* vec, u64 i, const u8* data) __attribute__((nonnull(1, 3)));
 
 // Replace element at index i, transfer ownership (cleans up old element).
-void genVec_replace_move(genVec* vec, u64 i, u8** data) __attribute__((nonnull(1, 3)));
+void GenVec_replace_move(GenVec* vec, u64 i, u8** data) __attribute__((nonnull(1, 3)));
 
 // Insert element at index i, shifting elements right.
-void genVec_insert(genVec* vec, u64 i, const u8* data) __attribute__((nonnull(1, 3)));
+void GenVec_insert(GenVec* vec, u64 i, const u8* data) __attribute__((nonnull(1, 3)));
 
 // Insert element at index i with ownership transfer, shifting elements right.
-void genVec_insert_move(genVec* vec, u64 i, u8** data) __attribute__((nonnull(1, 3)));
+void GenVec_insert_move(GenVec* vec, u64 i, u8** data) __attribute__((nonnull(1, 3)));
 
 // Insert num_data elements from data array into vec at index i.
-void genVec_insert_multi(genVec* vec, u64 i, const u8* data, u64 num_data) __attribute__((nonnull(1, 3)));
+void GenVec_insert_multi(GenVec* vec, u64 i, const u8* data, u64 num_data) __attribute__((nonnull(1, 3)));
 
 // Insert (move) num_data elements from data starting at index i.
-void genVec_insert_multi_move(genVec* vec, u64 i, u8** data, u64 num_data) __attribute__((nonnull(1, 3)));
+void GenVec_insert_multi_move(GenVec* vec, u64 i, u8** data, u64 num_data) __attribute__((nonnull(1, 3)));
 
 // Remove element at index i, optionally copy to out, shift elements left.
-void genVec_remove(genVec* vec, u64 i, u8* out) __attribute__((nonnull(1)));
+void GenVec_remove(GenVec* vec, u64 i, u8* out) __attribute__((nonnull(1)));
 
 // Remove elements in range [start, start + len)
-void genVec_remove_range(genVec* vec, u64 start, u64 len) __attribute__((nonnull(1)));
+void GenVec_remove_range(GenVec* vec, u64 start, u64 len) __attribute__((nonnull(1)));
 
 // Get pointer to first element.
-const u8* genVec_front(const genVec* vec) __attribute__((nonnull(1)));
+const u8* GenVec_front(const GenVec* vec) __attribute__((nonnull(1)));
 
 // Get pointer to last element.
-const u8* genVec_back(const genVec* vec) __attribute__((nonnull(1)));
+const u8* GenVec_back(const GenVec* vec) __attribute__((nonnull(1)));
 
 // Search
 // ===========================
 
 // if cmp_fn = NULL, then use memcmp
-u64 genVec_find(const genVec* vec, u8* elm, compare_fn cmp_fn) __attribute__((nonnull(1, 2)));
+u64 GenVec_find(const GenVec* vec, u8* elm, compare_fn cmp_fn) __attribute__((nonnull(1, 2)));
 
-genVec* genVec_subarr(const genVec* vec, u64 start, u64 len) __attribute__((nonnull(1)));
+GenVec* GenVec_subarr(const GenVec* vec, u64 start, u64 len) __attribute__((nonnull(1), warn_unused_result));
 
 
 // Utility
 // ===========================
 
 // Print all elements using provided print function.
-void genVec_print(const genVec* vec, print_fn fn) __attribute__((nonnull(1, 2)));
+void GenVec_print(const GenVec* vec, print_fn fn) __attribute__((nonnull(1, 2)));
 
 // Deep copy src vector into dest.
 // REQUIRES: dest must be uninitialized (or already destroyed/reset) before calling.
 // This does NOT clean up any existing dest->data / elements — it overwrites
 // dest's fields directly. Calling this on an already-populated dest leaks
 // its old buffer and skips del_fn on its old elements.
-void genVec_copy(genVec* dest, const genVec* src) __attribute__((nonnull(1, 2)));
+void GenVec_copy(GenVec* dest, const GenVec* src) __attribute__((nonnull(1, 2)));
 
 // Transfer ownership from src to dest.
 // Note: src must be heap-allocated.
-void genVec_move(genVec* dest, genVec** src) __attribute__((nonnull(1, 2)));
+void GenVec_move(GenVec* dest, GenVec** src) __attribute__((nonnull(1, 2)));
 
 
 // Get number of elements in vector.
-static inline __attribute__((nonnull(1))) u64 genVec_size(const genVec* vec)
+static inline __attribute__((nonnull(1))) u64 GenVec_size(const GenVec* vec)
 {
     return vec->size;
 }
 
 // Get total capacity of vector.
-static inline __attribute__((nonnull(1))) u64 genVec_capacity(const genVec* vec)
+static inline __attribute__((nonnull(1))) u64 GenVec_capacity(const GenVec* vec)
 {
     return vec->capacity;
 }
 
 // Check if vector is empty
-static inline __attribute__((nonnull(1))) b8 genVec_empty(const genVec* vec)
+static inline __attribute__((nonnull(1))) b8 GenVec_empty(const GenVec* vec)
 {
     return vec->size == 0;
 }

@@ -1,4 +1,4 @@
-#include "common.h"
+﻿#include "common.h"
 #include "chain_arena.h"
 #include "gen_vector.h"
 #include <stdlib.h>
@@ -10,7 +10,7 @@
     (((align) == 0) ? (val) : (((val) + ((align) - 1)) & ~((align) - 1)))
 
 // Access the last node (assumes at least one node exists).
-#define LAST_NODE(arena) (*(ArenaNode**)genVec_back(&(arena)->nodes))
+#define LAST_NODE(arena) (*(ArenaNode**)GenVec_back(&(arena)->nodes))
 #define REMAINING(node)  (ARENA_NODE_INLINE_SIZE - (node)->used)
 #define NODE_PTR(node)   ((node)->base + (node)->used)
 
@@ -20,7 +20,7 @@
 static inline ArenaNode* append_node(ChainArena* arena);
 
 
-// genVec operations for ArenaNode*
+// GenVec operations for ArenaNode*
 static void chain_move(u8* dest, u8** src)
 {
     *(ArenaNode**)dest = *(ArenaNode**)src;
@@ -50,16 +50,16 @@ ChainArena* chain_arena_create(void)
     ChainArena* arena = malloc(sizeof(ChainArena));
     CHECK_FATAL(!arena, "arena malloc failed");
 
-    genVec_create_stk(NODES_INIT_SIZE, sizeof(ArenaNode*), &chain_ops_ptr, &arena->nodes);
-    genVec_push_move(&arena->nodes, (u8**)&n);   // initial node
+    GenVec_create_stk(NODES_INIT_SIZE, sizeof(ArenaNode*), &chain_ops_ptr, &arena->nodes);
+    GenVec_push_move(&arena->nodes, (u8**)&n);   // initial node
 
     arena->used = 0;
     return arena;
 }
 
-void chain_arena_release(ChainArena* arena)
+void chain_arena_destroy(ChainArena* arena)
 {
-    genVec_destroy_stk(&arena->nodes);   // frees all nodes via chain_del
+    GenVec_destroy_stk(&arena->nodes);   // frees all nodes via chain_del
     free(arena);
 }
 
@@ -94,13 +94,13 @@ u8* chain_arena_alloc_aligned(ChainArena* arena, u64 size, u32 align)
 void chain_arena_reset(ChainArena* arena)
 {
     // Remove all nodes except the first one
-    u64 total = genVec_size(&arena->nodes);
+    u64 total = GenVec_size(&arena->nodes);
     if (total > 1) {
-        genVec_remove_range(&arena->nodes, 1, total - 1);
+        GenVec_remove_range(&arena->nodes, 1, total - 1);
     }
 
     // Reset the first node
-    (*(ArenaNode**)genVec_get_ptr_mut(&arena->nodes, 0))->used = 0;
+    (*(ArenaNode**)GenVec_get_ptr_mut(&arena->nodes, 0))->used = 0;
 
     arena->used = 0;
 }
@@ -108,9 +108,9 @@ void chain_arena_reset(ChainArena* arena)
 // clear all space but dont free any nodes
 void chain_arena_clear(ChainArena* arena)
 {
-    u64 node_count = genVec_size(&arena->nodes);
+    u64 node_count = GenVec_size(&arena->nodes);
     for (u64 i = 0; i < node_count; i++) {
-        (*(ArenaNode**)genVec_get_ptr_mut(&arena->nodes, i))->used = 0;
+        (*(ArenaNode**)GenVec_get_ptr_mut(&arena->nodes, i))->used = 0;
     }
     arena->used = 0;
 }
@@ -120,7 +120,7 @@ void chain_arena_clear(ChainArena* arena)
 
 ChainArenaScratch chain_arena_scratch_begin(ChainArena* arena)
 {
-    u64 node_idx = genVec_size(&arena->nodes) - 1;
+    u64 node_idx = GenVec_size(&arena->nodes) - 1;
     ArenaNode* last = LAST_NODE(arena);
 
     return (ChainArenaScratch){
@@ -137,13 +137,13 @@ void chain_arena_scratch_end(ChainArenaScratch scratch)
     ChainArena* a = scratch.arena;
 
     // 1. Restore the target node’s fill level
-    (*(ArenaNode**)genVec_get_ptr_mut(&a->nodes, scratch.node_idx))
+    (*(ArenaNode**)GenVec_get_ptr_mut(&a->nodes, scratch.node_idx))
         ->used = scratch.node_used_mark;
 
     // 2. Remove all nodes that were appended after the saved node
-    u64 total = genVec_size(&a->nodes);
+    u64 total = GenVec_size(&a->nodes);
     if (total > scratch.node_idx + 1) {
-        genVec_remove_range(&a->nodes, scratch.node_idx + 1,
+        GenVec_remove_range(&a->nodes, scratch.node_idx + 1,
                             total - (scratch.node_idx + 1));
     }
 
@@ -163,7 +163,7 @@ static inline ArenaNode* append_node(ChainArena* arena)
     n->used = 0;
 
     ArenaNode* ret = n;
-    genVec_push_move(&arena->nodes, (u8**)&n);  // push move consumes n
+    GenVec_push_move(&arena->nodes, (u8**)&n);  // push move consumes n
 
     return ret;
 }

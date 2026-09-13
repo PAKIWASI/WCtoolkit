@@ -145,7 +145,7 @@ static void test_queue_peek(void)
     int x = 42;
     queue_push(q, (u8*)&x);
     WC_ASSERT_EQ_INT(*(int*)queue_peek_ptr(q), 42);
-    /* peek must not dequeue */
+    /* peek must not pop */
     WC_ASSERT_EQ_U64(queue_size(q), 1);
     queue_destroy(q);
 }

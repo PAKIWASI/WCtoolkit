@@ -3,12 +3,12 @@
 
 #include "arena.h"
 #include "gen_vector.h"
-#include "hashmap.h"
+#include "HashMap.h"
 
 
 typedef enum {
     WCJSON_UNDEFINED  = 0,      // json null value?
-    WCJSON_OBJECT     = 1 << 0, // hashmap
+    WCJSON_OBJECT     = 1 << 0, // HashMap
     WCJSON_ARRAY      = 1 << 1, // genvec
     WCJSON_STRING     = 1 << 2, // String
     WCJSON_PRIMITIVES = 1 << 3, // javascript number
@@ -18,8 +18,8 @@ typedef enum {
 
 typedef struct {
     union {
-        hashmap* map;
-        genVec*  vec;
+        HashMap* map;
+        GenVec*  vec;
         String*  str;
         double   num;
         bool     flg;

@@ -1,4 +1,4 @@
-#ifndef CHAIN_ARENA_H
+﻿#ifndef CHAIN_ARENA_H
 #define CHAIN_ARENA_H
 
 #include "common.h"
@@ -20,7 +20,7 @@ typedef struct ArenaNode {
 
 // NOT COPYABLE: backs a bump allocator; external pointers into it would be invalidated.
 typedef struct {
-    genVec nodes; // vector of ArenaNode*
+    GenVec nodes; // vector of ArenaNode*
     u64    used;  // total bytes allocated (sum of all node->used).
                   // Used for scratch save/restore.
 } ChainArena;
@@ -35,14 +35,14 @@ typedef struct {
 // TODO: any node release strategies
 
 
-ChainArena* chain_arena_create(void);
+ChainArena* chain_arena_create(void) __attribute__((warn_unused_result));
 
-void chain_arena_release(ChainArena* arena) __attribute__((nonnull(1)));
+void chain_arena_destroy(ChainArena* arena) __attribute__((nonnull(1)));
 
 
-u8* chain_arena_alloc_aligned(ChainArena* arena, u64 size, u32 align) __attribute__((nonnull(1)));
+u8* chain_arena_alloc_aligned(ChainArena* arena, u64 size, u32 align) __attribute__((nonnull(1), alloc_size(2)));
 
-static inline __attribute__((nonnull(1))) u8* chain_arena_alloc(ChainArena* arena, u64 size)
+static inline __attribute__((nonnull(1), alloc_size(2))) u8* chain_arena_alloc(ChainArena* arena, u64 size)
 {
     return chain_arena_alloc_aligned(arena, size, ARENA_DEFAULT_ALIGNMENT);
 }

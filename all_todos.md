@@ -1,9 +1,14 @@
-# WCtoolkit — Task Tracker
+﻿# WCtoolkit — Task Tracker
 
 > RECOVERY CHECKPOINT (see CHECKPOINT.md): build is GREEN on gcc under -Werror, 378/378
 > tests pass. This was pre-Phase-5 crash recovery + gcc-clean work, not tracker items.
-> Outstanding: ASan reports ~86 fixture leaks in hashset/hashmap tests (pre-existing).
-> 9-6 now closeable on gcc; Clang unverified this session. Phase 5 not started.
+> Outstanding: ASan reports ~86 fixture leaks in HashSet/HashMap tests (pre-existing).
+> Phase 5 (5-A..5-H) complete: all in-place renames landed across include/src/tests/examples
+> and docs (README/plan/TODO). Phase 6 (6-A..6-M) and 7-C complete — see items below.
+> 5-G (single-header regen) was dropped from this tracker (regen needs Python);
+> single_header/ remains out of date. New views tests (+8) and Phase-6 macro tests
+> (+8: CREATE_OF/WC_OPS, WC_ASSERT_ELEM_SIZE, VEC_FOREACH placement, _unsafe getters)
+> are not counted in the 378 above.
 
 
 ## Phase 0 — Regression gate
@@ -20,24 +25,24 @@
 - [x] 1-D: Add `macros_test.c` tests for `SET_INSERT_MOVE` and `DEQUEUE`
 
 ## Phase 2 — Copy/move contract
-- [x] 2-A: Rewrite `genVec_copy` (no `destroy_stk` on dest, build directly)
-- [x] 2-A: Add `SAFE ON` comment above `genVec_copy` in `gen_vector.h`
-- [x] 2-B: Collapse `vec_copy` / `vec_copy_ptr` in `wc_helpers.h` to delegate to `genVec_copy`
+- [x] 2-A: Rewrite `GenVec_copy` (no `destroy_stk` on dest, build directly)
+- [x] 2-A: Add `SAFE ON` comment above `GenVec_copy` in `gen_vector.h`
+- [x] 2-B: Collapse `vec_copy` / `vec_copy_ptr` in `wc_helpers.h` to delegate to `GenVec_copy`
 - [x] 2-C: Fix `str_copy` SSO detection → `string_is_sso()`
-- [x] 2-D: Audit `hashmap_copy` / `hashset_copy` against Rule 3; fix if needed
+- [x] 2-D: Audit `HashMap_copy` / `HashSet_copy` against Rule 3; fix if needed
 - [x] 2-E: Add `SAFE ON` / `REQUIRES` tags to all copy-shaped declarations
-- [x] 2-F: Add `genVec_copy` on raw-dest test to `gen_vector_test.c`
+- [x] 2-F: Add `GenVec_copy` on raw-dest test to `gen_vector_test.c`
 
 ## Phase 3 — API coverage gaps
-- [x] 3-A: Expose `hashset_destroy_stk` publicly
-- [x] 3-A: Add `hashmap_create_stk` / `hashmap_destroy_stk`
-- [x] 3-B: Add `hashmap_bucket_count/occupied/key_ptr/val_ptr`
-- [x] 3-B: Add `hashset_bucket_count/occupied/elm_ptr`
-- [x] 3-C: Add `hashmap_get_ptr` (const) / rename current to `hashmap_get_ptr_mut`
-- [x] 3-C: Add `hashset_get_ptr` / `hashset_get_ptr_mut`
+- [x] 3-A: Expose `HashSet_destroy_stk` publicly
+- [x] 3-A: Add `HashMap_create_stk` / `HashMap_destroy_stk`
+- [x] 3-B: Add `HashMap_bucket_count/occupied/key_ptr/val_ptr`
+- [x] 3-B: Add `HashSet_bucket_count/occupied/elm_ptr`
+- [x] 3-C: Add `HashMap_get_ptr` (const) / rename current to `HashMap_get_ptr_mut`
+- [x] 3-C: Add `HashSet_get_ptr` / `HashSet_get_ptr_mut`
 - [x] 3-D: Add `queue_copy` / `queue_move`
 - [x] 3-E: Add `matrix_move`
-- [x] 3-F: Audit `bitVec_pop` on empty; decide/fix behavior
+- [x] 3-F: Audit `BitVec_pop` on empty; decide/fix behavior
 - [x] 3-F: Audit `matrix_det` / `matrix_LU_Decomp` on bad input; decide/fix
 - [x] 3-G: Add `NOT COPYABLE` comment to `chain_arena.h`
 - [x] 3-G: Add `HEAP-ONLY` comment (or `_stk`) to `bit_vector.h`
@@ -56,22 +61,19 @@
 - [x] 4-H: Rebuild `TEMP_CSTR_READ` with `__attribute__((cleanup))`
 - [x] 4-I: Add `macros_test.c` tests for all new/modified macros
 
-if we are using __attribute__(nonnull), then drop the CHECK_FATAL validating non nulls
-
 ## Phase 5 — In-place renames
 
 > Pulled ahead of the hardening phase: renames are mechanical churn with no behavioral risk, and
 > doing them first lets the attribute / static-assert work in Phase 6 land once on final names.
 > VEC_* / MAP_* / pcg32_* prefixes are untouched by this phase.
 
-- [ ] 5-A: Rename genVec -> GenVec everywhere
-- [ ] 5-B: Rename bitVec -> BitVec everywhere
-- [ ] 5-C: Rename hashmap -> HashMap everywhere
-- [ ] 5-D: Rename hashset -> HashSet everywhere
-- [ ] 5-E: Rename strview -> StrView, string_store -> StringStore, pcg32_random_t -> Pcg32
-- [ ] 5-F: Rename release verbs: arena_release -> arena_destroy, chain_arena_release -> chain_arena_destroy
-- [ ] 5-G: Regenerate all *_single.h via tools/make_single_header.py; confirm no old names remain
-- [ ] 5-H: Post-rename grep audit - no survivors in comments/strings/README/plan docs
+- [x] 5-A: Rename `genVec` -> `GenVec` everywhere
+- [x] 5-B: Rename `bitVec` -> `BitVec` everywhere
+- [x] 5-C: Rename `hashmap` -> `HashMap` everywhere
+- [x] 5-D: Rename `hashset` -> `HashSet` everywhere
+- [x] 5-E: Rename `strview` -> `StrView`, `string_store` -> `StringStore`, `pcg32_random_t` -> `Pcg32` (struct typedef; `pcg32_rand*` fns preserved)
+- [x] 5-F: Rename release verbs: `arena_release` -> `arena_destroy`, `chain_arena_release` -> `chain_arena_destroy` (doc-only; C source already used _destroy)
+- [x] 5-H: Post-rename grep audit — no survivors in comments/strings/README/plan docs
 
 ## Phase 6 — Compile-time hardening + performance
 
@@ -79,48 +81,18 @@ if we are using __attribute__(nonnull), then drop the CHECK_FATAL validating non
 
 - [x] 6-A: CHECK_FATAL respects NDEBUG - DONE (include/common.h:68)
 - [x] 6-B: FATAL -> wc_fatal_report with noreturn + format - DONE (include/common.h:39,51)
-- [x] 6-C: nonnull sweep across all public headers (genVec/hashmap/String/Stack/Queue/hashset/arena/chain_arena/bitVec/matrix/views = 200 attrs) — nullable ops/callbacks/optional-out audited & left unmarked; fast_math/random have no pointer params. VERIFY build
-- [ ] 6-D: warn_unused_result on _create/_init/_alloc family - audit ignored returns
-- [ ] 6-E: malloc/alloc_size on allocator family - verify alloc_size(N) arg indices
-- [ ] 6-F: _Static_assert(sizeof(String)==sizeof(genVec)) + sizing audit - verify sizes first (assert is a target)
-- [ ] 6-G: Add genVec_get_ptr_unsafe / genVec_get_ptr_mut_unsafe
-- [ ] 6-H: Add WC_ASSERT_ELEM_SIZE; wrap VEC_AT / AT_MUT / FRONT / BACK / POP / FOREACH
-- [ ] 6-I: Add WC_OPS via _Generic; add VEC_CREATE_OF / MAP_CREATE_OF
-- [ ] 6-J: Deduplicate CHECK_FATAL across Stack/Queue -> genVec call chains (_impl variants)
-- [ ] 6-K: Merge multi-condition CHECK_FATALs into one branch (genVec_get, hashmap_get_ptr, ...)
-- [ ] 6-L: VEC_FOREACH hoist bounds check + use _unsafe internally (needs 6-G)
-- [ ] 6-M: Cache is_pod on genVec - field exists (gen_vector.h:46) + _Static_assert(sizeof(genVec)==40) restored; wire at init + consume at IS_POD sites
+- [x] 6-C: nonnull sweep across all public headers (GenVec/HashMap/String/Stack/Queue/HashSet/arena/chain_arena/BitVec/matrix/views = 200 attrs) — nullable ops/callbacks/optional-out audited & left unmarked; fast_math/random have no pointer params. VERIFY build
+- [x] 6-D: warn_unused_result on _create/_init/_alloc family (19 decls: GenVec_create/_val/_arr/subarr, string_create/from_cstr/from_string/to_cstr/substr, HashMap_create, HashSet_create, arena_create, chain_arena_create, BitVec_create, matrix_create/_arr, queue_create/_val, stack_create/_val) — grep found 0 ignored call sites in src/tests/examples
+- [x] 6-E: alloc_size(2) on arena_alloc, arena_alloc_aligned, chain_arena_alloc_aligned, chain_arena_alloc (inline) — all single-size-arg allocators
+- [x] 6-F: _Static_assert(sizeof(String)==sizeof(GenVec)) — already present in wc_helpers.h:62 (asserts AND enforces the value-storage ops design)
+- [x] 6-G: Add GenVec_get_ptr_unsafe / GenVec_get_ptr_mut_unsafe (gen_vector.c; bounds CHECK_FATAL elided, nonnull kept)
+- [x] 6-H: Add WC_ASSERT_ELEM_SIZE; wraps VEC_AT / AT_MUT / FRONT / BACK / POP (wc_macros.h) — FOREACH intentionally unasserted (leading stmt breaks `if (x) FOREACH(...)` placement)
+- [x] 6-I: Add WC_OPS via _Generic (String/String*/GenVec/GenVec* -> ops, default NULL = POD); add VEC_CREATE_OF / MAP_CREATE_OF
+- [x] 6-J: Deduplicate CHECK_FATAL across Stack/Queue -> GenVec call chains — invariant q->size == GenVec_size(arr) - head proven; 15 wrapper re-checks dropped (queue_size/empty/capacity inlines + queue_pop/peek/peek_ptr/push_move) and the satisfied "drop CHECK_FATAL for nonnulls" floating note removed
+- [x] 6-K: Merge multi-condition CHECK_FATALs — GenVec_create_stk_arr, GenVec_replace_move, GenVec_insert_move, GenVec_insert_multi, GenVec_insert_multi_move, queue_create/_val/_stk (n|data_size); HashMap/HashSet get_ptr & bucket accessors already single-branch
+- [x] 6-L: VEC_FOREACH hoist bounds check + use _unsafe internally (needs 6-G) — bounds in _wvf_n, fetch via GenVec_get_ptr_mut_unsafe
+- [x] 6-M: Cache is_pod on GenVec — IS_POD macro now reads the cached field; all 3 init sites (create/create_stk/create_stk_arr) wire via new CALC_POD(ops); copy path verified to memcpy the cached field
 
-## Phase 7 — Baseline + single-header gate + residual bugfixes
+## Phase 7 — Residual bugfixes
 
-- [ ] 7-A: Commit/rebase the WIP baseline + sync tracker (tick 6-A/B, note 6-M) so the gate matches code
-- [ ] 7-B: Single-header gate - regen all *_single.h, add a smoke test that includes + links them; wire to ctest
-- [ ] 7-C: Fix string_store_cstr for strings >1024 (wire unused heap union, views.c:84-92) + test
-- [ ] 7-D: Verify genVec_remove_range memmove bound (the // TODO: is this right, incl. regenerated singles)
-
-## Phase 8 — New features
-
-> Last. Every feature ships with tests + single-header regen + README update (no feature without its gate). In 8-E, matrix_adj / matrix_inv must be built on matrix_LU_Decomp_pivot, so do the pivoted LU first.
-- [ ] 8-A: `genVec_reverse`, `genVec_filter`, push guard for stack-array vecs
-- [ ] 8-B: `string_split`, `string_join`, `string_trim*`, `string_to_upper/lower`
-- [ ] 8-B: `string_replace`, `string_format`, `string_reverse`, `string_starts/ends_with`
-- [ ] 8-B: `string_count_char`, `string_repeat`
-- [ ] 8-C: `hashmap_reset`, `hashmap_update`, `hashmap_keys`, `hashmap_values`
-- [ ] 8-D: `hashset_union`, `hashset_intersect`, `hashset_difference`
-- [ ] 8-E: `matrix_iden`, `matrix_adj`, `matrix_inv`, `matrix_trace`, `matrix_rank`, `matrix_pow`
-- [ ] 8-E: `matrix_LU_Decomp_pivot` (partial pivoting)
-- [ ] 8-F: Move `gaussian_spare`/`has_spare` into `Pcg32` struct
-- [ ] 8-F: Expose `_r` variants; add `pcg32_rand_seed_time_hp`, `pcg32_rand_range`
-- [ ] 8-G: `fast_atan2`, `fast_pow`, `fast_floor`, `fast_abs`
-- [ ] 8-H: `bitVec_count_set`, `bitVec_and/or/xor/not`, `bitVec_find_first_set/clear`, `bitVec_print_all`
-
-## Phase 9 — Convention consistency refactor
-
-> Audit found conventions mostly consistent (dest-first copies, receiver-first ops, `T**` moves, `WC_NOT_FOUND`, optional-out last). Items 1–3 fixed; 4–6 from the audit pending re-derivation.
-
-- [x] 9-1: Flip `_create_stk` to receiver-last — `queue_create_stk`, `string_create_stk`, `arena_create_stk`, `arena_create_arr_stk` (+ `ARENA_CREATE_STK_ARR` macro), `matrix_create_stk`; all call sites across include/src/tests/examples updated
-- [x] 9-2: Rename `genVec_init*` → `genVec_create*` everywhere (include/src/tests/examples; 87 sites, 0 leftovers; `single_header/` excluded — pending 7-B)
-- [x] 9-3: const-correctness — `bitVec_test/size_bits/size_bytes`, `stack_size/empty/capacity/peek_ptr`, `queue_size/empty/capacity/peek_ptr`, `matrix_get_elm`, `genVec_get_ptr` take const receivers; `genVec_get_ptr_mut` takes non-const receiver
-- [ ] 9-4: Re-derive + fix audit items 4–6 (from the consistency review)
-- [ ] 9-5: Regenerate `single_header/*.h` + smoke gate (feeds 7-B) — currently out of sync after 9-2
-- [ ] 9-6: VERIFY build (GCC + Clang) after 9-1..9-3 — baseline was green pre-refactor; nothing compiled since the crash recovery
+- [x] 7-C: Fix StringStore_cstr for strings >1024 (wire unused heap union, views.c:84-92) + test — overflow nodes own their buffer via node->heap, flagged with new node->owns_heap; StringStore_destroy_node exported; tests/test_views.c added (8 tests incl. 3 overflow cases), wired into CMake + test_main

@@ -1,4 +1,4 @@
-#include "common.h"
+﻿#include "common.h"
 #include "wc_test.h"
 #include "arena.h"
 #include "wc_errno.h"
@@ -13,14 +13,14 @@ static void test_create_default_size(void)
     WC_ASSERT_NOT_NULL(a->base);
     WC_ASSERT_EQ_U64(a->idx, 0);
     WC_ASSERT_EQ_U64(a->size, ARENA_DEFAULT_SIZE);
-    arena_release(a);
+    arena_destroy(a);
 }
 
 static void test_create_custom_size(void)
 {
     Arena* a = arena_create(nKB(8));
     WC_ASSERT_EQ_U64(a->size, nKB(8));
-    arena_release(a);
+    arena_destroy(a);
 }
 
 static void test_alloc_returns_valid_ptr(void)
@@ -31,7 +31,7 @@ static void test_alloc_returns_valid_ptr(void)
     /* must be inside the arena's region */
     WC_ASSERT_TRUE(ptr >= a->base);
     WC_ASSERT_TRUE(ptr < a->base + a->size);
-    arena_release(a);
+    arena_destroy(a);
 }
 
 static void test_alloc_advances_idx(void)
@@ -40,7 +40,7 @@ static void test_alloc_advances_idx(void)
     arena_alloc(a, 16);
     /* idx must have advanced by at least 16 (may be more due to alignment) */
     WC_ASSERT_TRUE(a->idx >= 16);
-    arena_release(a);
+    arena_destroy(a);
 }
 
 static void test_alloc_sequential_no_overlap(void)
@@ -55,7 +55,7 @@ static void test_alloc_sequential_no_overlap(void)
     /* writing to p2 must not corrupt p1 */
     WC_ASSERT_EQ_INT(*p1, 111);
     WC_ASSERT_EQ_INT(*p2, 222);
-    arena_release(a);
+    arena_destroy(a);
 }
 
 
@@ -68,7 +68,7 @@ static void test_alloc_aligned(void)
     WC_ASSERT_NOT_NULL(ptr);
     /* must be aligned to sizeof(double) = 8 */
     WC_ASSERT_EQ_U64((u64)ptr % sizeof(double), 0);
-    arena_release(a);
+    arena_destroy(a);
 }
 
 static void test_default_alloc_8byte_aligned(void)
@@ -79,7 +79,7 @@ static void test_default_alloc_8byte_aligned(void)
     u8* ptr = arena_alloc(a, 8);
     WC_ASSERT_NOT_NULL(ptr);
     WC_ASSERT_EQ_U64((u64)ptr % ARENA_DEFAULT_ALIGNMENT, 0);
-    arena_release(a);
+    arena_destroy(a);
 }
 
 
@@ -94,7 +94,7 @@ static void test_alloc_full_returns_null(void)
     u8* ptr   = arena_alloc(a, 1);
     WC_ASSERT_NULL(ptr);
     WC_ASSERT_EQ_INT(wc_errno, WC_ERR_FULL);
-    arena_release(a);
+    arena_destroy(a);
 }
 
 
@@ -109,7 +109,7 @@ static void test_scratch_begin_end(void)
     WC_ASSERT_TRUE(a->idx > before);
     arena_scratch_end(sc);
     WC_ASSERT_EQ_U64(a->idx, before);
-    arena_release(a);
+    arena_destroy(a);
 }
 
 static void test_scratch_macro(void)
@@ -123,7 +123,7 @@ static void test_scratch_macro(void)
     }
 
     WC_ASSERT_EQ_U64(a->idx, before);
-    arena_release(a);
+    arena_destroy(a);
 }
 
 static void test_scratch_outer_alloc_survives(void)
@@ -141,7 +141,7 @@ static void test_scratch_outer_alloc_survives(void)
 
     /* permanent allocation must still hold its value */
     WC_ASSERT_EQ_INT(*permanent, 77);
-    arena_release(a);
+    arena_destroy(a);
 }
 
 
@@ -172,7 +172,7 @@ static void test_used_remaining(void)
     WC_ASSERT_TRUE(arena_used(a) >= 128);
     WC_ASSERT_TRUE(arena_remaining(a) <= nKB(1) - 128);
 
-    arena_release(a);
+    arena_destroy(a);
 }
 
 static void test_alloc_full_sets_errno(void)
@@ -185,7 +185,7 @@ static void test_alloc_full_sets_errno(void)
     u8* p = arena_alloc(a, 1);
     WC_ASSERT_NULL(p);
     WC_ASSERT_EQ_INT(wc_errno, WC_ERR_FULL);
-    arena_release(a);
+    arena_destroy(a);
 }
 
 

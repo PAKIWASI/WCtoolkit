@@ -9,15 +9,15 @@
 // Helpers 
 
 // Simple int vec — no copy/move/del needed
-static genVec* int_vec(u64 cap)
+static GenVec* int_vec(u64 cap)
 {
-    return genVec_create(cap, sizeof(int), NULL);
+    return GenVec_create(cap, sizeof(int), NULL);
 }
 
-static void push_ints(genVec* v, int count)
+static void push_ints(GenVec* v, int count)
 {
     for (int i = 0; i < count; i++) {
-        genVec_push(v, (u8*)&i);
+        GenVec_push(v, (u8*)&i);
     }
 }
 
@@ -26,50 +26,50 @@ static void push_ints(genVec* v, int count)
 
 static void test_init_zero_cap(void)
 {
-    genVec* v = genVec_create(0, sizeof(int), NULL);
+    GenVec* v = GenVec_create(0, sizeof(int), NULL);
     WC_ASSERT_NOT_NULL(v);
-    WC_ASSERT_EQ_U64(genVec_size(v), 0);
-    WC_ASSERT_EQ_U64(genVec_capacity(v), 0);
-    WC_ASSERT_TRUE(genVec_empty(v));
-    genVec_destroy(v);
+    WC_ASSERT_EQ_U64(GenVec_size(v), 0);
+    WC_ASSERT_EQ_U64(GenVec_capacity(v), 0);
+    WC_ASSERT_TRUE(GenVec_empty(v));
+    GenVec_destroy(v);
 }
 
 static void test_init_with_cap(void)
 {
-    genVec* v = int_vec(8);
-    WC_ASSERT_EQ_U64(genVec_size(v), 0);
-    WC_ASSERT_EQ_U64(genVec_capacity(v), 8);
-    genVec_destroy(v);
+    GenVec* v = int_vec(8);
+    WC_ASSERT_EQ_U64(GenVec_size(v), 0);
+    WC_ASSERT_EQ_U64(GenVec_capacity(v), 8);
+    GenVec_destroy(v);
 }
 
 static void test_init_val(void)
 {
     int     val = 42;
-    genVec* v   = genVec_create_val(5, (u8*)&val, sizeof(int), NULL);
-    WC_ASSERT_EQ_U64(genVec_size(v), 5);
+    GenVec* v   = GenVec_create_val(5, (u8*)&val, sizeof(int), NULL);
+    WC_ASSERT_EQ_U64(GenVec_size(v), 5);
     for (u64 i = 0; i < 5; i++) {
-        WC_ASSERT_EQ_INT(*(int*)genVec_get_ptr(v, i), 42);
+        WC_ASSERT_EQ_INT(*(int*)GenVec_get_ptr(v, i), 42);
     }
-    genVec_destroy(v);
+    GenVec_destroy(v);
 }
 
 static void test_init_stk(void)
 {
-    genVec v;
-    genVec_create_stk(4, sizeof(int), NULL, &v);
-    WC_ASSERT_EQ_U64(genVec_size(&v), 0);
-    WC_ASSERT_EQ_U64(genVec_capacity(&v), 4);
-    genVec_destroy_stk(&v);
+    GenVec v;
+    GenVec_create_stk(4, sizeof(int), NULL, &v);
+    WC_ASSERT_EQ_U64(GenVec_size(&v), 0);
+    WC_ASSERT_EQ_U64(GenVec_capacity(&v), 4);
+    GenVec_destroy_stk(&v);
 }
 
 static void test_init_arr(void)
 {
-    genVec* v = VEC_FROM_ARR(int, 4, ((int[4]){1, 2, 3, 4}));
+    GenVec* v = VEC_FROM_ARR(int, 4, ((int[4]){1, 2, 3, 4}));
 
-    WC_ASSERT_EQ_U64(genVec_size(v), 4);
+    WC_ASSERT_EQ_U64(GenVec_size(v), 4);
     WC_ASSERT_EQ_U64(v->data_size, sizeof(int));
 
-    genVec_destroy(v);
+    GenVec_destroy(v);
 }
 
 
@@ -77,42 +77,42 @@ static void test_init_arr(void)
 
 static void test_push_grows_size(void)
 {
-    genVec* v = int_vec(4);
+    GenVec* v = int_vec(4);
     push_ints(v, 3);
-    WC_ASSERT_EQ_U64(genVec_size(v), 3);
-    genVec_destroy(v);
+    WC_ASSERT_EQ_U64(GenVec_size(v), 3);
+    GenVec_destroy(v);
 }
 
 static void test_push_triggers_growth(void)
 {
-    genVec* v = int_vec(2);
+    GenVec* v = int_vec(2);
     push_ints(v, 10); /* force multiple reallocations */
-    WC_ASSERT_EQ_U64(genVec_size(v), 10);
+    WC_ASSERT_EQ_U64(GenVec_size(v), 10);
     /* values must survive realloc */
     for (int i = 0; i < 10; i++) {
-        WC_ASSERT_EQ_INT(*(int*)genVec_get_ptr(v, (u64)i), i);
+        WC_ASSERT_EQ_INT(*(int*)GenVec_get_ptr(v, (u64)i), i);
     }
-    genVec_destroy(v);
+    GenVec_destroy(v);
 }
 
 static void test_pop_reduces_size(void)
 {
-    genVec* v = int_vec(4);
+    GenVec* v = int_vec(4);
     push_ints(v, 3);
-    genVec_pop(v, NULL);
-    WC_ASSERT_EQ_U64(genVec_size(v), 2);
-    genVec_destroy(v);
+    GenVec_pop(v, NULL);
+    WC_ASSERT_EQ_U64(GenVec_size(v), 2);
+    GenVec_destroy(v);
 }
 
 static void test_pop_copies_value(void)
 {
-    genVec* v   = int_vec(4);
+    GenVec* v   = int_vec(4);
     int     val = 99;
-    genVec_push(v, (u8*)&val);
+    GenVec_push(v, (u8*)&val);
     int out = 0;
-    genVec_pop(v, (u8*)&out);
+    GenVec_pop(v, (u8*)&out);
     WC_ASSERT_EQ_INT(out, 99);
-    genVec_destroy(v);
+    GenVec_destroy(v);
 }
 
 
@@ -120,32 +120,32 @@ static void test_pop_copies_value(void)
 
 static void test_get_ptr(void)
 {
-    genVec* v = int_vec(4);
+    GenVec* v = int_vec(4);
     push_ints(v, 4);
     for (int i = 0; i < 4; i++) {
-        WC_ASSERT_EQ_INT(*(int*)genVec_get_ptr(v, (u64)i), i);
+        WC_ASSERT_EQ_INT(*(int*)GenVec_get_ptr(v, (u64)i), i);
     }
-    genVec_destroy(v);
+    GenVec_destroy(v);
 }
 
 static void test_get_copies(void)
 {
-    genVec* v   = int_vec(4);
+    GenVec* v   = int_vec(4);
     int     val = 7;
-    genVec_push(v, (u8*)&val);
+    GenVec_push(v, (u8*)&val);
     int out = 0;
-    genVec_get(v, 0, (u8*)&out);
+    GenVec_get(v, 0, (u8*)&out);
     WC_ASSERT_EQ_INT(out, 7);
-    genVec_destroy(v);
+    GenVec_destroy(v);
 }
 
 static void test_front_back(void)
 {
-    genVec* v = int_vec(4);
+    GenVec* v = int_vec(4);
     push_ints(v, 4); /* 0 1 2 3 */
-    WC_ASSERT_EQ_INT(*(int*)genVec_front(v), 0);
-    WC_ASSERT_EQ_INT(*(int*)genVec_back(v), 3);
-    genVec_destroy(v);
+    WC_ASSERT_EQ_INT(*(int*)GenVec_front(v), 0);
+    WC_ASSERT_EQ_INT(*(int*)GenVec_back(v), 3);
+    GenVec_destroy(v);
 }
 
 
@@ -153,58 +153,58 @@ static void test_front_back(void)
 
 static void test_insert_front(void)
 {
-    genVec* v = int_vec(4);
+    GenVec* v = int_vec(4);
     push_ints(v, 3); /* 0 1 2 */
     int x = 99;
-    genVec_insert(v, 0, (u8*)&x);
-    WC_ASSERT_EQ_U64(genVec_size(v), 4);
-    WC_ASSERT_EQ_INT(*(int*)genVec_get_ptr(v, 0), 99);
-    WC_ASSERT_EQ_INT(*(int*)genVec_get_ptr(v, 1), 0);
-    genVec_destroy(v);
+    GenVec_insert(v, 0, (u8*)&x);
+    WC_ASSERT_EQ_U64(GenVec_size(v), 4);
+    WC_ASSERT_EQ_INT(*(int*)GenVec_get_ptr(v, 0), 99);
+    WC_ASSERT_EQ_INT(*(int*)GenVec_get_ptr(v, 1), 0);
+    GenVec_destroy(v);
 }
 
 static void test_insert_mid(void)
 {
-    genVec* v = int_vec(4);
+    GenVec* v = int_vec(4);
     push_ints(v, 4); /* 0 1 2 3 */
     int x = 55;
-    genVec_insert(v, 2, (u8*)&x);
-    WC_ASSERT_EQ_INT(*(int*)genVec_get_ptr(v, 2), 55);
-    WC_ASSERT_EQ_INT(*(int*)genVec_get_ptr(v, 3), 2);
-    genVec_destroy(v);
+    GenVec_insert(v, 2, (u8*)&x);
+    WC_ASSERT_EQ_INT(*(int*)GenVec_get_ptr(v, 2), 55);
+    WC_ASSERT_EQ_INT(*(int*)GenVec_get_ptr(v, 3), 2);
+    GenVec_destroy(v);
 }
 
 static void test_remove_front(void)
 {
-    genVec* v = int_vec(4);
+    GenVec* v = int_vec(4);
     push_ints(v, 3); /* 0 1 2 */
-    genVec_remove(v, 0, NULL);
-    WC_ASSERT_EQ_U64(genVec_size(v), 2);
-    WC_ASSERT_EQ_INT(*(int*)genVec_get_ptr(v, 0), 1);
-    genVec_destroy(v);
+    GenVec_remove(v, 0, NULL);
+    WC_ASSERT_EQ_U64(GenVec_size(v), 2);
+    WC_ASSERT_EQ_INT(*(int*)GenVec_get_ptr(v, 0), 1);
+    GenVec_destroy(v);
 }
 
 static void test_remove_mid(void)
 {
-    genVec* v = int_vec(4);
+    GenVec* v = int_vec(4);
     push_ints(v, 4); /* 0 1 2 3 */
-    genVec_remove(v, 1, NULL);
-    WC_ASSERT_EQ_INT(*(int*)genVec_get_ptr(v, 0), 0);
-    WC_ASSERT_EQ_INT(*(int*)genVec_get_ptr(v, 1), 2);
-    WC_ASSERT_EQ_INT(*(int*)genVec_get_ptr(v, 2), 3);
-    genVec_destroy(v);
+    GenVec_remove(v, 1, NULL);
+    WC_ASSERT_EQ_INT(*(int*)GenVec_get_ptr(v, 0), 0);
+    WC_ASSERT_EQ_INT(*(int*)GenVec_get_ptr(v, 1), 2);
+    WC_ASSERT_EQ_INT(*(int*)GenVec_get_ptr(v, 2), 3);
+    GenVec_destroy(v);
 }
 
 static void test_remove_range(void)
 {
-    genVec* v = int_vec(8);
+    GenVec* v = int_vec(8);
     push_ints(v, 6);              /* 0 1 2 3 4 5 */
-    genVec_remove_range(v, 1, 3); /* remove 1,2,3 */
-    WC_ASSERT_EQ_U64(genVec_size(v), 3);
-    WC_ASSERT_EQ_INT(*(int*)genVec_get_ptr(v, 0), 0);
-    WC_ASSERT_EQ_INT(*(int*)genVec_get_ptr(v, 1), 4);
-    WC_ASSERT_EQ_INT(*(int*)genVec_get_ptr(v, 2), 5);
-    genVec_destroy(v);
+    GenVec_remove_range(v, 1, 3); /* remove 1,2,3 */
+    WC_ASSERT_EQ_U64(GenVec_size(v), 3);
+    WC_ASSERT_EQ_INT(*(int*)GenVec_get_ptr(v, 0), 0);
+    WC_ASSERT_EQ_INT(*(int*)GenVec_get_ptr(v, 1), 4);
+    WC_ASSERT_EQ_INT(*(int*)GenVec_get_ptr(v, 2), 5);
+    GenVec_destroy(v);
 }
 
 
@@ -212,14 +212,14 @@ static void test_remove_range(void)
 
 static void test_replace(void)
 {
-    genVec* v = int_vec(4);
+    GenVec* v = int_vec(4);
     push_ints(v, 3); /* 0 1 2 */
     int x = 77;
-    genVec_replace(v, 1, (u8*)&x);
-    WC_ASSERT_EQ_INT(*(int*)genVec_get_ptr(v, 0), 0);
-    WC_ASSERT_EQ_INT(*(int*)genVec_get_ptr(v, 1), 77);
-    WC_ASSERT_EQ_INT(*(int*)genVec_get_ptr(v, 2), 2);
-    genVec_destroy(v);
+    GenVec_replace(v, 1, (u8*)&x);
+    WC_ASSERT_EQ_INT(*(int*)GenVec_get_ptr(v, 0), 0);
+    WC_ASSERT_EQ_INT(*(int*)GenVec_get_ptr(v, 1), 77);
+    WC_ASSERT_EQ_INT(*(int*)GenVec_get_ptr(v, 2), 2);
+    GenVec_destroy(v);
 }
 
 
@@ -227,31 +227,31 @@ static void test_replace(void)
 
 static void test_reserve_grows_capacity(void)
 {
-    genVec* v = int_vec(4);
-    genVec_reserve(v, 100);
-    WC_ASSERT_TRUE(genVec_capacity(v) >= 100);
-    WC_ASSERT_EQ_U64(genVec_size(v), 0); /* size unchanged */
-    genVec_destroy(v);
+    GenVec* v = int_vec(4);
+    GenVec_reserve(v, 100);
+    WC_ASSERT_TRUE(GenVec_capacity(v) >= 100);
+    WC_ASSERT_EQ_U64(GenVec_size(v), 0); /* size unchanged */
+    GenVec_destroy(v);
 }
 
 static void test_reserve_does_not_shrink(void)
 {
-    genVec* v = int_vec(100);
-    genVec_reserve(v, 4);
-    WC_ASSERT_TRUE(genVec_capacity(v) >= 100);
-    genVec_destroy(v);
+    GenVec* v = int_vec(100);
+    GenVec_reserve(v, 4);
+    WC_ASSERT_TRUE(GenVec_capacity(v) >= 100);
+    GenVec_destroy(v);
 }
 
 static void test_reserve_val(void)
 {
-    genVec* v   = int_vec(0);
+    GenVec* v   = int_vec(0);
     int     val = 5;
-    genVec_reserve_val(v, 10, (u8*)&val);
-    WC_ASSERT_EQ_U64(genVec_size(v), 10);
+    GenVec_reserve_val(v, 10, (u8*)&val);
+    WC_ASSERT_EQ_U64(GenVec_size(v), 10);
     for (u64 i = 0; i < 10; i++) {
-        WC_ASSERT_EQ_INT(*(int*)genVec_get_ptr(v, i), 5);
+        WC_ASSERT_EQ_INT(*(int*)GenVec_get_ptr(v, i), 5);
     }
-    genVec_destroy(v);
+    GenVec_destroy(v);
 }
 
 
@@ -259,24 +259,24 @@ static void test_reserve_val(void)
 
 static void test_clear_keeps_capacity(void)
 {
-    genVec* v = int_vec(8);
+    GenVec* v = int_vec(8);
     push_ints(v, 5);
-    u64 cap_before = genVec_capacity(v);
-    genVec_clear(v);
-    WC_ASSERT_EQ_U64(genVec_size(v), 0);
-    WC_ASSERT_EQ_U64(genVec_capacity(v), cap_before);
-    genVec_destroy(v);
+    u64 cap_before = GenVec_capacity(v);
+    GenVec_clear(v);
+    WC_ASSERT_EQ_U64(GenVec_size(v), 0);
+    WC_ASSERT_EQ_U64(GenVec_capacity(v), cap_before);
+    GenVec_destroy(v);
 }
 
 static void test_reset_frees_memory(void)
 {
-    genVec* v = int_vec(8);
+    GenVec* v = int_vec(8);
     push_ints(v, 5);
-    genVec_reset(v);
-    WC_ASSERT_EQ_U64(genVec_size(v), 0);
-    WC_ASSERT_EQ_U64(genVec_capacity(v), 0);
+    GenVec_reset(v);
+    WC_ASSERT_EQ_U64(GenVec_size(v), 0);
+    WC_ASSERT_EQ_U64(GenVec_capacity(v), 0);
     WC_ASSERT_NULL(v->data);
-    genVec_destroy(v);
+    GenVec_destroy(v);
 }
 
 
@@ -284,56 +284,56 @@ static void test_reset_frees_memory(void)
 
 static void test_copy(void)
 {
-    genVec* src = int_vec(4);
+    GenVec* src = int_vec(4);
     push_ints(src, 4);
 
-    genVec dest;
-    genVec_create_stk(0, sizeof(int), NULL, &dest);
-    genVec_copy(&dest, src);
+    GenVec dest;
+    GenVec_create_stk(0, sizeof(int), NULL, &dest);
+    GenVec_copy(&dest, src);
 
-    WC_ASSERT_EQ_U64(genVec_size(&dest), 4);
+    WC_ASSERT_EQ_U64(GenVec_size(&dest), 4);
     for (int i = 0; i < 4; i++) {
-        WC_ASSERT_EQ_INT(*(int*)genVec_get_ptr(&dest, (u64)i), i);
+        WC_ASSERT_EQ_INT(*(int*)GenVec_get_ptr(&dest, (u64)i), i);
     }
 
     /* independence: modify src, dest must be unaffected */
     int x = 999;
-    genVec_replace(src, 0, (u8*)&x);
-    WC_ASSERT_EQ_INT(*(int*)genVec_get_ptr(&dest, 0), 0);
+    GenVec_replace(src, 0, (u8*)&x);
+    WC_ASSERT_EQ_INT(*(int*)GenVec_get_ptr(&dest, 0), 0);
 
-    genVec_destroy(src);
-    genVec_destroy_stk(&dest);
+    GenVec_destroy(src);
+    GenVec_destroy_stk(&dest);
 }
 
 static void test_copy_raw_dest(void)
 {
-    genVec* src = int_vec(4);
+    GenVec* src = int_vec(4);
     push_ints(src, 4);
 
-    genVec dest; /* deliberately uninitialized stack memory */
-    genVec_copy(&dest, src);
+    GenVec dest; /* deliberately uninitialized stack memory */
+    GenVec_copy(&dest, src);
 
-    WC_ASSERT_EQ_U64(genVec_size(&dest), 4);
+    WC_ASSERT_EQ_U64(GenVec_size(&dest), 4);
     for (int i = 0; i < 4; i++) {
-        WC_ASSERT_EQ_INT(*(int*)genVec_get_ptr(&dest, (u64)i), i);
+        WC_ASSERT_EQ_INT(*(int*)GenVec_get_ptr(&dest, (u64)i), i);
     }
 
-    genVec_destroy(src);
-    genVec_destroy_stk(&dest);
+    GenVec_destroy(src);
+    GenVec_destroy_stk(&dest);
 }
 
 static void test_move_nulls_src(void)
 {
-    genVec* src = int_vec(4);
+    GenVec* src = int_vec(4);
     push_ints(src, 4);
 
-    genVec dest;
-    genVec_create_stk(0, sizeof(int), NULL, &dest);
-    genVec_move(&dest, &src);
+    GenVec dest;
+    GenVec_create_stk(0, sizeof(int), NULL, &dest);
+    GenVec_move(&dest, &src);
 
     WC_ASSERT_NULL(src);
-    WC_ASSERT_EQ_U64(genVec_size(&dest), 4);
-    genVec_destroy_stk(&dest);
+    WC_ASSERT_EQ_U64(GenVec_size(&dest), 4);
+    GenVec_destroy_stk(&dest);
 }
 
 
@@ -341,67 +341,67 @@ static void test_move_nulls_src(void)
 
 static void test_insert_multi(void)
 {
-    genVec* v     = int_vec(4);
+    GenVec* v     = int_vec(4);
     int     arr[] = {10, 20, 30};
-    genVec_insert_multi(v, 0, (u8*)arr, 3);
-    WC_ASSERT_EQ_U64(genVec_size(v), 3);
-    WC_ASSERT_EQ_INT(*(int*)genVec_get_ptr(v, 0), 10);
-    WC_ASSERT_EQ_INT(*(int*)genVec_get_ptr(v, 1), 20);
-    WC_ASSERT_EQ_INT(*(int*)genVec_get_ptr(v, 2), 30);
-    genVec_destroy(v);
+    GenVec_insert_multi(v, 0, (u8*)arr, 3);
+    WC_ASSERT_EQ_U64(GenVec_size(v), 3);
+    WC_ASSERT_EQ_INT(*(int*)GenVec_get_ptr(v, 0), 10);
+    WC_ASSERT_EQ_INT(*(int*)GenVec_get_ptr(v, 1), 20);
+    WC_ASSERT_EQ_INT(*(int*)GenVec_get_ptr(v, 2), 30);
+    GenVec_destroy(v);
 }
 
 static void test_insert_multi_mid(void)
 {
-    genVec* v = int_vec(8);
+    GenVec* v = int_vec(8);
     push_ints(v, 3); /* 0 1 2 */
     int arr[] = {10, 20};
-    genVec_insert_multi(v, 1, (u8*)arr, 2);
+    GenVec_insert_multi(v, 1, (u8*)arr, 2);
     /* expected: 0 10 20 1 2 */
-    WC_ASSERT_EQ_U64(genVec_size(v), 5);
-    WC_ASSERT_EQ_INT(*(int*)genVec_get_ptr(v, 0), 0);
-    WC_ASSERT_EQ_INT(*(int*)genVec_get_ptr(v, 1), 10);
-    WC_ASSERT_EQ_INT(*(int*)genVec_get_ptr(v, 2), 20);
-    WC_ASSERT_EQ_INT(*(int*)genVec_get_ptr(v, 3), 1);
-    WC_ASSERT_EQ_INT(*(int*)genVec_get_ptr(v, 4), 2);
-    genVec_destroy(v);
+    WC_ASSERT_EQ_U64(GenVec_size(v), 5);
+    WC_ASSERT_EQ_INT(*(int*)GenVec_get_ptr(v, 0), 0);
+    WC_ASSERT_EQ_INT(*(int*)GenVec_get_ptr(v, 1), 10);
+    WC_ASSERT_EQ_INT(*(int*)GenVec_get_ptr(v, 2), 20);
+    WC_ASSERT_EQ_INT(*(int*)GenVec_get_ptr(v, 3), 1);
+    WC_ASSERT_EQ_INT(*(int*)GenVec_get_ptr(v, 4), 2);
+    GenVec_destroy(v);
 }
 
 // swap_pop 
 
 static void test_swap_pop_middle(void)
 {
-    genVec* v = genVec_create(4, sizeof(int), NULL);
+    GenVec* v = GenVec_create(4, sizeof(int), NULL);
     for (int i = 0; i < 4; i++) { VEC_PUSH(v, i); } /* 0 1 2 3 */
     int out = 0;
-    genVec_swap_pop(v, 1, (u8*)&out); /* remove 1, last (3) fills its slot */
+    GenVec_swap_pop(v, 1, (u8*)&out); /* remove 1, last (3) fills its slot */
     WC_ASSERT_EQ_INT(out, 1);
-    WC_ASSERT_EQ_U64(genVec_size(v), 3);
+    WC_ASSERT_EQ_U64(GenVec_size(v), 3);
     /* element at [1] is now 3 */
     WC_ASSERT_EQ_INT(VEC_AT(v, int, 1), 3);
     WC_ASSERT_EQ_INT(VEC_AT(v, int, 0), 0);
     WC_ASSERT_EQ_INT(VEC_AT(v, int, 2), 2);
-    genVec_destroy(v);
+    GenVec_destroy(v);
 }
 
 static void test_swap_pop_last(void)
 {
-    genVec* v = genVec_create(4, sizeof(int), NULL);
+    GenVec* v = GenVec_create(4, sizeof(int), NULL);
     for (int i = 0; i < 4; i++) { VEC_PUSH(v, i); }
-    genVec_swap_pop(v, 3, NULL); /* last element — just shrinks */
-    WC_ASSERT_EQ_U64(genVec_size(v), 3);
+    GenVec_swap_pop(v, 3, NULL); /* last element — just shrinks */
+    WC_ASSERT_EQ_U64(GenVec_size(v), 3);
     WC_ASSERT_EQ_INT(VEC_AT(v, int, 2), 2);
-    genVec_destroy(v);
+    GenVec_destroy(v);
 }
 
 static void test_swap_pop_single_element(void)
 {
-    genVec* v = genVec_create(4, sizeof(int), NULL);
+    GenVec* v = GenVec_create(4, sizeof(int), NULL);
     int x = 99;
     VEC_PUSH(v, x);
-    genVec_swap_pop(v, 0, NULL);
-    WC_ASSERT_EQ_U64(genVec_size(v), 0);
-    genVec_destroy(v);
+    GenVec_swap_pop(v, 0, NULL);
+    WC_ASSERT_EQ_U64(GenVec_size(v), 0);
+    GenVec_destroy(v);
 }
 
 
@@ -409,32 +409,32 @@ static void test_swap_pop_single_element(void)
 
 static void test_swap_two_elements(void)
 {
-    genVec* v = genVec_create(4, sizeof(int), NULL);
+    GenVec* v = GenVec_create(4, sizeof(int), NULL);
     for (int i = 0; i < 4; i++) { VEC_PUSH(v, i); } /* 0 1 2 3 */
-    genVec_swap(v, 0, 3);
+    GenVec_swap(v, 0, 3);
     WC_ASSERT_EQ_INT(VEC_AT(v, int, 0), 3);
     WC_ASSERT_EQ_INT(VEC_AT(v, int, 3), 0);
     WC_ASSERT_EQ_INT(VEC_AT(v, int, 1), 1); /* untouched */
-    genVec_destroy(v);
+    GenVec_destroy(v);
 }
 
 static void test_swap_same_index_noop(void)
 {
-    genVec* v = genVec_create(4, sizeof(int), NULL);
+    GenVec* v = GenVec_create(4, sizeof(int), NULL);
     for (int i = 0; i < 3; i++) { VEC_PUSH(v, i); }
-    genVec_swap(v, 1, 1);
+    GenVec_swap(v, 1, 1);
     WC_ASSERT_EQ_INT(VEC_AT(v, int, 1), 1);
-    genVec_destroy(v);
+    GenVec_destroy(v);
 }
 
 static void test_swap_adjacent(void)
 {
-    genVec* v = genVec_create(4, sizeof(int), NULL);
+    GenVec* v = GenVec_create(4, sizeof(int), NULL);
     for (int i = 0; i < 4; i++) { VEC_PUSH(v, i); }
-    genVec_swap(v, 1, 2);
+    GenVec_swap(v, 1, 2);
     WC_ASSERT_EQ_INT(VEC_AT(v, int, 1), 2);
     WC_ASSERT_EQ_INT(VEC_AT(v, int, 2), 1);
-    genVec_destroy(v);
+    GenVec_destroy(v);
 }
 
 
@@ -442,38 +442,38 @@ static void test_swap_adjacent(void)
 
 static void test_find_hit(void)
 {
-    genVec* v = genVec_create(8, sizeof(int), NULL);
+    GenVec* v = GenVec_create(8, sizeof(int), NULL);
     for (int i = 0; i < 8; i++) { VEC_PUSH(v, i); }
     int target = 5;
-    WC_ASSERT_EQ_U64(genVec_find(v, (u8*)&target, NULL), 5);
-    genVec_destroy(v);
+    WC_ASSERT_EQ_U64(GenVec_find(v, (u8*)&target, NULL), 5);
+    GenVec_destroy(v);
 }
 
 static void test_find_first_occurrence(void)
 {
-    genVec* v = genVec_create(8, sizeof(int), NULL);
+    GenVec* v = GenVec_create(8, sizeof(int), NULL);
     for (int i = 0; i < 4; i++) { VEC_PUSH(v, i); }
     for (int i = 0; i < 4; i++) { VEC_PUSH(v, i); } /* duplicate 0..3 */
     int target = 2;
-    WC_ASSERT_EQ_U64(genVec_find(v, (u8*)&target, NULL), 2); /* first occurrence */
-    genVec_destroy(v);
+    WC_ASSERT_EQ_U64(GenVec_find(v, (u8*)&target, NULL), 2); /* first occurrence */
+    GenVec_destroy(v);
 }
 
 static void test_find_miss(void)
 {
-    genVec* v = genVec_create(4, sizeof(int), NULL);
+    GenVec* v = GenVec_create(4, sizeof(int), NULL);
     for (int i = 0; i < 4; i++) { VEC_PUSH(v, i); }
     int target = 99;
-    WC_ASSERT_EQ_U64(genVec_find(v, (u8*)&target, NULL), WC_NOT_FOUND);
-    genVec_destroy(v);
+    WC_ASSERT_EQ_U64(GenVec_find(v, (u8*)&target, NULL), WC_NOT_FOUND);
+    GenVec_destroy(v);
 }
 
 static void test_find_empty_vec(void)
 {
-    genVec* v = genVec_create(4, sizeof(int), NULL);
+    GenVec* v = GenVec_create(4, sizeof(int), NULL);
     int target = 0;
-    WC_ASSERT_EQ_U64(genVec_find(v, (u8*)&target, NULL), WC_NOT_FOUND);
-    genVec_destroy(v);
+    WC_ASSERT_EQ_U64(GenVec_find(v, (u8*)&target, NULL), WC_NOT_FOUND);
+    GenVec_destroy(v);
 }
 
 
@@ -481,37 +481,37 @@ static void test_find_empty_vec(void)
 
 static void test_subarr_middle(void)
 {
-    genVec* v = genVec_create(6, sizeof(int), NULL);
+    GenVec* v = GenVec_create(6, sizeof(int), NULL);
     for (int i = 0; i < 6; i++) { VEC_PUSH(v, i); } /* 0..5 */
-    genVec* sub = genVec_subarr(v, 2, 3); /* [2, 3, 4] */
-    WC_ASSERT_EQ_U64(genVec_size(sub), 3);
+    GenVec* sub = GenVec_subarr(v, 2, 3); /* [2, 3, 4] */
+    WC_ASSERT_EQ_U64(GenVec_size(sub), 3);
     WC_ASSERT_EQ_INT(VEC_AT(sub, int, 0), 2);
     WC_ASSERT_EQ_INT(VEC_AT(sub, int, 1), 3);
     WC_ASSERT_EQ_INT(VEC_AT(sub, int, 2), 4);
-    genVec_destroy(v);
-    genVec_destroy(sub);
+    GenVec_destroy(v);
+    GenVec_destroy(sub);
 }
 
 static void test_subarr_clamps_to_end(void)
 {
-    genVec* v = genVec_create(4, sizeof(int), NULL);
+    GenVec* v = GenVec_create(4, sizeof(int), NULL);
     for (int i = 0; i < 4; i++) { VEC_PUSH(v, i); }
-    genVec* sub = genVec_subarr(v, 2, 100); /* len exceeds bounds */
-    WC_ASSERT_EQ_U64(genVec_size(sub), 2); /* clamped: [2, 3] */
-    genVec_destroy(v);
-    genVec_destroy(sub);
+    GenVec* sub = GenVec_subarr(v, 2, 100); /* len exceeds bounds */
+    WC_ASSERT_EQ_U64(GenVec_size(sub), 2); /* clamped: [2, 3] */
+    GenVec_destroy(v);
+    GenVec_destroy(sub);
 }
 
 static void test_subarr_independent(void)
 {
-    genVec* v = genVec_create(4, sizeof(int), NULL);
+    GenVec* v = GenVec_create(4, sizeof(int), NULL);
     for (int i = 0; i < 4; i++) { VEC_PUSH(v, i); }
-    genVec* sub = genVec_subarr(v, 0, 4);
+    GenVec* sub = GenVec_subarr(v, 0, 4);
     int x = 999;
-    genVec_replace(v, 0, (u8*)&x);
+    GenVec_replace(v, 0, (u8*)&x);
     WC_ASSERT_EQ_INT(VEC_AT(sub, int, 0), 0); /* sub unaffected */
-    genVec_destroy(v);
-    genVec_destroy(sub);
+    GenVec_destroy(v);
+    GenVec_destroy(sub);
 }
 
 
@@ -519,25 +519,25 @@ static void test_subarr_independent(void)
 
 static void test_shrink_to_fit_reduces_capacity(void)
 {
-    genVec* v = genVec_create(100, sizeof(int), NULL);
+    GenVec* v = GenVec_create(100, sizeof(int), NULL);
     for (int i = 0; i < 5; i++) { VEC_PUSH(v, i); }
-    genVec_shrink_to_fit(v);
-    WC_ASSERT_TRUE(genVec_capacity(v) <= 10); /* <= max(5, GENVEC_MIN_CAPACITY) */
-    WC_ASSERT_EQ_U64(genVec_size(v), 5);
+    GenVec_shrink_to_fit(v);
+    WC_ASSERT_TRUE(GenVec_capacity(v) <= 10); /* <= max(5, GENVEC_MIN_CAPACITY) */
+    WC_ASSERT_EQ_U64(GenVec_size(v), 5);
     for (int i = 0; i < 5; i++) {
         WC_ASSERT_EQ_INT(VEC_AT(v, int, (u64)i), i);
     }
-    genVec_destroy(v);
+    GenVec_destroy(v);
 }
 
 static void test_shrink_to_fit_already_tight(void)
 {
-    genVec* v = genVec_create(4, sizeof(int), NULL);
+    GenVec* v = GenVec_create(4, sizeof(int), NULL);
     for (int i = 0; i < 4; i++) { VEC_PUSH(v, i); }
-    u64 cap_before = genVec_capacity(v);
-    genVec_shrink_to_fit(v);
-    WC_ASSERT_EQ_U64(genVec_capacity(v), cap_before);
-    genVec_destroy(v);
+    u64 cap_before = GenVec_capacity(v);
+    GenVec_shrink_to_fit(v);
+    WC_ASSERT_EQ_U64(GenVec_capacity(v), cap_before);
+    GenVec_destroy(v);
 }
 
 
@@ -545,13 +545,13 @@ static void test_shrink_to_fit_already_tight(void)
 
 static void test_push_move_nulls_src(void)
 {
-    genVec* v  = VEC_OF_STR(4);
+    GenVec* v  = VEC_OF_STR(4);
     String* s  = string_from_cstr("owned");
-    genVec_push_move(v, (u8**)&s);
+    GenVec_push_move(v, (u8**)&s);
     WC_ASSERT_NULL(s);
-    WC_ASSERT_EQ_U64(genVec_size(v), 1);
+    WC_ASSERT_EQ_U64(GenVec_size(v), 1);
     WC_ASSERT(string_equals_cstr(VEC_AT_MUT(v, String, 0), "owned"));
-    genVec_destroy(v);
+    GenVec_destroy(v);
 }
 
 
@@ -559,16 +559,16 @@ static void test_push_move_nulls_src(void)
 
 static void test_insert_move_front(void)
 {
-    genVec* v = VEC_OF_STR(4);
+    GenVec* v = VEC_OF_STR(4);
     VEC_PUSH_CSTR(v, "b");
     VEC_PUSH_CSTR(v, "c");
     String* s = string_from_cstr("a");
-    genVec_insert_move(v, 0, (u8**)&s);
+    GenVec_insert_move(v, 0, (u8**)&s);
     WC_ASSERT_NULL(s);
-    WC_ASSERT_EQ_U64(genVec_size(v), 3);
+    WC_ASSERT_EQ_U64(GenVec_size(v), 3);
     WC_ASSERT(string_equals_cstr(VEC_AT_MUT(v, String, 0), "a"));
     WC_ASSERT(string_equals_cstr(VEC_AT_MUT(v, String, 1), "b"));
-    genVec_destroy(v);
+    GenVec_destroy(v);
 }
 
 
@@ -576,13 +576,13 @@ static void test_insert_move_front(void)
 
 static void test_replace_move_frees_old(void)
 {
-    genVec* v = VEC_OF_STR(4);
+    GenVec* v = VEC_OF_STR(4);
     VEC_PUSH_CSTR(v, "old");
     String* s = string_from_cstr("new");
-    genVec_replace_move(v, 0, (u8**)&s);
+    GenVec_replace_move(v, 0, (u8**)&s);
     WC_ASSERT_NULL(s);
     WC_ASSERT(string_equals_cstr(VEC_AT_MUT(v, String, 0), "new"));
-    genVec_destroy(v);
+    GenVec_destroy(v);
 }
 
 
@@ -590,13 +590,13 @@ static void test_replace_move_frees_old(void)
 
 static void test_remove_with_out(void)
 {
-    genVec* v = genVec_create(4, sizeof(int), NULL);
+    GenVec* v = GenVec_create(4, sizeof(int), NULL);
     for (int i = 0; i < 4; i++) { VEC_PUSH(v, i); } /* 0 1 2 3 */
     int out = 0;
-    genVec_remove(v, 1, (u8*)&out);
+    GenVec_remove(v, 1, (u8*)&out);
     WC_ASSERT_EQ_INT(out, 1);
-    WC_ASSERT_EQ_U64(genVec_size(v), 3);
-    genVec_destroy(v);
+    WC_ASSERT_EQ_U64(GenVec_size(v), 3);
+    GenVec_destroy(v);
 }
 
 
@@ -604,14 +604,14 @@ static void test_remove_with_out(void)
 
 static void test_init_val_stk(void)
 {
-    genVec v;
+    GenVec v;
     int val = 7;
-    genVec_create_val_stk(5, (u8*)&val, sizeof(int), NULL, &v);
-    WC_ASSERT_EQ_U64(genVec_size(&v), 5);
+    GenVec_create_val_stk(5, (u8*)&val, sizeof(int), NULL, &v);
+    WC_ASSERT_EQ_U64(GenVec_size(&v), 5);
     for (u64 i = 0; i < 5; i++) {
         WC_ASSERT_EQ_INT(VEC_AT(&v, int, i), 7);
     }
-    genVec_destroy_stk(&v);
+    GenVec_destroy_stk(&v);
 }
 
 
@@ -619,54 +619,54 @@ static void test_init_val_stk(void)
 
 static void test_vec_foreach_mutates(void)
 {
-    genVec* v = genVec_create(4, sizeof(int), NULL);
+    GenVec* v = GenVec_create(4, sizeof(int), NULL);
     for (int i = 0; i < 4; i++) { VEC_PUSH(v, i); }
     VEC_FOREACH(v, int, p) { (*p) *= 2; }
     WC_ASSERT_EQ_INT(VEC_AT(v, int, 0), 0);
     WC_ASSERT_EQ_INT(VEC_AT(v, int, 1), 2);
     WC_ASSERT_EQ_INT(VEC_AT(v, int, 2), 4);
     WC_ASSERT_EQ_INT(VEC_AT(v, int, 3), 6);
-    genVec_destroy(v);
+    GenVec_destroy(v);
 }
 
 static void test_vec_foreach_empty(void)
 {
-    genVec* v    = genVec_create(4, sizeof(int), NULL);
+    GenVec* v    = GenVec_create(4, sizeof(int), NULL);
     int     count = 0;
     VEC_FOREACH(v, int, p) { count++; (void)p; }
     WC_ASSERT_EQ_INT(count, 0);
-    genVec_destroy(v);
+    GenVec_destroy(v);
 }
 
 /* ── wc_errno: empty-vec operations ─────────────────────────────────────── */
 
 static void test_pop_empty_sets_errno(void)
 {
-    genVec* v = genVec_create(4, sizeof(int), NULL);
+    GenVec* v = GenVec_create(4, sizeof(int), NULL);
     wc_errno = WC_OK;
-    genVec_pop(v, NULL);
+    GenVec_pop(v, NULL);
     WC_ASSERT_EQ_INT(wc_errno, WC_ERR_EMPTY);
-    genVec_destroy(v);
+    GenVec_destroy(v);
 }
 
 static void test_front_empty_sets_errno(void)
 {
-    genVec* v = genVec_create(4, sizeof(int), NULL);
+    GenVec* v = GenVec_create(4, sizeof(int), NULL);
     wc_errno = WC_OK;
-    const u8* p = genVec_front(v);
+    const u8* p = GenVec_front(v);
     WC_ASSERT_NULL(p);
     WC_ASSERT_EQ_INT(wc_errno, WC_ERR_EMPTY);
-    genVec_destroy(v);
+    GenVec_destroy(v);
 }
 
 static void test_back_empty_sets_errno(void)
 {
-    genVec* v = genVec_create(4, sizeof(int), NULL);
+    GenVec* v = GenVec_create(4, sizeof(int), NULL);
     wc_errno = WC_OK;
-    const u8* p = genVec_back(v);
+    const u8* p = GenVec_back(v);
     WC_ASSERT_NULL(p);
     WC_ASSERT_EQ_INT(wc_errno, WC_ERR_EMPTY);
-    genVec_destroy(v);
+    GenVec_destroy(v);
 }
 
 
@@ -674,7 +674,7 @@ static void test_back_empty_sets_errno(void)
 
 extern void gen_vector_suite(void)
 {
-    WC_SUITE("genVec");
+    WC_SUITE("GenVec");
 
     /* init */
     WC_RUN(test_init_zero_cap);
