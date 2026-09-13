@@ -43,7 +43,6 @@ static inline void set_maybe_resize(hashset* set);
 void hashset_create_stk(u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
                         const container_ops* ops, hashset* set)
 {
-    CHECK_FATAL(!set, "set is null");
     CHECK_FATAL(elm_size == 0, "elm_size can't be 0");
 
     set->elms = malloc((u64)HASHMAP_INIT_CAPACITY * elm_size);
@@ -79,15 +78,12 @@ hashset* hashset_create(u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
 
 void hashset_destroy(hashset* set)
 {
-    CHECK_FATAL(!set, "set is null");
     hashset_destroy_stk(set);
     free(set);
 }
 
 void hashset_destroy_stk(hashset* set)
 {
-    CHECK_FATAL(!set, "set is null");
-
     delete_fn e_del = SET_DEL(set->ops);
 
     if (e_del) {
@@ -109,8 +105,6 @@ void hashset_destroy_stk(hashset* set)
 // Returns 1 if already existed (no-op), 0 if newly inserted.
 b8 hashset_insert(hashset* set, const u8* elm)
 {
-    CHECK_FATAL(!set || !elm, "args null");
-
     copy_fn e_cp = SET_COPY(set->ops);
 
     LOOKUP_RES res;
@@ -139,7 +133,7 @@ b8 hashset_insert(hashset* set, const u8* elm)
 // Returns 1 if already existed (elm freed), 0 if newly inserted.
 b8 hashset_insert_move(hashset* set, u8** elm)
 {
-    CHECK_FATAL(!set || !elm || !*elm, "args null");
+    CHECK_FATAL(!*elm, "*elm null");
 
     move_fn   e_mv  = SET_MOVE(set->ops);
     delete_fn e_del = SET_DEL(set->ops);
@@ -172,8 +166,6 @@ b8 hashset_insert_move(hashset* set, u8** elm)
 // Returns 1 if found, 0 if not.
 b8 hashset_has(const hashset* set, const u8* elm)
 {
-    CHECK_FATAL(!set || !elm, "null arg");
-
     LOOKUP_RES res;
     u8         out_psl;
     set_lookup(set, elm, &res, &out_psl);
@@ -182,35 +174,20 @@ b8 hashset_has(const hashset* set, const u8* elm)
 
 const u8* hashset_get_ptr(const hashset* set, const u8* elm)
 {
-    CHECK_FATAL(!set || !elm, "null arg");
-
     LOOKUP_RES res;
     u8         out_psl;
     u64        slot = set_lookup(set, elm, &res, &out_psl);
     return (res == FOUND) ? GET_ELM(set, slot) : NULL;
 }
 
-u8* hashset_get_ptr_mut(hashset* set, const u8* elm)
-{
-    return (u8*)hashset_get_ptr(set, elm);
-}
-
-u64 hashset_bucket_count(const hashset* set)
-{
-    CHECK_FATAL(!set, "set is null");
-    return set->capacity;
-}
-
 b8 hashset_bucket_occupied(const hashset* set, u64 i)
 {
-    CHECK_FATAL(!set, "set is null");
     CHECK_FATAL(i >= set->capacity, "index out of bounds");
     return *GET_PSL(set, i) != BUCKET_EMPTY;
 }
 
 const u8* hashset_bucket_elm_ptr(const hashset* set, u64 i)
 {
-    CHECK_FATAL(!set, "set is null");
     CHECK_FATAL(i >= set->capacity, "index out of bounds");
     return GET_ELM(set, i);
 }
@@ -222,8 +199,6 @@ const u8* hashset_bucket_elm_ptr(const hashset* set, u64 i)
 // position as long as they have PSL > 1 (i.e. they are not at their home slot).
 b8 hashset_remove(hashset* set, const u8* elm)
 {
-    CHECK_FATAL(!set || !elm, "null arg");
-
     LOOKUP_RES res;
     u8             out_psl;
     u64            slot = set_lookup(set, elm, &res, &out_psl);
@@ -264,8 +239,6 @@ b8 hashset_remove(hashset* set, const u8* elm)
 // Print all elements.
 void hashset_print(const hashset* set, print_fn print)
 {
-    CHECK_FATAL(!set || !print, "null arg");
-
     printf("\t=========\n");
     printf("\tSize: %lu / Capacity: %lu\n", set->size, set->capacity);
     printf("\t=========\n");
@@ -286,8 +259,6 @@ void hashset_print(const hashset* set, print_fn print)
 // Remove all elements, keep capacity.
 void hashset_clear(hashset* set)
 {
-    CHECK_FATAL(!set, "set is null");
-
     delete_fn e_del = SET_DEL(set->ops);
 
     for (u64 i = 0; i < set->capacity; i++) {
@@ -308,8 +279,6 @@ void hashset_clear(hashset* set)
 // Ownership: dest gets independently owned copies of all elements.
 void hashset_copy(hashset* dest, const hashset* src)
 {
-    CHECK_FATAL(!dest || !src, "null arg");
-
     if (dest == src) {
         return;
     }

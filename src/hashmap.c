@@ -56,7 +56,6 @@ static void        map_resize(hashmap* map, u64 new_capacity);
 void hashmap_create_stk(u32 key_size, u32 val_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
                         const container_ops* key_ops, const container_ops* val_ops, hashmap* map)
 {
-    CHECK_FATAL(!map, "map is null");
     CHECK_FATAL(key_size == 0 || val_size == 0, "key/val size can't be 0");
 
     map->keys = malloc((u64)HASHMAP_INIT_CAPACITY * key_size);
@@ -95,15 +94,12 @@ hashmap* hashmap_create(u32 key_size, u32 val_size, custom_hash_fn hash_fn, comp
 
 void hashmap_destroy(hashmap* map)
 {
-    CHECK_FATAL(!map, "map is null");
     hashmap_destroy_stk(map);
     free(map);
 }
 
 void hashmap_destroy_stk(hashmap* map)
 {
-    CHECK_FATAL(!map, "map is null");
-
     if (!IS_POD_K(map) || !IS_POD_V(map)) {
         delete_fn k_del = IS_POD_K(map) ? NULL : map->key_ops->del_fn;
         delete_fn v_del = IS_POD_V(map) ? NULL : map->val_ops->del_fn;
@@ -135,8 +131,6 @@ void hashmap_destroy_stk(hashmap* map)
 // Returns 1 if key existed (updated), 0 if new key inserted.
 b8 hashmap_put(hashmap* map, const u8* key, const u8* val)
 {
-    CHECK_FATAL(!map || !key || !val, "args null");
-
     LOOKUP_RES res;
     u8         out_psl;
     u64        slot = map_lookup(map, key, &res, &out_psl);
@@ -192,7 +186,7 @@ b8 hashmap_put(hashmap* map, const u8* key, const u8* val)
 // Returns 1 if key existed (updated), 0 if new key inserted.
 b8 hashmap_put_move(hashmap* map, u8** key, u8** val)
 {
-    CHECK_FATAL(!map || !key || !val || !*key || !*val, "args null");
+    CHECK_FATAL(!*key || !*val, "*key/*val null");
 
     move_fn k_mv = MAP_MOVE(map->key_ops);
     move_fn v_mv = MAP_MOVE(map->val_ops);
@@ -240,7 +234,7 @@ b8 hashmap_put_move(hashmap* map, u8** key, u8** val)
 // Returns 1 if key existed (updated), 0 if new key inserted.
 b8 hashmap_put_val_move(hashmap* map, const u8* key, u8** val)
 {
-    CHECK_FATAL(!map || !key || !val || !*val, "args null");
+    CHECK_FATAL(!*val, "*val null");
 
     move_fn v_mv = MAP_MOVE(map->val_ops);
 
@@ -284,7 +278,7 @@ b8 hashmap_put_val_move(hashmap* map, const u8* key, u8** val)
 // Returns 1 if key existed (updated), 0 if new key inserted.
 b8 hashmap_put_key_move(hashmap* map, u8** key, const u8* val)
 {
-    CHECK_FATAL(!map || !key || !*key || !val, "args null");
+    CHECK_FATAL(!*key, "*key null");
 
     move_fn k_mv = MAP_MOVE(map->key_ops);
 
@@ -344,8 +338,6 @@ b8 hashmap_put_key_move(hashmap* map, u8** key, const u8* val)
 // Caller owns the copy returned in val and must free it when done.
 b8 hashmap_get(const hashmap* map, const u8* key, u8* val)
 {
-    CHECK_FATAL(!map || !key || !val, "null arg");
-
     LOOKUP_RES res;
     u8         out_psl;
     u64        slot = map_lookup(map, key, &res, &out_psl);
@@ -373,8 +365,6 @@ b8 hashmap_get(const hashmap* map, const u8* key, u8* val)
 // Do NOT free the returned pointer — the map owns it.
 const u8* hashmap_get_ptr(const hashmap* map, const u8* key)
 {
-    CHECK_FATAL(!map || !key, "null arg");
-
     LOOKUP_RES res;
     u8         out_psl;
     u64        slot = map_lookup(map, key, &res, &out_psl);
@@ -382,35 +372,20 @@ const u8* hashmap_get_ptr(const hashmap* map, const u8* key)
     return (res == FOUND) ? GET_VAL(map, slot) : NULL;
 }
 
-// Get mutable pointer to value in-place. Returns NULL if not found.
-u8* hashmap_get_ptr_mut(hashmap* map, const u8* key)
-{
-    return (u8*)hashmap_get_ptr(map, key);
-}
-
-u64 hashmap_bucket_count(const hashmap* map)
-{
-    CHECK_FATAL(!map, "map is null");
-    return map->capacity;
-}
-
 b8 hashmap_bucket_occupied(const hashmap* map, u64 i)
 {
-    CHECK_FATAL(!map, "map is null");
     CHECK_FATAL(i >= map->capacity, "index out of bounds");
     return *GET_PSL(map, i) != BUCKET_EMPTY;
 }
 
 const u8* hashmap_bucket_key_ptr(const hashmap* map, u64 i)
 {
-    CHECK_FATAL(!map, "map is null");
     CHECK_FATAL(i >= map->capacity, "index out of bounds");
     return GET_KEY(map, i);
 }
 
 u8* hashmap_bucket_val_ptr(hashmap* map, u64 i)
 {
-    CHECK_FATAL(!map, "map is null");
     CHECK_FATAL(i >= map->capacity, "index out of bounds");
     return GET_VAL(map, i);
 }
@@ -426,8 +401,6 @@ u8* hashmap_bucket_val_ptr(hashmap* map, u64 i)
 // position as long as they have PSL > 1 (i.e. they are not sitting at their home slot).
 b8 hashmap_del(hashmap* map, const u8* key, u8* out)
 {
-    CHECK_FATAL(!map || !key, "null arg");
-
     LOOKUP_RES res;
     u8         out_psl;
     u64        slot = map_lookup(map, key, &res, &out_psl);
@@ -484,8 +457,6 @@ b8 hashmap_del(hashmap* map, const u8* key, u8* out)
 // Check if key exists.
 b8 hashmap_has(const hashmap* map, const u8* key)
 {
-    CHECK_FATAL(!map || !key, "null arg");
-
     LOOKUP_RES res;
     u8         out_psl;
     map_lookup(map, key, &res, &out_psl);
@@ -496,8 +467,6 @@ b8 hashmap_has(const hashmap* map, const u8* key)
 // Print all key-value pairs.
 void hashmap_print(const hashmap* map, print_fn key_print, print_fn val_print)
 {
-    CHECK_FATAL(!map || !key_print || !val_print, "null arg");
-
     printf("\t=========\n");
     printf("\tSize: %lu / Capacity: %lu\n", map->size, map->capacity);
     printf("\t=========\n");
@@ -521,8 +490,6 @@ void hashmap_print(const hashmap* map, print_fn key_print, print_fn val_print)
 // Destroys all keys and values via their del_fn callbacks, then zeroes the arrays.
 void hashmap_clear(hashmap* map)
 {
-    CHECK_FATAL(!map, "map is null");
-
     if (!IS_POD_K(map) || !IS_POD_V(map)) {
         delete_fn k_del = IS_POD_K(map) ? NULL : map->key_ops->del_fn;
         delete_fn v_del = IS_POD_V(map) ? NULL : map->val_ops->del_fn;
@@ -549,8 +516,6 @@ void hashmap_clear(hashmap* map)
 // Ownership: dest gets independently owned copies of all keys and values.
 void hashmap_copy(hashmap* dest, const hashmap* src)
 {
-    CHECK_FATAL(!dest || !src, "null arg");
-
     if (dest == src) {
         return;
     }

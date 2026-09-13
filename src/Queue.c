@@ -24,14 +24,14 @@
         (q)->tail = (((q)->head + (q)->size) % (q)->arr->capacity); \
     }
 
-#define Q_MAYBE_GROW(q)                          \
+#define Q_MAYBE_GROW(q)                        \
     do {                                       \
         if ((q)->size == (q)->arr->capacity) { \
             queue_grow((q));                   \
         }                                      \
     } while (0)
 
-#define Q_MAYBE_SHRINK(q)                                         \
+#define Q_MAYBE_SHRINK(q)                                       \
     do {                                                        \
         u64 capacity = (q)->arr->capacity;                      \
         if (capacity <= 4) {                                    \
@@ -70,7 +70,6 @@ Queue* queue_create_val(u64 n, const u8* val, u32 data_size, const container_ops
 {
     CHECK_FATAL(n == 0, "n can't be 0");
     CHECK_FATAL(data_size == 0, "data_size can't be 0");
-    CHECK_FATAL(!val, "val is null");
 
     Queue* q = malloc(sizeof(Queue));
     CHECK_FATAL(!q, "queue malloc failed");
@@ -99,23 +98,17 @@ void queue_create_stk(u64 n, u32 data_size, const container_ops* ops, Queue* q)
 
 void queue_destroy(Queue* q)
 {
-    CHECK_FATAL(!q, "queue is null");
-
     genVec_destroy(q->arr);
     free(q);
 }
 
 void queue_destroy_stk(Queue* q)
 {
-    CHECK_FATAL(!q, "queue is null");
-
     genVec_destroy(q->arr);
 }
 
 void queue_clear(Queue* q)
 {
-    CHECK_FATAL(!q, "queue is null");
-
     genVec_clear(q->arr);
     q->size = 0;
     q->head = 0;
@@ -124,8 +117,6 @@ void queue_clear(Queue* q)
 
 void queue_reset(Queue* q)
 {
-    CHECK_FATAL(!q, "queue is null");
-
     genVec_reset(q->arr);
     q->size = 0;
     q->head = 0;
@@ -134,8 +125,6 @@ void queue_reset(Queue* q)
 
 void queue_shrink_to_fit(Queue* q)
 {
-    CHECK_FATAL(!q, "queue is null");
-
     if (q->size == 0) {
         queue_reset(q);
         return;
@@ -151,9 +140,6 @@ void queue_shrink_to_fit(Queue* q)
 
 void queue_push(Queue* q, const u8* x)
 {
-    CHECK_FATAL(!q, "queue is null");
-    CHECK_FATAL(!x, "x is null");
-
     Q_MAYBE_GROW(q);
 
     if (q->tail >= genVec_size(q->arr)) {
@@ -168,8 +154,6 @@ void queue_push(Queue* q, const u8* x)
 
 void queue_push_move(Queue* q, u8** x)
 {
-    CHECK_FATAL(!q, "queue is null");
-    CHECK_FATAL(!x, "x is null");
     CHECK_FATAL(!*x, "*x is null");
 
     Q_MAYBE_GROW(q);
@@ -186,7 +170,6 @@ void queue_push_move(Queue* q, u8** x)
 
 void queue_pop(Queue* q, u8* out)
 {
-    CHECK_FATAL(!q, "queue is null");
     WC_SET_RET(WC_ERR_EMPTY, q->size == 0, );
 
     if (out) {
@@ -208,8 +191,6 @@ void queue_pop(Queue* q, u8* out)
 
 void queue_peek(Queue* q, u8* peek)
 {
-    CHECK_FATAL(!q, "queue is null");
-    CHECK_FATAL(!peek, "peek is null");
     WC_SET_RET(WC_ERR_EMPTY, q->size == 0, );
 
     genVec_get(q->arr, q->head, peek);
@@ -217,7 +198,6 @@ void queue_peek(Queue* q, u8* peek)
 
 const u8* queue_peek_ptr(const Queue* q)
 {
-    CHECK_FATAL(!q, "queue is null");
     WC_SET_RET(WC_ERR_EMPTY, q->size == 0, NULL);
 
     return genVec_get_ptr(q->arr, q->head);
@@ -225,9 +205,6 @@ const u8* queue_peek_ptr(const Queue* q)
 
 void queue_print(Queue* q, print_fn print)
 {
-    CHECK_FATAL(!q, "queue is empty");
-    CHECK_FATAL(!print, "print_fn is empty");
-
     u64 h   = q->head;
     u64 cap = genVec_capacity(q->arr);
 
@@ -246,8 +223,6 @@ void queue_print(Queue* q, print_fn print)
 
 void queue_copy(Queue* dest, const Queue* src)
 {
-    CHECK_FATAL(!dest || !src, "null arg");
-
     genVec_copy(dest->arr, src->arr);
     dest->head = src->head;
     dest->tail = src->tail;
@@ -256,8 +231,6 @@ void queue_copy(Queue* dest, const Queue* src)
 
 void queue_move(Queue* dest, Queue** src)
 {
-    CHECK_FATAL(!dest || !src || !*src, "null arg");
-
     if (dest == *src) {
         *src = NULL;
         return;

@@ -22,8 +22,6 @@ bitVec* bitVec_create(void)
 
 void bitVec_destroy(bitVec* bvec)
 {
-    CHECK_FATAL(!bvec, "bvec is null");
-
     genVec_destroy(bvec->arr);
 
     free(bvec);
@@ -32,8 +30,6 @@ void bitVec_destroy(bitVec* bvec)
 // Set bit i to 1
 void bitVec_set(bitVec* bvec, u64 i)
 {
-    CHECK_FATAL(!bvec, "bvec is null");
-
     u64 byte_index = i / 8;
     u64 bit_index  = i % 8;
 
@@ -53,7 +49,6 @@ void bitVec_set(bitVec* bvec, u64 i)
 // Clear bit i (set to 0)
 void bitVec_clear(bitVec* bvec, u64 i)
 {
-    CHECK_FATAL(!bvec, "bvec is null");
     CHECK_FATAL(i >= bvec->size, "index out of bounds");
 
     u64 byte_index = i / 8;
@@ -66,7 +61,6 @@ void bitVec_clear(bitVec* bvec, u64 i)
 // Test bit i (returns 1 or 0)
 u8 bitVec_test(const bitVec* bvec, u64 i)
 {
-    CHECK_FATAL(!bvec, "bvec is null");
     CHECK_FATAL(i >= bvec->size, "index out of bounds");
 
     u64 byte_index = i / 8;
@@ -78,7 +72,6 @@ u8 bitVec_test(const bitVec* bvec, u64 i)
 // Toggle bit i
 void bitVec_toggle(bitVec* bvec, u64 i)
 {
-    CHECK_FATAL(!bvec, "bvec is null");
     CHECK_FATAL(i >= bvec->size, "index out of bounds");
 
     u64 byte_index = i / 8;
@@ -97,7 +90,6 @@ void bitVec_push(bitVec* bvec)
 
 void bitVec_pop(bitVec* bvec)
 {
-    CHECK_FATAL(!bvec, "bvec is null");
     WC_SET_RET(WC_ERR_EMPTY, bvec->size == 0, );
 
     bvec->size--;
@@ -108,7 +100,6 @@ void bitVec_pop(bitVec* bvec)
 
 void bitVec_print(bitVec* bvec, u64 byteI)
 {
-    CHECK_FATAL(!bvec, "bvec is null");
     CHECK_FATAL(byteI >= bvec->arr->size, "index out of bounds");
 
     u8 bits_to_print = 8;

@@ -65,8 +65,6 @@ void arena_create_stk(u64 capacity, Arena* arena)
 
 void arena_create_arr_stk(u8* data, u64 size, Arena* arena)
 {
-    CHECK_FATAL(!arena, "arena is null");
-    CHECK_FATAL(!data, "data is null");
     CHECK_FATAL(size == 0, "size can't be zero");
 
     arena->base = data;
@@ -76,7 +74,6 @@ void arena_create_arr_stk(u8* data, u64 size, Arena* arena)
 
 u8* arena_alloc(Arena* arena, u64 size)
 {
-    CHECK_FATAL(!arena, "arena is null");
     CHECK_FATAL(size == 0, "can't have allocation of size = 0");
 
     // Align the current index first
@@ -92,7 +89,6 @@ u8* arena_alloc(Arena* arena, u64 size)
 u8* arena_alloc_aligned(Arena* arena, u64 size, u32 alignment)
 {
 
-    CHECK_FATAL(!arena, "arena is null");
     CHECK_FATAL(size == 0, "can't have allocation of size = 0");
     CHECK_FATAL((alignment & (alignment - 1)) != 0,
                 "alignment must be power of two");

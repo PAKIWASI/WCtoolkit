@@ -59,14 +59,12 @@ ChainArena* chain_arena_create(void)
 
 void chain_arena_release(ChainArena* arena)
 {
-    CHECK_FATAL(!arena, "arena is null");
     genVec_destroy_stk(&arena->nodes);   // frees all nodes via chain_del
     free(arena);
 }
 
 u8* chain_arena_alloc_aligned(ChainArena* arena, u64 size, u32 align)
 {
-    CHECK_FATAL(!arena, "arena is null");
     CHECK_FATAL(size == 0, "allocation size must be > 0");
     CHECK_FATAL((align & (align - 1)) != 0, "alignment must be power of two");
 
@@ -95,8 +93,6 @@ u8* chain_arena_alloc_aligned(ChainArena* arena, u64 size, u32 align)
 // Reset back to initial state: only the first node remains, empty.
 void chain_arena_reset(ChainArena* arena)
 {
-    CHECK_FATAL(!arena, "arena is null");
-
     // Remove all nodes except the first one
     u64 total = genVec_size(&arena->nodes);
     if (total > 1) {
@@ -112,8 +108,6 @@ void chain_arena_reset(ChainArena* arena)
 // clear all space but dont free any nodes
 void chain_arena_clear(ChainArena* arena)
 {
-    CHECK_FATAL(!arena, "arena is null");
-
     u64 node_count = genVec_size(&arena->nodes);
     for (u64 i = 0; i < node_count; i++) {
         (*(ArenaNode**)genVec_get_ptr_mut(&arena->nodes, i))->used = 0;
@@ -126,8 +120,6 @@ void chain_arena_clear(ChainArena* arena)
 
 ChainArenaScratch chain_arena_scratch_begin(ChainArena* arena)
 {
-    CHECK_FATAL(!arena, "arena is null");
-
     u64 node_idx = genVec_size(&arena->nodes) - 1;
     ArenaNode* last = LAST_NODE(arena);
 

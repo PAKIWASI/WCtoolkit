@@ -16,14 +16,14 @@
 
 
 typedef struct {
-    u8*            keys; 
+    u8*            keys;
     u8*            psls;
     u8*            vals;
     u64            size;
     u64            capacity;
     u32            key_size;
     u32            val_size;
-    u8*            scratch;  // key_size + val_size bytes + alignment - temp buffer for robin hood swaps
+    u8*            scratch; // key_size + val_size bytes + alignment - temp buffer for robin hood swaps
     custom_hash_fn hash_fn;
     compare_fn     cmp_fn;
 
@@ -38,7 +38,7 @@ typedef struct {
 // Safely extract callbacks — always NULL-safe on ops itself.
 #define MAP_COPY(ops) ((ops) ? (ops)->copy_fn : NULL)
 #define MAP_MOVE(ops) ((ops) ? (ops)->move_fn : NULL)
-#define MAP_DEL(ops)  ((ops) ? (ops)->del_fn  : NULL)
+#define MAP_DEL(ops)  ((ops) ? (ops)->del_fn : NULL)
 
 /* TODO: 
     reserve one extra slot at the end of the key/val arrays that never holds a real entry.
@@ -54,7 +54,8 @@ typedef struct {
 hashmap* hashmap_create(u32 key_size, u32 val_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
                         const container_ops* key_ops, const container_ops* val_ops);
 void     hashmap_create_stk(u32 key_size, u32 val_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
-                            const container_ops* key_ops, const container_ops* val_ops, hashmap* map) __attribute__((nonnull(7)));
+                            const container_ops* key_ops, const container_ops* val_ops, hashmap* map)
+    __attribute__((nonnull(7)));
 
 void hashmap_destroy(hashmap* map) __attribute__((nonnull(1)));
 void hashmap_destroy_stk(hashmap* map) __attribute__((nonnull(1)));
@@ -78,10 +79,18 @@ b8 hashmap_get(const hashmap* map, const u8* key, u8* val) __attribute__((nonnul
 
 // Get pointer to value
 const u8* hashmap_get_ptr(const hashmap* map, const u8* key) __attribute__((nonnull(1, 2)));
-u8*       hashmap_get_ptr_mut(hashmap* map, const u8* key) __attribute__((nonnull(1, 2)));
+
+__attribute__((nonnull(1, 2))) static inline u8* hashmap_get_ptr_mut(hashmap* map, const u8* key)
+{
+    return (u8*)hashmap_get_ptr(map, key);
+}
 
 // Bucket iteration accessors
-u64       hashmap_bucket_count(const hashmap* map) __attribute__((nonnull(1)));
+__attribute__((nonnull(1))) static inline u64 hashmap_bucket_count(const hashmap* map)
+{
+    return map->capacity;
+}
+
 b8        hashmap_bucket_occupied(const hashmap* map, u64 i) __attribute__((nonnull(1)));
 const u8* hashmap_bucket_key_ptr(const hashmap* map, u64 i) __attribute__((nonnull(1)));
 u8*       hashmap_bucket_val_ptr(hashmap* map, u64 i) __attribute__((nonnull(1)));
@@ -106,17 +115,14 @@ void hashmap_copy(hashmap* dest, const hashmap* src) __attribute__((nonnull(1, 2
 
 static inline __attribute__((nonnull(1))) u64 hashmap_size(const hashmap* map)
 {
-    CHECK_FATAL(!map, "map is null");
     return map->size;
 }
 static inline __attribute__((nonnull(1))) u64 hashmap_capacity(const hashmap* map)
 {
-    CHECK_FATAL(!map, "map is null");
     return map->capacity;
 }
 static inline __attribute__((nonnull(1))) b8 hashmap_empty(const hashmap* map)
 {
-    CHECK_FATAL(!map, "map is null");
     return map->size == 0;
 }
 

@@ -21,7 +21,7 @@ typedef struct {
     u64            size;
     u64            capacity;
     u32            elm_size;
-    u8*            scratch;  // 2 * elm_size bytes — stage (first half) + RH swap (second half)
+    u8*            scratch; // 2 * elm_size bytes — stage (first half) + RH swap (second half)
     custom_hash_fn hash_fn;
     compare_fn     cmp_fn;
 
@@ -34,16 +34,15 @@ typedef struct {
 // Safely extract callbacks — always NULL-safe on ops itself.
 #define SET_COPY(ops) ((ops) ? (ops)->copy_fn : NULL)
 #define SET_MOVE(ops) ((ops) ? (ops)->move_fn : NULL)
-#define SET_DEL(ops)  ((ops) ? (ops)->del_fn  : NULL)
+#define SET_DEL(ops)  ((ops) ? (ops)->del_fn : NULL)
 
 
 // Create a new hashset.
 // hash_fn and cmp_fn default to wyhash / default_compare if NULL.
 // ops: pass NULL for POD types.
-hashset* hashset_create(u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
-                        const container_ops* ops);
-void     hashset_create_stk(u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
-                            const container_ops* ops, hashset* set) __attribute__((nonnull(5)));
+hashset* hashset_create(u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn, const container_ops* ops);
+void hashset_create_stk(u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn, const container_ops* ops, hashset* set)
+    __attribute__((nonnull(5)));
 
 void hashset_destroy(hashset* set) __attribute__((nonnull(1)));
 void hashset_destroy_stk(hashset* set) __attribute__((nonnull(1)));
@@ -61,10 +60,18 @@ b8 hashset_has(const hashset* set, const u8* elm) __attribute__((nonnull(1, 2)))
 
 // Get pointer to element in-place. Returns NULL if not found.
 const u8* hashset_get_ptr(const hashset* set, const u8* elm) __attribute__((nonnull(1, 2)));
-u8*       hashset_get_ptr_mut(hashset* set, const u8* elm) __attribute__((nonnull(1, 2)));
+
+__attribute__((nonnull(1, 2))) static inline u8* hashset_get_ptr_mut(hashset* set, const u8* elm)
+{
+    return (u8*)hashset_get_ptr(set, elm);
+}
 
 // Bucket iteration accessors
-u64       hashset_bucket_count(const hashset* set) __attribute__((nonnull(1)));
+__attribute__((nonnull(1))) static inline u64 hashset_bucket_count(const hashset* set)
+{
+    return set->capacity;
+}
+
 b8        hashset_bucket_occupied(const hashset* set, u64 i) __attribute__((nonnull(1)));
 const u8* hashset_bucket_elm_ptr(const hashset* set, u64 i) __attribute__((nonnull(1)));
 
@@ -84,19 +91,16 @@ void hashset_copy(hashset* dest, const hashset* src) __attribute__((nonnull(1, 2
 
 static inline __attribute__((nonnull(1))) u64 hashset_size(const hashset* set)
 {
-    CHECK_FATAL(!set, "set is null");
     return set->size;
 }
 
 static inline __attribute__((nonnull(1))) u64 hashset_capacity(const hashset* set)
 {
-    CHECK_FATAL(!set, "set is null");
     return set->capacity;
 }
 
 static inline __attribute__((nonnull(1))) b8 hashset_empty(const hashset* set)
 {
-    CHECK_FATAL(!set, "set is null");
     return set->size == 0;
 }
 

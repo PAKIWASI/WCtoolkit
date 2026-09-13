@@ -78,11 +78,8 @@ static inline void add_node(string_store* ss)
 
 strview string_store_cstr(string_store* ss, const char* cstr, u64 clen)
 {
-    CHECK_FATAL(!ss, "ss is null");
-    CHECK_FATAL(!cstr, "ss is null");
-
     if (STRING_STORE_NODE_SIZE - ss->tail_off < clen) {
-        // TODO: strings larger than a whole node aren't supported yet — the
+        // TODO: strings larger than a whole node aren't supported yet, the
         // `heap` union member exists for this but is unused. Fail loudly
         // instead of silently overflowing the fixed-size node buffer below.
         CHECK_FATAL(clen > STRING_STORE_NODE_SIZE,

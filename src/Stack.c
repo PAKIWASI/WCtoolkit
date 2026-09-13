@@ -1,6 +1,7 @@
 #include "Stack.h"
 #include "common.h"
 #include "gen_vector.h"
+#include "wc_errno.h"
 
 
 
@@ -47,15 +48,12 @@ void stack_pop(Stack* stk, u8* popped)
 
 void stack_peek(Stack* stk, u8* peek)
 {
-    CHECK_FATAL(!stk, "stack is null");
-    CHECK_FATAL(!peek, "peek is null");
     WC_SET_RET(WC_ERR_EMPTY, stack_empty(stk), );
     genVec_get(stk, genVec_size(stk) - 1, peek);
 }
 
 const u8* stack_peek_ptr(const Stack* stk)
 {
-    CHECK_FATAL(!stk, "stack is null");
     WC_SET_RET(WC_ERR_EMPTY, stack_empty(stk), NULL);
     return genVec_get_ptr(stk, genVec_size(stk) - 1);
 }
