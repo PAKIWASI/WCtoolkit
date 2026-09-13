@@ -3,13 +3,13 @@
 
 
 // Correctness suites 
-void string_suite(void);
-void arena_suite(void);
+void String_suite(void);
+void Arena_suite(void);
 void gen_vector_suite(void);
 void HashMap_suite(void);
 void HashSet_suite(void);
-void stack_suite(void);
-void queue_suite(void);
+void Stack_suite(void);
+void Queue_suite(void);
 void matrix_suite(void);
 void bit_vector_suite(void);
 void fast_math_suite(void);
@@ -23,9 +23,9 @@ int speed_suite(void);
 int main(void)
 {
     // Correctness 
-    string_suite();
+    String_suite();
 
-    arena_suite();
+    Arena_suite();
 
     gen_vector_suite();
 
@@ -35,9 +35,9 @@ int main(void)
 
     HashSet_suite();
 
-    stack_suite();
+    Stack_suite();
 
-    queue_suite();
+    Queue_suite();
 
     matrix_suite();
 

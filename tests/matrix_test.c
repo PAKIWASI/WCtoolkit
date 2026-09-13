@@ -1,6 +1,6 @@
 ﻿#include "wc_test.h"
 #include "matrix.h"
-#include "arena.h"
+#include "Arena.h"
 #include <math.h>
 
 #define FLOAT_EPS 1e-3f
@@ -285,36 +285,36 @@ static void test_det_identity(void)
 
 // Arena allocation
 
-static void test_arena_alloc(void)
+static void test_Arena_alloc(void)
 {
-    Arena*   arena = arena_create(nKB(4));
-    Matrixf* m     = matrix_arena_alloc(arena, 3, 3);
+    Arena*   Arena = Arena_create(nKB(4));
+    Matrixf* m     = matrix_Arena_alloc(Arena, 3, 3);
     WC_ASSERT_NOT_NULL(m);
     WC_ASSERT_NOT_NULL(m->data);
     WC_ASSERT_EQ_U64(m->m, 3);
     WC_ASSERT_EQ_U64(m->n, 3);
-    arena_destroy(arena);
+    Arena_destroy(Arena);
 }
 
-static void test_arena_arr_alloc(void)
+static void test_Arena_arr_alloc(void)
 {
-    Arena* arena = arena_create(nKB(4));
+    Arena* Arena = Arena_create(nKB(4));
     float  src[] = {1,2,3,4};
-    Matrixf* m   = matrix_arena_arr_alloc(arena, 2, 2, src);
+    Matrixf* m   = matrix_Arena_arr_alloc(Arena, 2, 2, src);
     WC_ASSERT(mat_eq(m, src, FLOAT_EPS));
-    arena_destroy(arena);
+    Arena_destroy(Arena);
 }
 
-static void test_arena_scratch_temporaries(void)
+static void test_Arena_scratch_temporaries(void)
 {
     // Temporaries inside scratch don't leak; result outside scratch survives
-    Arena*   arena = arena_create(nKB(2));
-    Matrixf* result = matrix_arena_alloc(arena, 2, 2);
+    Arena*   Arena = Arena_create(nKB(2));
+    Matrixf* result = matrix_Arena_alloc(Arena, 2, 2);
 
-    ARENA_SCRATCH(arena) {
-        Matrixf* t1 = matrix_arena_arr_alloc(arena, 2, 2,
+    ARENA_SCRATCH(Arena) {
+        Matrixf* t1 = matrix_Arena_arr_alloc(Arena, 2, 2,
                         (float[]){1,0,0,1});
-        Matrixf* t2 = matrix_arena_arr_alloc(arena, 2, 2,
+        Matrixf* t2 = matrix_Arena_arr_alloc(Arena, 2, 2,
                         (float[]){5,6,7,8});
         matrix_xply(result, t1, t2);
         (void)t1; (void)t2;
@@ -323,7 +323,7 @@ static void test_arena_scratch_temporaries(void)
     // t1 and t2 memory reclaimed; result still holds correct values
     float expected[] = {5,6,7,8};
     WC_ASSERT(mat_eq(result, expected, FLOAT_EPS));
-    arena_destroy(arena);
+    Arena_destroy(Arena);
 }
 
 
@@ -359,7 +359,7 @@ void matrix_suite(void)
     WC_RUN(test_det_3x3);
     WC_RUN(test_det_identity);
 
-    WC_RUN(test_arena_alloc);
-    WC_RUN(test_arena_arr_alloc);
-    WC_RUN(test_arena_scratch_temporaries);
+    WC_RUN(test_Arena_alloc);
+    WC_RUN(test_Arena_arr_alloc);
+    WC_RUN(test_Arena_scratch_temporaries);
 }

@@ -17,15 +17,15 @@ VEC_PUSH_CSTR(vec, "PAKI");     // create Strings and move into vec
 VEC_PUSH_CSTR(vec, "WASI");     // zero copies, only one move
 
 // append in place
-VEC_FOREACH(vec, String, s) { string_append_char(s, '!'); }
+VEC_FOREACH(vec, String, s) { String_append_char(s, '!'); }
 
-String* s = string_create();    // create new string as buffer
+String* s = String_create();    // create new String as buffer
 GenVec_pop(vec, castptr(s));    // get element out of vec, s owns it now
 
-string_print(s);                // do whatever
+String_print(s);                // do whatever
 GenVec_print(vec, str_print);
 
-string_destroy(s);              // free resources
+String_destroy(s);              // free resources
 GenVec_destroy(vec);
 ```
 
@@ -71,9 +71,9 @@ Genericity is achieved through **function pointer callbacks** grouped into a vta
 
 ```c
 // Define once, reuse everywhere
-static const container_ops string_ops = { str_copy, str_move, str_del };
+static const container_ops String_ops = { str_copy, str_move, str_del };
 
-GenVec* vec = GenVec_create(8, sizeof(String), &string_ops);
+GenVec* vec = GenVec_create(8, sizeof(String), &String_ops);
 ```
 
 `wc_helpers.h` ships pre-built ops instances (`wc_str_ops`, `wc_str_ptr_ops`) for `String` and `GenVec` in both storage strategies, so you rarely need to define your own.
@@ -82,33 +82,33 @@ This has a real cost: you write more setup code. The benefit is that the behavio
 
 ### No Magic, No Hidden Cost
 
-Every allocation is explicit. `arena_alloc` is a pointer bump. `GenVec_push` sometimes calls `realloc` — you can see it in the source. There is no background thread, no lazy initialization, no defer queue. What you write is what runs.
+Every allocation is explicit. `Arena_alloc` is a pointer bump. `GenVec_push` sometimes calls `realloc` — you can see it in the source. There is no background thread, no lazy initialization, no defer Queue. What you write is what runs.
 
 Growth thresholds for `GenVec` and `String` are compile-time configurable macros set before the include. The hash table load factor is a constant in `map_setup.h`. Nothing is hidden in a global config struct.
 
 ### Stack Wherever Possible
 
-Most types offer both heap-allocated and stack-allocated variants:
+Most types offer both heap-allocated and Stack-allocated variants:
 
 ```c
 // Heap: library manages memory
-Arena*  arena = arena_create(nKB(4));
+Arena*  Arena = Arena_create(nKB(4));
 GenVec* vec   = GenVec_create(8, sizeof(int), NULL);
-String* str   = string_from_cstr("hello");
+String* str   = String_from_cstr("hello");
 
 // Stack: you provide the struct, often the data too
-Arena arena;
-ARENA_CREATE_STK_ARR(&arena, 4);        // 4KB on the stack
+Arena Arena;
+ARENA_CREATE_STK_ARR(&Arena, 4);        // 4KB on the Stack
 
 GenVec vec;
 GenVec_create_stk(8, sizeof(int), NULL, &vec);   // receiver-last
 
 String str;
-string_create_stk("hello", &str);
+String_create_stk("hello", &str);
 
 // cleanup destroys only the data buffer — NOT the struct itself
 GenVec_destroy_stk(&vec);
-string_destroy_stk(&str);
+String_destroy_stk(&str);
 ```
 
 The `_stk` suffix always means: *you own the struct, the library only manages its contents*. `destroy` frees the container struct plus its data; `destroy_stk` frees only the data and leaves the struct in a valid, reusable empty state. All `_create_stk` functions take the receiver as the **last** parameter.
@@ -116,12 +116,12 @@ The `_stk` suffix always means: *you own the struct, the library only manages it
 ### API Conventions
 
 - **Receiver first** for operations (`GenVec_push(vec, x)`), **dest first** for copies (`GenVec_copy(dest, src)`); `_create_stk` takes the receiver **last**.
-- **Moves are `T**`**: a move transfers ownership and nulls the source — `string_move(dest, &src)`, `GenVec_push_move(vec, &ptr)`. After a move, `src == NULL`.
-- **`_move` variants exist wherever ownership transfers**: `push_move`, `insert_move`, `replace_move`, `put_move`, `append_string_move`. The plain variants copy.
+- **Moves are `T**`**: a move transfers ownership and nulls the source — `String_move(dest, &src)`, `GenVec_push_move(vec, &ptr)`. After a move, `src == NULL`.
+- **`_move` variants exist wherever ownership transfers**: `push_move`, `insert_move`, `replace_move`, `put_move`, `append_String_move`. The plain variants copy.
 - **Optional out-params are last and nullable**: `GenVec_remove(vec, i, NULL)` discards the element; pass a buffer to receive it.
 - **Not-found sentinels** use `WC_NOT_FOUND` (`u64`) from `common.h` — never `-1` on unsigned.
-- **`copy` functions are SAFE ON raw destinations**: `GenVec_copy`, `string_copy`, `HashMap_copy` never read `dest` before overwriting it, so you can copy into an uninitialized struct.
-- **Allocators warn on ignored results**: every heap constructor (`GenVec_create`, `string_from_cstr`, `HashMap_create`, `arena_alloc`, …) is `__attribute__((warn_unused_result))` — a leaked allocation is a compile warning. Arena/chain-arena allocators also carry `alloc_size(size_arg)` for `-Walloc-size` checking.
+- **`copy` functions are SAFE ON raw destinations**: `GenVec_copy`, `String_copy`, `HashMap_copy` never read `dest` before overwriting it, so you can copy into an uninitialized struct.
+- **Allocators warn on ignored results**: every heap constructor (`GenVec_create`, `String_from_cstr`, `HashMap_create`, `Arena_alloc`, …) is `__attribute__((warn_unused_result))` — a leaked allocation is a compile warning. Arena/chain-Arena allocators also carry `alloc_size(size_arg)` for `-Walloc-size` checking.
 
 ---
 
@@ -141,8 +141,8 @@ The toolkit follows a **strict creation–transfer–destruction** lifetime:
 **Creation** — heap constructors return a fully initialized object, never a partially built one:
 
 ```c
-GenVec* vec   = GenVec_create(8, sizeof(String), &string_ops);
-String* str   = string_from_cstr("WASI");
+GenVec* vec   = GenVec_create(8, sizeof(String), &String_ops);
+String* str   = String_from_cstr("WASI");
 HashMap* map  = HashMap_create(sizeof(u32), sizeof(String), &str_ops, NULL);
 ```
 
@@ -150,7 +150,7 @@ HashMap* map  = HashMap_create(sizeof(u32), sizeof(String), &str_ops, NULL);
 
 ```c
 String dest;
-string_move(&dest, &str);        // str is now empty, NULL
+String_move(&dest, &str);        // str is now empty, NULL
 
 GenVec* slot = ...;
 GenVec_push_move(vec, &ptr);     // vec takes ownership, ptr is NULL
@@ -163,7 +163,7 @@ GenVec_destroy(vec);             // frees vec and all owned elements
 GenVec_destroy_stk(&vec_stk);    // frees data, struct reusable
 
 VEC_FOREACH(vec, String, s) {    // containers never free elements
-    string_destroy(s);           // that your ops del_fn doesn't cover
+    String_destroy(s);           // that your ops del_fn doesn't cover
 }
 ```
 
@@ -171,12 +171,12 @@ VEC_FOREACH(vec, String, s) {    // containers never free elements
 
 ```c
 void print_vec(const GenVec* vec);          // borrows
-void mutate_string(String* s);              // borrows, mutates in place
-void keep_string(GenVec* vec, u64 i) {      // wants ownership
+void mutate_String(String* s);              // borrows, mutates in place
+void keep_String(GenVec* vec, u64 i) {      // wants ownership
     String tmp;
     GenVec_remove(vec, i, castptr(&tmp));   // move out
     ...
-    string_destroy(&tmp);
+    String_destroy(&tmp);
 }
 ```
 
@@ -215,7 +215,7 @@ if (GenVec_remove(vec, i, castptr(&out))) { ... }
 - Mutating operations (`push`, `insert`, `remove`, `replace`) return `bool` — `true` on success.
 - Lookups (`find`, `get`, `search`) return `u64` index or `WC_NOT_FOUND`.
 - Nothing allocates inside an error path. If an operation fails midway (e.g., `insert` during `realloc`), the container is left unchanged.
-- Arena and chain-arena allocators abort on OOM — they are designed for program-lifetime allocations where recovery is meaningless.
+- Arena and chain-Arena allocators abort on OOM — they are designed for program-lifetime allocations where recovery is meaningless.
 
 ---
 
@@ -227,7 +227,7 @@ A type-safe **convenience layer** lives on top of the C API. Macros never replac
 // Macro layer — type checked, concise
 VEC_PUSH(vec, x);                 // infers sizeof(*vec) and element type
 VEC_PUSH_MOVE(vec, &ptr);         // ownership transfer, ptr is NULL after
-VEC_FOREACH(vec, String, s) { string_append_char(s, '!'); }
+VEC_FOREACH(vec, String, s) { String_append_char(s, '!'); }
 
 // C API — always available underneath
 GenVec_push(vec, castptr(&x));
@@ -250,37 +250,37 @@ GenVec_push_move(vec, castptr(&ptr));
 
 ### Arena Allocator
 
-A bump allocator for program-lifetime or frame-based allocations. Individual allocations are never freed — the arena is reset or destroyed wholesale:
+A bump allocator for program-lifetime or frame-based allocations. Individual allocations are never freed — the Arena is reset or destroyed wholesale:
 
 ```c
-// Heap arena
-Arena* arena = arena_create(nKB(4));
+// Heap Arena
+Arena* Arena = Arena_create(nKB(4));
 
-int*    xs = arena_alloc(arena, 100 * sizeof(int));   // pointer bump, O(1)
-String* s  = arena_alloc(arena, sizeof(String));
+int*    xs = Arena_alloc(Arena, 100 * sizeof(int));   // pointer bump, O(1)
+String* s  = Arena_alloc(Arena, sizeof(String));
 
-arena_reset(arena);          // reuses memory, all previous data invalid
+Arena_reset(Arena);          // reuses memory, all previous data invalid
 
-arena_destroy(arena);        // frees everything at once
+Arena_destroy(Arena);        // frees everything at once
 
-// Stack arena — 4KB on the stack, nothing to destroy
-Arena arena;
-ARENA_CREATE_STK_ARR(&arena, 4);
+// Stack Arena — 4KB on the Stack, nothing to destroy
+Arena Arena;
+ARENA_CREATE_STK_ARR(&Arena, 4);
 ```
 
-**When to use an arena**: parse trees, ASTs, render frames, per-request state — anything where objects die together. Never for objects with independent lifetimes.
+**When to use an Arena**: parse trees, ASTs, render frames, per-request state — anything where objects die together. Never for objects with independent lifetimes.
 
 ### Chain Arena
 
-A linked list of arena blocks for **unbounded** allocation. Blocks are added as needed, so total size never has to be known upfront:
+A linked list of Arena blocks for **unbounded** allocation. Blocks are added as needed, so total size never has to be known upfront:
 
 ```c
-ChainArena* ca = chain_arena_create();         // block size via ARENA_NODE_INLINE_SIZE
+ChainArena* ca = chain_Arena_create();         // block size via ARENA_NODE_INLINE_SIZE
 
-void* p = chain_arena_alloc(ca, size);         // bump within current block,
+void* p = chain_Arena_alloc(ca, size);         // bump within current block,
                                                // new block when full
 
-chain_arena_destroy(ca);       // frees all blocks
+chain_Arena_destroy(ca);       // frees all blocks
 ```
 
 **Arena vs Chain Arena**: use a plain `Arena` when total size is bounded and known; use a `ChainArena` for program-lifetime allocations of unknown total size (symbol tables, caches, registries).

@@ -1,7 +1,7 @@
 #ifndef WCJSON_H
 #define WCJSON_H
 
-#include "arena.h"
+#include "Arena.h"
 #include "gen_vector.h"
 #include "HashMap.h"
 
@@ -40,7 +40,7 @@ typedef struct {
 typedef struct {
     wcjson_val      root;
     wcjson_metadata metadata;
-    Arena arena;        // owns everything
+    Arena Arena;        // owns everything
 } wcjson;
 
 

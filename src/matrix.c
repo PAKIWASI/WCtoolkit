@@ -2,7 +2,7 @@
 #include "common.h"
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
+#include <String.h>
 
 
 
@@ -30,7 +30,7 @@ Matrixf* matrix_create_arr(u64 m, u64 n, const float* arr)
 
 void matrix_create_stk(u64 m, u64 n, float* data, Matrixf* mat)
 {
-    // we can do this on the stack
+    // we can do this on the Stack
     mat->data = data; // copying stk ptr 
     mat->m    = m;
     mat->n    = n;

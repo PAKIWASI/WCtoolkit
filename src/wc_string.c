@@ -1,4 +1,4 @@
-#include "String.h"
+#include "wc_string.h"
 #include "common.h"
 
 #include <stdio.h>
@@ -22,7 +22,7 @@
                 s->stk[STR_SSO_SIZE - 1] = '\0'; \
                 stk_to_heap(s);                  \
             } else {                             \
-                string_grow(s);                  \
+                String_grow(s);                  \
             }                                    \
         }                                        \
     } while (0)
@@ -34,14 +34,14 @@
 static inline u64  cstr_len(const char* cstr);
 static inline void stk_to_heap(String* s);
 static inline void heap_to_stk(String* s);
-static inline void string_grow(String* s);
+static inline void String_grow(String* s);
 static inline void ensure_capacity(String* s, u64 needed);
 
 
 
 //  Construction / Destruction
 
-String* string_create(void)
+String* String_create(void)
 {
     String* s = malloc(sizeof(String));
     CHECK_FATAL(!s, "malloc failed");
@@ -53,16 +53,16 @@ String* string_create(void)
     return s;
 }
 
-String* string_from_cstr(const char* cstr)
+String* String_from_cstr(const char* cstr)
 {
     String* s = malloc(sizeof(String));
     CHECK_FATAL(!s, "malloc failed");
 
-    string_create_stk(cstr, s);
+    String_create_stk(cstr, s);
     return s;
 }
 
-String* string_from_string(const String* other)
+String* String_from_String(const String* other)
 {
     String* s = malloc(sizeof(String));
     CHECK_FATAL(!s, "malloc failed");
@@ -80,7 +80,7 @@ String* string_from_string(const String* other)
     return s;
 }
 
-void string_create_stk(const char* cstr, String* s)
+void String_create_stk(const char* cstr, String* s)
 {
     s->size                  = 0;
     s->stk[STR_SSO_SIZE - 1] = 1;                // mark SSO mode
@@ -100,13 +100,13 @@ void string_create_stk(const char* cstr, String* s)
     s->size = len;
 }
 
-void string_destroy(String* s)
+void String_destroy(String* s)
 {
-    string_destroy_stk(s);
+    String_destroy_stk(s);
     free(s);
 }
 
-void string_destroy_stk(String* s)
+void String_destroy_stk(String* s)
 {
     if (!IS_SSO(s)) {
         free(s->heap);
@@ -117,7 +117,7 @@ void string_destroy_stk(String* s)
     s->capacity              = STR_SSO_SIZE - 1; // leave in valid, reusable SSO state
 }
 
-void string_move(String* dest, String** src)
+void String_move(String* dest, String** src)
 {
     CHECK_FATAL(!*src, "*src is null");
 
@@ -126,7 +126,7 @@ void string_move(String* dest, String** src)
         return;
     }
 
-    string_destroy_stk(dest);
+    String_destroy_stk(dest);
     memcpy(dest, *src, sizeof(String));
 
     // Zero out src so its destructor is harmless, then free the struct
@@ -136,7 +136,7 @@ void string_move(String* dest, String** src)
     *src = NULL;
 }
 
-void string_copy(String* dest, const String* src)
+void String_copy(String* dest, const String* src)
 {
     if (src == dest) {
         return;
@@ -158,7 +158,7 @@ void string_copy(String* dest, const String* src)
 
 //  Capacity
 
-void string_reserve(String* s, u64 new_cap)
+void String_reserve(String* s, u64 new_cap)
 {
     if (new_cap <= s->capacity) {
         return;
@@ -166,7 +166,7 @@ void string_reserve(String* s, u64 new_cap)
     ensure_capacity(s, new_cap);
 }
 
-void string_reserve_char(String* s, u64 new_cap, char c)
+void String_reserve_char(String* s, u64 new_cap, char c)
 {
     if (new_cap <= s->capacity) {
         // Fill from current size up to new_cap within existing allocation.
@@ -188,7 +188,7 @@ void string_reserve_char(String* s, u64 new_cap, char c)
     s->size = new_cap;
 }
 
-void string_shrink_to_fit(String* s)
+void String_shrink_to_fit(String* s)
 {
     if (IS_SSO(s)) {
         return;
@@ -219,7 +219,7 @@ void string_shrink_to_fit(String* s)
 
 //  Conversion
 
-char* string_to_cstr(const String* s)
+char* String_to_cstr(const String* s)
 {
     char* out = malloc(s->size + 1);
     CHECK_FATAL(!out, "malloc failed");
@@ -232,7 +232,7 @@ char* string_to_cstr(const String* s)
     return out;
 }
 
-void string_to_cstr_buf(const String* str, char* buff, u64 n)
+void String_to_cstr_buf(const String* str, char* buff, u64 n)
 {
     CHECK_FATAL(n < str->size + 1, "buffer not enough");
 
@@ -242,7 +242,7 @@ void string_to_cstr_buf(const String* str, char* buff, u64 n)
     buff[str->size] = '\0';
 }
 
-char* string_data_ptr(const String* s)
+char* String_data_ptr(const String* s)
 {
     if (s->size == 0) {
         return NULL;
@@ -254,13 +254,13 @@ char* string_data_ptr(const String* s)
 
 //  Modification
 
-void string_append_char(String* s, char c)
+void String_append_char(String* s, char c)
 {
     MAYBE_GROW_STR(s);
     GET_STR_CHAR(s, s->size++) = c;
 }
 
-void string_append_cstr(String* s, const char* cstr)
+void String_append_cstr(String* s, const char* cstr)
 {
     u64 len = cstr_len(cstr);
     if (len == 0) {
@@ -272,7 +272,7 @@ void string_append_cstr(String* s, const char* cstr)
     s->size += len;
 }
 
-void string_append_string(String* s, const String* other)
+void String_append_String(String* s, const String* other)
 {
     if (other->size == 0) {
         return;
@@ -283,27 +283,27 @@ void string_append_string(String* s, const String* other)
     s->size += other->size;
 }
 
-void string_append_string_move(String* s, String** other)
+void String_append_String_move(String* s, String** other)
 {
     CHECK_FATAL(!*other, "*other is null");
 
     if ((*other)->size > 0) {
-        string_append_string(s, *other);
+        String_append_String(s, *other);
     }
 
-    string_destroy(*other);
+    String_destroy(*other);
     *other = NULL;
 }
 
-char string_pop_char(String* s)
+char String_pop_char(String* s)
 {
-    CHECK_FATAL(s->size == 0, "cannot pop from empty string");
+    CHECK_FATAL(s->size == 0, "cannot pop from empty String");
 
     char c = GET_STR_CHAR(s, --s->size);
     return c;
 }
 
-void string_insert_char(String* s, u64 i, char c)
+void String_insert_char(String* s, u64 i, char c)
 {
     CHECK_FATAL(i > s->size, "index out of bounds");
 
@@ -318,7 +318,7 @@ void string_insert_char(String* s, u64 i, char c)
     s->size++;
 }
 
-void string_insert_cstr(String* s, u64 i, const char* cstr)
+void String_insert_cstr(String* s, u64 i, const char* cstr)
 {
     CHECK_FATAL(i > s->size, "index out of bounds");
 
@@ -338,7 +338,7 @@ void string_insert_cstr(String* s, u64 i, const char* cstr)
     s->size += len;
 }
 
-void string_insert_string(String* s, u64 i, const String* other)
+void String_insert_String(String* s, u64 i, const String* other)
 {
     CHECK_FATAL(i > s->size, "index out of bounds");
 
@@ -346,7 +346,7 @@ void string_insert_string(String* s, u64 i, const String* other)
         return;
     }
 
-    CHECK_WARN_RET(s == other, , "can't insert aliasing(same) strings");
+    CHECK_WARN_RET(s == other, , "can't insert aliasing(same) Strings");
 
     u64 len = other->size;
     ensure_capacity(s, s->size + len);
@@ -359,7 +359,7 @@ void string_insert_string(String* s, u64 i, const String* other)
     s->size += len;
 }
 
-void string_remove_char(String* s, u64 i)
+void String_remove_char(String* s, u64 i)
 {
     CHECK_FATAL(i >= s->size, "index out of bounds");
 
@@ -379,7 +379,7 @@ void string_remove_char(String* s, u64 i)
 
 */
 
-void string_remove_range(String* s, u64 start, u64 len)
+void String_remove_range(String* s, u64 start, u64 len)
 {
     CHECK_FATAL(start >= s->size, "start out of bounds");
 
@@ -402,7 +402,7 @@ void string_remove_range(String* s, u64 start, u64 len)
 
 //  Comparison
 
-int string_compare(const String* s1, const String* s2)
+int String_compare(const String* s1, const String* s2)
 {
     u64 min_len = s1->size < s2->size ? s1->size : s2->size;
 
@@ -422,7 +422,7 @@ int string_compare(const String* s1, const String* s2)
     return 0;
 }
 
-b8 string_equals_cstr(const String* s, const char* cstr)
+b8 String_equals_cstr(const String* s, const char* cstr)
 {
     u64 len = cstr_len(cstr);
 
@@ -439,7 +439,7 @@ b8 string_equals_cstr(const String* s, const char* cstr)
 
 //  Search
 
-u64 string_find_char(const String* s, char c)
+u64 String_find_char(const String* s, char c)
 {
     if (s->size == 0) {
         return WC_NOT_FOUND;
@@ -449,7 +449,7 @@ u64 string_find_char(const String* s, char c)
     return p ? (u64)(p - buf) : WC_NOT_FOUND;
 }
 
-u64 string_find_cstr(const String* s, const char* substr)
+u64 String_find_cstr(const String* s, const char* substr)
 {
     u64 len = cstr_len(substr);
     if (len == 0) {
@@ -468,7 +468,7 @@ u64 string_find_cstr(const String* s, const char* substr)
     return WC_NOT_FOUND;
 }
 
-String* string_substr(const String* s, u64 start, u64 length)
+String* String_substr(const String* s, u64 start, u64 length)
 {
     CHECK_FATAL(start >= s->size, "start out of bounds");
 
@@ -476,7 +476,7 @@ String* string_substr(const String* s, u64 start, u64 length)
         length = s->size - start;
     }
 
-    String* result = string_create();
+    String* result = String_create();
 
     if (length > 0) {
         ensure_capacity(result, length);
@@ -490,7 +490,7 @@ String* string_substr(const String* s, u64 start, u64 length)
 
 //  I/O
 
-void string_print(const String* s)
+void String_print(const String* s)
 {
     putchar('"');
     const char* buf = GET_STR(s);
@@ -531,7 +531,7 @@ static inline void heap_to_stk(String* s)
     s->capacity              = STR_SSO_SIZE - 1;
 }
 
-static inline void string_grow(String* s)
+static inline void String_grow(String* s)
 {
     u64 new_cap = (u64)((float)s->capacity * STRING_GROWTH);
 

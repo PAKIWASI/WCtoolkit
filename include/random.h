@@ -48,7 +48,7 @@
 typedef struct {
     u64 state;    // RNG state - advances with each random number generated
     u64 inc;      // Sequence selector - must be odd (ensures full period LCG)
-} Pcg32;
+} WC_Pcg32;
 
 
 // Default initializer with pre-chosen values for state and increment.

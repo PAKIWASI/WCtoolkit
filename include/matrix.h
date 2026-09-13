@@ -23,11 +23,11 @@ Matrixf* matrix_create(u64 m, u64 n) __attribute__((warn_unused_result));
 // create heap matrix with m rows and n cols and an array of size m x n
 Matrixf* matrix_create_arr(u64 m, u64 n, const float* arr) __attribute__((nonnull(3), warn_unused_result));
 
-// create matrix with everything on the stack
+// create matrix with everything on the Stack
 void matrix_create_stk(u64 m, u64 n, float* data, Matrixf* mat) __attribute__((nonnull(3, 4)));
 
 // destroy the matrix created with matrix_create or matrix_create_arr
-// DO NOT use on stack-allocated matrices (created with matrix_create_stk)
+// DO NOT use on Stack-allocated matrices (created with matrix_create_stk)
 void matrix_destroy(Matrixf* mat) __attribute__((nonnull(1)));
 // SAFE ON: raw/uninitialized dest. Never reads dest before writing it.
 void matrix_copy(Matrixf* dest, const Matrixf* src) __attribute__((nonnull(1, 2)));
@@ -137,42 +137,42 @@ void matrix_print(const Matrixf* mat) __attribute__((nonnull(1)));
 #include "arena.h"
 
 /*
-Create a matrix allocated from arena (heap-style)
-Matrix struct and data both allocated from arena
-No need to call matrix_destroy - freed when arena is cleared/released
+Create a matrix allocated from Arena (heap-style)
+Matrix struct and data both allocated from Arena
+No need to call matrix_destroy - freed when Arena is cleared/released
 
 Usage:
-    Matrix* mat = MATRIX_ARENA(arena, 3, 3);
+    Matrix* mat = MATRIX_ARENA(Arena, 3, 3);
 */
-static inline Matrixf* matrix_arena_alloc(Arena* arena, u64 m, u64 n) __attribute__((nonnull(1)))
+__attribute__((nonnull(1))) static inline Matrixf* matrix_Arena_alloc(Arena* arena, u64 m, u64 n)
 {
     CHECK_FATAL(m == 0 && n == 0, "n == m == 0");
 
     Matrixf* mat = ARENA_ALLOC(arena, Matrixf);
-    CHECK_FATAL(!mat, "matrix arena allocation failed");
+    CHECK_FATAL(!mat, "matrix Arena allocation failed");
 
     mat->m = m;
     mat->n = n;
 
     mat->data = ARENA_ALLOC_N(arena, float, (u64)(m * n));
-    CHECK_FATAL(!mat->data, "matrix data arena allocation failed");
+    CHECK_FATAL(!mat->data, "matrix data Arena allocation failed");
 
     return mat;
 }
 
 /*
-Create a matrix allocated from arena with initial values
-Matrix struct and data allocated from arena
+Create a matrix allocated from Arena with initial values
+Matrix struct and data allocated from Arena
 
 Usage:
-    Matrix* mat = MATRIX_ARENA_ARR(arena, 3, 3, (float[9]){1,2,3,4,5,6,7,8,9});
+    Matrix* mat = MATRIX_ARENA_ARR(Arena, 3, 3, (float[9]){1,2,3,4,5,6,7,8,9});
 */
 
-static inline Matrixf* matrix_arena_arr_alloc(Arena* arena, u64 m, u64 n, const float* arr) __attribute__((nonnull(1, 4)))
+__attribute__((nonnull(1, 4))) static inline Matrixf* matrix_Arena_arr_alloc(Arena* arena, u64 m, u64 n, const float* arr)
 {
     CHECK_FATAL(m == 0 || n == 0, "matrix dims must be > 0");
 
-    Matrixf* mat = matrix_arena_alloc(arena, m, n);
+    Matrixf* mat = matrix_Arena_alloc(arena, m, n);
     memcpy(mat->data, arr, sizeof(float) * m * n);
     return mat;
 }

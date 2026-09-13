@@ -54,17 +54,17 @@ typedef enum {
 enum jsmnerr {
     /* Not enough tokens were provided */
     JSMN_ERROR_NOMEM = -1,
-    /* Invalid character inside JSON string */
+    /* Invalid character inside JSON String */
     JSMN_ERROR_INVAL = -2,
-    /* The string is not a full JSON packet, more bytes expected */
+    /* The String is not a full JSON packet, more bytes expected */
     JSMN_ERROR_PART = -3
 };
 
 /**
  * JSON token description.
- * type		type (object, array, string etc.)
- * start	start position in JSON data string
- * end		end position in JSON data string
+ * type		type (object, array, String etc.)
+ * start	start position in JSON data String
+ * end		end position in JSON data String
  */
 typedef struct jsmntok {
     jsmntype_t type;
@@ -78,10 +78,10 @@ typedef struct jsmntok {
 
 /**
  * JSON parser. Contains an array of token blocks available. Also stores
- * the string being parsed now and current position in that string.
+ * the String being parsed now and current position in that String.
  */
 typedef struct jsmn_parser {
-    unsigned int pos;      /* offset in the JSON string */
+    unsigned int pos;      /* offset in the JSON String */
     unsigned int toknext;  /* next token to allocate */
     int          toksuper; /* superior token node, e.g. parent object or array */
 } jsmn_parser;
@@ -92,7 +92,7 @@ typedef struct jsmn_parser {
 JSMN_API void jsmn_init(jsmn_parser* parser);
 
 /**
- * Run JSON parser. It parses a JSON data string into and array of tokens, each
+ * Run JSON parser. It parses a JSON data String into and array of tokens, each
  * describing
  * a single JSON object.
  */
@@ -188,9 +188,9 @@ found:
 }
 
 /**
- * Fills next token with JSON string.
+ * Fills next token with JSON String.
  */
-static int jsmn_parse_string(jsmn_parser* parser, const char* js, const size_t len, jsmntok_t* tokens,
+static int jsmn_parse_String(jsmn_parser* parser, const char* js, const size_t len, jsmntok_t* tokens,
                              const size_t num_tokens)
 {
     jsmntok_t* token;
@@ -203,7 +203,7 @@ static int jsmn_parse_string(jsmn_parser* parser, const char* js, const size_t l
     for (; parser->pos < len && js[parser->pos] != '\0'; parser->pos++) {
         char c = js[parser->pos];
 
-        /* Quote: end of string */
+        /* Quote: end of String */
         if (c == '\"') {
             if (tokens == NULL) {
                 return 0;
@@ -262,7 +262,7 @@ static int jsmn_parse_string(jsmn_parser* parser, const char* js, const size_t l
 }
 
 /**
- * Parse JSON string and fill tokens.
+ * Parse JSON String and fill tokens.
  */
 JSMN_API int jsmn_parse(jsmn_parser* parser, const char* js, const size_t len, jsmntok_t* tokens,
                         const unsigned int num_tokens)
@@ -359,7 +359,7 @@ JSMN_API int jsmn_parse(jsmn_parser* parser, const char* js, const size_t len, j
 #endif
             break;
         case '\"':
-            r = jsmn_parse_string(parser, js, len, tokens, num_tokens);
+            r = jsmn_parse_String(parser, js, len, tokens, num_tokens);
             if (r < 0) {
                 return r;
             }

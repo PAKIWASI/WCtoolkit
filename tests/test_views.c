@@ -3,7 +3,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
+#include <String.h>
 
 
 // Helpers 
@@ -19,9 +19,9 @@ static int sv_equals_cstr(StrView sv, const char* cstr)
 }
 
 
-// Small strings share one node until it's full 
+// Small Strings share one node until it's full 
 
-static void test_small_strings_share_node(void)
+static void test_small_Strings_share_node(void)
 {
     StringStore ss;
     StringStore_create(&ss);
@@ -38,7 +38,7 @@ static void test_small_strings_share_node(void)
 }
 
 
-// A string exactly filling a node must not spill into a new node 
+// A String exactly filling a node must not spill into a new node 
 
 static void test_exact_fit_no_new_node(void)
 {
@@ -55,7 +55,7 @@ static void test_exact_fit_no_new_node(void)
     WC_ASSERT_EQ_U64(ss.num, 1); // fits exactly, no extra node
     WC_ASSERT_EQ_U64(ss.tail_off, StringStore_NODE_SIZE);
 
-    // next string must go to a fresh node, not overflow the full one
+    // next String must go to a fresh node, not overflow the full one
     StrView s = StringStore_cstr(&ss, "hi", 2);
     WC_ASSERT_TRUE(sv_equals_cstr(s, "hi"));
     WC_ASSERT(s.ptr != v.ptr);
@@ -147,7 +147,7 @@ static void test_multiple_overflows_keep_content(void)
 }
 
 
-// Small strings after an overflow land in the fresh tail node 
+// Small Strings after an overflow land in the fresh tail node 
 
 static void test_small_after_overflow_appends_to_tail(void)
 {
@@ -191,15 +191,15 @@ static void test_destroy_mixed_chain(void)
 }
 
 
-// StrView_from_string sanity (same header) 
+// StrView_from_String sanity (same header) 
 
-static void test_strview_from_string(void)
+static void test_strview_from_String(void)
 {
-    String* s = string_from_cstr("viewme");
-    StrView sv = StrView_from_string(s);
+    String* s = String_from_cstr("viewme");
+    StrView sv = StrView_from_String(s);
     WC_ASSERT_TRUE(sv_equals_cstr(sv, "viewme"));
     WC_ASSERT_EQ_U64(sv.len, 6);
-    string_destroy(s);
+    String_destroy(s);
 }
 
 
@@ -208,12 +208,12 @@ static void test_strview_from_string(void)
 void views_suite(void)
 {
     WC_SUITE("Views");
-    WC_RUN(test_small_strings_share_node);
+    WC_RUN(test_small_Strings_share_node);
     WC_RUN(test_exact_fit_no_new_node);
     WC_RUN(test_overflow_by_one_goes_to_heap);
     WC_RUN(test_overflow_way_past_node);
     WC_RUN(test_multiple_overflows_keep_content);
     WC_RUN(test_small_after_overflow_appends_to_tail);
     WC_RUN(test_destroy_mixed_chain);
-    WC_RUN(test_strview_from_string);
+    WC_RUN(test_strview_from_String);
 }

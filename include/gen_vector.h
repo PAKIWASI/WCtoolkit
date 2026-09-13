@@ -16,8 +16,8 @@
  * vectors of that type —  improves cache locality when many vectors of the same type exist.
  *
  * Example:
- *   static const GenVec_ops string_ops = { str_copy, str_move, str_del };
- *   GenVec* vec = GenVec_create(8, sizeof(String), &string_ops);
+ *   static const GenVec_ops String_ops = { str_copy, str_move, str_del };
+ *   GenVec* vec = GenVec_create(8, sizeof(String), &String_ops);
  *
  * For POD types (int, float, flat structs) pass NULL for ops:
  *   GenVec* vec = GenVec_create(8, sizeof(int), NULL);
@@ -64,7 +64,7 @@ _Static_assert(sizeof(GenVec) == 40, "GenVec layout drifted from expected 40 byt
 // ops: pointer to a shared GenVec_ops vtable, or NULL for POD types.
 GenVec* GenVec_create(u64 n, u32 data_size, const container_ops* ops) __attribute__((warn_unused_result));
 
-// Initialize vector on stack (struct on stack, data on heap).
+// Initialize vector on Stack (struct on Stack, data on heap).
 void GenVec_create_stk(u64 n, u32 data_size, const container_ops* ops, GenVec* vec) __attribute__((nonnull(4)));
 
 // Initialize vector of size n with all elements set to val.
@@ -77,8 +77,8 @@ void GenVec_create_val_stk(u64 n, const u8* val, u32 data_size, const container_
 
 GenVec* GenVec_create_arr(u64 n, u32 data_size, const container_ops* ops, u8* arr) __attribute__((nonnull(4), warn_unused_result));
 
-// Vector COMPLETELY on stack (can't grow in size).
-// You provide a stack-allocated array which becomes the internal array.
+// Vector COMPLETELY on Stack (can't grow in size).
+// You provide a Stack-allocated array which becomes the internal array.
 // should only use if you need GenVec operations on C array
 // WARNING: crashes when size == capacity and you try to push.
 void GenVec_create_stk_arr(u64 n, u8* arr, u32 data_size, const container_ops* ops, GenVec* vec)
@@ -87,7 +87,7 @@ void GenVec_create_stk_arr(u64 n, u8* arr, u32 data_size, const container_ops* o
 // Destroy heap-allocated vector and clean up all elements.
 void GenVec_destroy(GenVec* vec) __attribute__((nonnull(1)));
 
-// Destroy stack-allocated vector (cleans up data, but not vec itself).
+// Destroy Stack-allocated vector (cleans up data, but not vec itself).
 void GenVec_destroy_stk(GenVec* vec) __attribute__((nonnull(1)));
 
 // Remove all elements (calls del_fn on each), keep capacity.

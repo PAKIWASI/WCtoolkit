@@ -220,7 +220,7 @@ static inline void wc_print_cstr(const u8* elm)
  *   CHECK_FATAL  Programmer errors: null pointer, out of bounds, OOM.
  *                Crashes with a message. These are bugs, not conditions.
  *
- *   wc_errno     Expected conditions: pop on empty, arena full.
+ *   wc_errno     Expected conditions: pop on empty, Arena full.
  *                Function returns NULL / 0 / void. wc_errno says why.
  *                Ignore it if you don't care. Check it if you do.
  *
@@ -229,13 +229,13 @@ static inline void wc_print_cstr(const u8* elm)
  * -----
  *   // Check a single call:
  *   wc_errno = WC_OK;
- *   u8* p = arena_alloc(arena, size);
+ *   u8* p = Arena_alloc(Arena, size);
  *   if (!p && wc_errno == WC_ERR_FULL) { ... }
  *
  *   // Check a batch — wc_errno stays set if any call failed:
  *   wc_errno = WC_OK;
- *   float* a = (float*)arena_alloc(arena, 256);
- *   float* b = (float*)arena_alloc(arena, 256);
+ *   float* a = (float*)Arena_alloc(Arena, 256);
+ *   float* b = (float*)Arena_alloc(Arena, 256);
  *   if (wc_errno) { wc_perror("alloc"); }
  *
  *
@@ -248,16 +248,16 @@ static inline void wc_print_cstr(const u8* elm)
  *
  * WHAT SETS wc_errno
  * ------------------
- *   arena_alloc, arena_alloc_aligned      WC_ERR_FULL    arena exhausted
+ *   Arena_alloc, Arena_alloc_aligned      WC_ERR_FULL    Arena exhausted
  *   genVec_pop, genVec_front, genVec_back WC_ERR_EMPTY   vec is empty
- *   dequeue, queue_peek, queue_peek_ptr   WC_ERR_EMPTY   queue is empty
- *   stack_pop, stack_peek                 WC_ERR_EMPTY   stack is empty
+ *   deQueue, Queue_peek, Queue_peek_ptr   WC_ERR_EMPTY   Queue is empty
+ *   Stack_pop, Stack_peek                 WC_ERR_EMPTY   Stack is empty
  */
 
 
 typedef enum {
     WC_OK        = 0,
-    WC_ERR_FULL,       // arena exhausted / container at capacity
+    WC_ERR_FULL,       // Arena exhausted / container at capacity
     WC_ERR_EMPTY,      // pop or peek on empty container
     WC_ERR_INVALID_OP, // call to a function with preconditions not met
 } wc_err;
@@ -279,7 +279,7 @@ static inline const char* wc_strerror(wc_err e)
 extern _Thread_local wc_err wc_errno;
 
 /* Print last error — same pattern as perror(3).
- *   wc_perror("arena_alloc");  ->  "arena_alloc: full"
+ *   wc_perror("Arena_alloc");  ->  "Arena_alloc: full"
  */
 static inline void wc_perror(const char* prefix)
 {
@@ -321,7 +321,7 @@ static inline void wc_perror(const char* prefix)
 
 #endif /* WC_WC_ERRNO_H */
 
-/* ===== arena.h ===== */
+/* ===== Arena.h ===== */
 #ifndef WC_ARENA_H
 #define WC_ARENA_H
 
@@ -345,92 +345,92 @@ typedef struct {
 
 
 /*
-Allocate and return a pointer to memory to the arena
+Allocate and return a pointer to memory to the Arena
 with a region with the specified size. Providing a
 size = 0 results in size = ARENA_DEFAULT_SIZE (user can modify)
 
 Parameters:
-  u64 size    |    The size (in bytes) of the arena
+  u64 size    |    The size (in bytes) of the Arena
                       memory region.
 Return:
-  Pointer to arena on success, NULL on failure
+  Pointer to Arena on success, NULL on failure
 */
-Arena* arena_create(u64 capacity);
+Arena* Arena_create(u64 capacity);
 
 /*
-Initialize an arena object with pointers to the arena and a
+Initialize an Arena object with pointers to the Arena and a
 pre-allocated region(base ptr), as well as the size of the provided
-region. Good for using the stack instead of the heap.
-The arena and the data may be stack initialized, so no arena_release.
+region. Good for using the Stack instead of the heap.
+The Arena and the data may be Stack initialized, so no Arena_release.
 Note that ARENA_DEFAULT_SIZE is not used.
 
 Parameters:
-  Arena* arena    |   The arena object being initialized.
-  u8*    data     |   The region to be arena-fyed.
+  Arena* Arena    |   The Arena object being initialized.
+  u8*    data     |   The region to be Arena-fyed.
   u64    size     |   The size of the region in bytes.
 */
-void arena_create_arr_stk(Arena* arena, u8* data, u64 size);
+void Arena_create_arr_stk(Arena* Arena, u8* data, u64 size);
 
 
-void arena_create_stk(Arena* arena, u64 capacity);
+void Arena_create_stk(Arena* Arena, u64 capacity);
 
 /*
-Reset the pointer to the arena region to the beginning
+Reset the pointer to the Arena region to the beginning
 of the allocation. Allows reuse of the memory without
 expensive frees.
 
 Parameters:
-  Arena *arena    |    The arena to be cleared.
+  Arena *Arena    |    The Arena to be cleared.
 */
-static inline void arena_clear(Arena* arena)
+static inline void Arena_clear(Arena* Arena)
 {
-    CHECK_FATAL(!arena, "arena is null");
-    arena->idx = 0;
+    CHECK_FATAL(!Arena, "Arena is null");
+    Arena->idx = 0;
 }
 
 /*
-Free the memory allocated for the entire arena region.
+Free the memory allocated for the entire Arena region.
 
 Parameters:
-  Arena *arena    |    The arena to be destroyed.
+  Arena *Arena    |    The Arena to be destroyed.
 */
-static inline void arena_release(Arena* arena)
+static inline void Arena_release(Arena* Arena)
 {
-    CHECK_FATAL(!arena, "arena is null");
-    free(arena->base);
-    free(arena);
+    CHECK_FATAL(!Arena, "Arena is null");
+    free(Arena->base);
+    free(Arena);
 }
 
 /*
 Return a pointer to a portion of specified size of the
-specified arena's region. By default, memory is
+specified Arena's region. By default, memory is
 aligned by alignof(size_t), but you can change this by
 #defining ARENA_DEFAULT_ALIGNMENT before #include'ing
-arena.h. Providing a size of zero results in a failure.
+Arena.h. Providing a size of zero results in a failure.
 
 Parameters:
-  Arena* arena    |    The arena of which the pointer
+  Arena* Arena    |    The Arena of which the pointer
                        from the region will be
                        distributed
   u64 size        |    The size (in bytes) of
                        allocated memory planned to be
                        used.
 Return:
-  Pointer to arena region segment on success, NULL on
+  Pointer to Arena region segment on success, NULL on
   failure.
 */
-u8* arena_alloc(Arena* arena, u64 size);
+u8* Arena_alloc(Arena* Arena, u64 size);
 
 /*
-Same as arena_alloc, except you can specify a memory
+Same as Arena_alloc, except you can specify a memory
 alignment for allocations.
 
 Return a pointer to a portion of specified size of the
-specified arena's region. Providing a size of
+specified Arena's region. Providing a size of
 zero results in a failure.
 
 Parameters:
-  Arena* arena              |    The arena of which the pointer
+  Arena* Arena              |    The Arena of which the pointer
                                  from the region will be
                                  distributed
   u64 size                  |    The size (in bytes) of
@@ -439,87 +439,87 @@ Parameters:
   u32 alignment             |    Alignment (in bytes) for each
                                  memory allocation.
 Return:
-  Pointer to arena region segment on success, NULL on
+  Pointer to Arena region segment on success, NULL on
   failure.
 */
-u8* arena_alloc_aligned(Arena* arena, u64 size, u32 alignment);
+u8* Arena_alloc_aligned(Arena* Arena, u64 size, u32 alignment);
 
 
 // Get used capacity
-static inline u64 arena_used(Arena* arena)
+static inline u64 Arena_used(Arena* Arena)
 {
-    CHECK_FATAL(!arena, "arena is null");
-    return arena->idx;
+    CHECK_FATAL(!Arena, "Arena is null");
+    return Arena->idx;
 }
 
 // Get remaining capacity
-static inline u64 arena_remaining(Arena* arena)
+static inline u64 Arena_remaining(Arena* Arena)
 {
-    CHECK_FATAL(!arena, "arena is null");
-    return arena->size - arena->idx;
+    CHECK_FATAL(!Arena, "Arena is null");
+    return Arena->size - Arena->idx;
 }
 
 
 
-// explicit scratch arena
+// explicit scratch Arena
 
 typedef struct {
-    Arena* arena;
+    Arena* Arena;
     u64 mark;
 } ArenaScratch;
 
 
-static inline ArenaScratch arena_scratch_begin(Arena* arena)
+static inline ArenaScratch Arena_scratch_begin(Arena* Arena)
 {
-    CHECK_FATAL(!arena, "arena is null");
-    return (ArenaScratch){ .arena = arena, .mark = arena->idx };
+    CHECK_FATAL(!Arena, "Arena is null");
+    return (ArenaScratch){ .Arena = Arena, .mark = Arena->idx };
 }
 
-static inline void arena_scratch_end(ArenaScratch scratch)
+static inline void Arena_scratch_end(ArenaScratch scratch)
 {
-    if (scratch.arena) {
-        scratch.arena->idx = scratch.mark;
-        scratch.arena = NULL;
+    if (scratch.Arena) {
+        scratch.Arena->idx = scratch.mark;
+        scratch.Arena = NULL;
     }
 }
 
-// macro for automatic cleanup arena_scratch
-#define ARENA_SCRATCH(arena_ptr) \
-    for (ArenaScratch __nme__ = arena_scratch_begin(arena_ptr); \
-         (__nme__ ).arena != NULL; \
-         arena_scratch_end((__nme__ )), (__nme__).arena = NULL)
+// macro for automatic cleanup Arena_scratch
+#define ARENA_SCRATCH(Arena_ptr) \
+    for (ArenaScratch __nme__ = Arena_scratch_begin(Arena_ptr); \
+         (__nme__ ).Arena != NULL; \
+         Arena_scratch_end((__nme__ )), (__nme__).Arena = NULL)
 
 /* USAGE:
 // Manual:
-ScratchArena scratch = arena_scratch_begin(arena);
-char* tmp = ARENA_ALLOC_N(arena, char, 256);
-arena_scratch_end(scratch);
+ScratchArena scratch = Arena_scratch_begin(Arena);
+char* tmp = ARENA_ALLOC_N(Arena, char, 256);
+Arena_scratch_end(scratch);
 
 // Automatic:
-ARENA_SCRATCH(arena) {
-    char* tmp = ARENA_ALLOC_N(arena, char, 256);
+ARENA_SCRATCH(Arena) {
+    char* tmp = ARENA_ALLOC_N(Arena, char, 256);
 } // auto cleanup
 */
 
 
 // USEFULL MACROS
 
-#define ARENA_CREATE_STK_ARR(arena, n) (arena_create_arr_stk((arena), (u8[nKB(n)]){0}, nKB(n)))
+#define ARENA_CREATE_STK_ARR(Arena, n) (Arena_create_arr_stk((Arena), (u8[nKB(n)]){0}, nKB(n)))
 
 // typed allocation
-#define ARENA_ALLOC(arena, T) ((T*)arena_alloc((arena), sizeof(T)))
+#define ARENA_ALLOC(Arena, T) ((T*)Arena_alloc((Arena), sizeof(T)))
 
-#define ARENA_ALLOC_N(arena, T, n) ((T*)arena_alloc((arena), sizeof(T) * (n)))
+#define ARENA_ALLOC_N(Arena, T, n) ((T*)Arena_alloc((Arena), sizeof(T) * (n)))
 
 // common for structs
-#define ARENA_ALLOC_ZERO(arena, T) ((T*)memset(ARENA_ALLOC(arena, T), 0, sizeof(T)))
+#define ARENA_ALLOC_ZERO(Arena, T) ((T*)memset(ARENA_ALLOC(Arena, T), 0, sizeof(T)))
 
-#define ARENA_ALLOC_ZERO_N(arena, T, n) ((T*)memset(ARENA_ALLOC_N(arena, T, n), 0, sizeof(T) * (n)))
+#define ARENA_ALLOC_ZERO_N(Arena, T, n) ((T*)memset(ARENA_ALLOC_N(Arena, T, n), 0, sizeof(T) * (n)))
 
-// Allocate and copy array into arena
-#define ARENA_PUSH_ARRAY(arena, T, src, count)      \
+// Allocate and copy array into Arena
+#define ARENA_PUSH_ARRAY(Arena, T, src, count)      \
     ({                                              \
-        (T)* _dst = ARENA_ALLOC_N(arena, T, count); \
+        (T)* _dst = ARENA_ALLOC_N(Arena, T, count); \
         memcpy(_dst, src, sizeof(T) * (count));     \
         _dst;                                       \
     })
@@ -530,7 +530,7 @@ ARENA_SCRATCH(arena) {
 #ifndef WC_MATRIX_GENERIC_H
 #define WC_MATRIX_GENERIC_H
 
-// #include <string.h>
+// #include <String.h>
 
 
 // ============================================================================
@@ -930,26 +930,26 @@ ARENA_SCRATCH(arena) {
 // ============================================================================
 
 /*
-Create a matrix allocated from arena (heap-style)
-Matrix struct and data both allocated from arena
-No need to call matrix_destroy - freed when arena is cleared/released
+Create a matrix allocated from Arena (heap-style)
+Matrix struct and data both allocated from Arena
+No need to call matrix_destroy - freed when Arena is cleared/released
 
 Usage:
-    Matrix* mat = MATRIX_ARENA(arena, 3, 3);
+    Matrix* mat = MATRIX_ARENA(Arena, 3, 3);
 */
 #define MATRIX_ARENA_ALLOC(T)                                           \
-    Matrix_##T* matrix_arena_alloc_##T(Arena* arena, u64 m, u64 n)      \
+    Matrix_##T* matrix_Arena_alloc_##T(Arena* Arena, u64 m, u64 n)      \
     {                                                                   \
         CHECK_FATAL(m == 0 && n == 0, "n == m == 0");                   \
-        Matrix_##T* mat = ARENA_ALLOC(arena, Matrix_##T);               \
+        Matrix_##T* mat = ARENA_ALLOC(Arena, Matrix_##T);               \
                                                                         \
-        CHECK_FATAL(!mat, "matrix arena allocation failed");            \
+        CHECK_FATAL(!mat, "matrix Arena allocation failed");            \
                                                                         \
         mat->m = m;                                                     \
         mat->n = n;                                                     \
                                                                         \
-        mat->data = ARENA_ALLOC_N(arena, T, (u64)(m * n));              \
-        CHECK_FATAL(!mat->data, "matrix data arena allocation failed"); \
+        mat->data = ARENA_ALLOC_N(Arena, T, (u64)(m * n));              \
+        CHECK_FATAL(!mat->data, "matrix data Arena allocation failed"); \
                                                                         \
         return mat;                                                     \
     }
@@ -998,7 +998,7 @@ _Thread_local wc_err wc_errno = WC_OK;
 
 #endif /* WC_WC_ERRNO_IMPL */
 
-/* ===== arena.c ===== */
+/* ===== Arena.c ===== */
 #ifndef WC_ARENA_IMPL
 #define WC_ARENA_IMPL
 
@@ -1027,84 +1027,84 @@ align a 4 byte thing to 8 bytes alignment boundry:
     ALIGN_UP((val), ARENA_DEFAULT_ALIGNMENT)
 
 
-#define ARENA_PTR(arena, idx) ((arena)->base + (idx))
+#define ARENA_PTR(Arena, idx) ((Arena)->base + (idx))
 
 
 
 
 
-Arena* arena_create(u64 capacity)
+Arena* Arena_create(u64 capacity)
 {
     if (capacity == 0) {
         capacity = ARENA_DEFAULT_SIZE;
     }
 
-    Arena* arena = (Arena*)malloc(sizeof(Arena));
-    CHECK_FATAL(!arena, "arena malloc failed");
+    Arena* Arena = (Arena*)malloc(sizeof(Arena));
+    CHECK_FATAL(!Arena, "Arena malloc failed");
 
-    arena->base = (u8*)malloc(capacity);
-    CHECK_FATAL(!arena->base, "arena base malloc failed");
+    Arena->base = (u8*)malloc(capacity);
+    CHECK_FATAL(!Arena->base, "Arena base malloc failed");
 
-    arena->idx = 0;
-    arena->size = capacity;
+    Arena->idx = 0;
+    Arena->size = capacity;
 
-    return arena;
+    return Arena;
 }
 
-void arena_create_stk(Arena* arena, u64 capacity)
+void Arena_create_stk(Arena* Arena, u64 capacity)
 {
     if (capacity == 0) {
         capacity = ARENA_DEFAULT_SIZE;
     }
 
-    arena->base = (u8*)malloc(capacity);
-    CHECK_FATAL(!arena->base, "arena base malloc failed");
+    Arena->base = (u8*)malloc(capacity);
+    CHECK_FATAL(!Arena->base, "Arena base malloc failed");
 
-    arena->idx  = 0;
-    arena->size = capacity;
+    Arena->idx  = 0;
+    Arena->size = capacity;
 }
 
-void arena_create_arr_stk(Arena* arena, u8* data, u64 size)
+void Arena_create_arr_stk(Arena* Arena, u8* data, u64 size)
 {
-    CHECK_FATAL(!arena, "arena is null");
+    CHECK_FATAL(!Arena, "Arena is null");
     CHECK_FATAL(!data, "data is null");
     CHECK_FATAL(size == 0, "size can't be zero");
 
-    arena->base = data;
-    arena->idx = 0;
-    arena->size = size;
+    Arena->base = data;
+    Arena->idx = 0;
+    Arena->size = size;
 }
 
-u8* arena_alloc(Arena* arena, u64 size)
+u8* Arena_alloc(Arena* Arena, u64 size)
 {
-    CHECK_FATAL(!arena, "arena is null");
+    CHECK_FATAL(!Arena, "Arena is null");
     CHECK_FATAL(size == 0, "can't have allocation of size = 0");
 
     // Align the current index first
-    u64 aligned_idx = ALIGN_UP_DEFAULT(arena->idx);
-    WC_SET_RET(WC_ERR_FULL, arena->size - aligned_idx < size, NULL);
+    u64 aligned_idx = ALIGN_UP_DEFAULT(Arena->idx);
+    WC_SET_RET(WC_ERR_FULL, Arena->size - aligned_idx < size, NULL);
 
-    u8* ptr = ARENA_PTR(arena, aligned_idx);
-    arena->idx = aligned_idx + size;
+    u8* ptr = ARENA_PTR(Arena, aligned_idx);
+    Arena->idx = aligned_idx + size;
 
     return ptr;
 }
 
-u8* arena_alloc_aligned(Arena* arena, u64 size, u32 alignment)
+u8* Arena_alloc_aligned(Arena* Arena, u64 size, u32 alignment)
 {
 
-    CHECK_FATAL(!arena, "arena is null");
+    CHECK_FATAL(!Arena, "Arena is null");
     CHECK_FATAL(size == 0, "can't have allocation of size = 0");
     CHECK_FATAL((alignment & (alignment - 1)) != 0,
                 "alignment must be power of two");
 
 
-    u64 aligned_idx = ALIGN_UP(arena->idx, alignment);
+    u64 aligned_idx = ALIGN_UP(Arena->idx, alignment);
 
-    WC_SET_RET(WC_ERR_FULL, arena->size - aligned_idx < size, NULL);
+    WC_SET_RET(WC_ERR_FULL, Arena->size - aligned_idx < size, NULL);
 
-    u8* ptr = ARENA_PTR(arena, aligned_idx);
-    arena->idx = aligned_idx + size;
+    u8* ptr = ARENA_PTR(Arena, aligned_idx);
+    Arena->idx = aligned_idx + size;
 
     return ptr;
 }

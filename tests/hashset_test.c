@@ -281,21 +281,21 @@ static void test_clear_then_reuse(void)
     HashSet_destroy(s);
 }
 
-static void test_clear_frees_string_elms(void)
+static void test_clear_frees_String_elms(void)
 {
     // clear must properly call del on owned String resources
     HashSet* s = str_set();
     for (int i = 0; i < 5; i++) {
         char buf[16];
         snprintf(buf, sizeof(buf), "str%d", i);
-        String* v = string_from_cstr(buf);
+        String* v = String_from_cstr(buf);
         HashSet_insert_move(s, (u8**)&v);
     }
     HashSet_clear(s);
     WC_ASSERT_EQ_U64(HashSet_size(s), 0);
 
     // Set must still be usable after clearing owned-resource entries
-    String* v = string_from_cstr("after_clear");
+    String* v = String_from_cstr("after_clear");
     HashSet_insert_move(s, (u8**)&v);
     WC_ASSERT_EQ_U64(HashSet_size(s), 1);
     HashSet_destroy(s);
@@ -363,9 +363,9 @@ static void test_copy_str_set(void)
     const char* words[] = { "alpha", "beta", "gamma" };
     for (int i = 0; i < 3; i++) {
         String sv;
-        string_create_stk(words[i], &sv);
+        String_create_stk(words[i], &sv);
         HashSet_insert(src, (u8*)&sv);
-        string_destroy_stk(&sv);
+        String_destroy_stk(&sv);
     }
 
     HashSet* dest = str_set();
@@ -375,9 +375,9 @@ static void test_copy_str_set(void)
     HashSet_destroy(src); // src gone — dest must still be intact
 
     String probe;
-    string_create_stk("beta", &probe);
+    String_create_stk("beta", &probe);
     WC_ASSERT_TRUE(HashSet_has(dest, (u8*)&probe));
-    string_destroy_stk(&probe);
+    String_destroy_stk(&probe);
 
     HashSet_destroy(dest);
 }
@@ -423,14 +423,14 @@ static void test_copy_then_remove_src_elm(void)
 static void test_str_insert_move_nulls_ptr(void)
 {
     HashSet* s  = str_set();
-    String*  s1 = string_from_cstr("hello");
+    String*  s1 = String_from_cstr("hello");
     HashSet_insert_move(s, (u8**)&s1);
     WC_ASSERT_NULL(s1); // ownership transferred
 
     String probe;
-    string_create_stk("hello", &probe);
+    String_create_stk("hello", &probe);
     WC_ASSERT_TRUE(HashSet_has(s, (u8*)&probe));
-    string_destroy_stk(&probe);
+    String_destroy_stk(&probe);
     HashSet_destroy(s);
 }
 
@@ -438,12 +438,12 @@ static void test_str_insert_copy_leaves_src_valid(void)
 {
     // Source String must still be valid and unchanged after copy insert
     HashSet* s  = str_set();
-    String*  s1 = string_from_cstr("world");
+    String*  s1 = String_from_cstr("world");
     HashSet_insert(s, (u8*)s1);
 
     WC_ASSERT_NOT_NULL(s1);
-    WC_ASSERT_TRUE(string_equals_cstr(s1, "world"));
-    string_destroy(s1);
+    WC_ASSERT_TRUE(String_equals_cstr(s1, "world"));
+    String_destroy(s1);
     HashSet_destroy(s);
 }
 
@@ -452,16 +452,16 @@ static void test_str_insert_copy_independence(void)
     // Mutating source String after copy insert must not affect stored copy
     HashSet* s = str_set();
     String   sv;
-    string_create_stk("original", &sv);
+    String_create_stk("original", &sv);
     HashSet_insert(s, (u8*)&sv);
-    string_append_cstr(&sv, "_mutated");
+    String_append_cstr(&sv, "_mutated");
 
     String probe;
-    string_create_stk("original", &probe);
+    String_create_stk("original", &probe);
     WC_ASSERT_TRUE(HashSet_has(s, (u8*)&probe));
-    string_destroy_stk(&probe);
+    String_destroy_stk(&probe);
 
-    string_destroy_stk(&sv);
+    String_destroy_stk(&sv);
     HashSet_destroy(s);
 }
 
@@ -469,9 +469,9 @@ static void test_str_has_miss(void)
 {
     HashSet* s = str_set();
     String probe;
-    string_create_stk("missing", &probe);
+    String_create_stk("missing", &probe);
     WC_ASSERT_FALSE(HashSet_has(s, (u8*)&probe));
-    string_destroy_stk(&probe);
+    String_destroy_stk(&probe);
     HashSet_destroy(s);
 }
 
@@ -479,13 +479,13 @@ static void test_str_no_duplicates(void)
 {
     HashSet* s = str_set();
     String   sv;
-    string_create_stk("dup", &sv);
+    String_create_stk("dup", &sv);
     b8 first  = HashSet_insert(s, (u8*)&sv);
     b8 second = HashSet_insert(s, (u8*)&sv);
     WC_ASSERT_FALSE(first);
     WC_ASSERT_TRUE(second);
     WC_ASSERT_EQ_U64(HashSet_size(s), 1);
-    string_destroy_stk(&sv);
+    String_destroy_stk(&sv);
     HashSet_destroy(s);
 }
 
@@ -494,31 +494,31 @@ static void test_str_insert_move_duplicate_frees_elm(void)
     // insert_move on a duplicate must free the incoming pointer
     HashSet* s = str_set();
     String   sv;
-    string_create_stk("dup", &sv);
+    String_create_stk("dup", &sv);
     HashSet_insert(s, (u8*)&sv);
 
-    String* dup = string_from_cstr("dup");
+    String* dup = String_from_cstr("dup");
     b8 existed = HashSet_insert_move(s, (u8**)&dup);
     WC_ASSERT_TRUE(existed);
     WC_ASSERT_NULL(dup);        // must be freed and nulled
     WC_ASSERT_EQ_U64(HashSet_size(s), 1);
 
-    string_destroy_stk(&sv);
+    String_destroy_stk(&sv);
     HashSet_destroy(s);
 }
 
 static void test_str_remove(void)
 {
     HashSet* s  = str_set();
-    String*  s1 = string_from_cstr("remove_me");
+    String*  s1 = String_from_cstr("remove_me");
     HashSet_insert_move(s, (u8**)&s1);
 
     String probe;
-    string_create_stk("remove_me", &probe);
+    String_create_stk("remove_me", &probe);
     WC_ASSERT_TRUE(HashSet_remove(s, (u8*)&probe));
     WC_ASSERT_FALSE(HashSet_has(s, (u8*)&probe));
     WC_ASSERT_EQ_U64(HashSet_size(s), 0);
-    string_destroy_stk(&probe);
+    String_destroy_stk(&probe);
     HashSet_destroy(s);
 }
 
@@ -529,18 +529,18 @@ static void test_str_resize_preserves_membership(void)
     for (int i = 0; i < 40; i++) {
         snprintf(buf, sizeof(buf), "word%d", i);
         String sv;
-        string_create_stk(buf, &sv);
+        String_create_stk(buf, &sv);
         HashSet_insert(s, (u8*)&sv);
-        string_destroy_stk(&sv);
+        String_destroy_stk(&sv);
     }
     WC_ASSERT_EQ_U64(HashSet_size(s), 40);
 
     for (int i = 0; i < 40; i++) {
         snprintf(buf, sizeof(buf), "word%d", i);
         String probe;
-        string_create_stk(buf, &probe);
+        String_create_stk(buf, &probe);
         WC_ASSERT_TRUE(HashSet_has(s, (u8*)&probe));
-        string_destroy_stk(&probe);
+        String_destroy_stk(&probe);
     }
     HashSet_destroy(s);
 }
@@ -550,15 +550,15 @@ static void test_str_remove_frees_elm(void)
     // remove must call del_fn on owned String before clearing the slot
     HashSet* s = str_set();
     String sv;
-    string_create_stk("owned", &sv);
+    String_create_stk("owned", &sv);
     HashSet_insert(s, (u8*)&sv);
-    string_destroy_stk(&sv);
+    String_destroy_stk(&sv);
 
     String probe;
-    string_create_stk("owned", &probe);
+    String_create_stk("owned", &probe);
     WC_ASSERT_TRUE(HashSet_remove(s, (u8*)&probe));
     WC_ASSERT_EQ_U64(HashSet_size(s), 0);
-    string_destroy_stk(&probe);
+    String_destroy_stk(&probe);
     HashSet_destroy(s);
 }
 
@@ -569,22 +569,22 @@ static void test_str_clear_then_reuse(void)
         char buf[16];
         snprintf(buf, sizeof(buf), "item%d", i);
         String sv;
-        string_create_stk(buf, &sv);
+        String_create_stk(buf, &sv);
         HashSet_insert(s, (u8*)&sv);
-        string_destroy_stk(&sv);
+        String_destroy_stk(&sv);
     }
     HashSet_clear(s);
     WC_ASSERT_EQ_U64(HashSet_size(s), 0);
 
     // Usable after clear
-    String* v = string_from_cstr("fresh");
+    String* v = String_from_cstr("fresh");
     HashSet_insert_move(s, (u8**)&v);
     WC_ASSERT_EQ_U64(HashSet_size(s), 1);
 
     String probe;
-    string_create_stk("fresh", &probe);
+    String_create_stk("fresh", &probe);
     WC_ASSERT_TRUE(HashSet_has(s, (u8*)&probe));
-    string_destroy_stk(&probe);
+    String_destroy_stk(&probe);
     HashSet_destroy(s);
 }
 
@@ -593,15 +593,15 @@ static void test_str_clear_then_reuse(void)
 static void test_insert_move_nulls_src(void)
 {
     HashSet* s  = HashSet_create(sizeof(String), wyhash_str, str_cmp, &wc_str_ops);
-    String*  el = string_from_cstr("owned");
+    String*  el = String_from_cstr("owned");
     b8 existed  = HashSet_insert_move(s, (u8**)&el);
     WC_ASSERT_FALSE(existed);
     WC_ASSERT_NULL(el);
     WC_ASSERT_EQ_U64(HashSet_size(s), 1);
 
-    String k; string_create_stk("owned", &k);
+    String k; String_create_stk("owned", &k);
     WC_ASSERT_TRUE(HashSet_has(s, (u8*)&k));
-    string_destroy_stk(&k);
+    String_destroy_stk(&k);
     HashSet_destroy(s);
 }
 
@@ -610,7 +610,7 @@ static void test_insert_move_duplicate_frees_incoming(void)
     HashSet* s  = HashSet_create(sizeof(String), wyhash_str, str_cmp, &wc_str_ops);
     SET_INSERT_CSTR(s, "dup");
 
-    String* el  = string_from_cstr("dup");
+    String* el  = String_from_cstr("dup");
     b8 existed  = HashSet_insert_move(s, (u8**)&el);
     WC_ASSERT_TRUE(existed);    /* already in set */
     WC_ASSERT_NULL(el);         /* incoming consumed */
@@ -634,9 +634,9 @@ static void test_copy_str_set_deep(void)
 
     HashSet_destroy(src); /* src gone — dest must still be intact */
 
-    String k; string_create_stk("alpha", &k);
+    String k; String_create_stk("alpha", &k);
     WC_ASSERT_TRUE(HashSet_has(dest, (u8*)&k));
-    string_destroy_stk(&k);
+    String_destroy_stk(&k);
     HashSet_destroy(dest);
 }
 
@@ -727,7 +727,7 @@ void HashSet_suite(void)
     WC_SUITE("HashSet — clear");
     WC_RUN(test_clear_empties_set);
     WC_RUN(test_clear_then_reuse);
-    WC_RUN(test_clear_frees_string_elms);
+    WC_RUN(test_clear_frees_String_elms);
     WC_RUN(test_clear_empty_set);
 
     WC_SUITE("HashSet — copy");
@@ -762,7 +762,7 @@ void HashSet_suite(void)
     WC_RUN(test_copy_str_set_deep);
     WC_RUN(test_copy_empty_set);
 
-    WC_RUN(test_clear_frees_string_elms);
+    WC_RUN(test_clear_frees_String_elms);
     WC_RUN(test_clear_empty_set_noop);
 
     WC_RUN(test_set_foreach_visits_all);

@@ -1,25 +1,25 @@
-﻿#include "views.h"
-#include "String.h"
+#include "views.h"
 #include "arena.h"
 #include "common.h"
+#include "wc_string.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 
-StrView StrView_from_string(String* str)
+StrView StrView_from_String(String* str)
 {
-    return (StrView){.ptr = string_data_ptr(str), .len = string_len(str)};
+    return (StrView){.ptr = String_data_ptr(str), .len = String_len(str)};
 }
 
-StrView StrView_from_string_explicit(String* str, u64 off, u64 len)
+StrView StrView_from_String_explicit(String* str, u64 off, u64 len)
 {
-    CHECK_FATAL(off + len >= string_len(str), "invalid range");
-    return (StrView){.ptr = string_data_ptr(str) + off, .len = len};
+    CHECK_FATAL(off + len >= String_len(str), "invalid range");
+    return (StrView){.ptr = String_data_ptr(str) + off, .len = len};
 }
 
-StrView StrView_cstr_arena(Arena* a, const char* cstr, u64 clen)
+StrView StrView_cstr_Arena(Arena* a, const char* cstr, u64 clen)
 {
     char* p = ARENA_ALLOC_N(a, char, clen + 1); // for NULL Terminator
     memcpy(p, cstr, clen + 1);

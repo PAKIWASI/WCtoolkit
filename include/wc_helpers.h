@@ -25,7 +25,7 @@
  *     src   — raw bytes of the source element
  *     job   — deep-copy all owned resources into dest; DO NOT free dest first.
  *             If delegating to a function that calls destroy internally (e.g.
- *             string_copy), you MUST first init dest to a valid empty state.
+ *             String_copy), you MUST first init dest to a valid empty state.
  *
  *   move_fn(u8* dest, u8** src)
  *     dest  — raw bytes of the slot (uninitialised)
@@ -36,7 +36,7 @@
  *   del_fn(u8* elm)
  *     elm   — raw bytes of the slot
  *     job   — free owned resources (e.g. data buffer) but NOT elm itself
- *             → call string_destroy_stk / GenVec_destroy_stk etc.
+ *             → call String_destroy_stk / GenVec_destroy_stk etc.
  *
  * BY POINTER  (slot holds T*, sizeof(T*) = 8 bytes)
  *   copy_fn(u8* dest, const u8* src)
@@ -49,10 +49,10 @@
  *   del_fn(u8* elm)
  *     *(T**)elm  is the pointer stored in the slot
  *     job — fully destroy the heap object
- *           → call string_destroy / GenVec_destroy etc.
+ *           → call String_destroy / GenVec_destroy etc.
  */
 
-#include "String.h"
+#include "wc_string.h"
 #include "common.h"
 #include "gen_vector.h"
 #include <stdio.h>
@@ -66,9 +66,9 @@ _Static_assert(sizeof(String) == sizeof(GenVec), "String and GenVec sizes must m
  * 1.  STRING BY VALUE
  *
  * String is SSO-based (no data_size / data fields).
- * str_copy  — delegates to string_copy()  (handles SSO vs heap correctly)
+ * str_copy  — delegates to String_copy()  (handles SSO vs heap correctly)
  * str_move  — memcpy the struct shell, free the source container
- * str_del   — delegates to string_destroy_stk() (frees heap buf if any)
+ * str_del   — delegates to String_destroy_stk() (frees heap buf if any)
  * ══════════════════════════════════════════════════════════════════════════ */
 
 static inline void str_copy(u8* dest, const u8* src)
@@ -77,7 +77,7 @@ static inline void str_copy(u8* dest, const u8* src)
     const String* s = (const String*)src;
     memcpy(d, s, sizeof(String));
 
-    if (string_is_sso(s)) {
+    if (String_is_sso(s)) {
         return; // str stored inline, we have everything
     }
 
@@ -98,26 +98,26 @@ static inline void str_move(u8* dest, u8** src)
 
 static inline void str_del(u8* elm)
 {
-    string_destroy_stk((String*)elm);   // free data buffer, NOT the slot
+    String_destroy_stk((String*)elm);   // free data buffer, NOT the slot
 }
 
 static inline void str_print(const u8* elm)
 {
-    string_print((const String*)elm);
+    String_print((const String*)elm);
 }
 
 
 /* ══════════════════════════════════════════════════════════════════════════
  * 2.  STRING BY POINTER
  *
- * str_copy_ptr — delegates to string_from_string() for a full heap copy
+ * str_copy_ptr — delegates to String_from_String() for a full heap copy
  * str_move_ptr — pointer swap, nulls source
- * str_del_ptr  — delegates to string_destroy() (frees buf + struct)
+ * str_del_ptr  — delegates to String_destroy() (frees buf + struct)
  * ══════════════════════════════════════════════════════════════════════════ */
 
 static inline void str_copy_ptr(u8* dest, const u8* src)
 {
-    *(String**)dest = string_from_string(*(const String**)src);
+    *(String**)dest = String_from_String(*(const String**)src);
 }
 
 static inline void str_move_ptr(u8* dest, u8** src)
@@ -128,24 +128,24 @@ static inline void str_move_ptr(u8* dest, u8** src)
 
 static inline void str_del_ptr(u8* elm)
 {
-    string_destroy(*(String**)elm);
+    String_destroy(*(String**)elm);
 }
 
 static inline void str_print_ptr(const u8* elm)
 {
-    string_print(*(const String**)elm);
+    String_print(*(const String**)elm);
 }
 
 static inline int str_cmp(const u8* a, const u8* b, u64 size)
 {
     (void)size;
-    return string_compare((const String*)a, (const String*)b);
+    return String_compare((const String*)a, (const String*)b);
 }
 
 static inline int str_cmp_ptr(const u8* a, const u8* b, u64 size)
 {
     (void)size;
-    return string_compare(*(const String**)a, *(const String**)b);
+    return String_compare(*(const String**)a, *(const String**)b);
 }
 
 

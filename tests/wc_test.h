@@ -7,27 +7,27 @@
  *
  * USAGE
  * -----
- *   // In a test file (e.g. tests/string_test.c):
+ *   // In a test file (e.g. tests/String_test.c):
  *   #include "wc_test.h"
  *   #include "String.h"
  *
  *   static void test_append(void) {
- *       String* s = string_from_cstr("hello");
- *       string_append_cstr(s, " world");
- *       WC_ASSERT_EQ_INT(string_len(s), 11);
- *       WC_ASSERT(string_equals_cstr(s, "hello world"));
- *       string_destroy(s);
+ *       String* s = String_from_cstr("hello");
+ *       String_append_cstr(s, " world");
+ *       WC_ASSERT_EQ_INT(String_len(s), 11);
+ *       WC_ASSERT(String_equals_cstr(s, "hello world"));
+ *       String_destroy(s);
  *   }
  *
- *   void string_suite(void) {
+ *   void String_suite(void) {
  *       WC_SUITE("String");
  *       WC_RUN(test_append);
  *   }
  *
  *   // In tests/test_main.c:
- *   void string_suite(void);
+ *   void String_suite(void);
  *   int main(void) {
- *       string_suite();
+ *       String_suite();
  *       WC_REPORT();
  *   }
  *
@@ -52,7 +52,7 @@
  */
 
 #include <stdio.h>
-#include <string.h>
+#include <String.h>
 
 
 #ifdef WC_TEST_MAIN
@@ -139,7 +139,7 @@ extern int wc_test_failed;
         }                                                                                     \
     } while (0)
 
-// C-string equality
+// C-String equality
 #define WC_ASSERT_EQ_STR(a, b)                                                                    \
     do {                                                                                          \
         const char* _a = (const char*)(a);                                                        \

@@ -9,7 +9,7 @@
 #include "String.h"
 #include "gen_vector.h"
 #include <stdlib.h>
-#include <string.h>
+#include <String.h>
 
 /* -- Helpers --------------------------------------------------------------- */
 
@@ -71,7 +71,7 @@ static void test_set_insert_move_compiles_and_works(void)
 
 /* -- Phase 4: QUEUE macros ------------------------------------------------ */
 
-static void test_queue_macros(void)
+static void test_Queue_macros(void)
 {
     Queue* q = QUEUE_CREATE(int, 4);
 
@@ -84,12 +84,12 @@ static void test_queue_macros(void)
     WC_ASSERT_EQ_INT(QUEUE_POP(q, int), 20);
     WC_ASSERT_EQ_INT(QUEUE_POP(q, int), 30);
 
-    queue_destroy(q);
+    Queue_destroy(q);
 }
 
 /* -- Phase 4: STACK macros ------------------------------------------------ */
 
-static void test_stack_macros(void)
+static void test_Stack_macros(void)
 {
     Stack* s = STACK_CREATE(int, 4);
 
@@ -108,7 +108,7 @@ static void test_stack_macros(void)
     WC_ASSERT_EQ_INT(STACK_POP(s, int), 200);
     WC_ASSERT_EQ_INT(STACK_POP(s, int), 100);
 
-    stack_destroy(s);
+    Stack_destroy(s);
 }
 
 /* -- Phase 4: MAP_GET and MAP_TRY_GET ------------------------------------- */
@@ -181,8 +181,8 @@ void macros_suite(void)
 {
     WC_SUITE("Macros");
     WC_RUN(test_set_insert_move_compiles_and_works);
-    WC_RUN(test_queue_macros);
-    WC_RUN(test_stack_macros);
+    WC_RUN(test_Queue_macros);
+    WC_RUN(test_Stack_macros);
     WC_RUN(test_map_get_and_try_get);
     WC_RUN(test_set_foreach_and_from_vec);
 }
@@ -201,7 +201,7 @@ static void test_create_of_pod_uses_null_ops(void)
     GenVec_destroy(v);
 }
 
-static void test_create_of_string_by_value(void)
+static void test_create_of_String_by_value(void)
 {
     /* sizeof(String) bytes per slot; wc_str_ops supplies the del_fn that frees
      * the heap str on destroy. */
@@ -216,7 +216,7 @@ static void test_create_of_string_by_value(void)
     GenVec_destroy(v);
 }
 
-static void test_create_of_string_by_pointer(void)
+static void test_create_of_String_by_pointer(void)
 {
     /* String* slots (8 bytes); wc_str_ptr_ops frees each heap String on
      * destroy. */
@@ -224,8 +224,8 @@ static void test_create_of_string_by_pointer(void)
     WC_ASSERT_NOT_NULL(v);
     WC_ASSERT_EQ_U64(v->data_size, sizeof(String*));
 
-    String* a = string_from_cstr("a");
-    String* b = string_from_cstr("b");
+    String* a = String_from_cstr("a");
+    String* b = String_from_cstr("b");
     VEC_PUSH(v, a);
     VEC_PUSH(v, b);
     WC_ASSERT_EQ_U64(v->size, 2);
@@ -336,13 +336,13 @@ void macros_suite(void)
 {
     WC_SUITE("Macros");
     WC_RUN(test_set_insert_move_compiles_and_works);
-    WC_RUN(test_queue_macros);
-    WC_RUN(test_stack_macros);
+    WC_RUN(test_Queue_macros);
+    WC_RUN(test_Stack_macros);
     WC_RUN(test_map_get_and_try_get);
     WC_RUN(test_set_foreach_and_from_vec);
     WC_RUN(test_create_of_pod_uses_null_ops);
-    WC_RUN(test_create_of_string_by_value);
-    WC_RUN(test_create_of_string_by_pointer);
+    WC_RUN(test_create_of_String_by_value);
+    WC_RUN(test_create_of_String_by_pointer);
     WC_RUN(test_map_create_of);
     WC_RUN(test_vec_at_asserts_elem_size_passes_correct_t);
     WC_RUN(test_vec_front_back_assert_elem_size);

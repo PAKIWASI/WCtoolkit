@@ -1,24 +1,24 @@
-﻿#ifndef WC_VIEWS_H
+#ifndef WC_VIEWS_H
 #define WC_VIEWS_H
 
-#include "String.h"
+#include "wc_string.h"
 #include "arena.h"
 #include "common.h"
 
 
-// NOT COPYABLE: non-owning view into an arena or StringStore.
+// NOT COPYABLE: non-owning view into an Arena or StringStore.
 typedef struct {
     const char* ptr;
     u64         len;
 } StrView;
 
-StrView StrView_from_string(String* str) __attribute__((nonnull(1)));
+StrView StrView_from_String(String* str) __attribute__((nonnull(1)));
 
-StrView StrView_from_string_explicit(String* str, u64 off, u64 len) __attribute__((nonnull(1)));
+StrView StrView_from_String_explicit(String* str, u64 off, u64 len) __attribute__((nonnull(1)));
 
-// allocate a cstr to an arena and return a view over it
+// allocate a cstr to an Arena and return a view over it
 // kinda like an append only store
-StrView StrView_cstr_arena(Arena* a, const char* cstr, u64 clen) __attribute__((nonnull(1, 2)));
+StrView StrView_cstr_Arena(Arena* a, const char* cstr, u64 clen) __attribute__((nonnull(1, 2)));
 
 void StrView_print(StrView sv);
 
@@ -38,8 +38,8 @@ typedef struct StringStore_node {
     int owns_heap;
 } StringStore_node;
 
-// append-only, immutable string storage with a chain arena-like backing
-// you get StrViews over the immutable strings
+// append-only, immutable String storage with a chain Arena-like backing
+// you get StrViews over the immutable Strings
 typedef struct {
     StringStore_node* tail;
     StringStore_node* head;

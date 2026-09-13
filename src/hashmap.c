@@ -1,4 +1,4 @@
-#include "HashMap.h"
+#include "hashmap.h"
 #include "common.h"
 #include "map_setup.h"
 

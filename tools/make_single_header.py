@@ -13,9 +13,9 @@ Output:
     ./single_header/<name>_single.h
 
 Usage:
-    python make_single_header.py arena gen_vector string hashmap hashset
+    python make_single_header.py Arena gen_vector String hashmap hashset
     python make_single_header.py --all
-    python make_single_header.py arena --include-dir path/to/include --src-dir path/to/src
+    python make_single_header.py Arena --include-dir path/to/include --src-dir path/to/src
 
 Each output file:
   - Inlines all its declared dependencies (other components from this lib)
@@ -39,9 +39,9 @@ COMPONENTS = [
     "fast_math",
     "gen_vector",
     "String",
-    "arena",
+    "Arena",
     "views",
-    "chain_arena",
+    "chain_Arena",
     "bit_vector",
     "Stack",
     "Queue",
@@ -68,9 +68,9 @@ DEPENDENCIES: dict[str, list[str]] = {
     "fast_math":        ["common"],
     "gen_vector":       ["common" ],
     "String":           ["common"],
-    "arena":            ["common", "wc_errno"],
-    "chain_arena":      ["gen_vector"],
-    "views":            ["String", "arena"],
+    "Arena":            ["common", "wc_errno"],
+    "chain_Arena":      ["gen_vector"],
+    "views":            ["String", "Arena"],
     "bit_vector":       ["gen_vector"],
     "Stack":            ["gen_vector"],
     "Queue":            ["gen_vector"],
@@ -78,8 +78,8 @@ DEPENDENCIES: dict[str, list[str]] = {
     "random":           ["fast_math"],
     "hashmap":          ["map_setup"],
     "hashset":          ["map_setup"],
-    "matrix":           ["arena"],
-    "matrix_generic":   ["arena"],
+    "matrix":           ["Arena"],
+    "matrix_generic":   ["Arena"],
     "wc_helpers":       ["String"],
 }
 
@@ -272,7 +272,7 @@ def main():
         epilog="""
 Examples:
   # Convert specific components:
-  python make_single_header.py arena gen_vector string
+  python make_single_header.py Arena gen_vector String
 
   # Convert everything:
   python make_single_header.py --all
@@ -288,7 +288,7 @@ Available components:
         "components",
         nargs="*",
         metavar="COMPONENT",
-        help="Component names to convert (e.g. arena gen_vector string)",
+        help="Component names to convert (e.g. Arena gen_vector String)",
     )
     parser.add_argument(
         "--all",

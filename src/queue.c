@@ -1,4 +1,4 @@
-#include "Queue.h"
+#include "queue.h"
 #include "common.h"
 #include "gen_vector.h"
 #include "wc_errno.h"
@@ -27,7 +27,7 @@
 #define Q_MAYBE_GROW(q)                        \
     do {                                       \
         if ((q)->size == (q)->arr->capacity) { \
-            queue_grow((q));                   \
+            Queue_grow((q));                   \
         }                                      \
     } while (0)
 
@@ -39,22 +39,22 @@
         }                                                       \
         float load_factor = (float)(q)->size / (float)capacity; \
         if (load_factor < QUEUE_SHRINK_AT) {                    \
-            queue_shrink((q));                                  \
+            Queue_shrink((q));                                  \
         }                                                       \
     } while (0)
 
 
-static void queue_grow(Queue* q);
-static void queue_shrink(Queue* q);
-static void queue_compact(Queue* q, u64 new_capacity);
+static void Queue_grow(Queue* q);
+static void Queue_shrink(Queue* q);
+static void Queue_compact(Queue* q, u64 new_capacity);
 
 
-Queue* queue_create(u64 n, u32 data_size, const container_ops* ops)
+Queue* Queue_create(u64 n, u32 data_size, const container_ops* ops)
 {
     CHECK_FATAL(n == 0 || data_size == 0, "n/data_size can't be 0");
 
     Queue* q = malloc(sizeof(Queue));
-    CHECK_FATAL(!q, "queue malloc failed");
+    CHECK_FATAL(!q, "Queue malloc failed");
 
     q->arr = GenVec_create(n, data_size, ops);
 
@@ -65,12 +65,12 @@ Queue* queue_create(u64 n, u32 data_size, const container_ops* ops)
     return q;
 }
 
-Queue* queue_create_val(u64 n, const u8* val, u32 data_size, const container_ops* ops)
+Queue* Queue_create_val(u64 n, const u8* val, u32 data_size, const container_ops* ops)
 {
     CHECK_FATAL(n == 0 || data_size == 0, "n/data_size can't be 0");
 
     Queue* q = malloc(sizeof(Queue));
-    CHECK_FATAL(!q, "queue malloc failed");
+    CHECK_FATAL(!q, "Queue malloc failed");
 
     q->arr = GenVec_create_val(n, val, data_size, ops);
 
@@ -82,7 +82,7 @@ Queue* queue_create_val(u64 n, const u8* val, u32 data_size, const container_ops
 }
 
 
-void queue_create_stk(u64 n, u32 data_size, const container_ops* ops, Queue* q)
+void Queue_create_stk(u64 n, u32 data_size, const container_ops* ops, Queue* q)
 {
     CHECK_FATAL(n == 0 || data_size == 0, "n/data_size can't be 0");
 
@@ -93,18 +93,18 @@ void queue_create_stk(u64 n, u32 data_size, const container_ops* ops, Queue* q)
     q->size = 0;
 }
 
-void queue_destroy(Queue* q)
+void Queue_destroy(Queue* q)
 {
     GenVec_destroy(q->arr);
     free(q);
 }
 
-void queue_destroy_stk(Queue* q)
+void Queue_destroy_stk(Queue* q)
 {
     GenVec_destroy(q->arr);
 }
 
-void queue_clear(Queue* q)
+void Queue_clear(Queue* q)
 {
     GenVec_clear(q->arr);
     q->size = 0;
@@ -112,7 +112,7 @@ void queue_clear(Queue* q)
     q->tail = 0;
 }
 
-void queue_reset(Queue* q)
+void Queue_reset(Queue* q)
 {
     GenVec_reset(q->arr);
     q->size = 0;
@@ -120,10 +120,10 @@ void queue_reset(Queue* q)
     q->tail = 0;
 }
 
-void queue_shrink_to_fit(Queue* q)
+void Queue_shrink_to_fit(Queue* q)
 {
     if (q->size == 0) {
-        queue_reset(q);
+        Queue_reset(q);
         return;
     }
 
@@ -131,11 +131,11 @@ void queue_shrink_to_fit(Queue* q)
     u64 current_capacity = GenVec_capacity(q->arr);
 
     if (current_capacity > min_capacity) {
-        queue_compact(q, min_capacity);
+        Queue_compact(q, min_capacity);
     }
 }
 
-void queue_push(Queue* q, const u8* x)
+void Queue_push(Queue* q, const u8* x)
 {
     Q_MAYBE_GROW(q);
 
@@ -149,7 +149,7 @@ void queue_push(Queue* q, const u8* x)
     TAIL_UPDATE(q);
 }
 
-void queue_push_move(Queue* q, u8** x)
+void Queue_push_move(Queue* q, u8** x)
 {
     CHECK_FATAL(!*x, "*x is null");
 
@@ -165,7 +165,7 @@ void queue_push_move(Queue* q, u8** x)
     TAIL_UPDATE(q);
 }
 
-void queue_pop(Queue* q, u8* out)
+void Queue_pop(Queue* q, u8* out)
 {
     WC_SET_RET(WC_ERR_EMPTY, q->size == 0, );
 
@@ -186,21 +186,21 @@ void queue_pop(Queue* q, u8* out)
     Q_MAYBE_SHRINK(q);
 }
 
-void queue_peek(Queue* q, u8* peek)
+void Queue_peek(Queue* q, u8* peek)
 {
     WC_SET_RET(WC_ERR_EMPTY, q->size == 0, );
 
     GenVec_get(q->arr, q->head, peek);
 }
 
-const u8* queue_peek_ptr(const Queue* q)
+const u8* Queue_peek_ptr(const Queue* q)
 {
     WC_SET_RET(WC_ERR_EMPTY, q->size == 0, NULL);
 
     return GenVec_get_ptr(q->arr, q->head);
 }
 
-void queue_print(Queue* q, print_fn print)
+void Queue_print(Queue* q, print_fn print)
 {
     u64 h   = q->head;
     u64 cap = GenVec_capacity(q->arr);
@@ -218,7 +218,7 @@ void queue_print(Queue* q, print_fn print)
 }
 
 
-void queue_copy(Queue* dest, const Queue* src)
+void Queue_copy(Queue* dest, const Queue* src)
 {
     GenVec_copy(dest->arr, src->arr);
     dest->head = src->head;
@@ -226,7 +226,7 @@ void queue_copy(Queue* dest, const Queue* src)
     dest->size = src->size;
 }
 
-void queue_move(Queue* dest, Queue** src)
+void Queue_move(Queue* dest, Queue** src)
 {
     if (dest == *src) {
         *src = NULL;
@@ -237,7 +237,7 @@ void queue_move(Queue* dest, Queue** src)
     free(*src);
     *src = NULL;
 }
-static void queue_grow(Queue* q)
+static void Queue_grow(Queue* q)
 {
     u64 old_cap = GenVec_capacity(q->arr);
     u64 new_cap = (u64)((float)old_cap * QUEUE_GROWTH);
@@ -245,10 +245,10 @@ static void queue_grow(Queue* q)
         new_cap = old_cap + 1;
     }
 
-    queue_compact(q, new_cap);
+    Queue_compact(q, new_cap);
 }
 
-static void queue_shrink(Queue* q)
+static void Queue_shrink(Queue* q)
 {
     u64 current_cap = GenVec_capacity(q->arr);
     u64 new_cap     = (u64)((float)current_cap * QUEUE_SHRINK_BY);
@@ -259,11 +259,11 @@ static void queue_shrink(Queue* q)
     }
 
     if (new_cap < current_cap) {
-        queue_compact(q, new_cap);
+        Queue_compact(q, new_cap);
     }
 }
 
-static void queue_compact(Queue* q, u64 new_capacity)
+static void Queue_compact(Queue* q, u64 new_capacity)
 {
     CHECK_FATAL(new_capacity < q->size, "new_capacity must be >= current size");
 

@@ -1,4 +1,4 @@
-﻿/*
+/*
  * speed_test.c — Performance tests for GenVec and HashMap
  *
  * Tests are grouped by the operation changed. Each test runs the operation
@@ -12,11 +12,11 @@
 #include "String.h"
 #include "wc_helpers.h"
 #include "views.h"
-#include "arena.h"
-#include "chain_arena.h"
+#include "Arena.h"
+#include "chain_Arena.h"
 
 #include <time.h>
-#include <string.h>
+#include <String.h>
 #include <stdio.h>
 
 
@@ -70,15 +70,15 @@ static void bench_push_pod(void)
 
 static void bench_push_cx(void)
 {
-    // Each element is a String by value (SSO path for short strings).
+    // Each element is a String by value (SSO path for short Strings).
     GenVec* v = GenVec_create(PUSH_N, sizeof(String), &wc_str_ops);
 
     u64 t0 = ns_now();
     for (int i = 0; i < PUSH_N; i++) {
         String s;
-        string_create_stk("hello", &s);
+        String_create_stk("hello", &s);
         GenVec_push(v, (u8*)&s);
-        string_destroy_stk(&s); // push deep-copied it; we own the original
+        String_destroy_stk(&s); // push deep-copied it; we own the original
     }
     u64 t1 = ns_now();
 
@@ -127,9 +127,9 @@ static void bench_clear_cx(void)
         GenVec* v = GenVec_create(CLEAR_N, sizeof(String), &wc_str_ops);
         for (int i = 0; i < CLEAR_N; i++) {
             String s;
-            string_create_stk("hi", &s);
+            String_create_stk("hi", &s);
             GenVec_push(v, (u8*)&s);
-            string_destroy_stk(&s);
+            String_destroy_stk(&s);
         }
         u64 t0 = ns_now();
         GenVec_clear(v);
@@ -177,9 +177,9 @@ static void bench_destroy_cx(void)
         GenVec* v = GenVec_create(DESTROY_N, sizeof(String), &wc_str_ops);
         for (int i = 0; i < DESTROY_N; i++) {
             String s;
-            string_create_stk("world", &s);
+            String_create_stk("world", &s);
             GenVec_push(v, (u8*)&s);
-            string_destroy_stk(&s);
+            String_destroy_stk(&s);
         }
         u64 t0 = ns_now();
         GenVec_destroy(v);
@@ -230,9 +230,9 @@ static void bench_vec_copy_cx(void)
     GenVec* src = GenVec_create(COPY_N, sizeof(String), &wc_str_ops);
     for (int i = 0; i < COPY_N; i++) {
         String s;
-        string_create_stk("copy", &s);
+        String_create_stk("copy", &s);
         GenVec_push(src, (u8*)&s);
-        string_destroy_stk(&s);
+        String_destroy_stk(&s);
     }
 
     GenVec dest;
@@ -274,9 +274,9 @@ static void bench_init_val_pod(void)
 
 static void bench_init_val_cx(void)
 {
-    // Use a short string so it stays SSO; this tests the copy_fn broadcast.
+    // Use a short String so it stays SSO; this tests the copy_fn broadcast.
     String val;
-    string_create_stk("init", &val);
+    String_create_stk("init", &val);
 
     u64 t0 = ns_now();
     for (int r = 0; r < INITVAL_REP; r++) {
@@ -286,7 +286,7 @@ static void bench_init_val_cx(void)
     u64 t1 = ns_now();
 
     bench("init_val CX (2M String) x10", (u64)INITVAL_REP * INITVAL_N, t0, t1);
-    string_destroy_stk(&val);
+    String_destroy_stk(&val);
 }
 
 
@@ -326,9 +326,9 @@ static void bench_remove_range_cx(void)
         GenVec* v = GenVec_create(RANGE_N, sizeof(String), &wc_str_ops);
         for (int i = 0; i < RANGE_N; i++) {
             String s;
-            string_create_stk("range", &s);
+            String_create_stk("range", &s);
             GenVec_push(v, (u8*)&s);
-            string_destroy_stk(&s);
+            String_destroy_stk(&s);
         }
         u64 t0 = ns_now();
         GenVec_remove_range(v, 0, RANGE_N);
@@ -377,11 +377,11 @@ static void bench_map_put_cx(void)
         char buf[32];
         snprintf(buf, sizeof(buf), "key_%d", i);
         String k, v;
-        string_create_stk(buf, &k);
-        string_create_stk("val", &v);
+        String_create_stk(buf, &k);
+        String_create_stk("val", &v);
         HashMap_put(map, (u8*)&k, (u8*)&v);
-        string_destroy_stk(&k);
-        string_destroy_stk(&v);
+        String_destroy_stk(&k);
+        String_destroy_stk(&v);
     }
     u64 t1 = ns_now();
 
@@ -415,11 +415,11 @@ static void bench_map_get_cx(void)
         char buf[32];
         snprintf(buf, sizeof(buf), "key_%d", i);
         String k, v;
-        string_create_stk(buf, &k);
-        string_create_stk("val", &v);
+        String_create_stk(buf, &k);
+        String_create_stk("val", &v);
         HashMap_put(map, (u8*)&k, (u8*)&v);
-        string_destroy_stk(&k);
-        string_destroy_stk(&v);
+        String_destroy_stk(&k);
+        String_destroy_stk(&v);
     }
 
     int hits = 0;
@@ -428,10 +428,10 @@ static void bench_map_get_cx(void)
         char buf[32];
         snprintf(buf, sizeof(buf), "key_%d", i);
         String k, out;
-        string_create_stk(buf, &k);
+        String_create_stk(buf, &k);
         hits += HashMap_get(map, (u8*)&k, (u8*)&out);
-        string_destroy_stk(&k);
-        string_destroy_stk(&out);
+        String_destroy_stk(&k);
+        String_destroy_stk(&out);
     }
     u64 t1 = ns_now();
 
@@ -480,11 +480,11 @@ static void bench_map_clear_cx(void)
             char buf[32];
             snprintf(buf, sizeof(buf), "k%d", i);
             String k, v;
-            string_create_stk(buf, &k);
-            string_create_stk("v", &v);
+            String_create_stk(buf, &k);
+            String_create_stk("v", &v);
             HashMap_put(map, (u8*)&k, (u8*)&v);
-            string_destroy_stk(&k);
-            string_destroy_stk(&v);
+            String_destroy_stk(&k);
+            String_destroy_stk(&v);
         }
         u64 t0 = ns_now();
         HashMap_clear(map);
@@ -527,9 +527,9 @@ static void bench_pop_cx(void)
     GenVec* v = GenVec_create(POP_N, sizeof(String), &wc_str_ops);
     for (int i = 0; i < POP_N; i++) {
         String s;
-        string_create_stk("pop", &s);
+        String_create_stk("pop", &s);
         GenVec_push(v, (u8*)&s);
-        string_destroy_stk(&s);
+        String_destroy_stk(&s);
     }
 
     u64 t0 = ns_now();
@@ -616,9 +616,9 @@ void suite_pop(void)
 //
 //   typedef struct { String name; GenVec scores; } Person;
 //
-// bench_complex_push_copy — construct a Person on the stack each iteration,
+// bench_complex_push_copy — construct a Person on the Stack each iteration,
 //   GenVec_push() it (invokes person_copy: deep-copies both the String's
-//   heap buffer and the GenVec's heap buffer), then destroy the stack copy.
+//   heap buffer and the GenVec's heap buffer), then destroy the Stack copy.
 //   This is what you pay every time if all you have is copy semantics
 //   (e.g. inserting by value with no move constructor).
 //
@@ -650,7 +650,7 @@ static void person_init(Person* p, int i)
 {
     char buf[64];
     person_name_fmt(buf, sizeof(buf), i);
-    string_create_stk(buf, &p->name);
+    String_create_stk(buf, &p->name);
 
     GenVec_create_stk((u64)PERSON_SCORES_N, sizeof(int), NULL, &p->scores);
     for (int j = 0; j < PERSON_SCORES_N; j++) {
@@ -662,7 +662,7 @@ static void person_init(Person* p, int i)
 static void person_del(u8* elm)
 {
     Person* p = (Person*)elm;
-    string_destroy_stk(&p->name);
+    String_destroy_stk(&p->name);
     GenVec_destroy_stk(&p->scores);
 }
 
@@ -671,9 +671,9 @@ static void person_copy(u8* dest, const u8* src)
     const Person* s = (const Person*)src;
     Person*       d = (Person*)dest;
 
-    // string_copy is safe on raw/uninitialised dest memory (dest is fully
+    // String_copy is safe on raw/uninitialised dest memory (dest is fully
     // re-initialised, not read first).
-    string_copy(&d->name, &s->name);
+    String_copy(&d->name, &s->name);
 
     // GenVec_copy is NOT safe on raw dest — it assumes dest is already a
     // live, valid GenVec and destroys its old contents first. Bring dest
@@ -697,7 +697,7 @@ static void bench_complex_push_copy(void)
 {
     GenVec* v = GenVec_create((u64)PERSON_N, sizeof(Person), &person_ops);
 
-    // Build every source Person up front — this construction cost (string
+    // Build every source Person up front — this construction cost (String
     // heap alloc + GenVec growth) is identical in the move benchmark below,
     // so it must NOT be inside the timed region or it drowns out the one
     // thing we're actually comparing: what GenVec_push does with it.
@@ -755,16 +755,16 @@ void suite_complex_owned_type(void)
 
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SUITE: string storage strategies
+// SUITE: String storage strategies
 //
-// Compares four ways to accumulate many short, immutable strings:
+// Compares four ways to accumulate many short, immutable Strings:
 //   - StringStore   append-only, chained fixed-size buffer (bump allocator,
-//                    node reuse, no per-string malloc, no individual free)
-//   - chain_arena    generic chained bump arena (same idea, not string-specific)
-//   - Arena          single fixed-size bump arena (no chaining/growth)
-//   - malloc         one malloc+memcpy per string, one free per string
-//   - String (SSO)   the toolkit's dynamic string type (heap alloc per String,
-//                    plus a second heap alloc once a string exceeds SSO size)
+//                    node reuse, no per-String malloc, no individual free)
+//   - chain_Arena    generic chained bump Arena (same idea, not String-specific)
+//   - Arena          single fixed-size bump Arena (no chaining/growth)
+//   - malloc         one malloc+memcpy per String, one free per String
+//   - String (SSO)   the toolkit's dynamic String type (heap alloc per String,
+//                    plus a second heap alloc once a String exceeds SSO size)
 // ═══════════════════════════════════════════════════════════════════════════════
 
 #define STRSTORE_N 500000
@@ -792,39 +792,39 @@ static void bench_ss_StringStore(void)
     StringStore_destroy(&ss);
 }
 
-static void bench_ss_chain_arena(void)
+static void bench_ss_chain_Arena(void)
 {
-    ChainArena* ca = chain_arena_create();
+    ChainArena* ca = chain_Arena_create();
 
     char buf[64];
     u64  t0 = ns_now();
     for (int i = 0; i < STRSTORE_N; i++) {
         int   len = strstore_fmt(buf, sizeof(buf), i);
-        char* p   = (char*)chain_arena_alloc(ca, (u64)len);
+        char* p   = (char*)chain_Arena_alloc(ca, (u64)len);
         memcpy(p, buf, (u64)len);
     }
     u64 t1 = ns_now();
 
-    bench("chain_arena_alloc + memcpy", STRSTORE_N, t0, t1);
-    chain_arena_destroy(ca);
+    bench("chain_Arena_alloc + memcpy", STRSTORE_N, t0, t1);
+    chain_Arena_destroy(ca);
 }
 
-static void bench_ss_arena(void)
+static void bench_ss_Arena(void)
 {
     // Sized generously up front — Arena doesn't grow, unlike the other three.
-    Arena* a = arena_create(STRSTORE_N * 32ULL);
+    Arena* a = Arena_create(STRSTORE_N * 32ULL);
 
     char buf[64];
     u64  t0 = ns_now();
     for (int i = 0; i < STRSTORE_N; i++) {
         int   len = strstore_fmt(buf, sizeof(buf), i);
-        char* p   = (char*)arena_alloc(a, (u64)len);
+        char* p   = (char*)Arena_alloc(a, (u64)len);
         memcpy(p, buf, (u64)len);
     }
     u64 t1 = ns_now();
 
     bench("Arena (fixed) alloc + memcpy", STRSTORE_N, t0, t1);
-    arena_destroy(a);
+    Arena_destroy(a);
 }
 
 static void bench_ss_malloc(void)
@@ -842,7 +842,7 @@ static void bench_ss_malloc(void)
     }
     u64 t1 = ns_now();
 
-    bench("malloc + memcpy (1 free/string)", STRSTORE_N, t0, t1);
+    bench("malloc + memcpy (1 free/String)", STRSTORE_N, t0, t1);
 
     for (int i = 0; i < STRSTORE_N; i++) {
         free(ptrs[i]);
@@ -850,7 +850,7 @@ static void bench_ss_malloc(void)
     free(ptrs);
 }
 
-static void bench_ss_string_sso(void)
+static void bench_ss_String_sso(void)
 {
     GenVec* v = GenVec_create(STRSTORE_N, sizeof(String), &wc_str_ops);
 
@@ -859,9 +859,9 @@ static void bench_ss_string_sso(void)
     for (int i = 0; i < STRSTORE_N; i++) {
         strstore_fmt(buf, sizeof(buf), i);
         String s;
-        string_create_stk(buf, &s);
+        String_create_stk(buf, &s);
         GenVec_push(v, (u8*)&s);
-        string_destroy_stk(&s);
+        String_destroy_stk(&s);
     }
     u64 t1 = ns_now();
 
@@ -869,14 +869,14 @@ static void bench_ss_string_sso(void)
     GenVec_destroy(v);
 }
 
-void suite_string_storage(void)
+void suite_String_storage(void)
 {
-    WC_SUITE("string storage strategies  (500k mixed-length strings)");
+    WC_SUITE("String storage strategies  (500k mixed-length Strings)");
     WC_RUN(bench_ss_StringStore);
-    WC_RUN(bench_ss_chain_arena);
-    WC_RUN(bench_ss_arena);
+    WC_RUN(bench_ss_chain_Arena);
+    WC_RUN(bench_ss_Arena);
     WC_RUN(bench_ss_malloc);
-    WC_RUN(bench_ss_string_sso);
+    WC_RUN(bench_ss_String_sso);
 }
 
 extern int speed_suite(void)
@@ -892,7 +892,7 @@ extern int speed_suite(void)
     suite_init_val();
     suite_map_put_get();
     suite_map_clear();
-    suite_string_storage();
+    suite_String_storage();
     suite_complex_owned_type();
 
     return WC_REPORT();

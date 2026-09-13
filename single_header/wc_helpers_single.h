@@ -232,77 +232,77 @@ typedef struct {
 
 //  Construction / Destruction
 
-// Create an empty string on the heap.
-String* string_create(void);
+// Create an empty String on the heap.
+String* String_create(void);
 
-// Create a string on the heap from a cstr.
-String* string_from_cstr(const char* cstr);
+// Create a String on the heap from a cstr.
+String* String_from_cstr(const char* cstr);
 
-// Create a copy of another heap-allocated string.
-String* string_from_string(const String* other);
+// Create a copy of another heap-allocated String.
+String* String_from_String(const String* other);
 
-// Initialise a String whose struct lives on the stack (data may be on heap).
-void string_create_stk(String* str, const char* cstr);
+// Initialise a String whose struct lives on the Stack (data may be on heap).
+void String_create_stk(String* str, const char* cstr);
 
 // Destroy a heap-allocated String (frees struct + data).
-void string_destroy(String* str);
+void String_destroy(String* str);
 
-// Destroy only the internal data of a stack-allocated String.
-void string_destroy_stk(String* str);
+// Destroy only the internal data of a Stack-allocated String.
+void String_destroy_stk(String* str);
 
 // Move: transfer ownership from *src to dest, nulling *src.
 // *src must be heap-allocated.
-void string_move(String* dest, String** src);
+void String_move(String* dest, String** src);
 
 // Deep copy src into dest (dest is re-initialised).
-void string_copy(String* dest, const String* src);
+void String_copy(String* dest, const String* src);
 
 
 //  Capacity
 
 // Ensure capacity >= new_cap (never shrinks).
-void string_reserve(String* str, u64 new_cap);
+void String_reserve(String* str, u64 new_cap);
 
 // Reserve capacity and fill new slots with c.
-void string_reserve_char(String* str, u64 new_cap, char c);
+void String_reserve_char(String* str, u64 new_cap, char c);
 
 // Shrink allocation to exactly fit current size.
-void string_shrink_to_fit(String* str);
+void String_shrink_to_fit(String* str);
 
 
 //  Conversion
 
 // Return a malloc'd NUL-terminated copy — caller must free().
-char* string_to_cstr(const String* str);
+char* String_to_cstr(const String* str);
 
-void string_to_cstr_buf(const String* str, char* buff, u64 n);
+void String_to_cstr_buf(const String* str, char* buff, u64 n);
 
 // Return a raw pointer into the internal buffer (no NUL terminator).
-char* string_data_ptr(const String* str);
+char* String_data_ptr(const String* str);
 
 
 //  Modification
 
-void string_append_char(String* str, char c);
-void string_append_cstr(String* str, const char* cstr);
-void string_append_string(String* str, const String* other);
+void String_append_char(String* str, char c);
+void String_append_cstr(String* str, const char* cstr);
+void String_append_String(String* str, const String* other);
 // Append other then destroy it (nulls *other).
-void string_append_string_move(String* str, String** other);
+void String_append_String_move(String* str, String** other);
 
-char string_pop_char(String* str);
+char String_pop_char(String* str);
 
-void string_insert_char(String* str, u64 i, char c);
-void string_insert_cstr(String* str, u64 i, const char* cstr);
-void string_insert_string(String* str, u64 i, const String* other);
+void String_insert_char(String* str, u64 i, char c);
+void String_insert_cstr(String* str, u64 i, const char* cstr);
+void String_insert_String(String* str, u64 i, const String* other);
 
-void string_remove_char(String* str, u64 i);
+void String_remove_char(String* str, u64 i);
 
 // TODO: test
 // Remove chars in range [start, start + len)
-void string_remove_range(String* str, u64 start, u64 len);
+void String_remove_range(String* str, u64 start, u64 len);
 
 // Remove all chars (keep allocation).
-static inline void string_clear(String* str)
+static inline void String_clear(String* str)
 {
     CHECK_FATAL(!str, "str is null");
     str->size = 0;
@@ -311,19 +311,19 @@ static inline void string_clear(String* str)
 
 //  Access
 
-static inline char string_char_at(const String* str, u64 i)
+static inline char String_char_at(const String* str, u64 i)
 {
     CHECK_FATAL(!str, "str is null");
     CHECK_FATAL(i >= str->size, "index out of bounds");
     return ((str->stk[STR_SSO_SIZE - 1] != '\0') ? (str)->stk : (str)->heap)[i];
 }
 
-static inline char string_char_at_unsafe(const String* str, u64 i)
+static inline char String_char_at_unsafe(const String* str, u64 i)
 {
     return ((str->stk[STR_SSO_SIZE - 1] != '\0') ? (str)->stk : (str)->heap)[i];
 }
 
-static inline void string_set_char(String* str, u64 i, char c)
+static inline void String_set_char(String* str, u64 i, char c)
 {
     CHECK_FATAL(!str, "str is null");
     CHECK_FATAL(i >= str->size, "index out of bounds");
@@ -334,50 +334,50 @@ static inline void string_set_char(String* str, u64 i, char c)
 //  Comparison
 
 // 0 == equal, <0 == str1 < str2, >0 == str1 > str2
-int              string_compare(const String* s1, const String* s2);
-static inline b8 string_equals(const String* s1, const String* s2)
+int              String_compare(const String* s1, const String* s2);
+static inline b8 String_equals(const String* s1, const String* s2)
 {
-    return string_compare(s1, s2) == 0;
+    return String_compare(s1, s2) == 0;
 }
-b8 string_equals_cstr(const String* str, const char* cstr);
+b8 String_equals_cstr(const String* str, const char* cstr);
 
 
 //  Search
 
 // Returns index, or (u64)-1 if not found.
-u64 string_find_char(const String* str, char c);
-u64 string_find_cstr(const String* str, const char* substr);
+u64 String_find_char(const String* str, char c);
+u64 String_find_cstr(const String* str, const char* substr);
 
-// Return a heap-allocated substring starting at `start` of `length` chars.
-String* string_substr(const String* str, u64 start, u64 length);
+// Return a heap-allocated subString starting at `start` of `length` chars.
+String* String_substr(const String* str, u64 start, u64 length);
 
 
 //  I/O
 
-void string_print(const String* str);
+void String_print(const String* str);
 
 
 //  Inline helpers
 
-static inline u64 string_len(const String* str)
+static inline u64 String_len(const String* str)
 {
     CHECK_FATAL(!str, "str is null");
     return str->size;
 }
 
-static inline u64 string_capacity(const String* str)
+static inline u64 String_capacity(const String* str)
 {
     CHECK_FATAL(!str, "str is null");
     return str->capacity;
 }
 
-static inline b8 string_empty(const String* str)
+static inline b8 String_empty(const String* str)
 {
     CHECK_FATAL(!str, "str is null");
     return str->size == 0;
 }
 
-static inline b8 string_is_sso(const String* str)
+static inline b8 String_is_sso(const String* str)
 {
     CHECK_FATAL(!str, "str is null");
     return str->stk[STR_SSO_SIZE - 1] != '\0';
@@ -390,11 +390,11 @@ Note: Do NOT break/return/goto inside the block.
 
  Usage:
    TEMP_CSTR_READ(s) {
-       printf("%s\n", string_data_ptr(s));
+       printf("%s\n", String_data_ptr(s));
    }
 */
 #define TEMP_CSTR_READ(str) \
-    for (u8 _once = 0; (_once == 0) && (string_append_char((str), '\0'), 1); _once++, string_pop_char((str)))
+    for (u8 _once = 0; (_once == 0) && (String_append_char((str), '\0'), 1); _once++, String_pop_char((str)))
 
 #endif /* WC_STRING_H */
 
@@ -426,7 +426,7 @@ Note: Do NOT break/return/goto inside the block.
  *     src   — raw bytes of the source element
  *     job   — deep-copy all owned resources into dest; DO NOT free dest first.
  *             If delegating to a function that calls destroy internally (e.g.
- *             string_copy), you MUST first init dest to a valid empty state.
+ *             String_copy), you MUST first init dest to a valid empty state.
  *
  *   move_fn(u8* dest, u8** src)
  *     dest  — raw bytes of the slot (uninitialised)
@@ -437,7 +437,7 @@ Note: Do NOT break/return/goto inside the block.
  *   del_fn(u8* elm)
  *     elm   — raw bytes of the slot
  *     job   — free owned resources (e.g. data buffer) but NOT elm itself
- *             → call string_destroy_stk / genVec_destroy_stk etc.
+ *             → call String_destroy_stk / genVec_destroy_stk etc.
  *
  * BY POINTER  (slot holds T*, sizeof(T*) = 8 bytes)
  *   copy_fn(u8* dest, const u8* src)
@@ -450,29 +450,29 @@ Note: Do NOT break/return/goto inside the block.
  *   del_fn(u8* elm)
  *     *(T**)elm  is the pointer stored in the slot
  *     job — fully destroy the heap object
- *           → call string_destroy / genVec_destroy etc.
+ *           → call String_destroy / genVec_destroy etc.
  */
 
-#include <string.h>
+#include <String.h>
 
 
 /* ══════════════════════════════════════════════════════════════════════════
  * 1.  STRING BY VALUE
  *
  * String is SSO-based (no data_size / data fields).
- * str_copy  — delegates to string_copy()  (handles SSO vs heap correctly)
+ * str_copy  — delegates to String_copy()  (handles SSO vs heap correctly)
  * str_move  — memcpy the struct shell, free the source container
- * str_del   — delegates to string_destroy_stk() (frees heap buf if any)
+ * str_del   — delegates to String_destroy_stk() (frees heap buf if any)
  * ══════════════════════════════════════════════════════════════════════════ */
 
 static inline void str_copy(u8* dest, const u8* src)
 {
     // dest is uninitialised raw slot memory — init to valid SSO state first
-    // so that string_copy's internal string_destroy_stk(dest) is safe.
+    // so that String_copy's internal String_destroy_stk(dest) is safe.
     String* d = (String*)dest;
     // d->size     = 0;
     // d->capacity = STR_SSO_SIZE;
-    // string_copy(d, (const String*)src);
+    // String_copy(d, (const String*)src);
 
     String* s = (String*)src;
     memcpy(d, s, sizeof(String));
@@ -497,26 +497,26 @@ static inline void str_move(u8* dest, u8** src)
 
 static inline void str_del(u8* elm)
 {
-    string_destroy_stk((String*)elm);   // free data buffer, NOT the slot
+    String_destroy_stk((String*)elm);   // free data buffer, NOT the slot
 }
 
 static inline void str_print(const u8* elm)
 {
-    string_print((const String*)elm);
+    String_print((const String*)elm);
 }
 
 
 /* ══════════════════════════════════════════════════════════════════════════
  * 2.  STRING BY POINTER
  *
- * str_copy_ptr — delegates to string_from_string() for a full heap copy
+ * str_copy_ptr — delegates to String_from_String() for a full heap copy
  * str_move_ptr — pointer swap, nulls source
- * str_del_ptr  — delegates to string_destroy() (frees buf + struct)
+ * str_del_ptr  — delegates to String_destroy() (frees buf + struct)
  * ══════════════════════════════════════════════════════════════════════════ */
 
 static inline void str_copy_ptr(u8* dest, const u8* src)
 {
-    *(String**)dest = string_from_string(*(const String**)src);
+    *(String**)dest = String_from_String(*(const String**)src);
 }
 
 static inline void str_move_ptr(u8* dest, u8** src)
@@ -527,24 +527,24 @@ static inline void str_move_ptr(u8* dest, u8** src)
 
 static inline void str_del_ptr(u8* elm)
 {
-    string_destroy(*(String**)elm);
+    String_destroy(*(String**)elm);
 }
 
 static inline void str_print_ptr(const u8* elm)
 {
-    string_print(*(const String**)elm);
+    String_print(*(const String**)elm);
 }
 
 static inline int str_cmp(const u8* a, const u8* b, u64 size)
 {
     (void)size;
-    return string_compare((const String*)a, (const String*)b);
+    return String_compare((const String*)a, (const String*)b);
 }
 
 static inline int str_cmp_ptr(const u8* a, const u8* b, u64 size)
 {
     (void)size;
-    return string_compare(*(const String**)a, *(const String**)b);
+    return String_compare(*(const String**)a, *(const String**)b);
 }
 
 
@@ -661,7 +661,7 @@ static const container_ops wc_vec_ptr_ops = { vec_copy_ptr, vec_move_ptr, vec_de
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
+#include <String.h>
 
 
 //  Internal macros
@@ -680,7 +680,7 @@ static const container_ops wc_vec_ptr_ops = { vec_copy_ptr, vec_move_ptr, vec_de
                 s->stk[STR_SSO_SIZE - 1] = '\0'; \
                 stk_to_heap(s);                  \
             } else {                             \
-                string_grow(s);                  \
+                String_grow(s);                  \
             }                                    \
         }                                        \
     } while (0)
@@ -692,14 +692,14 @@ static const container_ops wc_vec_ptr_ops = { vec_copy_ptr, vec_move_ptr, vec_de
 static inline u64  cstr_len(const char* cstr);
 static inline void stk_to_heap(String* s);
 static inline void heap_to_stk(String* s);
-static inline void string_grow(String* s);
+static inline void String_grow(String* s);
 static inline void ensure_capacity(String* s, u64 needed);
 
 
 
 //  Construction / Destruction
 
-String* string_create(void)
+String* String_create(void)
 {
     String* s = malloc(sizeof(String));
     CHECK_FATAL(!s, "malloc failed");
@@ -711,16 +711,16 @@ String* string_create(void)
     return s;
 }
 
-String* string_from_cstr(const char* cstr)
+String* String_from_cstr(const char* cstr)
 {
     String* s = malloc(sizeof(String));
     CHECK_FATAL(!s, "malloc failed");
 
-    string_create_stk(s, cstr);
+    String_create_stk(s, cstr);
     return s;
 }
 
-String* string_from_string(const String* other)
+String* String_from_String(const String* other)
 {
     CHECK_FATAL(!other, "other is null");
 
@@ -739,7 +739,7 @@ String* string_from_string(const String* other)
     return s;
 }
 
-void string_create_stk(String* s, const char* cstr)
+void String_create_stk(String* s, const char* cstr)
 {
     CHECK_FATAL(!s, "str is null");
 
@@ -761,14 +761,14 @@ void string_create_stk(String* s, const char* cstr)
     s->size = len;
 }
 
-void string_destroy(String* s)
+void String_destroy(String* s)
 {
     CHECK_FATAL(!s, "str is null");
-    string_destroy_stk(s);
+    String_destroy_stk(s);
     free(s);
 }
 
-void string_destroy_stk(String* s)
+void String_destroy_stk(String* s)
 {
     CHECK_FATAL(!s, "str is null");
 
@@ -781,7 +781,7 @@ void string_destroy_stk(String* s)
     s->capacity              = STR_SSO_SIZE - 1; // leave in valid, reusable SSO state
 }
 
-void string_move(String* dest, String** src)
+void String_move(String* dest, String** src)
 {
     CHECK_FATAL(!src, "src ptr is null");
     CHECK_FATAL(!*src, "*src is null");
@@ -792,7 +792,7 @@ void string_move(String* dest, String** src)
         return;
     }
 
-    string_destroy_stk(dest);
+    String_destroy_stk(dest);
     memcpy(dest, *src, sizeof(String));
 
     // Zero out src so its destructor is harmless, then free the struct
@@ -802,7 +802,7 @@ void string_move(String* dest, String** src)
     *src = NULL;
 }
 
-void string_copy(String* dest, const String* src)
+void String_copy(String* dest, const String* src)
 {
     CHECK_FATAL(!src, "src is null");
     CHECK_FATAL(!dest, "dest is null");
@@ -811,7 +811,7 @@ void string_copy(String* dest, const String* src)
         return;
     }
 
-    string_destroy_stk(dest);
+    String_destroy_stk(dest);
 
     dest->size     = 0;
     dest->capacity = STR_SSO_SIZE - 1;
@@ -826,7 +826,7 @@ void string_copy(String* dest, const String* src)
 
 //  Capacity
 
-void string_reserve(String* s, u64 new_cap)
+void String_reserve(String* s, u64 new_cap)
 {
     CHECK_FATAL(!s, "str is null");
 
@@ -836,7 +836,7 @@ void string_reserve(String* s, u64 new_cap)
     ensure_capacity(s, new_cap);
 }
 
-void string_reserve_char(String* s, u64 new_cap, char c)
+void String_reserve_char(String* s, u64 new_cap, char c)
 {
     CHECK_FATAL(!s, "str is null");
     if (new_cap <= s->capacity) {
@@ -859,7 +859,7 @@ void string_reserve_char(String* s, u64 new_cap, char c)
     s->size = new_cap;
 }
 
-void string_shrink_to_fit(String* s)
+void String_shrink_to_fit(String* s)
 {
     CHECK_FATAL(!s, "str is null");
 
@@ -892,7 +892,7 @@ void string_shrink_to_fit(String* s)
 
 //  Conversion
 
-char* string_to_cstr(const String* s)
+char* String_to_cstr(const String* s)
 {
     CHECK_FATAL(!s, "str is null");
 
@@ -907,7 +907,7 @@ char* string_to_cstr(const String* s)
     return out;
 }
 
-void string_to_cstr_buf(const String* str, char* buff, u64 n)
+void String_to_cstr_buf(const String* str, char* buff, u64 n)
 {
     CHECK_FATAL(!str, "str is null");
     CHECK_FATAL(!buff, "buff is null");
@@ -919,7 +919,7 @@ void string_to_cstr_buf(const String* str, char* buff, u64 n)
     buff[str->size] = '\0';
 }
 
-char* string_data_ptr(const String* s)
+char* String_data_ptr(const String* s)
 {
     CHECK_FATAL(!s, "str is null");
     if (s->size == 0) {
@@ -932,14 +932,14 @@ char* string_data_ptr(const String* s)
 
 //  Modification
 
-void string_append_char(String* s, char c)
+void String_append_char(String* s, char c)
 {
     CHECK_FATAL(!s, "str is null");
     MAYBE_GROW_STR(s);
     GET_STR_CHAR(s, s->size++) = c;
 }
 
-void string_append_cstr(String* s, const char* cstr)
+void String_append_cstr(String* s, const char* cstr)
 {
     CHECK_FATAL(!s, "str is null");
     CHECK_FATAL(!cstr, "cstr is null");
@@ -954,7 +954,7 @@ void string_append_cstr(String* s, const char* cstr)
     s->size += len;
 }
 
-void string_append_string(String* s, const String* other)
+void String_append_String(String* s, const String* other)
 {
     CHECK_FATAL(!s, "str is null");
     CHECK_FATAL(!other, "other is null");
@@ -968,30 +968,30 @@ void string_append_string(String* s, const String* other)
     s->size += other->size;
 }
 
-void string_append_string_move(String* s, String** other)
+void String_append_String_move(String* s, String** other)
 {
     CHECK_FATAL(!s, "str is null");
     CHECK_FATAL(!other, "other ptr is null");
     CHECK_FATAL(!*other, "*other is null");
 
     if ((*other)->size > 0) {
-        string_append_string(s, *other);
+        String_append_String(s, *other);
     }
 
-    string_destroy(*other);
+    String_destroy(*other);
     *other = NULL;
 }
 
-char string_pop_char(String* s)
+char String_pop_char(String* s)
 {
     CHECK_FATAL(!s, "str is null");
-    CHECK_FATAL(s->size == 0, "cannot pop from empty string");
+    CHECK_FATAL(s->size == 0, "cannot pop from empty String");
 
     char c = GET_STR_CHAR(s, --s->size);
     return c;
 }
 
-void string_insert_char(String* s, u64 i, char c)
+void String_insert_char(String* s, u64 i, char c)
 {
     CHECK_FATAL(!s, "str is null");
     CHECK_FATAL(i > s->size, "index out of bounds");
@@ -1007,7 +1007,7 @@ void string_insert_char(String* s, u64 i, char c)
     s->size++;
 }
 
-void string_insert_cstr(String* s, u64 i, const char* cstr)
+void String_insert_cstr(String* s, u64 i, const char* cstr)
 {
     CHECK_FATAL(!s, "str is null");
     CHECK_FATAL(!cstr, "cstr is null");
@@ -1029,7 +1029,7 @@ void string_insert_cstr(String* s, u64 i, const char* cstr)
     s->size += len;
 }
 
-void string_insert_string(String* s, u64 i, const String* other)
+void String_insert_String(String* s, u64 i, const String* other)
 {
     CHECK_FATAL(!s, "str is null");
     CHECK_FATAL(!other, "other is null");
@@ -1039,7 +1039,7 @@ void string_insert_string(String* s, u64 i, const String* other)
         return;
     }
 
-    CHECK_WARN_RET(s == other, , "can't insert aliasing(same) strings");
+    CHECK_WARN_RET(s == other, , "can't insert aliasing(same) Strings");
 
     u64 len = other->size;
     ensure_capacity(s, s->size + len);
@@ -1052,7 +1052,7 @@ void string_insert_string(String* s, u64 i, const String* other)
     s->size += len;
 }
 
-void string_remove_char(String* s, u64 i)
+void String_remove_char(String* s, u64 i)
 {
     CHECK_FATAL(!s, "str is null");
     CHECK_FATAL(i >= s->size, "index out of bounds");
@@ -1073,7 +1073,7 @@ void string_remove_char(String* s, u64 i)
 
 */
 
-void string_remove_range(String* s, u64 start, u64 len)
+void String_remove_range(String* s, u64 start, u64 len)
 {
     CHECK_FATAL(!s, "str is null");
     CHECK_FATAL(start >= s->size, "start out of bounds");
@@ -1097,7 +1097,7 @@ void string_remove_range(String* s, u64 start, u64 len)
 
 //  Comparison
 
-int string_compare(const String* s1, const String* s2)
+int String_compare(const String* s1, const String* s2)
 {
     CHECK_FATAL(!s1, "str1 is null");
     CHECK_FATAL(!s2, "str2 is null");
@@ -1120,7 +1120,7 @@ int string_compare(const String* s1, const String* s2)
     return 0;
 }
 
-b8 string_equals_cstr(const String* s, const char* cstr)
+b8 String_equals_cstr(const String* s, const char* cstr)
 {
     CHECK_FATAL(!s, "str is null");
     CHECK_FATAL(!cstr, "cstr is null");
@@ -1140,7 +1140,7 @@ b8 string_equals_cstr(const String* s, const char* cstr)
 
 //  Search
 
-u64 string_find_char(const String* s, char c)
+u64 String_find_char(const String* s, char c)
 {
     CHECK_FATAL(!s, "str is null");
 
@@ -1152,7 +1152,7 @@ u64 string_find_char(const String* s, char c)
     return p ? (u64)(p - buf) : (u64)-1;
 }
 
-u64 string_find_cstr(const String* s, const char* substr)
+u64 String_find_cstr(const String* s, const char* substr)
 {
     CHECK_FATAL(!s, "str is null");
     CHECK_FATAL(!substr, "substr is null");
@@ -1174,7 +1174,7 @@ u64 string_find_cstr(const String* s, const char* substr)
     return (u64)-1;
 }
 
-String* string_substr(const String* s, u64 start, u64 length)
+String* String_substr(const String* s, u64 start, u64 length)
 {
     CHECK_FATAL(!s, "str is null");
     CHECK_FATAL(start >= s->size, "start out of bounds");
@@ -1183,7 +1183,7 @@ String* string_substr(const String* s, u64 start, u64 length)
         length = s->size - start;
     }
 
-    String* result = string_create();
+    String* result = String_create();
 
     if (length > 0) {
         ensure_capacity(result, length);
@@ -1197,7 +1197,7 @@ String* string_substr(const String* s, u64 start, u64 length)
 
 //  I/O
 
-void string_print(const String* s)
+void String_print(const String* s)
 {
     CHECK_FATAL(!s, "str is null");
 
@@ -1240,7 +1240,7 @@ static inline void heap_to_stk(String* s)
     s->capacity              = STR_SSO_SIZE - 1;
 }
 
-static inline void string_grow(String* s)
+static inline void String_grow(String* s)
 {
     u64 new_cap = (u64)((float)s->capacity * STRING_GROWTH);
 

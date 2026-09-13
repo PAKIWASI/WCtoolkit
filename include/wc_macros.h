@@ -3,6 +3,7 @@
 
 // Required by WC_OPS (6-I): _Generic association expressions must name declared
 // symbols in every TU that sees this header, even when the macro is never used.
+#include "common.h"
 #include "wc_helpers.h"
 
 
@@ -18,12 +19,11 @@
  * whose element size doesn't match sizeof(T) — i.e. the wrong T was passed.
  * The container never knows T, so this lives in the macro layer.
  */
-#define WC_ASSERT_ELEM_SIZE(vec, T)                                                        \
-    do {                                                                                   \
-        CHECK_FATAL((vec)->data_size != sizeof(T),                                         \
-                    "element size mismatch: " #vec " (data_size=%u), macro given " #T      \
-                    " (sizeof=%llu)",                                                      \
-                    (unsigned)(vec)->data_size, (unsigned long long)sizeof(T));            \
+#define WC_ASSERT_ELEM_SIZE(vec, T)                                                                     \
+    do {                                                                                                \
+        CHECK_FATAL((vec)->data_size != sizeof(T),                                                      \
+                    "element size mismatch: " #vec " (data_size=%u), macro given " #T " (sizeof=%llu)", \
+                    (unsigned)(vec)->data_size, (unsigned long long)sizeof(T));                         \
     } while (0)
 
 
@@ -36,13 +36,13 @@
  *   VEC_CREATE_OF(GenVec*, 8)              -> &wc_vec_ptr_ops
  * Unknown types fall back to POD (NULL ops).
  */
-#define WC_OPS(T)                                        \
-    _Generic((T*)0,                                      \
-        String*:  (const container_ops*)&wc_str_ops,     \
-        String**: (const container_ops*)&wc_str_ptr_ops, \
-        GenVec*:  (const container_ops*)&wc_vec_ops,     \
-        GenVec**: (const container_ops*)&wc_vec_ptr_ops, \
-        default:  (const container_ops*)NULL)
+#define WC_OPS(T)                                          \
+    _Generic((T*)0,                                        \
+        String*: (const container_ops*)&wc_str_ops,        \
+        String * *: (const container_ops*)&wc_str_ptr_ops, \
+        GenVec*: (const container_ops*)&wc_vec_ops,        \
+        GenVec * *: (const container_ops*)&wc_vec_ptr_ops, \
+        default: (const container_ops*)NULL)
 
 
 
@@ -89,13 +89,13 @@
 Usage:
     GenVec* v = VEC_FROM_ARR(int, 4, ((int[4]){1,2,3,4}));
 */
-#define VEC_FROM_ARR(T, n, arr)                         \
-    ({                                                  \
+#define VEC_FROM_ARR(T, n, arr)                           \
+    ({                                                    \
         GenVec* _v = GenVec_create((n), sizeof(T), NULL); \
-        for (u64 _i = 0; _i < (n); _i++) {              \
-            GenVec_push(_v, (u8*)&(arr)[_i]);           \
-        }                                               \
-        _v;                                             \
+        for (u64 _i = 0; _i < (n); _i++) {                \
+            GenVec_push(_v, (u8*)&(arr)[_i]);             \
+        }                                                 \
+        _v;                                               \
     })
 
 
@@ -119,7 +119,7 @@ Usage:
 // VEC_PUSH_CSTR — allocate a heap String and move it in.
 #define VEC_PUSH_CSTR(vec, cstr)                \
     ({                                          \
-        String* wpc_s = string_from_cstr(cstr); \
+        String* wpc_s = String_from_cstr(cstr); \
         GenVec_push_move((vec), (u8**)&wpc_s);  \
     })
 
@@ -127,28 +127,28 @@ Usage:
 // Access
 // All type-asserting macros guard with WC_ASSERT_ELEM_SIZE (6-H) — pass the right T.
 
-#define VEC_AT(vec, T, i)                     \
-    ({                                        \
-        WC_ASSERT_ELEM_SIZE((vec), T);        \
-        *(T*)GenVec_get_ptr((vec), (i));      \
+#define VEC_AT(vec, T, i)                \
+    ({                                   \
+        WC_ASSERT_ELEM_SIZE((vec), T);   \
+        *(T*)GenVec_get_ptr((vec), (i)); \
     })
 
-#define VEC_AT_MUT(vec, T, i)                 \
-    ({                                        \
-        WC_ASSERT_ELEM_SIZE((vec), T);        \
-        (T*)GenVec_get_ptr_mut((vec), (i));   \
+#define VEC_AT_MUT(vec, T, i)               \
+    ({                                      \
+        WC_ASSERT_ELEM_SIZE((vec), T);      \
+        (T*)GenVec_get_ptr_mut((vec), (i)); \
     })
 
-#define VEC_FRONT(vec, T)                     \
-    ({                                        \
-        WC_ASSERT_ELEM_SIZE((vec), T);        \
-        *(T*)GenVec_front((vec));             \
+#define VEC_FRONT(vec, T)              \
+    ({                                 \
+        WC_ASSERT_ELEM_SIZE((vec), T); \
+        *(T*)GenVec_front((vec));      \
     })
 
-#define VEC_BACK(vec, T)                      \
-    ({                                        \
-        WC_ASSERT_ELEM_SIZE((vec), T);        \
-        *(T*)GenVec_back((vec));              \
+#define VEC_BACK(vec, T)               \
+    ({                                 \
+        WC_ASSERT_ELEM_SIZE((vec), T); \
+        *(T*)GenVec_back((vec));       \
     })
 
 
@@ -163,23 +163,23 @@ Usage:
 
 // Pop
 
-#define VEC_POP(vec, T)                       \
-    ({                                        \
-        WC_ASSERT_ELEM_SIZE((vec), T);        \
-        T wvpop;                              \
-        GenVec_pop((vec), (u8*)&wvpop);       \
-        wvpop;                                \
+#define VEC_POP(vec, T)                 \
+    ({                                  \
+        WC_ASSERT_ELEM_SIZE((vec), T);  \
+        T wvpop;                        \
+        GenVec_pop((vec), (u8*)&wvpop); \
+        wvpop;                          \
     })
 
 
 // Iterate
-/* 6-L: bounds hoisted into the outer loop (_wvf_n) and element fetch elided via
+/* bounds hoisted into the outer loop (_wvf_n) and element fetch elided via
  * GenVec_get_ptr_mut_unsafe — the index is provably < size. NOTE: no size assert
  * here (a leading statement would break `if (x) VEC_FOREACH(...) ...` usage);
  * the T* assignment still gives compile-time type checking.
  */
-#define VEC_FOREACH(vec, T, name)                                            \
-    for (u64 _wvf_n = (vec)->size, _wvf_i = 0; _wvf_i < _wvf_n; _wvf_i++)    \
+#define VEC_FOREACH(vec, T, name)                                         \
+    for (u64 _wvf_n = (vec)->size, _wvf_i = 0; _wvf_i < _wvf_n; _wvf_i++) \
         for (T* name = (T*)GenVec_get_ptr_mut_unsafe((vec), _wvf_i); name; name = NULL)
 
 
@@ -212,7 +212,7 @@ Usage:
  */
 #define MAP_PUT_INT_STR(map, k, cstr_val)                         \
     ({                                                            \
-        String* _v = string_from_cstr(cstr_val);                  \
+        String* _v = String_from_cstr(cstr_val);                  \
         HashMap_put_val_move((map), (u8*)&(int){(k)}, (u8**)&_v); \
     })
 
@@ -222,8 +222,8 @@ Usage:
  */
 #define MAP_PUT_STR_STR(map, cstr_key, cstr_val)       \
     ({                                                 \
-        String* _k = string_from_cstr(cstr_key);       \
-        String* _v = string_from_cstr(cstr_val);       \
+        String* _k = String_from_cstr(cstr_key);       \
+        String* _v = String_from_cstr(cstr_val);       \
         HashMap_put_move((map), (u8**)&_k, (u8**)&_v); \
     })
 
@@ -265,37 +265,34 @@ Usage:
 // Get
 
 // V - Type of the value. Asserts key is present.
-#define MAP_GET(map, V, key)                                            \
-    ({                                                                  \
-        V           _out;                                               \
-        typeof(key) _mk = (key);                                        \
-        CHECK_FATAL(!HashMap_get((map), (const u8*)&_mk, (u8*)&_out),  \
-                    "MAP_GET: key not found");                          \
-        _out;                                                           \
+#define MAP_GET(map, V, key)                                                                     \
+    ({                                                                                           \
+        V           _out;                                                                        \
+        typeof(key) _mk = (key);                                                                 \
+        CHECK_FATAL(!HashMap_get((map), (const u8*)&_mk, (u8*)&_out), "MAP_GET: key not found"); \
+        _out;                                                                                    \
     })
 
 // Returns b8 (1 if found, 0 if not). Writes *out_ptr on hit.
-#define MAP_TRY_GET(map, V, key, out_ptr)                               \
-    ({                                                                  \
-        typeof(key) _mk = (key);                                        \
-        HashMap_get((map), (const u8*)&_mk, (u8*)(out_ptr));           \
+#define MAP_TRY_GET(map, V, key, out_ptr)                    \
+    ({                                                       \
+        typeof(key) _mk = (key);                             \
+        HashMap_get((map), (const u8*)&_mk, (u8*)(out_ptr)); \
     })
 
 
 
 // Iterate
 
-#define MAP_FOREACH_KEY(map, T, name)                                      \
-    for (u64 _i = 0, _n = HashMap_bucket_count(map); _i < _n; _i++)        \
-        for (const T* name = HashMap_bucket_occupied((map), _i)            \
-                ? (const T*)HashMap_bucket_key_ptr((map), _i) : NULL;      \
-             name; name = NULL)
+#define MAP_FOREACH_KEY(map, T, name)                                                                                 \
+    for (u64 _i = 0, _n = HashMap_bucket_count(map); _i < _n; _i++)                                                   \
+        for (const T* name = HashMap_bucket_occupied((map), _i) ? (const T*)HashMap_bucket_key_ptr((map), _i) : NULL; \
+             name; name    = NULL)
 
-#define MAP_FOREACH_VAL(map, T, name)                                      \
-    for (u64 _i = 0, _n = HashMap_bucket_count(map); _i < _n; _i++)        \
-        for (T* name = HashMap_bucket_occupied((map), _i)                  \
-                ? (T*)HashMap_bucket_val_ptr((map), _i) : NULL;            \
-             name; name = NULL)
+#define MAP_FOREACH_VAL(map, T, name)                                                                           \
+    for (u64 _i = 0, _n = HashMap_bucket_count(map); _i < _n; _i++)                                             \
+        for (T* name = HashMap_bucket_occupied((map), _i) ? (T*)HashMap_bucket_val_ptr((map), _i) : NULL; name; \
+             name    = NULL)
 
 
 // Hashset shorthands
@@ -324,61 +321,60 @@ Usage:
 
 #define SET_INSERT_CSTR(set, cstr)               \
     ({                                           \
-        String* _s = string_from_cstr(cstr);     \
+        String* _s = String_from_cstr(cstr);     \
         HashSet_insert_move((set), (u8**)&(_s)); \
     })
 
 
-#define SET_FOREACH(set, T, name)                                          \
-    for (u64 _i = 0, _n = HashSet_bucket_count(set); _i < _n; _i++)        \
-        for (const T* name = HashSet_bucket_occupied((set), _i)            \
-                ? (const T*)HashSet_bucket_elm_ptr((set), _i) : NULL;      \
-             name; name = NULL)
+#define SET_FOREACH(set, T, name)                                                                                     \
+    for (u64 _i = 0, _n = HashSet_bucket_count(set); _i < _n; _i++)                                                   \
+        for (const T* name = HashSet_bucket_occupied((set), _i) ? (const T*)HashSet_bucket_elm_ptr((set), _i) : NULL; \
+             name; name    = NULL)
 
 
 // Stack macros
 
-#define STACK_CREATE(T, cap)          VEC(T, cap)
-#define STACK_CREATE_CX(T, cap, ops)  VEC_CX(T, cap, ops)
-#define STACK_STK(T, cap, vec)        VEC_STK(T, cap, vec)
-#define STACK_PUSH(stk, val)          VEC_PUSH((stk), (val))
-#define STACK_PUSH_MOVE(stk, ptr)     VEC_PUSH_MOVE((stk), (ptr))
-#define STACK_POP(stk, T)             VEC_POP((stk), T)
-#define STACK_AT(stk, T, i)           VEC_AT((stk), T, (i))
-#define STACK_FOREACH(stk, T, name)   VEC_FOREACH((stk), T, name)
+#define STACK_CREATE(T, cap)         VEC(T, cap)
+#define STACK_CREATE_CX(T, cap, ops) VEC_CX(T, cap, ops)
+#define STACK_STK(T, cap, vec)       VEC_STK(T, cap, vec)
+#define STACK_PUSH(stk, val)         VEC_PUSH((stk), (val))
+#define STACK_PUSH_MOVE(stk, ptr)    VEC_PUSH_MOVE((stk), (ptr))
+#define STACK_POP(stk, T)            VEC_POP((stk), T)
+#define STACK_AT(stk, T, i)          VEC_AT((stk), T, (i))
+#define STACK_FOREACH(stk, T, name)  VEC_FOREACH((stk), T, name)
 
 
 // Queue macros
 
-#define QUEUE_CREATE(T, cap)          queue_create((cap), sizeof(T), NULL)
-#define QUEUE_CREATE_CX(T, cap, ops)  queue_create((cap), sizeof(T), (ops))
-#define QUEUE_PUSH(q, val)                 \
-    ({                                     \
-        typeof(val) _qp_tmp = (val);       \
-        queue_push((q), (u8*)&_qp_tmp);    \
+#define QUEUE_CREATE(T, cap)         Queue_create((cap), sizeof(T), NULL)
+#define QUEUE_CREATE_CX(T, cap, ops) Queue_create((cap), sizeof(T), (ops))
+#define QUEUE_PUSH(q, val)              \
+    ({                                  \
+        typeof(val) _qp_tmp = (val);    \
+        Queue_push((q), (u8*)&_qp_tmp); \
     })
 
-#define QUEUE_PUSH_MOVE(q, ptr)                \
-    ({                                         \
-        typeof(ptr) _qp_p = (ptr);             \
-        queue_push_move((q), (u8**)&_qp_p);    \
-        (ptr) = _qp_p;                         \
+#define QUEUE_PUSH_MOVE(q, ptr)             \
+    ({                                      \
+        typeof(ptr) _qp_p = (ptr);          \
+        Queue_push_move((q), (u8**)&_qp_p); \
+        (ptr) = _qp_p;                      \
     })
 
 #define QUEUE_PUSH_CSTR(q, cstr)                \
     ({                                          \
-        String* _qp_s = string_from_cstr(cstr); \
-        queue_push_move((q), (u8**)&_qp_s);     \
+        String* _qp_s = String_from_cstr(cstr); \
+        Queue_push_move((q), (u8**)&_qp_s);     \
     })
 
 #define QUEUE_POP(q, T)                \
     ({                                 \
         T _qp_out;                     \
-        queue_pop((q), (u8*)&_qp_out); \
+        Queue_pop((q), (u8*)&_qp_out); \
         _qp_out;                       \
     })
 
-#define QUEUE_PEEK(q, T)               (*(T*)queue_peek_ptr(q))
+#define QUEUE_PEEK(q, T) (*(T*)Queue_peek_ptr(q))
 
 
 #endif // WC_MACROS_H

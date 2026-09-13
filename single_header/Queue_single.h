@@ -221,8 +221,8 @@ static inline void wc_print_cstr(const u8* elm)
  * vectors of that type —  improves cache locality when many vectors of the same type exist.
  *
  * Example:
- *   static const genVec_ops string_ops = { str_copy, str_move, str_del };
- *   genVec* vec = genVec_init(8, sizeof(String), &string_ops);
+ *   static const genVec_ops String_ops = { str_copy, str_move, str_del };
+ *   genVec* vec = genVec_init(8, sizeof(String), &String_ops);
  *
  * For POD types (int, float, flat structs) pass NULL for ops:
  *   genVec* vec = genVec_init(8, sizeof(int), NULL);
@@ -265,7 +265,7 @@ typedef struct {
 // ops: pointer to a shared genVec_ops vtable, or NULL for POD types.
 genVec* genVec_init(u64 n, u32 data_size, const container_ops* ops);
 
-// Initialize vector on stack (struct on stack, data on heap).
+// Initialize vector on Stack (struct on Stack, data on heap).
 void genVec_init_stk(u64 n, u32 data_size, const container_ops* ops, genVec* vec);
 
 // Initialize vector of size n with all elements set to val.
@@ -275,8 +275,8 @@ void genVec_init_val_stk(u64 n, const u8* val, u32 data_size, const container_op
 
 genVec* genVec_init_arr(u64 n, u32 data_size, const container_ops* ops, u8* arr);
 
-// Vector COMPLETELY on stack (can't grow in size).
-// You provide a stack-allocated array which becomes the internal array.
+// Vector COMPLETELY on Stack (can't grow in size).
+// You provide a Stack-allocated array which becomes the internal array.
 // should only use if you need genVec operations on C array
 // WARNING: crashes when size == capacity and you try to push.
 void genVec_init_stk_arr(u64 n, u8* arr, u32 data_size, const container_ops* ops, genVec* vec);
@@ -284,7 +284,7 @@ void genVec_init_stk_arr(u64 n, u8* arr, u32 data_size, const container_ops* ops
 // Destroy heap-allocated vector and clean up all elements.
 void genVec_destroy(genVec* vec);
 
-// Destroy stack-allocated vector (cleans up data, but not vec itself).
+// Destroy Stack-allocated vector (cleans up data, but not vec itself).
 void genVec_destroy_stk(genVec* vec);
 
 // Remove all elements (calls del_fn on each), keep capacity.
@@ -417,33 +417,33 @@ static inline b8 genVec_empty(const genVec* vec)
 
 typedef struct { // Circular Queue
     genVec* arr;
-    u64 head;   // dequeue from (head + 1) % capacity
-    u64 tail;   // enqueue at  (head + size) % capacity
+    u64 head;   // deQueue from (head + 1) % capacity
+    u64 tail;   // enQueue at  (head + size) % capacity
     u64 size;
 } Queue;
 
 
-Queue*    queue_create(u64 n, u32 data_size, const container_ops* ops);
-Queue*    queue_create_val(u64 n, const u8* val, u32 data_size, const container_ops* ops);
-void      queue_create_stk(Queue* q, u64 n, u32 data_size, const container_ops* ops);
+Queue*    Queue_create(u64 n, u32 data_size, const container_ops* ops);
+Queue*    Queue_create_val(u64 n, const u8* val, u32 data_size, const container_ops* ops);
+void      Queue_create_stk(Queue* q, u64 n, u32 data_size, const container_ops* ops);
 
-void      queue_destroy(Queue* q);
-void      queue_destroy_stk(Queue* q);
-void      queue_clear(Queue* q);
-void      queue_reset(Queue* q);
-void      queue_shrink_to_fit(Queue* q);
+void      Queue_destroy(Queue* q);
+void      Queue_destroy_stk(Queue* q);
+void      Queue_clear(Queue* q);
+void      Queue_reset(Queue* q);
+void      Queue_shrink_to_fit(Queue* q);
 
-void      enqueue(Queue* q, const u8* x);
-void      enqueue_move(Queue* q, u8** x);
-void      dequeue(Queue* q, u8* out);
-void      queue_peek(Queue* q, u8* peek);
-const u8* queue_peek_ptr(Queue* q);
+void      enQueue(Queue* q, const u8* x);
+void      enQueue_move(Queue* q, u8** x);
+void      deQueue(Queue* q, u8* out);
+void      Queue_peek(Queue* q, u8* peek);
+const u8* Queue_peek_ptr(Queue* q);
 
-void      queue_print(Queue* q, print_fn print_fn);
+void      Queue_print(Queue* q, print_fn print_fn);
 
-static inline u64 queue_size(Queue* q)     { CHECK_FATAL(!q, "queue is null"); return q->size;                    }
-static inline u8  queue_empty(Queue* q)    { CHECK_FATAL(!q, "queue is null"); return q->size == 0;               }
-static inline u64 queue_capacity(Queue* q) { CHECK_FATAL(!q, "queue is null"); return genVec_capacity(q->arr);    }
+static inline u64 Queue_size(Queue* q)     { CHECK_FATAL(!q, "Queue is null"); return q->size;                    }
+static inline u8  Queue_empty(Queue* q)    { CHECK_FATAL(!q, "Queue is null"); return q->size == 0;               }
+static inline u64 Queue_capacity(Queue* q) { CHECK_FATAL(!q, "Queue is null"); return genVec_capacity(q->arr);    }
 
 #endif /* WC_QUEUE_H */
 
@@ -455,7 +455,7 @@ static inline u64 queue_capacity(Queue* q) { CHECK_FATAL(!q, "queue is null"); r
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
+#include <String.h>
 
 
 #define GENVEC_MIN_CAPACITY 4
@@ -1316,7 +1316,7 @@ static void genVec_grow(genVec* vec)
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
+#include <String.h>
 
 
 #define QUEUE_MIN_CAP   4
@@ -1338,7 +1338,7 @@ static void genVec_grow(genVec* vec)
 #define Q_MAYBE_GROW(q)                          \
     do {                                       \
         if ((q)->size == (q)->arr->capacity) { \
-            queue_grow((q));                   \
+            Queue_grow((q));                   \
         }                                      \
     } while (0)
 
@@ -1350,23 +1350,23 @@ static void genVec_grow(genVec* vec)
         }                                                       \
         float load_factor = (float)(q)->size / (float)capacity; \
         if (load_factor < QUEUE_SHRINK_AT) {                    \
-            queue_shrink((q));                                  \
+            Queue_shrink((q));                                  \
         }                                                       \
     } while (0)
 
 
-static void queue_grow(Queue* q);
-static void queue_shrink(Queue* q);
-static void queue_compact(Queue* q, u64 new_capacity);
+static void Queue_grow(Queue* q);
+static void Queue_shrink(Queue* q);
+static void Queue_compact(Queue* q, u64 new_capacity);
 
 
-Queue* queue_create(u64 n, u32 data_size, const container_ops* ops)
+Queue* Queue_create(u64 n, u32 data_size, const container_ops* ops)
 {
     CHECK_FATAL(n == 0, "n can't be 0");
     CHECK_FATAL(data_size == 0, "data_size can't be 0");
 
     Queue* q = malloc(sizeof(Queue));
-    CHECK_FATAL(!q, "queue malloc failed");
+    CHECK_FATAL(!q, "Queue malloc failed");
 
     q->arr = genVec_init(n, data_size, ops);
 
@@ -1377,14 +1377,14 @@ Queue* queue_create(u64 n, u32 data_size, const container_ops* ops)
     return q;
 }
 
-Queue* queue_create_val(u64 n, const u8* val, u32 data_size, const container_ops* ops)
+Queue* Queue_create_val(u64 n, const u8* val, u32 data_size, const container_ops* ops)
 {
     CHECK_FATAL(n == 0, "n can't be 0");
     CHECK_FATAL(data_size == 0, "data_size can't be 0");
     CHECK_FATAL(!val, "val is null");
 
     Queue* q = malloc(sizeof(Queue));
-    CHECK_FATAL(!q, "queue malloc failed");
+    CHECK_FATAL(!q, "Queue malloc failed");
 
     q->arr = genVec_init_val(n, val, data_size, ops);
 
@@ -1396,7 +1396,7 @@ Queue* queue_create_val(u64 n, const u8* val, u32 data_size, const container_ops
 }
 
 
-void queue_create_stk(Queue* q, u64 n, u32 data_size, const container_ops* ops)
+void Queue_create_stk(Queue* q, u64 n, u32 data_size, const container_ops* ops)
 {
     CHECK_FATAL(n == 0, "n can't be 0");
     CHECK_FATAL(data_size == 0, "data_size can't be 0");
@@ -1408,24 +1408,24 @@ void queue_create_stk(Queue* q, u64 n, u32 data_size, const container_ops* ops)
     q->size = 0;
 }
 
-void queue_destroy(Queue* q)
+void Queue_destroy(Queue* q)
 {
-    CHECK_FATAL(!q, "queue is null");
+    CHECK_FATAL(!q, "Queue is null");
 
     genVec_destroy(q->arr);
     free(q);
 }
 
-void queue_destroy_stk(Queue* q)
+void Queue_destroy_stk(Queue* q)
 {
-    CHECK_FATAL(!q, "queue is null");
+    CHECK_FATAL(!q, "Queue is null");
 
     genVec_destroy(q->arr);
 }
 
-void queue_clear(Queue* q)
+void Queue_clear(Queue* q)
 {
-    CHECK_FATAL(!q, "queue is null");
+    CHECK_FATAL(!q, "Queue is null");
 
     genVec_clear(q->arr);
     q->size = 0;
@@ -1433,9 +1433,9 @@ void queue_clear(Queue* q)
     q->tail = 0;
 }
 
-void queue_reset(Queue* q)
+void Queue_reset(Queue* q)
 {
-    CHECK_FATAL(!q, "queue is null");
+    CHECK_FATAL(!q, "Queue is null");
 
     genVec_reset(q->arr);
     q->size = 0;
@@ -1443,12 +1443,12 @@ void queue_reset(Queue* q)
     q->tail = 0;
 }
 
-void queue_shrink_to_fit(Queue* q)
+void Queue_shrink_to_fit(Queue* q)
 {
-    CHECK_FATAL(!q, "queue is null");
+    CHECK_FATAL(!q, "Queue is null");
 
     if (q->size == 0) {
-        queue_reset(q);
+        Queue_reset(q);
         return;
     }
 
@@ -1456,13 +1456,13 @@ void queue_shrink_to_fit(Queue* q)
     u64 current_capacity = genVec_capacity(q->arr);
 
     if (current_capacity > min_capacity) {
-        queue_compact(q, min_capacity);
+        Queue_compact(q, min_capacity);
     }
 }
 
-void enqueue(Queue* q, const u8* x)
+void enQueue(Queue* q, const u8* x)
 {
-    CHECK_FATAL(!q, "queue is null");
+    CHECK_FATAL(!q, "Queue is null");
     CHECK_FATAL(!x, "x is null");
 
     Q_MAYBE_GROW(q);
@@ -1477,9 +1477,9 @@ void enqueue(Queue* q, const u8* x)
     TAIL_UPDATE(q);
 }
 
-void enqueue_move(Queue* q, u8** x)
+void enQueue_move(Queue* q, u8** x)
 {
-    CHECK_FATAL(!q, "queue is null");
+    CHECK_FATAL(!q, "Queue is null");
     CHECK_FATAL(!x, "x is null");
     CHECK_FATAL(!*x, "*x is null");
 
@@ -1495,10 +1495,10 @@ void enqueue_move(Queue* q, u8** x)
     TAIL_UPDATE(q);
 }
 
-void dequeue(Queue* q, u8* out)
+void deQueue(Queue* q, u8* out)
 {
-    CHECK_FATAL(!q, "queue is null");
-    CHECK_FATAL(q->size == 0, "cannot dequeue from empty queue");
+    CHECK_FATAL(!q, "Queue is null");
+    CHECK_FATAL(q->size == 0, "cannot deQueue from empty Queue");
 
     if (out) {
         genVec_get(q->arr, q->head, out);
@@ -1517,26 +1517,26 @@ void dequeue(Queue* q, u8* out)
     Q_MAYBE_SHRINK(q);
 }
 
-void queue_peek(Queue* q, u8* peek)
+void Queue_peek(Queue* q, u8* peek)
 {
-    CHECK_FATAL(!q, "queue is null");
+    CHECK_FATAL(!q, "Queue is null");
     CHECK_FATAL(!peek, "peek is null");
-    CHECK_FATAL(q->size == 0, "cannot peek empty queue");
+    CHECK_FATAL(q->size == 0, "cannot peek empty Queue");
 
     genVec_get(q->arr, q->head, peek);
 }
 
-const u8* queue_peek_ptr(Queue* q)
+const u8* Queue_peek_ptr(Queue* q)
 {
-    CHECK_FATAL(!q, "queue is null");
-    CHECK_FATAL(q->size == 0, "cannot peek empty queue");
+    CHECK_FATAL(!q, "Queue is null");
+    CHECK_FATAL(q->size == 0, "cannot peek empty Queue");
 
     return genVec_get_ptr(q->arr, q->head);
 }
 
-void queue_print(Queue* q, print_fn print_fn)
+void Queue_print(Queue* q, print_fn print_fn)
 {
-    CHECK_FATAL(!q, "queue is empty");
+    CHECK_FATAL(!q, "Queue is empty");
     CHECK_FATAL(!print_fn, "print_fn is empty");
 
     u64 h   = q->head;
@@ -1555,7 +1555,7 @@ void queue_print(Queue* q, print_fn print_fn)
 }
 
 
-static void queue_grow(Queue* q)
+static void Queue_grow(Queue* q)
 {
     u64 old_cap = genVec_capacity(q->arr);
     u64 new_cap = (u64)((float)old_cap * QUEUE_GROWTH);
@@ -1563,10 +1563,10 @@ static void queue_grow(Queue* q)
         new_cap = old_cap + 1;
     }
 
-    queue_compact(q, new_cap);
+    Queue_compact(q, new_cap);
 }
 
-static void queue_shrink(Queue* q)
+static void Queue_shrink(Queue* q)
 {
     u64 current_cap = genVec_capacity(q->arr);
     u64 new_cap     = (u64)((float)current_cap * QUEUE_SHRINK_BY);
@@ -1577,11 +1577,11 @@ static void queue_shrink(Queue* q)
     }
 
     if (new_cap < current_cap) {
-        queue_compact(q, new_cap);
+        Queue_compact(q, new_cap);
     }
 }
 
-static void queue_compact(Queue* q, u64 new_capacity)
+static void Queue_compact(Queue* q, u64 new_capacity)
 {
     CHECK_FATAL(new_capacity < q->size, "new_capacity must be >= current size");
 

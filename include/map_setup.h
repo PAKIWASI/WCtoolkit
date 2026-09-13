@@ -103,7 +103,7 @@ static inline int default_compare(const u8* a, const u8* b, u64 size)
 ====================STRING HASHING====================
 */
 
-#include "String.h"
+#include "wc_string.h"
 
 // wyhash variants for String
 
@@ -111,14 +111,14 @@ __attribute__((unused)) static u64 wyhash_str(const u8* key, u64 size)
 {
     (void)size;
     String* str = (String*)key;
-    return wyhash((const u8*)string_data_ptr(str), string_len(str));
+    return wyhash((const u8*)String_data_ptr(str), String_len(str));
 }
 
 __attribute__((unused)) static u64 wyhash_str_ptr(const u8* key, u64 size)
 {
     (void)size;
     String* str = *(String**)key;
-    return wyhash((const u8*)string_data_ptr(str), string_len(str));
+    return wyhash((const u8*)String_data_ptr(str), String_len(str));
 }
 
 #define ALIGN8(size) (((u64)(size) + 7u) & ~7u)

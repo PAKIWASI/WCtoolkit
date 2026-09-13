@@ -3,7 +3,7 @@
 
 #include "common.h"
 #include "arena.h"
-// #include <string.h>
+// #include <String.h>
 
 
 // ============================================================================
@@ -403,26 +403,26 @@
 // ============================================================================
 
 /*
-Create a matrix allocated from arena (heap-style)
-Matrix struct and data both allocated from arena
-No need to call matrix_destroy - freed when arena is cleared/released
+Create a matrix allocated from Arena (heap-style)
+Matrix struct and data both allocated from Arena
+No need to call matrix_destroy - freed when Arena is cleared/released
 
 Usage:
-    Matrix* mat = MATRIX_ARENA(arena, 3, 3);
+    Matrix* mat = MATRIX_ARENA(Arena, 3, 3);
 */
 #define MATRIX_ARENA_ALLOC(T)                                           \
-    Matrix_##T* matrix_arena_alloc_##T(Arena* arena, u64 m, u64 n)      \
+    Matrix_##T* matrix_Arena_alloc_##T(Arena* Arena, u64 m, u64 n)      \
     {                                                                   \
         CHECK_FATAL(m == 0 && n == 0, "n == m == 0");                   \
-        Matrix_##T* mat = ARENA_ALLOC(arena, Matrix_##T);               \
+        Matrix_##T* mat = ARENA_ALLOC(Arena, Matrix_##T);               \
                                                                         \
-        CHECK_FATAL(!mat, "matrix arena allocation failed");            \
+        CHECK_FATAL(!mat, "matrix Arena allocation failed");            \
                                                                         \
         mat->m = m;                                                     \
         mat->n = n;                                                     \
                                                                         \
-        mat->data = ARENA_ALLOC_N(arena, T, (u64)(m * n));              \
-        CHECK_FATAL(!mat->data, "matrix data arena allocation failed"); \
+        mat->data = ARENA_ALLOC_N(Arena, T, (u64)(m * n));              \
+        CHECK_FATAL(!mat->data, "matrix data Arena allocation failed"); \
                                                                         \
         return mat;                                                     \
     }

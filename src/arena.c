@@ -26,23 +26,23 @@ align a 4 byte thing to 8 bytes alignment boundry:
     ALIGN_UP((val), ARENA_DEFAULT_ALIGNMENT)
 
 
-#define ARENA_PTR(arena, idx) ((arena)->base + (idx))
+#define ARENA_PTR(Arena, idx) ((Arena)->base + (idx))
 
 
 
 
 
-Arena* arena_create(u64 capacity)
+Arena* Arena_create(u64 capacity)
 {
     if (capacity == 0) {
         capacity = ARENA_DEFAULT_SIZE;
     }
 
     Arena* arena = (Arena*)malloc(sizeof(Arena));
-    CHECK_FATAL(!arena, "arena malloc failed");
+    CHECK_FATAL(!arena, "Arena malloc failed");
 
     arena->base = (u8*)malloc(capacity);
-    CHECK_FATAL(!arena->base, "arena base malloc failed");
+    CHECK_FATAL(!arena->base, "Arena base malloc failed");
 
     arena->idx = 0;
     arena->size = capacity;
@@ -50,20 +50,20 @@ Arena* arena_create(u64 capacity)
     return arena;
 }
 
-void arena_create_stk(u64 capacity, Arena* arena)
+void Arena_create_stk(Arena* arena, u64 capacity)
 {
     if (capacity == 0) {
         capacity = ARENA_DEFAULT_SIZE;
     }
 
     arena->base = (u8*)malloc(capacity);
-    CHECK_FATAL(!arena->base, "arena base malloc failed");
+    CHECK_FATAL(!arena->base, "Arena base malloc failed");
 
     arena->idx  = 0;
     arena->size = capacity;
 }
 
-void arena_create_arr_stk(u8* data, u64 size, Arena* arena)
+void Arena_create_arr_stk(Arena* arena, u64 size, u8* data)
 {
     CHECK_FATAL(size == 0, "size can't be zero");
 
@@ -72,7 +72,7 @@ void arena_create_arr_stk(u8* data, u64 size, Arena* arena)
     arena->size = size;
 }
 
-u8* arena_alloc(Arena* arena, u64 size)
+u8* Arena_alloc(Arena* arena, u64 size)
 {
     CHECK_FATAL(size == 0, "can't have allocation of size = 0");
 
@@ -86,7 +86,7 @@ u8* arena_alloc(Arena* arena, u64 size)
     return ptr;
 }
 
-u8* arena_alloc_aligned(Arena* arena, u64 size, u32 alignment)
+u8* Arena_alloc_aligned(Arena* arena, u64 size, u32 alignment)
 {
 
     CHECK_FATAL(size == 0, "can't have allocation of size = 0");

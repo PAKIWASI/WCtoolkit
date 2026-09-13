@@ -1,8 +1,7 @@
-﻿#include "common.h"
+#include "common.h"
 #include "chain_arena.h"
 #include "gen_vector.h"
 #include <stdlib.h>
-#include <string.h>
 
 
 // Align `val` up to the next multiple of `align` (power of 2).
@@ -10,14 +9,14 @@
     (((align) == 0) ? (val) : (((val) + ((align) - 1)) & ~((align) - 1)))
 
 // Access the last node (assumes at least one node exists).
-#define LAST_NODE(arena) (*(ArenaNode**)GenVec_back(&(arena)->nodes))
+#define LAST_NODE(Arena) (*(ArenaNode**)GenVec_back(&(Arena)->nodes))
 #define REMAINING(node)  (ARENA_NODE_INLINE_SIZE - (node)->used)
 #define NODE_PTR(node)   ((node)->base + (node)->used)
 
 #define NODES_INIT_SIZE 10
 
 
-static inline ArenaNode* append_node(ChainArena* arena);
+static inline ArenaNode* append_node(ChainArena* Arena);
 
 
 // GenVec operations for ArenaNode*
@@ -41,40 +40,40 @@ static container_ops chain_ops_ptr = {
 
 // Public API
 
-ChainArena* chain_arena_create(void)
+ChainArena* chain_Arena_create(void)
 {
     ArenaNode* n = malloc(sizeof(ArenaNode));
     CHECK_FATAL(!n, "node malloc failed");
     n->used = 0;
 
-    ChainArena* arena = malloc(sizeof(ChainArena));
-    CHECK_FATAL(!arena, "arena malloc failed");
+    ChainArena* Arena = malloc(sizeof(ChainArena));
+    CHECK_FATAL(!Arena, "Arena malloc failed");
 
-    GenVec_create_stk(NODES_INIT_SIZE, sizeof(ArenaNode*), &chain_ops_ptr, &arena->nodes);
-    GenVec_push_move(&arena->nodes, (u8**)&n);   // initial node
+    GenVec_create_stk(NODES_INIT_SIZE, sizeof(ArenaNode*), &chain_ops_ptr, &Arena->nodes);
+    GenVec_push_move(&Arena->nodes, (u8**)&n);   // initial node
 
-    arena->used = 0;
-    return arena;
+    Arena->used = 0;
+    return Arena;
 }
 
-void chain_arena_destroy(ChainArena* arena)
+void chain_Arena_destroy(ChainArena* Arena)
 {
-    GenVec_destroy_stk(&arena->nodes);   // frees all nodes via chain_del
-    free(arena);
+    GenVec_destroy_stk(&Arena->nodes);   // frees all nodes via chain_del
+    free(Arena);
 }
 
-u8* chain_arena_alloc_aligned(ChainArena* arena, u64 size, u32 align)
+u8* chain_Arena_alloc_aligned(ChainArena* Arena, u64 size, u32 align)
 {
     CHECK_FATAL(size == 0, "allocation size must be > 0");
     CHECK_FATAL((align & (align - 1)) != 0, "alignment must be power of two");
 
-    ArenaNode* last = LAST_NODE(arena);
+    ArenaNode* last = LAST_NODE(Arena);
 
     u64 aligned_idx = ALIGN_UP(last->used, align);
     u64 required = (aligned_idx - last->used) + size;
 
     if (required > REMAINING(last)) {
-        last = append_node(arena);       // idx automatically bumps inside append_node
+        last = append_node(Arena);       // idx automatically bumps inside append_node
         aligned_idx = ALIGN_UP(0, align);
         required = (aligned_idx - 0) + size;
         CHECK_FATAL(required > ARENA_NODE_INLINE_SIZE,
@@ -82,7 +81,7 @@ u8* chain_arena_alloc_aligned(ChainArena* arena, u64 size, u32 align)
     }
 
     // Update the actual usage counters
-    arena->used += required;
+    Arena->used += required;
     last->used = aligned_idx;
     u8* ret = NODE_PTR(last);
     last->used += size;
@@ -91,50 +90,50 @@ u8* chain_arena_alloc_aligned(ChainArena* arena, u64 size, u32 align)
 }
 
 // Reset back to initial state: only the first node remains, empty.
-void chain_arena_reset(ChainArena* arena)
+void chain_Arena_reset(ChainArena* Arena)
 {
     // Remove all nodes except the first one
-    u64 total = GenVec_size(&arena->nodes);
+    u64 total = GenVec_size(&Arena->nodes);
     if (total > 1) {
-        GenVec_remove_range(&arena->nodes, 1, total - 1);
+        GenVec_remove_range(&Arena->nodes, 1, total - 1);
     }
 
     // Reset the first node
-    (*(ArenaNode**)GenVec_get_ptr_mut(&arena->nodes, 0))->used = 0;
+    (*(ArenaNode**)GenVec_get_ptr_mut(&Arena->nodes, 0))->used = 0;
 
-    arena->used = 0;
+    Arena->used = 0;
 }
 
 // clear all space but dont free any nodes
-void chain_arena_clear(ChainArena* arena)
+void chain_Arena_clear(ChainArena* Arena)
 {
-    u64 node_count = GenVec_size(&arena->nodes);
+    u64 node_count = GenVec_size(&Arena->nodes);
     for (u64 i = 0; i < node_count; i++) {
-        (*(ArenaNode**)GenVec_get_ptr_mut(&arena->nodes, i))->used = 0;
+        (*(ArenaNode**)GenVec_get_ptr_mut(&Arena->nodes, i))->used = 0;
     }
-    arena->used = 0;
+    Arena->used = 0;
 }
 
 
 // Scratch API
 
-ChainArenaScratch chain_arena_scratch_begin(ChainArena* arena)
+ChainArenaScratch chain_Arena_scratch_begin(ChainArena* Arena)
 {
-    u64 node_idx = GenVec_size(&arena->nodes) - 1;
-    ArenaNode* last = LAST_NODE(arena);
+    u64 node_idx = GenVec_size(&Arena->nodes) - 1;
+    ArenaNode* last = LAST_NODE(Arena);
 
     return (ChainArenaScratch){
-        .arena           = arena,
+        .Arena           = Arena,
         .node_idx        = node_idx,
         .node_used_mark  = last->used,
-        .arena_used_mark = arena->used
+        .Arena_used_mark = Arena->used
     };
 }
 
-void chain_arena_scratch_end(ChainArenaScratch scratch)
+void chain_Arena_scratch_end(ChainArenaScratch scratch)
 {
-    if (!scratch.arena) { return; }
-    ChainArena* a = scratch.arena;
+    if (!scratch.Arena) { return; }
+    ChainArena* a = scratch.Arena;
 
     // 1. Restore the target node’s fill level
     (*(ArenaNode**)GenVec_get_ptr_mut(&a->nodes, scratch.node_idx))
@@ -148,22 +147,22 @@ void chain_arena_scratch_end(ChainArenaScratch scratch)
     }
 
     // 3. Restore the global counters
-    a->used = scratch.arena_used_mark;
+    a->used = scratch.Arena_used_mark;
 
-    scratch.arena = NULL;   // mark as consumed
+    scratch.Arena = NULL;   // mark as consumed
 }
 
 
 // Private helpers
 
-static inline ArenaNode* append_node(ChainArena* arena)
+static inline ArenaNode* append_node(ChainArena* Arena)
 {
     ArenaNode* n = malloc(sizeof(ArenaNode));
     CHECK_FATAL(!n, "node malloc failed");
     n->used = 0;
 
     ArenaNode* ret = n;
-    GenVec_push_move(&arena->nodes, (u8**)&n);  // push move consumes n
+    GenVec_push_move(&Arena->nodes, (u8**)&n);  // push move consumes n
 
     return ret;
 }

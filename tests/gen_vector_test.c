@@ -310,7 +310,7 @@ static void test_copy_raw_dest(void)
     GenVec* src = int_vec(4);
     push_ints(src, 4);
 
-    GenVec dest; /* deliberately uninitialized stack memory */
+    GenVec dest; /* deliberately uninitialized Stack memory */
     GenVec_copy(&dest, src);
 
     WC_ASSERT_EQ_U64(GenVec_size(&dest), 4);
@@ -546,11 +546,11 @@ static void test_shrink_to_fit_already_tight(void)
 static void test_push_move_nulls_src(void)
 {
     GenVec* v  = VEC_OF_STR(4);
-    String* s  = string_from_cstr("owned");
+    String* s  = String_from_cstr("owned");
     GenVec_push_move(v, (u8**)&s);
     WC_ASSERT_NULL(s);
     WC_ASSERT_EQ_U64(GenVec_size(v), 1);
-    WC_ASSERT(string_equals_cstr(VEC_AT_MUT(v, String, 0), "owned"));
+    WC_ASSERT(String_equals_cstr(VEC_AT_MUT(v, String, 0), "owned"));
     GenVec_destroy(v);
 }
 
@@ -562,12 +562,12 @@ static void test_insert_move_front(void)
     GenVec* v = VEC_OF_STR(4);
     VEC_PUSH_CSTR(v, "b");
     VEC_PUSH_CSTR(v, "c");
-    String* s = string_from_cstr("a");
+    String* s = String_from_cstr("a");
     GenVec_insert_move(v, 0, (u8**)&s);
     WC_ASSERT_NULL(s);
     WC_ASSERT_EQ_U64(GenVec_size(v), 3);
-    WC_ASSERT(string_equals_cstr(VEC_AT_MUT(v, String, 0), "a"));
-    WC_ASSERT(string_equals_cstr(VEC_AT_MUT(v, String, 1), "b"));
+    WC_ASSERT(String_equals_cstr(VEC_AT_MUT(v, String, 0), "a"));
+    WC_ASSERT(String_equals_cstr(VEC_AT_MUT(v, String, 1), "b"));
     GenVec_destroy(v);
 }
 
@@ -578,10 +578,10 @@ static void test_replace_move_frees_old(void)
 {
     GenVec* v = VEC_OF_STR(4);
     VEC_PUSH_CSTR(v, "old");
-    String* s = string_from_cstr("new");
+    String* s = String_from_cstr("new");
     GenVec_replace_move(v, 0, (u8**)&s);
     WC_ASSERT_NULL(s);
-    WC_ASSERT(string_equals_cstr(VEC_AT_MUT(v, String, 0), "new"));
+    WC_ASSERT(String_equals_cstr(VEC_AT_MUT(v, String, 0), "new"));
     GenVec_destroy(v);
 }
 

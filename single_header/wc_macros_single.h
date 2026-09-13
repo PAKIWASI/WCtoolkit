@@ -101,7 +101,7 @@ Usage:
 // VEC_PUSH_CSTR — allocate a heap String and move it in.
 #define VEC_PUSH_CSTR(vec, cstr)                \
     ({                                          \
-        String* wpc_s = string_from_cstr(cstr); \
+        String* wpc_s = String_from_cstr(cstr); \
         genVec_push_move((vec), (u8**)&wpc_s);  \
     })
 
@@ -169,7 +169,7 @@ Usage:
  */
 #define MAP_PUT_INT_STR(map, k, cstr_val)                         \
     ({                                                            \
-        String* _v = string_from_cstr(cstr_val);                  \
+        String* _v = String_from_cstr(cstr_val);                  \
         hashmap_put_val_move((map), (u8*)&(int){(k)}, (u8**)&_v); \
     })
 
@@ -179,8 +179,8 @@ Usage:
  */
 #define MAP_PUT_STR_STR(map, cstr_key, cstr_val)       \
     ({                                                 \
-        String* _k = string_from_cstr(cstr_key);       \
-        String* _v = string_from_cstr(cstr_val);       \
+        String* _k = String_from_cstr(cstr_key);       \
+        String* _v = String_from_cstr(cstr_val);       \
         hashmap_put_move((map), (u8**)&_k, (u8**)&_v); \
     })
 
@@ -277,7 +277,7 @@ Usage:
 
 #define SET_INSERT_CSTR(set, cstr)               \
     ({                                           \
-        String* _s = string_from_cstr(cstr);     \
+        String* _s = String_from_cstr(cstr);     \
         hashset_insert_move((set), (u8**)&(_s)); \
     })
 
@@ -292,13 +292,13 @@ Usage:
 #define ENQUEUE(q, val)              \
     ({                               \
         typeof(val) wvp_tmp = (val); \
-        enqueue((q), (u8*)&wvp_tmp); \
+        enQueue((q), (u8*)&wvp_tmp); \
     })
 
 #define DEQUEUE(q, T)            \
     ({                           \
         T __tmp;                 \
-        dequeue(q, (u8*)&__tmp); \
+        deQueue(q, (u8*)&__tmp); \
         _tmp;                    \
     })
 

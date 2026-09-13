@@ -221,8 +221,8 @@ static inline void wc_print_cstr(const u8* elm)
  * vectors of that type —  improves cache locality when many vectors of the same type exist.
  *
  * Example:
- *   static const genVec_ops string_ops = { str_copy, str_move, str_del };
- *   genVec* vec = genVec_init(8, sizeof(String), &string_ops);
+ *   static const genVec_ops String_ops = { str_copy, str_move, str_del };
+ *   genVec* vec = genVec_init(8, sizeof(String), &String_ops);
  *
  * For POD types (int, float, flat structs) pass NULL for ops:
  *   genVec* vec = genVec_init(8, sizeof(int), NULL);
@@ -265,7 +265,7 @@ typedef struct {
 // ops: pointer to a shared genVec_ops vtable, or NULL for POD types.
 genVec* genVec_init(u64 n, u32 data_size, const container_ops* ops);
 
-// Initialize vector on stack (struct on stack, data on heap).
+// Initialize vector on Stack (struct on Stack, data on heap).
 void genVec_init_stk(u64 n, u32 data_size, const container_ops* ops, genVec* vec);
 
 // Initialize vector of size n with all elements set to val.
@@ -275,8 +275,8 @@ void genVec_init_val_stk(u64 n, const u8* val, u32 data_size, const container_op
 
 genVec* genVec_init_arr(u64 n, u32 data_size, const container_ops* ops, u8* arr);
 
-// Vector COMPLETELY on stack (can't grow in size).
-// You provide a stack-allocated array which becomes the internal array.
+// Vector COMPLETELY on Stack (can't grow in size).
+// You provide a Stack-allocated array which becomes the internal array.
 // should only use if you need genVec operations on C array
 // WARNING: crashes when size == capacity and you try to push.
 void genVec_init_stk_arr(u64 n, u8* arr, u32 data_size, const container_ops* ops, genVec* vec);
@@ -284,7 +284,7 @@ void genVec_init_stk_arr(u64 n, u8* arr, u32 data_size, const container_ops* ops
 // Destroy heap-allocated vector and clean up all elements.
 void genVec_destroy(genVec* vec);
 
-// Destroy stack-allocated vector (cleans up data, but not vec itself).
+// Destroy Stack-allocated vector (cleans up data, but not vec itself).
 void genVec_destroy_stk(genVec* vec);
 
 // Remove all elements (calls del_fn on each), keep capacity.
@@ -449,7 +449,7 @@ static inline u64 bitVec_size_bytes(bitVec* bvec) { return genVec_size(bvec->arr
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
+#include <String.h>
 
 
 #define GENVEC_MIN_CAPACITY 4

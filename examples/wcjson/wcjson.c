@@ -1,7 +1,7 @@
 #define JSMN_PARENT_LINKS
 #include "jsmn.h"
 #include "wcjson.h"
-#include "arena.h"
+#include "Arena.h"
 #include "common.h"
 
 #include <stdio.h>
@@ -25,12 +25,12 @@ wcjson* wcjson_create_from_file(const char* filename)
     char* raw_json;
     long size = read_file(filename, &raw_json);
 
-    // NOTE: we need a good way to caculate size of the final json to init arena or 
-    // implement paging (maybe a paged arena?)
+    // NOTE: we need a good way to caculate size of the final json to init Arena or 
+    // implement paging (maybe a paged Arena?)
 
     wcjson* json = malloc(sizeof(wcjson));
     CHECK_FATAL(!json, "wcjson malloc failed");
-    arena_create_stk((u64)size * 2, &json->arena);
+    Arena_create_stk((u64)size * 2, &json->Arena);
 
     jsmntok_t* tokens;
     int num_tokens = jsmn_parse_json(raw_json, (u32)size, &tokens);
@@ -89,7 +89,7 @@ static long read_file(const char* filename, char** output)
 
 
 // parse json (2 phases) and build token arr
-static int jsmn_parse_json(char* json_buf, u32 json_len, jsmntok_t** tokens)    // tokens allocatedon arena
+static int jsmn_parse_json(char* json_buf, u32 json_len, jsmntok_t** tokens)    // tokens allocatedon Arena
 {
     // Two-pass jsmn parse
     // Pass 1: tokens=NULL → jsmn counts tokens, returns how many

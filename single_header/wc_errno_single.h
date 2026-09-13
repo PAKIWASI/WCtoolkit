@@ -28,7 +28,7 @@
  *   CHECK_FATAL  Programmer errors: null pointer, out of bounds, OOM.
  *                Crashes with a message. These are bugs, not conditions.
  *
- *   wc_errno     Expected conditions: pop on empty, arena full.
+ *   wc_errno     Expected conditions: pop on empty, Arena full.
  *                Function returns NULL / 0 / void. wc_errno says why.
  *                Ignore it if you don't care. Check it if you do.
  *
@@ -37,13 +37,13 @@
  * -----
  *   // Check a single call:
  *   wc_errno = WC_OK;
- *   u8* p = arena_alloc(arena, size);
+ *   u8* p = Arena_alloc(Arena, size);
  *   if (!p && wc_errno == WC_ERR_FULL) { ... }
  *
  *   // Check a batch — wc_errno stays set if any call failed:
  *   wc_errno = WC_OK;
- *   float* a = (float*)arena_alloc(arena, 256);
- *   float* b = (float*)arena_alloc(arena, 256);
+ *   float* a = (float*)Arena_alloc(Arena, 256);
+ *   float* b = (float*)Arena_alloc(Arena, 256);
  *   if (wc_errno) { wc_perror("alloc"); }
  *
  *
@@ -56,16 +56,16 @@
  *
  * WHAT SETS wc_errno
  * ------------------
- *   arena_alloc, arena_alloc_aligned      WC_ERR_FULL    arena exhausted
+ *   Arena_alloc, Arena_alloc_aligned      WC_ERR_FULL    Arena exhausted
  *   genVec_pop, genVec_front, genVec_back WC_ERR_EMPTY   vec is empty
- *   dequeue, queue_peek, queue_peek_ptr   WC_ERR_EMPTY   queue is empty
- *   stack_pop, stack_peek                 WC_ERR_EMPTY   stack is empty
+ *   deQueue, Queue_peek, Queue_peek_ptr   WC_ERR_EMPTY   Queue is empty
+ *   Stack_pop, Stack_peek                 WC_ERR_EMPTY   Stack is empty
  */
 
 
 typedef enum {
     WC_OK        = 0,
-    WC_ERR_FULL,       // arena exhausted / container at capacity
+    WC_ERR_FULL,       // Arena exhausted / container at capacity
     WC_ERR_EMPTY,      // pop or peek on empty container
     WC_ERR_INVALID_OP, // call to a function with preconditions not met
 } wc_err;
@@ -87,7 +87,7 @@ static inline const char* wc_strerror(wc_err e)
 extern _Thread_local wc_err wc_errno;
 
 /* Print last error — same pattern as perror(3).
- *   wc_perror("arena_alloc");  ->  "arena_alloc: full"
+ *   wc_perror("Arena_alloc");  ->  "Arena_alloc: full"
  */
 static inline void wc_perror(const char* prefix)
 {
