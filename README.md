@@ -2,7 +2,7 @@
 
 A C11 data-structures and utility toolkit built around explicit ownership and value semantics. No dependencies beyond libc.
 
-Containers don't guess how to copy, move, or free your data — you tell them once via a small `container_ops` vtable, and every container (vector, map, set, stack, queue) reuses the same three callbacks. Plain-old-data types (`int`, `float`, flat structs) just pass `NULL` and get raw `memcpy`.
+Containers don't guess how to copy, move, or free your data: you tell them once via a small `container_ops` vtable, and every container (vector, map, set, stack, queue) reuses the same three callbacks. Plain-old-data types (`int`, `float`, flat structs) just pass `NULL` and get raw `memcpy`.
 
 ```c
 static const container_ops String_ops = { str_copy, str_move, str_del };
@@ -27,14 +27,14 @@ GenVec_destroy(names);
 
 ## API conventions
 
-- **Receiver first**: `GenVec_push(vec, x)`, `GenVec_copy(dest, src)`, `GenVec_create_stk(vec, ...)` — the instance being acted on is always the first argument.
-- **Moves take `T**` and null the source**: `String_move(dest, &src)` leaves `src == NULL`. `_move` variants (`push_move`, `insert_move`, `put_move`, ...) exist wherever ownership can transfer; plain variants copy.
-- **`_copy` functions require a raw/uninitialized destination.** They overwrite `dest` field-by-field and never free or read what was there before — copying into an already-populated container leaks its old buffer. This is documented at every `_copy` declaration.
-- **Lookups return `WC_NOT_FOUND`** (`(u64)-1`), never `-1` on an unsigned type.
-- **Constructors never return `NULL`** — they abort on allocation failure (`CHECK_FATAL`), so call sites don't need to null-check. Expected runtime conditions (pop on empty, Arena full) instead set `wc_errno` and return `0`/`NULL`/`false`.
-- **Heap allocators are `warn_unused_result`** — dropping a `GenVec_create()` return value is a compiler warning, not a silent leak.
+- Receiver first**: `GenVec_push(vec, x)`, `GenVec_copy(dest, src)`, `GenVec_create_stk(vec, ...)` etc. The instance being acted on is always the first argument.
+- Moves take `T**` and null the source**: `String_move(dest, &src)` leaves `src == NULL`. `_move` variants (`push_move`, `insert_move`, `put_move`, ...) exist wherever ownership can transfer; plain variants copy.
+- `_copy` functions require a raw/uninitialized destination.** They overwrite `dest` field-by-field and never free or read what was there before. Copying into an already-populated container leaks its old buffer. This is documented at every `_copy` declaration.
+- Lookups return `WC_NOT_FOUND`.
+- Constructors never return `NULL`, they abort on allocation failure (`CHECK_FATAL`), so call sites don't need to null-check. Expected runtime conditions (pop on empty, Arena full) instead set `wc_errno` and return `0`/`NULL`/`false`.
+- Heap allocators are `warn_unused_result`: dropping a `GenVec_create()` return value is a compiler warning, not a silent leak.
 
-A type-checked macro layer (`VEC_PUSH`, `VEC_FOREACH`, `MAP_PUT`, ...) sits on top of the `void*`-based C API, catching element-type mismatches at compile time. Macros never allocate or free on their own — they always expand to the underlying C calls, so you can drop to the plain API at any point with no behavior change.
+A type-checked macro layer (`VEC_PUSH`, `VEC_FOREACH`, `MAP_PUT`, ...) sits on top of the `u8*`-based C API, catching element-type mismatches at compile time. Macros never allocate or free on their own, they always expand to the underlying C calls, so you can drop to the plain API at any point with no behavior change.
 
 ## Components
 
@@ -49,11 +49,11 @@ A type-checked macro layer (`VEC_PUSH`, `VEC_FOREACH`, `MAP_PUT`, ...) sits on t
 | `BitVec` | `bit_vector.h` | Growable bit array over `GenVec` |
 | `Matrixf` | `matrix.h` | Row-major float matrix: add/sub/scale/multiply/transpose/LU/determinant |
 | `StrView` / `StringStore` | `views.h` | Non-owning string slices, and an append-only interned string arena |
-| `fast_math` | `fast_math.h` | Low-precision, fast approximations of sqrt/log/sin/cos/exp/pow — for when you don't need libm's precision |
+| `fast_math` | `fast_math.h` | Low-precision, fast approximations of sqrt/log/sin/cos/exp/pow, for when you don't need libm's precision |
 | `random` | `random.h` | PCG pseudo-random generator |
 | `wc_errno` | `wc_errno.h` | The two-tier error model described above |
 
-Each container's header opens with a short doc comment describing its exact semantics — read that before reaching for the source.
+Each container's header opens with a short doc comment describing its exact semantics, read that before reaching for the source.
 
 ## Building
 
