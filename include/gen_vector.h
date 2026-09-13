@@ -42,11 +42,11 @@ typedef struct {
     u64 capacity;  // Total allocated capacity (in elements)
     u32 data_size; // Size of each element in bytes
 
-    // Cache: 1 if ops==NULL (POD fast path). Wired by genVec_create* in 6-M.
+    // Cache: 1 if ops==NULL (POD fast path)
     b8 is_pod;
 } genVec;
 
-// 8 8 8 8 4 '4'  = 40 bytes
+// 8 8 8 8 4 1 '3'  = 40 bytes
 _Static_assert(sizeof(genVec) == 40, "genVec layout drifted from expected 40 bytes");
 
 
@@ -69,6 +69,8 @@ void genVec_create_stk(u64 n, u32 data_size, const container_ops* ops, genVec* v
 
 // Initialize vector of size n with all elements set to val.
 genVec* genVec_create_val(u64 n, const u8* val, u32 data_size, const container_ops* ops) __attribute__((nonnull(2)));
+
+// TODO: GCC does not allow 'nonnull' attribute in this position on a function definition (for the static inline ones (the ones with nonnull in the function definition))
 
 void genVec_create_val_stk(u64 n, const u8* val, u32 data_size, const container_ops* ops, genVec* vec)
     __attribute__((nonnull(2, 5)));
@@ -204,7 +206,7 @@ static inline __attribute__((nonnull(1))) u64 genVec_capacity(const genVec* vec)
     return vec->capacity;
 }
 
-// Check if vector is empty.
+// Check if vector is empty
 static inline __attribute__((nonnull(1))) b8 genVec_empty(const genVec* vec)
 {
     return vec->size == 0;

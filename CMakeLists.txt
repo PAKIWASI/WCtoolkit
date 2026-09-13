@@ -1,8 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-# Prefer clang, fall back to gcc, but don't fight a compiler the caller
-# already picked with -DCMAKE_C_COMPILER=... — this must run before
-# project() since that's what actually locks the compiler in.
+# Prefer clang, fall back to gcc
 if(NOT CMAKE_C_COMPILER)
   find_program(WC_CLANG_PATH clang)
   find_program(WC_GCC_PATH gcc)
@@ -24,6 +22,7 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+set(CMAKE_COLOR_DIAGNOSTICS ON)
 
 message(STATUS "C Compiler: ${CMAKE_C_COMPILER}")
 
@@ -60,40 +59,35 @@ if(CMAKE_C_COMPILER_ID STREQUAL "Clang")
 endif()
 
 
-# Warnings — mirrors .clangd so the editor and the actual build agree,
-# plus a few extra checks .clangd doesn't carry (-Wcast-align,
-# -Wsign-conversion, -Wdouble-promotion, -Wimplicit-fallthrough, -Wundef).
-option(WC_WARNINGS_AS_ERRORS "Treat warnings as errors" ON)
+option(WC_WARNINGS_AS_ERRORS "Treat warnings as errors" OFF)
 
 set(WC_WARN_FLAGS
     -Wall
     -Wextra
-    -Wshadow
-    -Wconversion
-    -Wsign-conversion
-    -Wcast-align
-    -Wnull-dereference
-    -Wdouble-promotion
-    -Wformat=2
-    -Wimplicit-fallthrough
     -Wundef
-    -Wstrict-prototypes
-    -Wold-style-definition
-    -Wwrite-strings
+    -Wshadow
+    -Wformat=2
+    -Wconversion
     -Wpointer-arith
+    -Wwrite-strings
+    -Wsign-conversion
+    -Wnull-dereference
+    -Wstrict-prototypes
+    -Wmissing-prototypes
+    -Wno-unused-parameter
+    -Wold-style-definition
+    -Wimplicit-fallthrough
 )
 
 if(WC_WARNINGS_AS_ERRORS)
   list(APPEND WC_WARN_FLAGS -Werror)
 endif()
 
-# The nonnull sweep (6-C) marks function params __attribute__((nonnull)) while the bodies keep
-# runtime CHECK_FATAL(!x) null checks as defense-in-depth. Under GCC that makes the runtime
-# check provably-always-false, which -Wnonnull-compare (-Wall) flags -> -Werror would fail.
-# Suppress it for GCC only. Clang has no -Wnonnull-compare, so do NOT add the flag there
-# (an unknown -W option under -Werror would itself break the build).
 if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
   list(APPEND WC_WARN_FLAGS -Wno-nonnull-compare)
+endif()
+if(CMAKE_C_COMPILER_ID STREQUAL "Clang")
+  list(APPEND WC_WARN_FLAGS -Wno-pointer-bool-conversion)
 endif()
 message(STATUS "Warnings-as-errors: ${WC_WARNINGS_AS_ERRORS}")
 

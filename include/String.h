@@ -24,7 +24,6 @@ _Static_assert(sizeof(String) == 40, "String must be 40 bytes");
 
 
 
-
 //  Construction / Destruction
 
 // Create an empty string on the heap.
@@ -98,7 +97,7 @@ void string_remove_char(String* str, u64 i) __attribute__((nonnull(1)));
 void string_remove_range(String* str, u64 start, u64 len) __attribute__((nonnull(1)));
 
 // Remove all chars (keep allocation).
-static inline void string_clear(String* str) __attribute__((nonnull(1)))
+__attribute__((nonnull(1))) static inline void string_clear(String* str)
 {
     str->size = 0;
 }
@@ -106,18 +105,18 @@ static inline void string_clear(String* str) __attribute__((nonnull(1)))
 
 //  Access
 
-static inline char string_char_at(const String* str, u64 i) __attribute__((nonnull(1)))
+__attribute__((nonnull(1))) static inline char string_char_at(const String* str, u64 i)
 {
     CHECK_FATAL(i >= str->size, "index out of bounds");
     return ((str->stk[STR_SSO_SIZE - 1] != '\0') ? (str)->stk : (str)->heap)[i];
 }
 
-static inline char string_char_at_unsafe(const String* str, u64 i) __attribute__((nonnull(1)))
+__attribute__((nonnull(1))) static inline char string_char_at_unsafe(const String* str, u64 i)
 {
     return ((str->stk[STR_SSO_SIZE - 1] != '\0') ? (str)->stk : (str)->heap)[i];
 }
 
-static inline void string_set_char(String* str, u64 i, char c) __attribute__((nonnull(1)))
+__attribute__((nonnull(1))) static inline void string_set_char(String* str, u64 i, char c)
 {
     CHECK_FATAL(i >= str->size, "index out of bounds");
     ((str->stk[STR_SSO_SIZE - 1] != '\0') ? str->stk : str->heap)[i] = c;
@@ -127,8 +126,8 @@ static inline void string_set_char(String* str, u64 i, char c) __attribute__((no
 //  Comparison
 
 // 0 == equal, <0 == str1 < str2, >0 == str1 > str2
-int              string_compare(const String* s1, const String* s2) __attribute__((nonnull(1, 2)));
-static inline b8 string_equals(const String* s1, const String* s2) __attribute__((nonnull(1, 2)))
+int string_compare(const String* s1, const String* s2) __attribute__((nonnull(1, 2)));
+__attribute__((nonnull(1, 2))) static inline b8 string_equals(const String* s1, const String* s2)
 {
     return string_compare(s1, s2) == 0;
 }
@@ -152,22 +151,22 @@ void string_print(const String* str) __attribute__((nonnull(1)));
 
 //  Inline helpers
 
-static inline u64 string_len(const String* str) __attribute__((nonnull(1)))
+__attribute__((nonnull(1))) static inline u64 string_len(const String* str)
 {
     return str->size;
 }
 
-static inline u64 string_capacity(const String* str) __attribute__((nonnull(1)))
+__attribute__((nonnull(1))) static inline u64 string_capacity(const String* str)
 {
     return str->capacity;
 }
 
-static inline b8 string_empty(const String* str) __attribute__((nonnull(1)))
+__attribute__((nonnull(1))) static inline b8 string_empty(const String* str)
 {
     return str->size == 0;
 }
 
-static inline b8 string_is_sso(const String* str) __attribute__((nonnull(1)))
+__attribute__((nonnull(1))) static inline b8 string_is_sso(const String* str)
 {
     return str->stk[STR_SSO_SIZE - 1] != '\0';
 }
@@ -175,29 +174,25 @@ static inline b8 string_is_sso(const String* str) __attribute__((nonnull(1)))
 
 /*
  Macro to temporarily NUL-terminate a String for read-only C APIs.
- Safe with break/return/goto.
+ Safe with break/return/goto using cleanup attribute (gcc/clang)
 
  Usage:
    TEMP_CSTR_READ(s) {
        printf("%s\n", string_data_ptr(s));
    }
 */
-static inline void _temp_cstr_read_cleanup(String** s)
+static inline void wctemp_cstr_read_cleanup(String** s)
 {
     if (s && *s) {
         string_pop_char(*s);
     }
 }
 
-#define TEMP_CSTR_READ(str)                                                                                     \
-    for (int _tcr_once = 1; _tcr_once; _tcr_once = 0)                                                           \
-        for (String* __attribute__((cleanup(_temp_cstr_read_cleanup))) _tcr_s =                                  \
-                 ((str) ? (string_append_char((str), '\0'), (str)) : NULL);                                     \
+#define TEMP_CSTR_READ(str)                                                      \
+    for (int _tcr_once = 1; _tcr_once; _tcr_once = 0)                            \
+        for (String* __attribute__((cleanup(wctemp_cstr_read_cleanup))) _tcr_s = \
+                 ((str) ? (string_append_char((str), '\0'), (str)) : NULL);      \
              _tcr_once; _tcr_once = 0)
-
-
-
-
 
 
 

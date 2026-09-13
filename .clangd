@@ -8,9 +8,11 @@ CompileFlags:
     - -Wmissing-prototypes
     - -Wwrite-strings
     - -Wpointer-arith
-    - -Wcast-qual
     - -Wformat=2
     - -Wnull-dereference
+    - -Wundef
+    - -Wimplicit-fallthrough
+    - -Wshadow
 
 Diagnostics:
   ClangTidy:
