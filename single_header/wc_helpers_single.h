@@ -320,7 +320,6 @@ void String_insert_String(String* str, u64 i, const String* other) __attribute__
 
 void String_remove_char(String* str, u64 i) __attribute__((nonnull(1)));
 
-// TODO: test
 // Remove chars in range [start, start + len)
 void String_remove_range(String* str, u64 start, u64 len) __attribute__((nonnull(1)));
 
@@ -597,8 +596,6 @@ void GenVec_create_stk(GenVec* vec, u64 n, u32 data_size, const container_ops* o
 // Initialize vector of size n with all elements set to val.
 GenVec* GenVec_create_val(u64 n, const u8* val, u32 data_size, const container_ops* ops) __attribute__((nonnull(2), warn_unused_result));
 
-// TODO: GCC does not allow 'nonnull' attribute in this position on a function definition (for the static inline ones (the ones with nonnull in the function definition))
-
 void GenVec_create_val_stk(GenVec* vec, u64 n, const u8* val, u32 data_size, const container_ops* ops)
     __attribute__((nonnull(1, 3)));
 
@@ -608,8 +605,7 @@ GenVec* GenVec_create_arr(u64 n, u32 data_size, const container_ops* ops, u8* ar
 // You provide a Stack-allocated array which becomes the internal array.
 // should only use if you need GenVec operations on C array
 // WARNING: crashes when size == capacity and you try to push.
-void GenVec_create_stk_arr(GenVec* vec, u64 n, u8* arr, u32 data_size, const container_ops* ops)
-    __attribute__((nonnull(1, 3)));
+void GenVec_create_stk_arr(GenVec* vec, u64 n, u8* arr, u32 data_size, const container_ops* ops) __attribute__((nonnull(1, 3)));
 
 // Destroy heap-allocated vector and clean up all elements.
 void GenVec_destroy(GenVec* vec) __attribute__((nonnull(1)));
@@ -718,7 +714,7 @@ void GenVec_print(const GenVec* vec, print_fn fn) __attribute__((nonnull(1, 2)))
 
 // Deep copy src vector into dest.
 // REQUIRES: dest must be uninitialized (or already destroyed/reset) before calling.
-// This does NOT clean up any existing dest->data / elements — it overwrites
+// This does NOT clean up any existing dest->data / elements, it overwrites
 // dest's fields directly. Calling this on an already-populated dest leaks
 // its old buffer and skips del_fn on its old elements.
 void GenVec_copy(GenVec* dest, const GenVec* src) __attribute__((nonnull(1, 2)));

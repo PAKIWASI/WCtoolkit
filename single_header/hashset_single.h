@@ -320,7 +320,6 @@ void String_insert_String(String* str, u64 i, const String* other) __attribute__
 
 void String_remove_char(String* str, u64 i) __attribute__((nonnull(1)));
 
-// TODO: test
 // Remove chars in range [start, start + len)
 void String_remove_range(String* str, u64 start, u64 len) __attribute__((nonnull(1)));
 
