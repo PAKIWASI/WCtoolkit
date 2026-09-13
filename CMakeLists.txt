@@ -13,7 +13,7 @@ endif()
 
 project(
     WCtoolkit
-    VERSION 0.7.0
+    VERSION 0.8.0
     DESCRIPTION "A C systems toolkit where ownership is part of the API"
     LANGUAGES C
 )
