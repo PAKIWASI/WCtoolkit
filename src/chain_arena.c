@@ -31,7 +31,7 @@ static void chain_del(u8* key)
     free(*(ArenaNode**)key);
 }
 
-static container_ops chain_ops_ptr = {
+static wc_container_ops chain_ops_ptr = {
     .copy_fn = NULL,
     .move_fn = chain_move,
     .del_fn  = chain_del

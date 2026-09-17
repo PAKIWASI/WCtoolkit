@@ -41,7 +41,7 @@ static void int_del(u8* elm)
     (void)elm;
 }
 
-static const container_ops int_move_ops = { NULL, int_move, int_del };
+static const wc_container_ops int_move_ops = { NULL, int_move, int_del };
 
 /*
  * Before the fix, SET_INSERT_MOVE referenced (vec) instead of (set),

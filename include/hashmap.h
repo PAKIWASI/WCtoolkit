@@ -8,7 +8,7 @@
 /* Generic Hashmap with Ownership Semantics
   - Robin Hood Hashing
   - we have 3 arrays: keys, psls, and vals
-  - PSL: probe sequence length - the distance from hashing location
+  - PSL: probe sequence length: the distance from hashing location
   - we actuall store psl + 1 as psl = 0 means empty bucket
   - Robin Hood Invarient: all keys that hash to i come before keys that hash to i + 1
   - vals store [val] inline
@@ -23,15 +23,15 @@ typedef struct {
     u64            capacity;
     u32            key_size;
     u32            val_size;
-    u8*            scratch; // key_size + val_size bytes + alignment - temp buffer for robin hood swaps
+    u8*            scratch; // key_size + val_size bytes + alignment: temp buffer for robin hood swaps
     custom_hash_fn hash_fn;
     compare_fn     cmp_fn;
 
     // Shared ops vtables for keys and values.
     // Pass NULL for POD types (int, float, flat structs).
     // For types with heap resources define one static ops per type:
-    const container_ops* key_ops;
-    const container_ops* val_ops;
+    const wc_container_ops* key_ops;
+    const wc_container_ops* val_ops;
 } HashMap;
 
 
@@ -52,9 +52,9 @@ typedef struct {
 // hash_fn and cmp_fn default to fnv1a_hash / default_compare if NULL.
 // key_ops / val_ops: pass NULL for POD types.
 HashMap* HashMap_create(u32 key_size, u32 val_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
-                        const container_ops* key_ops, const container_ops* val_ops) __attribute__((warn_unused_result));
+                        const wc_container_ops* key_ops, const wc_container_ops* val_ops) __attribute__((warn_unused_result));
 void     HashMap_create_stk(HashMap* map, u32 key_size, u32 val_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
-                            const container_ops* key_ops, const container_ops* val_ops)
+                            const wc_container_ops* key_ops, const wc_container_ops* val_ops)
     __attribute__((nonnull(1)));
 
 void HashMap_destroy(HashMap* map) __attribute__((nonnull(1)));

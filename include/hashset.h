@@ -27,7 +27,7 @@ typedef struct {
 
     // Shared ops vtable for elements.
     // Pass NULL for POD types (int, float, flat structs).
-    const container_ops* ops;
+    const wc_container_ops* ops;
 } HashSet;
 
 
@@ -40,9 +40,9 @@ typedef struct {
 // Create a new HashSet.
 // hash_fn and cmp_fn default to wyhash / default_compare if NULL.
 // ops: pass NULL for POD types.
-HashSet* HashSet_create(u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn, const container_ops* ops)
+HashSet* HashSet_create(u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn, const wc_container_ops* ops)
     __attribute__((warn_unused_result));
-void HashSet_create_stk(HashSet* set, u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn, const container_ops* ops)
+void HashSet_create_stk(HashSet* set, u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn, const wc_container_ops* ops)
     __attribute__((nonnull(1)));
 
 void HashSet_destroy(HashSet* set) __attribute__((nonnull(1)));

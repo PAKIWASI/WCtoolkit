@@ -53,7 +53,7 @@ static void        map_resize(HashMap* map, u64 new_capacity);
 ====================PUBLIC FUNCTIONS====================
 */
 
-void HashMap_create_stk(HashMap* map, u32 key_size, u32 val_size, custom_hash_fn hash_fn, compare_fn cmp_fn, const container_ops* key_ops, const container_ops* val_ops)
+void HashMap_create_stk(HashMap* map, u32 key_size, u32 val_size, custom_hash_fn hash_fn, compare_fn cmp_fn, const wc_container_ops* key_ops, const wc_container_ops* val_ops)
 {
     CHECK_FATAL(key_size == 0 || val_size == 0, "key/val size can't be 0");
 
@@ -80,7 +80,7 @@ void HashMap_create_stk(HashMap* map, u32 key_size, u32 val_size, custom_hash_fn
 }
 
 HashMap* HashMap_create(u32 key_size, u32 val_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
-                        const container_ops* key_ops, const container_ops* val_ops)
+                        const wc_container_ops* key_ops, const wc_container_ops* val_ops)
 {
     HashMap* map = malloc(sizeof(HashMap));
     CHECK_FATAL(!map, "map malloc failed");

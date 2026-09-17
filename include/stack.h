@@ -9,8 +9,8 @@
 typedef GenVec Stack;
 
 
-Stack* Stack_create(u64 n, u32 data_size, const container_ops* ops) __attribute__((warn_unused_result));
-Stack* Stack_create_val(u64 n, const u8* val, u32 data_size, const container_ops* ops) __attribute__((nonnull(2), warn_unused_result));
+Stack* Stack_create(u64 n, u32 data_size, const wc_container_ops* ops) __attribute__((warn_unused_result));
+Stack* Stack_create_val(u64 n, const u8* val, u32 data_size, const wc_container_ops* ops) __attribute__((nonnull(2), warn_unused_result));
 
 void Stack_destroy(Stack* stk) __attribute__((nonnull(1)));
 void Stack_clear(Stack* stk) __attribute__((nonnull(1)));

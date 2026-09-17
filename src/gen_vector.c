@@ -41,7 +41,7 @@ static void GenVec_grow(GenVec* vec);
 
 // API Implementation
 
-GenVec* GenVec_create(u64 n, u32 data_size, const container_ops* ops)
+GenVec* GenVec_create(u64 n, u32 data_size, const wc_container_ops* ops)
 {
     CHECK_FATAL(data_size == 0, "data_size can't be 0");
 
@@ -66,7 +66,7 @@ GenVec* GenVec_create(u64 n, u32 data_size, const container_ops* ops)
 }
 
 
-void GenVec_create_stk(GenVec* vec, u64 n, u32 data_size, const container_ops* ops)
+void GenVec_create_stk(GenVec* vec, u64 n, u32 data_size, const wc_container_ops* ops)
 {
     CHECK_FATAL(data_size == 0, "data_size can't be 0");
 
@@ -81,7 +81,7 @@ void GenVec_create_stk(GenVec* vec, u64 n, u32 data_size, const container_ops* o
 }
 
 
-GenVec* GenVec_create_val(u64 n, const u8* val, u32 data_size, const container_ops* ops)
+GenVec* GenVec_create_val(u64 n, const u8* val, u32 data_size, const wc_container_ops* ops)
 {
     CHECK_FATAL(n == 0, "cant init with val if n = 0");
 
@@ -110,7 +110,7 @@ GenVec* GenVec_create_val(u64 n, const u8* val, u32 data_size, const container_o
 }
 
 
-void GenVec_create_val_stk(GenVec* vec, u64 n, const u8* val, u32 data_size, const container_ops* ops)
+void GenVec_create_val_stk(GenVec* vec, u64 n, const u8* val, u32 data_size, const wc_container_ops* ops)
 {
     CHECK_FATAL(n == 0, "cant init with val if n = 0");
 
@@ -137,7 +137,7 @@ void GenVec_create_val_stk(GenVec* vec, u64 n, const u8* val, u32 data_size, con
 }
 
 
-GenVec* GenVec_create_arr(u64 n, u32 data_size, const container_ops* ops, u8* arr)
+GenVec* GenVec_create_arr(u64 n, u32 data_size, const wc_container_ops* ops, u8* arr)
 {
     GenVec* v = GenVec_create(n, data_size, ops);
 
@@ -148,7 +148,7 @@ GenVec* GenVec_create_arr(u64 n, u32 data_size, const container_ops* ops, u8* ar
 }
 
 
-void GenVec_create_stk_arr(GenVec* vec, u64 n, u8* arr, u32 data_size, const container_ops* ops)
+void GenVec_create_stk_arr(GenVec* vec, u64 n, u8* arr, u32 data_size, const wc_container_ops* ops)
 {
     CHECK_FATAL(n == 0 || data_size == 0, "size/data_size of arr can't be 0");
 
@@ -752,7 +752,6 @@ void GenVec_print(const GenVec* vec, print_fn fn)
     printf("[ ");
     for (u64 i = 0; i < vec->size; i++) {
         fn(GET_PTR(vec, i));
-        putchar(' ');
     }
     putchar(']');
 }

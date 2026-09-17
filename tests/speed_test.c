@@ -701,7 +701,7 @@ static void person_move(u8* dest, u8** src)
     *src = NULL;
 }
 
-static const container_ops person_ops = { person_copy, person_move, person_del };
+static const wc_container_ops person_ops = { person_copy, person_move, person_del };
 
 static void bench_complex_push_copy(void)
 {

@@ -13,9 +13,9 @@ typedef struct { // Circular Queue
 } Queue;
 
 
-Queue*    Queue_create(u64 n, u32 data_size, const container_ops* ops) __attribute__((warn_unused_result));
-Queue*    Queue_create_val(u64 n, const u8* val, u32 data_size, const container_ops* ops) __attribute__((nonnull(2), warn_unused_result));
-void      Queue_create_stk(Queue* q, u64 n, u32 data_size, const container_ops* ops) __attribute__((nonnull(1)));
+Queue*    Queue_create(u64 n, u32 data_size, const wc_container_ops* ops) __attribute__((warn_unused_result));
+Queue*    Queue_create_val(u64 n, const u8* val, u32 data_size, const wc_container_ops* ops) __attribute__((nonnull(2), warn_unused_result));
+void      Queue_create_stk(Queue* q, u64 n, u32 data_size, const wc_container_ops* ops) __attribute__((nonnull(1)));
 
 void      Queue_destroy(Queue* q) __attribute__((nonnull(1)));
 void      Queue_destroy_stk(Queue* q) __attribute__((nonnull(1)));

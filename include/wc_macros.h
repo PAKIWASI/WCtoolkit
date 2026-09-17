@@ -36,13 +36,13 @@
  *   VEC_CREATE_OF(GenVec*, 8)              -> &wc_vec_ptr_ops
  * Unknown types fall back to POD (NULL ops).
  */
-#define WC_OPS(T)                                          \
-    _Generic((T*)0,                                        \
-        String*: (const container_ops*)&wc_str_ops,        \
-        String * *: (const container_ops*)&wc_str_ptr_ops, \
-        GenVec*: (const container_ops*)&wc_vec_ops,        \
-        GenVec * *: (const container_ops*)&wc_vec_ptr_ops, \
-        default: (const container_ops*)NULL)
+#define WC_OPS(T)                                             \
+    _Generic((T*)0,                                           \
+        String*: (const wc_container_ops*)&wc_str_ops,        \
+        String * *: (const wc_container_ops*)&wc_str_ptr_ops, \
+        GenVec*: (const wc_container_ops*)&wc_vec_ops,        \
+        GenVec * *: (const wc_container_ops*)&wc_vec_ptr_ops, \
+        default: (const wc_container_ops*)NULL)
 
 
 
@@ -76,7 +76,7 @@
 #define MAP_CREATE_OF(K, V)   HashMap_create(sizeof(K), sizeof(V), NULL, NULL, WC_OPS(K), WC_OPS(V))
 
 #define VEC_MAKE_OPS(copy, move, del) \
-    (container_ops)                   \
+    (wc_container_ops)                \
     {                                 \
         (copy), (move), (del)         \
     }
@@ -214,6 +214,16 @@ Usage:
     ({                                                            \
         String* _v = String_from_cstr(cstr_val);                  \
         HashMap_put_val_move((map), (u8*)&(int){(k)}, (u8**)&_v); \
+    })
+
+/*
+ * MAP_PUT_STR_STR(map, cstr_key, cstr_val)
+ * Map must use &wc_str_ops for both key and val.
+ */
+#define MAP_PUT_STR_INT(map, cstr_key, int_val)                       \
+    ({                                                                \
+        String* _k = String_from_cstr(cstr_key);                      \
+        HashMap_put_key_move((map), (u8**)&_k, (u8*)&(int){int_val}); \
     })
 
 /*
