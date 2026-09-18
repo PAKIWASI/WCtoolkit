@@ -77,6 +77,12 @@ static inline __attribute__((nonnull(1))) void Arena_destroy(Arena* Arena)
     free(Arena);
 }
 
+
+static inline __attribute__((nonnull(1))) void Arena_destroy_stk(Arena* Arena)
+{
+    free(Arena->base);
+}
+
 /*
 Return a pointer to a portion of specified size of the
 specified Arena's region. By default, memory is

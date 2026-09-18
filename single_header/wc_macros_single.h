@@ -139,7 +139,7 @@ typedef struct {
     copy_fn   copy_fn; // Deep copy function for owned resources (or NULL)
     move_fn   move_fn; // Transfer ownership and null original (or NULL)
     delete_fn del_fn;  // Cleanup function for owned resources (or NULL)
-} container_ops;
+} wc_container_ops;
 
 
 // CASTING
@@ -562,7 +562,7 @@ typedef struct {
     u8* data; // pointer to generic data
 
     // Pointer to shared type-ops vtable (or NULL for POD types)
-    const container_ops* ops;
+    const wc_container_ops* ops;
 
     u64 size;      // Number of elements currently in vector
     u64 capacity;  // Total allocated capacity (in elements)
@@ -588,24 +588,24 @@ _Static_assert(sizeof(GenVec) == 40, "GenVec layout drifted from expected 40 byt
 
 // Initialize vector with capacity n.
 // ops: pointer to a shared GenVec_ops vtable, or NULL for POD types.
-GenVec* GenVec_create(u64 n, u32 data_size, const container_ops* ops) __attribute__((warn_unused_result));
+GenVec* GenVec_create(u64 n, u32 data_size, const wc_container_ops* ops) __attribute__((warn_unused_result));
 
 // Initialize vector on Stack (struct on Stack, data on heap).
-void GenVec_create_stk(GenVec* vec, u64 n, u32 data_size, const container_ops* ops) __attribute__((nonnull(1)));
+void GenVec_create_stk(GenVec* vec, u64 n, u32 data_size, const wc_container_ops* ops) __attribute__((nonnull(1)));
 
 // Initialize vector of size n with all elements set to val.
-GenVec* GenVec_create_val(u64 n, const u8* val, u32 data_size, const container_ops* ops) __attribute__((nonnull(2), warn_unused_result));
+GenVec* GenVec_create_val(u64 n, const u8* val, u32 data_size, const wc_container_ops* ops) __attribute__((nonnull(2), warn_unused_result));
 
-void GenVec_create_val_stk(GenVec* vec, u64 n, const u8* val, u32 data_size, const container_ops* ops)
+void GenVec_create_val_stk(GenVec* vec, u64 n, const u8* val, u32 data_size, const wc_container_ops* ops)
     __attribute__((nonnull(1, 3)));
 
-GenVec* GenVec_create_arr(u64 n, u32 data_size, const container_ops* ops, u8* arr) __attribute__((nonnull(4), warn_unused_result));
+GenVec* GenVec_create_arr(u64 n, u32 data_size, const wc_container_ops* ops, u8* arr) __attribute__((nonnull(4), warn_unused_result));
 
 // Vector COMPLETELY on Stack (can't grow in size).
 // You provide a Stack-allocated array which becomes the internal array.
 // should only use if you need GenVec operations on C array
 // WARNING: crashes when size == capacity and you try to push.
-void GenVec_create_stk_arr(GenVec* vec, u64 n, u8* arr, u32 data_size, const container_ops* ops) __attribute__((nonnull(1, 3)));
+void GenVec_create_stk_arr(GenVec* vec, u64 n, u8* arr, u32 data_size, const wc_container_ops* ops) __attribute__((nonnull(1, 3)));
 
 // Destroy heap-allocated vector and clean up all elements.
 void GenVec_destroy(GenVec* vec) __attribute__((nonnull(1)));
@@ -836,7 +836,7 @@ static inline void str_move(u8* dest, u8** src)
     // *src is a heap-allocated String* — move its contents into the slot,
     // then free the shell. Works for both SSO (copies stk[]) and heap mode.
     memcpy(dest, *src, sizeof(String));
-    free(*src);
+    free(*src); // TODO: String is by value so why do we free here??
     *src = NULL;
 }
 
@@ -966,10 +966,10 @@ static inline void vec_print_int_ptr(const u8* elm)
  *   HashMap* m = HashMap_create(..., &wc_str_ops, &wc_str_ops);
  * ══════════════════════════════════════════════════════════════════════════ */
 
-static const container_ops wc_str_ops     = { str_copy,     str_move,     str_del     };
-static const container_ops wc_str_ptr_ops = { str_copy_ptr, str_move_ptr, str_del_ptr };
-static const container_ops wc_vec_ops     = { vec_copy,     vec_move,     vec_del     };
-static const container_ops wc_vec_ptr_ops = { vec_copy_ptr, vec_move_ptr, vec_del_ptr };
+static const wc_container_ops wc_str_ops     = { str_copy,     str_move,     str_del     };
+static const wc_container_ops wc_str_ptr_ops = { str_copy_ptr, str_move_ptr, str_del_ptr };
+static const wc_container_ops wc_vec_ops     = { vec_copy,     vec_move,     vec_del     };
+static const wc_container_ops wc_vec_ptr_ops = { vec_copy_ptr, vec_move_ptr, vec_del_ptr };
 
 #endif /* WC_WC_HELPERS_H */
 
@@ -1104,7 +1104,7 @@ __attribute__((unused)) static u64 wyhash_str_ptr(const u8* key, u64 size)
 /* Generic Hashmap with Ownership Semantics
   - Robin Hood Hashing
   - we have 3 arrays: keys, psls, and vals
-  - PSL: probe sequence length - the distance from hashing location
+  - PSL: probe sequence length: the distance from hashing location
   - we actuall store psl + 1 as psl = 0 means empty bucket
   - Robin Hood Invarient: all keys that hash to i come before keys that hash to i + 1
   - vals store [val] inline
@@ -1119,15 +1119,15 @@ typedef struct {
     u64            capacity;
     u32            key_size;
     u32            val_size;
-    u8*            scratch; // key_size + val_size bytes + alignment - temp buffer for robin hood swaps
+    u8*            scratch; // key_size + val_size bytes + alignment: temp buffer for robin hood swaps
     custom_hash_fn hash_fn;
     compare_fn     cmp_fn;
 
     // Shared ops vtables for keys and values.
     // Pass NULL for POD types (int, float, flat structs).
     // For types with heap resources define one static ops per type:
-    const container_ops* key_ops;
-    const container_ops* val_ops;
+    const wc_container_ops* key_ops;
+    const wc_container_ops* val_ops;
 } HashMap;
 
 
@@ -1148,9 +1148,9 @@ typedef struct {
 // hash_fn and cmp_fn default to fnv1a_hash / default_compare if NULL.
 // key_ops / val_ops: pass NULL for POD types.
 HashMap* HashMap_create(u32 key_size, u32 val_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
-                        const container_ops* key_ops, const container_ops* val_ops) __attribute__((warn_unused_result));
+                        const wc_container_ops* key_ops, const wc_container_ops* val_ops) __attribute__((warn_unused_result));
 void     HashMap_create_stk(HashMap* map, u32 key_size, u32 val_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
-                            const container_ops* key_ops, const container_ops* val_ops)
+                            const wc_container_ops* key_ops, const wc_container_ops* val_ops)
     __attribute__((nonnull(1)));
 
 void HashMap_destroy(HashMap* map) __attribute__((nonnull(1)));
@@ -1250,7 +1250,7 @@ typedef struct {
 
     // Shared ops vtable for elements.
     // Pass NULL for POD types (int, float, flat structs).
-    const container_ops* ops;
+    const wc_container_ops* ops;
 } HashSet;
 
 
@@ -1263,9 +1263,9 @@ typedef struct {
 // Create a new HashSet.
 // hash_fn and cmp_fn default to wyhash / default_compare if NULL.
 // ops: pass NULL for POD types.
-HashSet* HashSet_create(u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn, const container_ops* ops)
+HashSet* HashSet_create(u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn, const wc_container_ops* ops)
     __attribute__((warn_unused_result));
-void HashSet_create_stk(HashSet* set, u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn, const container_ops* ops)
+void HashSet_create_stk(HashSet* set, u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn, const wc_container_ops* ops)
     __attribute__((nonnull(1)));
 
 void HashSet_destroy(HashSet* set) __attribute__((nonnull(1)));
@@ -1342,9 +1342,9 @@ typedef struct { // Circular Queue
 } Queue;
 
 
-Queue*    Queue_create(u64 n, u32 data_size, const container_ops* ops) __attribute__((warn_unused_result));
-Queue*    Queue_create_val(u64 n, const u8* val, u32 data_size, const container_ops* ops) __attribute__((nonnull(2), warn_unused_result));
-void      Queue_create_stk(Queue* q, u64 n, u32 data_size, const container_ops* ops) __attribute__((nonnull(1)));
+Queue*    Queue_create(u64 n, u32 data_size, const wc_container_ops* ops) __attribute__((warn_unused_result));
+Queue*    Queue_create_val(u64 n, const u8* val, u32 data_size, const wc_container_ops* ops) __attribute__((nonnull(2), warn_unused_result));
+void      Queue_create_stk(Queue* q, u64 n, u32 data_size, const wc_container_ops* ops) __attribute__((nonnull(1)));
 
 void      Queue_destroy(Queue* q) __attribute__((nonnull(1)));
 void      Queue_destroy_stk(Queue* q) __attribute__((nonnull(1)));
@@ -1406,13 +1406,13 @@ static inline __attribute__((nonnull(1))) u64 Queue_capacity(const Queue* q) { r
  *   VEC_CREATE_OF(GenVec*, 8)              -> &wc_vec_ptr_ops
  * Unknown types fall back to POD (NULL ops).
  */
-#define WC_OPS(T)                                          \
-    _Generic((T*)0,                                        \
-        String*: (const container_ops*)&wc_str_ops,        \
-        String * *: (const container_ops*)&wc_str_ptr_ops, \
-        GenVec*: (const container_ops*)&wc_vec_ops,        \
-        GenVec * *: (const container_ops*)&wc_vec_ptr_ops, \
-        default: (const container_ops*)NULL)
+#define WC_OPS(T)                                             \
+    _Generic((T*)0,                                           \
+        String*: (const wc_container_ops*)&wc_str_ops,        \
+        String * *: (const wc_container_ops*)&wc_str_ptr_ops, \
+        GenVec*: (const wc_container_ops*)&wc_vec_ops,        \
+        GenVec * *: (const wc_container_ops*)&wc_vec_ptr_ops, \
+        default: (const wc_container_ops*)NULL)
 
 
 
@@ -1446,7 +1446,7 @@ static inline __attribute__((nonnull(1))) u64 Queue_capacity(const Queue* q) { r
 #define MAP_CREATE_OF(K, V)   HashMap_create(sizeof(K), sizeof(V), NULL, NULL, WC_OPS(K), WC_OPS(V))
 
 #define VEC_MAKE_OPS(copy, move, del) \
-    (container_ops)                   \
+    (wc_container_ops)                \
     {                                 \
         (copy), (move), (del)         \
     }
@@ -1584,6 +1584,16 @@ Usage:
     ({                                                            \
         String* _v = String_from_cstr(cstr_val);                  \
         HashMap_put_val_move((map), (u8*)&(int){(k)}, (u8**)&_v); \
+    })
+
+/*
+ * MAP_PUT_STR_STR(map, cstr_key, cstr_val)
+ * Map must use &wc_str_ops for both key and val.
+ */
+#define MAP_PUT_STR_INT(map, cstr_key, int_val)                       \
+    ({                                                                \
+        String* _k = String_from_cstr(cstr_key);                      \
+        HashMap_put_key_move((map), (u8**)&_k, (u8*)&(int){int_val}); \
     })
 
 /*
@@ -2392,7 +2402,7 @@ static void GenVec_grow(GenVec* vec);
 
 // API Implementation
 
-GenVec* GenVec_create(u64 n, u32 data_size, const container_ops* ops)
+GenVec* GenVec_create(u64 n, u32 data_size, const wc_container_ops* ops)
 {
     CHECK_FATAL(data_size == 0, "data_size can't be 0");
 
@@ -2417,7 +2427,7 @@ GenVec* GenVec_create(u64 n, u32 data_size, const container_ops* ops)
 }
 
 
-void GenVec_create_stk(GenVec* vec, u64 n, u32 data_size, const container_ops* ops)
+void GenVec_create_stk(GenVec* vec, u64 n, u32 data_size, const wc_container_ops* ops)
 {
     CHECK_FATAL(data_size == 0, "data_size can't be 0");
 
@@ -2432,7 +2442,7 @@ void GenVec_create_stk(GenVec* vec, u64 n, u32 data_size, const container_ops* o
 }
 
 
-GenVec* GenVec_create_val(u64 n, const u8* val, u32 data_size, const container_ops* ops)
+GenVec* GenVec_create_val(u64 n, const u8* val, u32 data_size, const wc_container_ops* ops)
 {
     CHECK_FATAL(n == 0, "cant init with val if n = 0");
 
@@ -2461,7 +2471,7 @@ GenVec* GenVec_create_val(u64 n, const u8* val, u32 data_size, const container_o
 }
 
 
-void GenVec_create_val_stk(GenVec* vec, u64 n, const u8* val, u32 data_size, const container_ops* ops)
+void GenVec_create_val_stk(GenVec* vec, u64 n, const u8* val, u32 data_size, const wc_container_ops* ops)
 {
     CHECK_FATAL(n == 0, "cant init with val if n = 0");
 
@@ -2488,7 +2498,7 @@ void GenVec_create_val_stk(GenVec* vec, u64 n, const u8* val, u32 data_size, con
 }
 
 
-GenVec* GenVec_create_arr(u64 n, u32 data_size, const container_ops* ops, u8* arr)
+GenVec* GenVec_create_arr(u64 n, u32 data_size, const wc_container_ops* ops, u8* arr)
 {
     GenVec* v = GenVec_create(n, data_size, ops);
 
@@ -2499,7 +2509,7 @@ GenVec* GenVec_create_arr(u64 n, u32 data_size, const container_ops* ops, u8* ar
 }
 
 
-void GenVec_create_stk_arr(GenVec* vec, u64 n, u8* arr, u32 data_size, const container_ops* ops)
+void GenVec_create_stk_arr(GenVec* vec, u64 n, u8* arr, u32 data_size, const wc_container_ops* ops)
 {
     CHECK_FATAL(n == 0 || data_size == 0, "size/data_size of arr can't be 0");
 
@@ -3103,7 +3113,6 @@ void GenVec_print(const GenVec* vec, print_fn fn)
     printf("[ ");
     for (u64 i = 0; i < vec->size; i++) {
         fn(GET_PTR(vec, i));
-        putchar(' ');
     }
     putchar(']');
 }
@@ -3229,7 +3238,7 @@ static void        map_resize(HashMap* map, u64 new_capacity);
 ====================PUBLIC FUNCTIONS====================
 */
 
-void HashMap_create_stk(HashMap* map, u32 key_size, u32 val_size, custom_hash_fn hash_fn, compare_fn cmp_fn, const container_ops* key_ops, const container_ops* val_ops)
+void HashMap_create_stk(HashMap* map, u32 key_size, u32 val_size, custom_hash_fn hash_fn, compare_fn cmp_fn, const wc_container_ops* key_ops, const wc_container_ops* val_ops)
 {
     CHECK_FATAL(key_size == 0 || val_size == 0, "key/val size can't be 0");
 
@@ -3256,7 +3265,7 @@ void HashMap_create_stk(HashMap* map, u32 key_size, u32 val_size, custom_hash_fn
 }
 
 HashMap* HashMap_create(u32 key_size, u32 val_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
-                        const container_ops* key_ops, const container_ops* val_ops)
+                        const wc_container_ops* key_ops, const wc_container_ops* val_ops)
 {
     HashMap* map = malloc(sizeof(HashMap));
     CHECK_FATAL(!map, "map malloc failed");
@@ -3947,7 +3956,7 @@ static inline void set_maybe_resize(HashSet* set);
 ====================PUBLIC FUNCTIONS====================
 */
 
-void HashSet_create_stk(HashSet* set, u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn, const container_ops* ops)
+void HashSet_create_stk(HashSet* set, u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn, const wc_container_ops* ops)
 {
     CHECK_FATAL(elm_size == 0, "elm_size can't be 0");
 
@@ -3971,7 +3980,7 @@ void HashSet_create_stk(HashSet* set, u32 elm_size, custom_hash_fn hash_fn, comp
 }
 
 HashSet* HashSet_create(u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
-                        const container_ops* ops)
+                        const wc_container_ops* ops)
 {
     HashSet* set = malloc(sizeof(HashSet));
     CHECK_FATAL(!set, "set malloc failed");
@@ -4406,7 +4415,7 @@ static void Queue_shrink(Queue* q);
 static void Queue_compact(Queue* q, u64 new_capacity);
 
 
-Queue* Queue_create(u64 n, u32 data_size, const container_ops* ops)
+Queue* Queue_create(u64 n, u32 data_size, const wc_container_ops* ops)
 {
     CHECK_FATAL(n == 0 || data_size == 0, "n/data_size can't be 0");
 
@@ -4422,7 +4431,7 @@ Queue* Queue_create(u64 n, u32 data_size, const container_ops* ops)
     return q;
 }
 
-Queue* Queue_create_val(u64 n, const u8* val, u32 data_size, const container_ops* ops)
+Queue* Queue_create_val(u64 n, const u8* val, u32 data_size, const wc_container_ops* ops)
 {
     CHECK_FATAL(n == 0 || data_size == 0, "n/data_size can't be 0");
 
@@ -4439,7 +4448,7 @@ Queue* Queue_create_val(u64 n, const u8* val, u32 data_size, const container_ops
 }
 
 
-void Queue_create_stk(Queue* q, u64 n, u32 data_size, const container_ops* ops)
+void Queue_create_stk(Queue* q, u64 n, u32 data_size, const wc_container_ops* ops)
 {
     CHECK_FATAL(n == 0 || data_size == 0, "n/data_size can't be 0");
 

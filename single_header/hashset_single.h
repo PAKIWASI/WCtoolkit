@@ -139,7 +139,7 @@ typedef struct {
     copy_fn   copy_fn; // Deep copy function for owned resources (or NULL)
     move_fn   move_fn; // Transfer ownership and null original (or NULL)
     delete_fn del_fn;  // Cleanup function for owned resources (or NULL)
-} container_ops;
+} wc_container_ops;
 
 
 // CASTING
@@ -560,7 +560,7 @@ typedef struct {
 
     // Shared ops vtable for elements.
     // Pass NULL for POD types (int, float, flat structs).
-    const container_ops* ops;
+    const wc_container_ops* ops;
 } HashSet;
 
 
@@ -573,9 +573,9 @@ typedef struct {
 // Create a new HashSet.
 // hash_fn and cmp_fn default to wyhash / default_compare if NULL.
 // ops: pass NULL for POD types.
-HashSet* HashSet_create(u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn, const container_ops* ops)
+HashSet* HashSet_create(u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn, const wc_container_ops* ops)
     __attribute__((warn_unused_result));
-void HashSet_create_stk(HashSet* set, u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn, const container_ops* ops)
+void HashSet_create_stk(HashSet* set, u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn, const wc_container_ops* ops)
     __attribute__((nonnull(1)));
 
 void HashSet_destroy(HashSet* set) __attribute__((nonnull(1)));
@@ -1272,7 +1272,7 @@ static inline void set_maybe_resize(HashSet* set);
 ====================PUBLIC FUNCTIONS====================
 */
 
-void HashSet_create_stk(HashSet* set, u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn, const container_ops* ops)
+void HashSet_create_stk(HashSet* set, u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn, const wc_container_ops* ops)
 {
     CHECK_FATAL(elm_size == 0, "elm_size can't be 0");
 
@@ -1296,7 +1296,7 @@ void HashSet_create_stk(HashSet* set, u32 elm_size, custom_hash_fn hash_fn, comp
 }
 
 HashSet* HashSet_create(u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
-                        const container_ops* ops)
+                        const wc_container_ops* ops)
 {
     HashSet* set = malloc(sizeof(HashSet));
     CHECK_FATAL(!set, "set malloc failed");

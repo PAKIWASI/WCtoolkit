@@ -139,7 +139,7 @@ typedef struct {
     copy_fn   copy_fn; // Deep copy function for owned resources (or NULL)
     move_fn   move_fn; // Transfer ownership and null original (or NULL)
     delete_fn del_fn;  // Cleanup function for owned resources (or NULL)
-} container_ops;
+} wc_container_ops;
 
 
 // CASTING
@@ -605,6 +605,12 @@ static inline __attribute__((nonnull(1))) void Arena_destroy(Arena* Arena)
     free(Arena);
 }
 
+
+static inline __attribute__((nonnull(1))) void Arena_destroy_stk(Arena* Arena)
+{
+    free(Arena->base);
+}
+
 /*
 Return a pointer to a portion of specified size of the
 specified Arena's region. By default, memory is
@@ -766,9 +772,7 @@ typedef struct StringStore_node {
         char* heap;
     };
     struct StringStore_node* next;
-    // 1 → `heap` is live (overflow node), 0 → `buf` is live. Without this flag
-    // StringStore_destroy cannot tell which union member to free.
-    int owns_heap;
+    bool                     owns_heap;
 } StringStore_node;
 
 // append-only, immutable String storage with a chain Arena-like backing
@@ -776,8 +780,8 @@ typedef struct StringStore_node {
 typedef struct {
     StringStore_node* tail;
     StringStore_node* head;
-    u32                tail_off; // how much of th tail node is used
-    u32                num;      // total number of nodes
+    u32               tail_off; // how much of th tail node is used
+    u32               num;      // total number of nodes
 } StringStore;
 
 void StringStore_create(StringStore* ss) __attribute__((nonnull(1)));
@@ -1546,7 +1550,7 @@ void StringStore_create(StringStore* ss)
     CHECK_FATAL(!node, "node malloc failed");
 
     node->next      = NULL;
-    node->owns_heap = 0;
+    node->owns_heap = false;
     ss->head        = node;
     ss->tail        = node;
     ss->tail_off    = 0;
@@ -1574,7 +1578,7 @@ static inline void add_node(StringStore* ss)
     CHECK_FATAL(!node, "node malloc failed");
 
     node->next              = NULL; // must terminate the chain for StringStore_destroy
-    node->owns_heap         = 0;
+    node->owns_heap         = false;
     ss->tail->next          = node;
     ss->tail                = node;
     ss->tail_off            = 0;
@@ -1592,7 +1596,7 @@ StrView StringStore_cstr(StringStore* ss, const char* cstr, u64 clen)
         CHECK_FATAL(!node, "node malloc failed");
 
         node->heap      = malloc(clen);
-        node->owns_heap = 1; // `heap` is live; StringStore_destroy must free it
+        node->owns_heap = true; // `heap` is live; StringStore_destroy must free it
         CHECK_FATAL(!node->heap, "overflow node malloc failed");
 
         memcpy(node->heap, cstr, clen);

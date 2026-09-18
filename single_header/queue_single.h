@@ -139,7 +139,7 @@ typedef struct {
     copy_fn   copy_fn; // Deep copy function for owned resources (or NULL)
     move_fn   move_fn; // Transfer ownership and null original (or NULL)
     delete_fn del_fn;  // Cleanup function for owned resources (or NULL)
-} container_ops;
+} wc_container_ops;
 
 
 // CASTING
@@ -371,7 +371,7 @@ typedef struct {
     u8* data; // pointer to generic data
 
     // Pointer to shared type-ops vtable (or NULL for POD types)
-    const container_ops* ops;
+    const wc_container_ops* ops;
 
     u64 size;      // Number of elements currently in vector
     u64 capacity;  // Total allocated capacity (in elements)
@@ -397,24 +397,24 @@ _Static_assert(sizeof(GenVec) == 40, "GenVec layout drifted from expected 40 byt
 
 // Initialize vector with capacity n.
 // ops: pointer to a shared GenVec_ops vtable, or NULL for POD types.
-GenVec* GenVec_create(u64 n, u32 data_size, const container_ops* ops) __attribute__((warn_unused_result));
+GenVec* GenVec_create(u64 n, u32 data_size, const wc_container_ops* ops) __attribute__((warn_unused_result));
 
 // Initialize vector on Stack (struct on Stack, data on heap).
-void GenVec_create_stk(GenVec* vec, u64 n, u32 data_size, const container_ops* ops) __attribute__((nonnull(1)));
+void GenVec_create_stk(GenVec* vec, u64 n, u32 data_size, const wc_container_ops* ops) __attribute__((nonnull(1)));
 
 // Initialize vector of size n with all elements set to val.
-GenVec* GenVec_create_val(u64 n, const u8* val, u32 data_size, const container_ops* ops) __attribute__((nonnull(2), warn_unused_result));
+GenVec* GenVec_create_val(u64 n, const u8* val, u32 data_size, const wc_container_ops* ops) __attribute__((nonnull(2), warn_unused_result));
 
-void GenVec_create_val_stk(GenVec* vec, u64 n, const u8* val, u32 data_size, const container_ops* ops)
+void GenVec_create_val_stk(GenVec* vec, u64 n, const u8* val, u32 data_size, const wc_container_ops* ops)
     __attribute__((nonnull(1, 3)));
 
-GenVec* GenVec_create_arr(u64 n, u32 data_size, const container_ops* ops, u8* arr) __attribute__((nonnull(4), warn_unused_result));
+GenVec* GenVec_create_arr(u64 n, u32 data_size, const wc_container_ops* ops, u8* arr) __attribute__((nonnull(4), warn_unused_result));
 
 // Vector COMPLETELY on Stack (can't grow in size).
 // You provide a Stack-allocated array which becomes the internal array.
 // should only use if you need GenVec operations on C array
 // WARNING: crashes when size == capacity and you try to push.
-void GenVec_create_stk_arr(GenVec* vec, u64 n, u8* arr, u32 data_size, const container_ops* ops) __attribute__((nonnull(1, 3)));
+void GenVec_create_stk_arr(GenVec* vec, u64 n, u8* arr, u32 data_size, const wc_container_ops* ops) __attribute__((nonnull(1, 3)));
 
 // Destroy heap-allocated vector and clean up all elements.
 void GenVec_destroy(GenVec* vec) __attribute__((nonnull(1)));
@@ -565,9 +565,9 @@ typedef struct { // Circular Queue
 } Queue;
 
 
-Queue*    Queue_create(u64 n, u32 data_size, const container_ops* ops) __attribute__((warn_unused_result));
-Queue*    Queue_create_val(u64 n, const u8* val, u32 data_size, const container_ops* ops) __attribute__((nonnull(2), warn_unused_result));
-void      Queue_create_stk(Queue* q, u64 n, u32 data_size, const container_ops* ops) __attribute__((nonnull(1)));
+Queue*    Queue_create(u64 n, u32 data_size, const wc_container_ops* ops) __attribute__((warn_unused_result));
+Queue*    Queue_create_val(u64 n, const u8* val, u32 data_size, const wc_container_ops* ops) __attribute__((nonnull(2), warn_unused_result));
+void      Queue_create_stk(Queue* q, u64 n, u32 data_size, const wc_container_ops* ops) __attribute__((nonnull(1)));
 
 void      Queue_destroy(Queue* q) __attribute__((nonnull(1)));
 void      Queue_destroy_stk(Queue* q) __attribute__((nonnull(1)));
@@ -651,7 +651,7 @@ static void GenVec_grow(GenVec* vec);
 
 // API Implementation
 
-GenVec* GenVec_create(u64 n, u32 data_size, const container_ops* ops)
+GenVec* GenVec_create(u64 n, u32 data_size, const wc_container_ops* ops)
 {
     CHECK_FATAL(data_size == 0, "data_size can't be 0");
 
@@ -676,7 +676,7 @@ GenVec* GenVec_create(u64 n, u32 data_size, const container_ops* ops)
 }
 
 
-void GenVec_create_stk(GenVec* vec, u64 n, u32 data_size, const container_ops* ops)
+void GenVec_create_stk(GenVec* vec, u64 n, u32 data_size, const wc_container_ops* ops)
 {
     CHECK_FATAL(data_size == 0, "data_size can't be 0");
 
@@ -691,7 +691,7 @@ void GenVec_create_stk(GenVec* vec, u64 n, u32 data_size, const container_ops* o
 }
 
 
-GenVec* GenVec_create_val(u64 n, const u8* val, u32 data_size, const container_ops* ops)
+GenVec* GenVec_create_val(u64 n, const u8* val, u32 data_size, const wc_container_ops* ops)
 {
     CHECK_FATAL(n == 0, "cant init with val if n = 0");
 
@@ -720,7 +720,7 @@ GenVec* GenVec_create_val(u64 n, const u8* val, u32 data_size, const container_o
 }
 
 
-void GenVec_create_val_stk(GenVec* vec, u64 n, const u8* val, u32 data_size, const container_ops* ops)
+void GenVec_create_val_stk(GenVec* vec, u64 n, const u8* val, u32 data_size, const wc_container_ops* ops)
 {
     CHECK_FATAL(n == 0, "cant init with val if n = 0");
 
@@ -747,7 +747,7 @@ void GenVec_create_val_stk(GenVec* vec, u64 n, const u8* val, u32 data_size, con
 }
 
 
-GenVec* GenVec_create_arr(u64 n, u32 data_size, const container_ops* ops, u8* arr)
+GenVec* GenVec_create_arr(u64 n, u32 data_size, const wc_container_ops* ops, u8* arr)
 {
     GenVec* v = GenVec_create(n, data_size, ops);
 
@@ -758,7 +758,7 @@ GenVec* GenVec_create_arr(u64 n, u32 data_size, const container_ops* ops, u8* ar
 }
 
 
-void GenVec_create_stk_arr(GenVec* vec, u64 n, u8* arr, u32 data_size, const container_ops* ops)
+void GenVec_create_stk_arr(GenVec* vec, u64 n, u8* arr, u32 data_size, const wc_container_ops* ops)
 {
     CHECK_FATAL(n == 0 || data_size == 0, "size/data_size of arr can't be 0");
 
@@ -1362,7 +1362,6 @@ void GenVec_print(const GenVec* vec, print_fn fn)
     printf("[ ");
     for (u64 i = 0; i < vec->size; i++) {
         fn(GET_PTR(vec, i));
-        putchar(' ');
     }
     putchar(']');
 }
@@ -1483,7 +1482,7 @@ static void Queue_shrink(Queue* q);
 static void Queue_compact(Queue* q, u64 new_capacity);
 
 
-Queue* Queue_create(u64 n, u32 data_size, const container_ops* ops)
+Queue* Queue_create(u64 n, u32 data_size, const wc_container_ops* ops)
 {
     CHECK_FATAL(n == 0 || data_size == 0, "n/data_size can't be 0");
 
@@ -1499,7 +1498,7 @@ Queue* Queue_create(u64 n, u32 data_size, const container_ops* ops)
     return q;
 }
 
-Queue* Queue_create_val(u64 n, const u8* val, u32 data_size, const container_ops* ops)
+Queue* Queue_create_val(u64 n, const u8* val, u32 data_size, const wc_container_ops* ops)
 {
     CHECK_FATAL(n == 0 || data_size == 0, "n/data_size can't be 0");
 
@@ -1516,7 +1515,7 @@ Queue* Queue_create_val(u64 n, const u8* val, u32 data_size, const container_ops
 }
 
 
-void Queue_create_stk(Queue* q, u64 n, u32 data_size, const container_ops* ops)
+void Queue_create_stk(Queue* q, u64 n, u32 data_size, const wc_container_ops* ops)
 {
     CHECK_FATAL(n == 0 || data_size == 0, "n/data_size can't be 0");
 

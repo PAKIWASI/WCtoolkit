@@ -139,7 +139,7 @@ typedef struct {
     copy_fn   copy_fn; // Deep copy function for owned resources (or NULL)
     move_fn   move_fn; // Transfer ownership and null original (or NULL)
     delete_fn del_fn;  // Cleanup function for owned resources (or NULL)
-} container_ops;
+} wc_container_ops;
 
 
 // CASTING
@@ -541,7 +541,7 @@ __attribute__((unused)) static u64 wyhash_str_ptr(const u8* key, u64 size)
 /* Generic Hashmap with Ownership Semantics
   - Robin Hood Hashing
   - we have 3 arrays: keys, psls, and vals
-  - PSL: probe sequence length - the distance from hashing location
+  - PSL: probe sequence length: the distance from hashing location
   - we actuall store psl + 1 as psl = 0 means empty bucket
   - Robin Hood Invarient: all keys that hash to i come before keys that hash to i + 1
   - vals store [val] inline
@@ -556,15 +556,15 @@ typedef struct {
     u64            capacity;
     u32            key_size;
     u32            val_size;
-    u8*            scratch; // key_size + val_size bytes + alignment - temp buffer for robin hood swaps
+    u8*            scratch; // key_size + val_size bytes + alignment: temp buffer for robin hood swaps
     custom_hash_fn hash_fn;
     compare_fn     cmp_fn;
 
     // Shared ops vtables for keys and values.
     // Pass NULL for POD types (int, float, flat structs).
     // For types with heap resources define one static ops per type:
-    const container_ops* key_ops;
-    const container_ops* val_ops;
+    const wc_container_ops* key_ops;
+    const wc_container_ops* val_ops;
 } HashMap;
 
 
@@ -585,9 +585,9 @@ typedef struct {
 // hash_fn and cmp_fn default to fnv1a_hash / default_compare if NULL.
 // key_ops / val_ops: pass NULL for POD types.
 HashMap* HashMap_create(u32 key_size, u32 val_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
-                        const container_ops* key_ops, const container_ops* val_ops) __attribute__((warn_unused_result));
+                        const wc_container_ops* key_ops, const wc_container_ops* val_ops) __attribute__((warn_unused_result));
 void     HashMap_create_stk(HashMap* map, u32 key_size, u32 val_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
-                            const container_ops* key_ops, const container_ops* val_ops)
+                            const wc_container_ops* key_ops, const wc_container_ops* val_ops)
     __attribute__((nonnull(1)));
 
 void HashMap_destroy(HashMap* map) __attribute__((nonnull(1)));
@@ -1305,7 +1305,7 @@ static void        map_resize(HashMap* map, u64 new_capacity);
 ====================PUBLIC FUNCTIONS====================
 */
 
-void HashMap_create_stk(HashMap* map, u32 key_size, u32 val_size, custom_hash_fn hash_fn, compare_fn cmp_fn, const container_ops* key_ops, const container_ops* val_ops)
+void HashMap_create_stk(HashMap* map, u32 key_size, u32 val_size, custom_hash_fn hash_fn, compare_fn cmp_fn, const wc_container_ops* key_ops, const wc_container_ops* val_ops)
 {
     CHECK_FATAL(key_size == 0 || val_size == 0, "key/val size can't be 0");
 
@@ -1332,7 +1332,7 @@ void HashMap_create_stk(HashMap* map, u32 key_size, u32 val_size, custom_hash_fn
 }
 
 HashMap* HashMap_create(u32 key_size, u32 val_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
-                        const container_ops* key_ops, const container_ops* val_ops)
+                        const wc_container_ops* key_ops, const wc_container_ops* val_ops)
 {
     HashMap* map = malloc(sizeof(HashMap));
     CHECK_FATAL(!map, "map malloc failed");

@@ -139,7 +139,7 @@ typedef struct {
     copy_fn   copy_fn; // Deep copy function for owned resources (or NULL)
     move_fn   move_fn; // Transfer ownership and null original (or NULL)
     delete_fn del_fn;  // Cleanup function for owned resources (or NULL)
-} container_ops;
+} wc_container_ops;
 
 
 // CASTING
@@ -412,6 +412,12 @@ static inline __attribute__((nonnull(1))) void Arena_destroy(Arena* Arena)
 {
     free(Arena->base);
     free(Arena);
+}
+
+
+static inline __attribute__((nonnull(1))) void Arena_destroy_stk(Arena* Arena)
+{
+    free(Arena->base);
 }
 
 /*
