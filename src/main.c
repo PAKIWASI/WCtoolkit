@@ -1,25 +1,31 @@
 #include "common.h"
-#include "hashmap.h"
-#include "wc_helpers.h"
-#include "wc_macros.h"
-#include "wc_string.h"
-
-
-
+#include "views.h"
+#include <string.h>
 
 
 int main(void)
 {
-    HashMap* map = MAP_CREATE_OF(String, int);
+    StringStore ss;
+    StringStore_create(&ss);
 
-    MAP_PUT_STR_INT(map, "hefjs", 5);
-    MAP_PUT_STR_INT(map, "sjlkfjdkl", 5);
-    MAP_PUT_STR_INT(map, "s", 5);
-    MAP_PUT_STR_INT(map, "js", 5);
+    StrView sv1 = StringStore_cstr(&ss, "hellow", strlen("hellow"));
+    StrView sv2 = StringStore_cstr(&ss, "hellow", strlen("hellow"));
+    StrView sv3 = StringStore_cstr(&ss, "hellow", strlen("hellow"));
+    StrView sv4 = StringStore_cstr(&ss, "hellow", strlen("hellow"));
+    StrView sv5 = StringStore_cstr(&ss, "hellow", strlen("hellow"));
+    StrView sv6 = StringStore_cstr(&ss, "hellow", strlen("hellow"));
+    StrView sv7 = StringStore_cstr(&ss, "hellow", strlen("hellow"));
 
-    HashMap_print(map, str_print, wc_print_int);
+    StrView_print(sv1);
+    StrView_print(sv2);
+    StrView_print(sv3);
+    StrView_print(sv4);
+    StrView_print(sv5);
+    StrView_print(sv6);
+    StrView_print(sv7);
 
+    print_hex((const u8*)ss.head->buf, 124, 32);
 
-    HashMap_destroy(map);
+    StringStore_destroy(&ss);
     return 0;
 }

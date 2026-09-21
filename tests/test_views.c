@@ -7,7 +7,7 @@
 #include <string.h>
 
 
-// Helpers 
+// Helpers
 
 // Content equality of a StrView against a cstr
 static int sv_equals_cstr(StrView sv, const char* cstr)

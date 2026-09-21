@@ -1,7 +1,7 @@
 #ifndef WC_MACROS_H
 #define WC_MACROS_H
 
-// Required by WC_OPS (6-I): _Generic association expressions must name declared
+// _Generic association expressions must name declared
 // symbols in every TU that sees this header, even when the macro is never used.
 #include "common.h"
 #include "wc_helpers.h"
@@ -14,7 +14,7 @@
 
 #define typeof __typeof__
 
-/* WC_ASSERT_ELEM_SIZE — developer guard for typed macro layers (6-H).
+/* WC_ASSERT_ELEM_SIZE — developer guard for typed macro layers.
  * Fires when a type-asserting macro (VEC_AT, VEC_POP, ...) is used on a vec
  * whose element size doesn't match sizeof(T) — i.e. the wrong T was passed.
  * The container never knows T, so this lives in the macro layer.
@@ -27,7 +27,7 @@
     } while (0)
 
 
-/* WC_OPS — pick the right container_ops for T at compile time (6-I).
+/* WC_OPS — pick the right container_ops for T at compile time.
  * Requires wc_helpers.h (the ops instances it names live there).
  *   VEC_CREATE_OF(int, 8)                  -> POD, NULL ops
  *   VEC_CREATE_OF(String, 8)               -> &wc_str_ops (by value)
@@ -125,7 +125,7 @@ Usage:
 
 
 // Access
-// All type-asserting macros guard with WC_ASSERT_ELEM_SIZE (6-H) — pass the right T.
+// All type-asserting macros guard with WC_ASSERT_ELEM_SIZE, pass the right T.
 
 #define VEC_AT(vec, T, i)                \
     ({                                   \
