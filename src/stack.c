@@ -58,7 +58,7 @@ const u8* Stack_peek_ptr(const Stack* stk)
     return GenVec_get_ptr(stk, GenVec_size(stk) - 1);
 }
 
-void Stack_print(Stack* stk, print_fn print)
+void Stack_print(Stack* stk, wc_print_fn print)
 {
     GenVec_print(stk, print);
 }

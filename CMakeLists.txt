@@ -103,6 +103,7 @@ set(LIB_SOURCES
     src/hashset.c
     src/matrix.c
     src/queue.c
+    src/priority_queue.c
     src/random.c
     src/stack.c
     src/wc_string.c

@@ -100,7 +100,7 @@ wc_fatal_report(const char* file, int line, const char* func, const char* fmt, .
 
 #define MALLOC(size, cap, name)                \
     ({                                         \
-        void* _mlcd = malloc(size * cap);      \
+        void* _mlcd = malloc((size) * (cap));      \
         CHECK_FATAL(!_mlcd, "\"" #name "\""    \
                             " malloc failed"); \
         _mlcd;                                 \
@@ -120,25 +120,22 @@ typedef uint64_t u64;
 
 #define WC_NOT_FOUND ((u64) - 1)
 
-// #define false ((b8)0)
-// #define true  ((b8)1)
-
 
 // GENERIC FUNCTIONS
-typedef void (*copy_fn)(u8* dest, const u8* src);
-typedef void (*move_fn)(u8* dest, u8** src);
-typedef void (*delete_fn)(u8* key);
-typedef void (*print_fn)(const u8* elm);
-typedef int (*compare_fn)(const u8* a, const u8* b, u64 size);
+typedef void (*wc_copy_fn)(u8* dest, const u8* src);
+typedef void (*wc_move_fn)(u8* dest, u8** src);
+typedef void (*wc_delete_fn)(u8* key);
+typedef void (*wc_print_fn)(const u8* elm);
+typedef int  (*wc_compare_fn)(const u8* a, const u8* b, u64 size);
 
 
 // Vtable: one instance shared across all vectors of the same type.
 // Pass NULL for any callback not needed.
 // For POD types, pass NULL for the whole ops pointer.
 typedef struct {
-    copy_fn   copy_fn; // Deep copy function for owned resources (or NULL)
-    move_fn   move_fn; // Transfer ownership and null original (or NULL)
-    delete_fn del_fn;  // Cleanup function for owned resources (or NULL)
+    wc_copy_fn   copy_fn; // Deep copy function for owned resources (or NULL)
+    wc_move_fn   move_fn; // Transfer ownership and null original (or NULL)
+    wc_delete_fn del_fn;  // Cleanup function for owned resources (or NULL)
 } wc_container_ops;
 
 
@@ -594,18 +591,21 @@ GenVec* GenVec_create(u64 n, u32 data_size, const wc_container_ops* ops) __attri
 void GenVec_create_stk(GenVec* vec, u64 n, u32 data_size, const wc_container_ops* ops) __attribute__((nonnull(1)));
 
 // Initialize vector of size n with all elements set to val.
-GenVec* GenVec_create_val(u64 n, const u8* val, u32 data_size, const wc_container_ops* ops) __attribute__((nonnull(2), warn_unused_result));
+GenVec* GenVec_create_val(u64 n, const u8* val, u32 data_size, const wc_container_ops* ops)
+    __attribute__((nonnull(2), warn_unused_result));
 
 void GenVec_create_val_stk(GenVec* vec, u64 n, const u8* val, u32 data_size, const wc_container_ops* ops)
     __attribute__((nonnull(1, 3)));
 
-GenVec* GenVec_create_arr(u64 n, u32 data_size, const wc_container_ops* ops, u8* arr) __attribute__((nonnull(4), warn_unused_result));
+GenVec* GenVec_create_arr(u64 n, u32 data_size, const wc_container_ops* ops, u8* arr)
+    __attribute__((nonnull(4), warn_unused_result));
 
 // Vector COMPLETELY on Stack (can't grow in size).
 // You provide a Stack-allocated array which becomes the internal array.
 // should only use if you need GenVec operations on C array
 // WARNING: crashes when size == capacity and you try to push.
-void GenVec_create_stk_arr(GenVec* vec, u64 n, u8* arr, u32 data_size, const wc_container_ops* ops) __attribute__((nonnull(1, 3)));
+void GenVec_create_stk_arr(GenVec* vec, u64 n, u8* arr, u32 data_size, const wc_container_ops* ops)
+    __attribute__((nonnull(1, 3)));
 
 // Destroy heap-allocated vector and clean up all elements.
 void GenVec_destroy(GenVec* vec) __attribute__((nonnull(1)));
@@ -665,7 +665,10 @@ u8* GenVec_get_ptr_mut(GenVec* vec, u64 i) __attribute__((nonnull(1)));
 // Use on hot paths where the check is provably redundant (macros, internal loops).
 const u8* GenVec_get_ptr_unsafe(const GenVec* vec, u64 i) __attribute__((nonnull(1)));
 
-u8* GenVec_get_ptr_mut_unsafe(GenVec* vec, u64 i) __attribute__((nonnull(1)));
+static inline __attribute__((nonnull(1))) u8* GenVec_get_ptr_mut_unsafe(GenVec* vec, u64 i)
+{
+    return (vec->data + (i * ((vec)->data_size)));
+}
 
 // Replace element at index i with data (cleans up old element).
 void GenVec_replace(GenVec* vec, u64 i, const u8* data) __attribute__((nonnull(1, 3)));
@@ -701,7 +704,7 @@ const u8* GenVec_back(const GenVec* vec) __attribute__((nonnull(1)));
 // ===========================
 
 // if cmp_fn = NULL, then use memcmp
-u64 GenVec_find(const GenVec* vec, u8* elm, compare_fn cmp_fn) __attribute__((nonnull(1, 2)));
+u64 GenVec_find(const GenVec* vec, u8* elm, wc_compare_fn cmp_fn) __attribute__((nonnull(1, 2)));
 
 GenVec* GenVec_subarr(const GenVec* vec, u64 start, u64 len) __attribute__((nonnull(1), warn_unused_result));
 
@@ -710,7 +713,7 @@ GenVec* GenVec_subarr(const GenVec* vec, u64 start, u64 len) __attribute__((nonn
 // ===========================
 
 // Print all elements using provided print function.
-void GenVec_print(const GenVec* vec, print_fn fn) __attribute__((nonnull(1, 2)));
+void GenVec_print(const GenVec* vec, wc_print_fn fn) __attribute__((nonnull(1, 2)));
 
 // Deep copy src vector into dest.
 // REQUIRES: dest must be uninitialized (or already destroyed/reset) before calling.
@@ -1121,7 +1124,7 @@ typedef struct {
     u32            val_size;
     u8*            scratch; // key_size + val_size bytes + alignment: temp buffer for robin hood swaps
     custom_hash_fn hash_fn;
-    compare_fn     cmp_fn;
+    wc_compare_fn     cmp_fn;
 
     // Shared ops vtables for keys and values.
     // Pass NULL for POD types (int, float, flat structs).
@@ -1147,9 +1150,9 @@ typedef struct {
 // Create a new HashMap.
 // hash_fn and cmp_fn default to fnv1a_hash / default_compare if NULL.
 // key_ops / val_ops: pass NULL for POD types.
-HashMap* HashMap_create(u32 key_size, u32 val_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
+HashMap* HashMap_create(u32 key_size, u32 val_size, custom_hash_fn hash_fn, wc_compare_fn cmp_fn,
                         const wc_container_ops* key_ops, const wc_container_ops* val_ops) __attribute__((warn_unused_result));
-void     HashMap_create_stk(HashMap* map, u32 key_size, u32 val_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
+void     HashMap_create_stk(HashMap* map, u32 key_size, u32 val_size, custom_hash_fn hash_fn, wc_compare_fn cmp_fn,
                             const wc_container_ops* key_ops, const wc_container_ops* val_ops)
     __attribute__((nonnull(1)));
 
@@ -1199,7 +1202,7 @@ b8 HashMap_del(HashMap* map, const u8* key, u8* out) __attribute__((nonnull(1, 2
 b8 HashMap_has(const HashMap* map, const u8* key) __attribute__((nonnull(1, 2)));
 
 // Print all key-value pairs.
-void HashMap_print(const HashMap* map, print_fn key_print, print_fn val_print) __attribute__((nonnull(1, 2, 3)));
+void HashMap_print(const HashMap* map, wc_print_fn key_print, wc_print_fn val_print) __attribute__((nonnull(1, 2, 3)));
 
 // Remove all elements, keep capacity.
 void HashMap_clear(HashMap* map) __attribute__((nonnull(1)));
@@ -1246,7 +1249,7 @@ typedef struct {
     u32            elm_size;
     u8*            scratch; // 2 * elm_size bytes — stage (first half) + RH swap (second half)
     custom_hash_fn hash_fn;
-    compare_fn     cmp_fn;
+    wc_compare_fn     cmp_fn;
 
     // Shared ops vtable for elements.
     // Pass NULL for POD types (int, float, flat structs).
@@ -1263,9 +1266,9 @@ typedef struct {
 // Create a new HashSet.
 // hash_fn and cmp_fn default to wyhash / default_compare if NULL.
 // ops: pass NULL for POD types.
-HashSet* HashSet_create(u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn, const wc_container_ops* ops)
+HashSet* HashSet_create(u32 elm_size, custom_hash_fn hash_fn, wc_compare_fn cmp_fn, const wc_container_ops* ops)
     __attribute__((warn_unused_result));
-void HashSet_create_stk(HashSet* set, u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn, const wc_container_ops* ops)
+void HashSet_create_stk(HashSet* set, u32 elm_size, custom_hash_fn hash_fn, wc_compare_fn cmp_fn, const wc_container_ops* ops)
     __attribute__((nonnull(1)));
 
 void HashSet_destroy(HashSet* set) __attribute__((nonnull(1)));
@@ -1303,7 +1306,7 @@ const u8* HashSet_bucket_elm_ptr(const HashSet* set, u64 i) __attribute__((nonnu
 b8 HashSet_remove(HashSet* set, const u8* elm) __attribute__((nonnull(1, 2)));
 
 // Print all elements.
-void HashSet_print(const HashSet* set, print_fn print) __attribute__((nonnull(1, 2)));
+void HashSet_print(const HashSet* set, wc_print_fn print) __attribute__((nonnull(1, 2)));
 
 // Remove all elements, keep capacity.
 void HashSet_clear(HashSet* set) __attribute__((nonnull(1)));
@@ -1362,7 +1365,7 @@ void      Queue_pop(Queue* q, u8* out) __attribute__((nonnull(1)));
 void      Queue_peek(Queue* q, u8* peek) __attribute__((nonnull(1, 2)));
 const u8* Queue_peek_ptr(const Queue* q) __attribute__((nonnull(1)));
 
-void      Queue_print(Queue* q, print_fn print_fn) __attribute__((nonnull(1, 2)));
+void      Queue_print(Queue* q, wc_print_fn print_fn) __attribute__((nonnull(1, 2)));
 
 // 6-J: nonnull-validated — no CHECK_FATAL(!q) re-checks (mirrors gen_vector.c)
 static inline __attribute__((nonnull(1))) u64 Queue_size(const Queue* q) { return q->size;                  }
@@ -1375,7 +1378,7 @@ static inline __attribute__((nonnull(1))) u64 Queue_capacity(const Queue* q) { r
 #ifndef WC_WC_MACROS_H
 #define WC_WC_MACROS_H
 
-// Required by WC_OPS (6-I): _Generic association expressions must name declared
+// _Generic association expressions must name declared
 // symbols in every TU that sees this header, even when the macro is never used.
 /* C11 + GNU extensions used here:
  *   typeof  (__typeof__)  — GNU ext, available with Clang/GCC + -std=c11
@@ -1384,7 +1387,7 @@ static inline __attribute__((nonnull(1))) u64 Queue_capacity(const Queue* q) { r
 
 #define typeof __typeof__
 
-/* WC_ASSERT_ELEM_SIZE — developer guard for typed macro layers (6-H).
+/* WC_ASSERT_ELEM_SIZE — developer guard for typed macro layers.
  * Fires when a type-asserting macro (VEC_AT, VEC_POP, ...) is used on a vec
  * whose element size doesn't match sizeof(T) — i.e. the wrong T was passed.
  * The container never knows T, so this lives in the macro layer.
@@ -1397,7 +1400,7 @@ static inline __attribute__((nonnull(1))) u64 Queue_capacity(const Queue* q) { r
     } while (0)
 
 
-/* WC_OPS — pick the right container_ops for T at compile time (6-I).
+/* WC_OPS — pick the right container_ops for T at compile time.
  * Requires wc_helpers.h (the ops instances it names live there).
  *   VEC_CREATE_OF(int, 8)                  -> POD, NULL ops
  *   VEC_CREATE_OF(String, 8)               -> &wc_str_ops (by value)
@@ -1495,7 +1498,7 @@ Usage:
 
 
 // Access
-// All type-asserting macros guard with WC_ASSERT_ELEM_SIZE (6-H) — pass the right T.
+// All type-asserting macros guard with WC_ASSERT_ELEM_SIZE, pass the right T.
 
 #define VEC_AT(vec, T, i)                \
     ({                                   \
@@ -2455,7 +2458,7 @@ GenVec* GenVec_create_val(u64 n, const u8* val, u32 data_size, const wc_containe
             memcpy(GET_PTR(vec, i), val, data_size);
         }
     } else {
-        copy_fn copy = vec->ops->copy_fn;
+        wc_copy_fn copy = vec->ops->copy_fn;
         if (copy) {
             for (u64 i = 0; i < n; i++) {
                 copy(GET_PTR(vec, i), val);
@@ -2484,7 +2487,7 @@ void GenVec_create_val_stk(GenVec* vec, u64 n, const u8* val, u32 data_size, con
             memcpy(GET_PTR(vec, i), val, data_size);
         }
     } else {
-        copy_fn copy = vec->ops->copy_fn;
+        wc_copy_fn copy = vec->ops->copy_fn;
         if (copy) {
             for (u64 i = 0; i < n; i++) {
                 copy(GET_PTR(vec, i), val);
@@ -2536,7 +2539,7 @@ void GenVec_destroy_stk(GenVec* vec)
     }
 
     if (!vec->is_pod) {
-        delete_fn del = vec->ops->del_fn;
+        wc_delete_fn del = vec->ops->del_fn;
         if (del) {
             for (u64 i = 0; i < vec->size; i++) {
                 del(GET_PTR(vec, i));
@@ -2552,7 +2555,7 @@ void GenVec_destroy_stk(GenVec* vec)
 void GenVec_clear(GenVec* vec)
 {
     if (!vec->is_pod) {
-        delete_fn del = vec->ops->del_fn;
+        wc_delete_fn del = vec->ops->del_fn;
         if (del) {
             for (u64 i = 0; i < vec->size; i++) {
                 del(GET_PTR(vec, i));
@@ -2567,7 +2570,7 @@ void GenVec_clear(GenVec* vec)
 void GenVec_reset(GenVec* vec)
 {
     if (!vec->is_pod) {
-        delete_fn del = vec->ops->del_fn;
+        wc_delete_fn del = vec->ops->del_fn;
         if (del) {
             for (u64 i = 0; i < vec->size; i++) {
                 del(GET_PTR(vec, i));
@@ -2607,7 +2610,7 @@ void GenVec_reserve_val(GenVec* vec, u64 new_capacity, const u8* val)
             memcpy(GET_PTR(vec, i), val, vec->data_size);
         }
     } else {
-        copy_fn copy = vec->ops->copy_fn;
+        wc_copy_fn copy = vec->ops->copy_fn;
         if (copy) {
             for (u64 i = vec->size; i < new_capacity; i++) {
                 copy(GET_PTR(vec, i), val);
@@ -2646,7 +2649,7 @@ void GenVec_push(GenVec* vec, const u8* data)
     if (vec->is_pod) {
         memcpy(GET_PTR(vec, vec->size), data, vec->data_size);
     } else {
-        copy_fn copy = vec->ops->copy_fn;
+        wc_copy_fn copy = vec->ops->copy_fn;
         if (copy) {
             copy(GET_PTR(vec, vec->size), data);
         } else {
@@ -2668,7 +2671,7 @@ void GenVec_push_move(GenVec* vec, u8** data)
         memcpy(GET_PTR(vec, vec->size), *data, vec->data_size);
         *data = NULL;
     } else {
-        move_fn move = vec->ops->move_fn;
+        wc_move_fn move = vec->ops->move_fn;
         if (move) {
             move(GET_PTR(vec, vec->size), data);
         } else {
@@ -2691,7 +2694,7 @@ void GenVec_pop(GenVec* vec, u8* popped)
         if (vec->is_pod) {
             memcpy(popped, last_elm, vec->data_size);
         } else {
-            copy_fn copy = vec->ops->copy_fn;
+            wc_copy_fn copy = vec->ops->copy_fn;
             if (copy) {
                 copy(popped, last_elm);
             } else {
@@ -2701,7 +2704,7 @@ void GenVec_pop(GenVec* vec, u8* popped)
     }
 
     if (!vec->is_pod) {
-        delete_fn del = vec->ops->del_fn;
+        wc_delete_fn del = vec->ops->del_fn;
         if (del) {
             del(last_elm);
         }
@@ -2718,7 +2721,7 @@ void GenVec_swap_pop(GenVec* vec, u64 i, u8* out)
         if (vec->is_pod) {
             memcpy(out, GET_PTR(vec, i), vec->data_size);
         } else {
-            copy_fn copy = vec->ops->copy_fn;
+            wc_copy_fn copy = vec->ops->copy_fn;
             if (copy) {
                 copy(out, GET_PTR(vec, i));
             } else {
@@ -2728,7 +2731,7 @@ void GenVec_swap_pop(GenVec* vec, u64 i, u8* out)
     }
 
     if (!vec->is_pod) {
-        delete_fn del = vec->ops->del_fn;
+        wc_delete_fn del = vec->ops->del_fn;
         if (del) {
             del(GET_PTR(vec, i));
         }
@@ -2769,7 +2772,7 @@ void GenVec_get(const GenVec* vec, u64 i, u8* out)
     if (vec->is_pod) {
         memcpy(out, GET_PTR(vec, i), vec->data_size);
     } else {
-        copy_fn copy = vec->ops->copy_fn;
+        wc_copy_fn copy = vec->ops->copy_fn;
         if (copy) {
             copy(out, GET_PTR(vec, i));
         } else {
@@ -2802,13 +2805,6 @@ const u8* GenVec_get_ptr_unsafe(const GenVec* vec, u64 i)
 }
 
 
-u8* GenVec_get_ptr_mut_unsafe(GenVec* vec, u64 i)
-{
-    // Preconditions NOT validated — caller guarantees i < vec->size.
-    return GET_PTR(vec, i);
-}
-
-
 void GenVec_replace(GenVec* vec, u64 i, const u8* data)
 {
     CHECK_FATAL(i >= vec->size, "index out of bounds");
@@ -2818,11 +2814,11 @@ void GenVec_replace(GenVec* vec, u64 i, const u8* data)
     if (vec->is_pod) {
         memcpy(to_replace, data, vec->data_size);
     } else {
-        delete_fn del = vec->ops->del_fn;
+        wc_delete_fn del = vec->ops->del_fn;
         if (del) {
             del(to_replace);
         }
-        copy_fn copy = vec->ops->copy_fn;
+        wc_copy_fn copy = vec->ops->copy_fn;
         if (copy) {
             copy(to_replace, data);
         } else {
@@ -2842,11 +2838,11 @@ void GenVec_replace_move(GenVec* vec, u64 i, u8** data)
         memcpy(to_replace, *data, vec->data_size);
         *data = NULL;
     } else {
-        delete_fn del = vec->ops->del_fn;
+        wc_delete_fn del = vec->ops->del_fn;
         if (del) {
             del(to_replace);
         }
-        move_fn move = vec->ops->move_fn;
+        wc_move_fn move = vec->ops->move_fn;
         if (move) {
             move(to_replace, data);
         } else {
@@ -2872,7 +2868,7 @@ void GenVec_insert(GenVec* vec, u64 i, const u8* data)
     if (vec->is_pod) {
         memcpy(src, data, vec->data_size);
     } else {
-        copy_fn copy = vec->ops->copy_fn;
+        wc_copy_fn copy = vec->ops->copy_fn;
         if (copy) {
             copy(src, data);
         } else {
@@ -2900,7 +2896,7 @@ void GenVec_insert_move(GenVec* vec, u64 i, u8** data)
         memcpy(src, *data, vec->data_size);
         *data = NULL;
     } else {
-        move_fn move = vec->ops->move_fn;
+        wc_move_fn move = vec->ops->move_fn;
         if (move) {
             move(src, data);
         } else {
@@ -2931,7 +2927,7 @@ void GenVec_insert_multi(GenVec* vec, u64 i, const u8* data, u64 num_data)
     if (vec->is_pod) {
         memcpy(src, data, GET_SCALED(vec, num_data));
     } else {
-        copy_fn copy = vec->ops->copy_fn;
+        wc_copy_fn copy = vec->ops->copy_fn;
         if (copy) {
             for (u64 j = 0; j < num_data; j++) {
                 copy(GET_PTR(vec, j + i), data + (size_t)(j * vec->data_size));
@@ -2961,7 +2957,7 @@ void GenVec_insert_multi_move(GenVec* vec, u64 i, u8** data, u64 num_data)
     if (vec->is_pod) {
         memcpy(src, *data, GET_SCALED(vec, num_data));
     } else {
-        move_fn move = vec->ops->move_fn;
+        wc_move_fn move = vec->ops->move_fn;
         if (move) {
             for (u64 j = 0; j < num_data; j++) {
                 u8* elm_src = *data + (size_t)(j * vec->data_size);
@@ -2984,7 +2980,7 @@ void GenVec_remove(GenVec* vec, u64 i, u8* out)
         if (vec->is_pod) {
             memcpy(out, GET_PTR(vec, i), vec->data_size);
         } else {
-            copy_fn copy = vec->ops->copy_fn;
+            wc_copy_fn copy = vec->ops->copy_fn;
             if (copy) {
                 copy(out, GET_PTR(vec, i));
             } else {
@@ -2994,7 +2990,7 @@ void GenVec_remove(GenVec* vec, u64 i, u8* out)
     }
 
     if (!vec->is_pod) {
-        delete_fn del = vec->ops->del_fn;
+        wc_delete_fn del = vec->ops->del_fn;
         if (del) {
             del(GET_PTR(vec, i));
         }
@@ -3029,7 +3025,7 @@ void GenVec_remove_range(GenVec* vec, u64 start, u64 len)
     }
 
     if (!vec->is_pod) {
-        delete_fn del = vec->ops->del_fn;
+        wc_delete_fn del = vec->ops->del_fn;
         if (del) {
             for (u64 i = 0; i < len; i++) {
                 del(GET_PTR(vec, start + i));
@@ -3059,7 +3055,7 @@ const u8* GenVec_back(const GenVec* vec)
 }
 
 
-u64 GenVec_find(const GenVec* vec, u8* elm, compare_fn cmp_fn)
+u64 GenVec_find(const GenVec* vec, u8* elm, wc_compare_fn cmp_fn)
 {
     for (u64 i = 0; i < vec->size; i++) {
         if (cmp_fn) {
@@ -3091,7 +3087,7 @@ GenVec* GenVec_subarr(const GenVec* vec, u64 start, u64 len)
         if (vec->is_pod) {
             memcpy(GET_PTR(v, 0), GET_PTR(vec, start), len * vec->data_size);
         } else {
-            copy_fn copy = vec->ops->copy_fn;
+            wc_copy_fn copy = vec->ops->copy_fn;
             if (copy) {
                 for (u64 i = 0; i < len; i++) {
                     copy(GET_PTR(v, i), GET_PTR(vec, i + start));
@@ -3108,7 +3104,7 @@ GenVec* GenVec_subarr(const GenVec* vec, u64 start, u64 len)
 }
 
 
-void GenVec_print(const GenVec* vec, print_fn fn)
+void GenVec_print(const GenVec* vec, wc_print_fn fn)
 {
     printf("[ ");
     for (u64 i = 0; i < vec->size; i++) {
@@ -3133,7 +3129,7 @@ void GenVec_copy(GenVec* dest, const GenVec* src)
     if (src->is_pod) {
         memcpy(dest->data, src->data, GET_SCALED(src, src->size));
     } else {
-        copy_fn copy = src->ops->copy_fn;
+        wc_copy_fn copy = src->ops->copy_fn;
         if (copy) {
             for (u64 i = 0; i < src->size; i++) {
                 copy(GET_PTR(dest, i), GET_PTR(src, i));
@@ -3238,7 +3234,7 @@ static void        map_resize(HashMap* map, u64 new_capacity);
 ====================PUBLIC FUNCTIONS====================
 */
 
-void HashMap_create_stk(HashMap* map, u32 key_size, u32 val_size, custom_hash_fn hash_fn, compare_fn cmp_fn, const wc_container_ops* key_ops, const wc_container_ops* val_ops)
+void HashMap_create_stk(HashMap* map, u32 key_size, u32 val_size, custom_hash_fn hash_fn, wc_compare_fn cmp_fn, const wc_container_ops* key_ops, const wc_container_ops* val_ops)
 {
     CHECK_FATAL(key_size == 0 || val_size == 0, "key/val size can't be 0");
 
@@ -3264,7 +3260,7 @@ void HashMap_create_stk(HashMap* map, u32 key_size, u32 val_size, custom_hash_fn
     map->val_ops = val_ops;
 }
 
-HashMap* HashMap_create(u32 key_size, u32 val_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
+HashMap* HashMap_create(u32 key_size, u32 val_size, custom_hash_fn hash_fn, wc_compare_fn cmp_fn,
                         const wc_container_ops* key_ops, const wc_container_ops* val_ops)
 {
     HashMap* map = malloc(sizeof(HashMap));
@@ -3285,8 +3281,8 @@ void HashMap_destroy(HashMap* map)
 void HashMap_destroy_stk(HashMap* map)
 {
     if (!IS_POD_K(map) || !IS_POD_V(map)) {
-        delete_fn k_del = IS_POD_K(map) ? NULL : map->key_ops->del_fn;
-        delete_fn v_del = IS_POD_V(map) ? NULL : map->val_ops->del_fn;
+        wc_delete_fn k_del = IS_POD_K(map) ? NULL : map->key_ops->del_fn;
+        wc_delete_fn v_del = IS_POD_V(map) ? NULL : map->val_ops->del_fn;
         if (k_del || v_del) {
             for (u64 i = 0; i < map->capacity; i++) {
                 if (*GET_PSL(map, i) == BUCKET_EMPTY) {
@@ -3323,11 +3319,11 @@ b8 HashMap_put(HashMap* map, const u8* key, const u8* val)
         if (IS_POD_V(map)) {
             memcpy(GET_VAL(map, slot), val, map->val_size);
         } else {
-            delete_fn v_del = map->val_ops->del_fn;
+            wc_delete_fn v_del = map->val_ops->del_fn;
             if (v_del) {
                 v_del(GET_VAL(map, slot));
             }
-            copy_fn v_cp = map->val_ops->copy_fn;
+            wc_copy_fn v_cp = map->val_ops->copy_fn;
             if (v_cp) {
                 v_cp(GET_VAL(map, slot), val);
             } else {
@@ -3340,7 +3336,7 @@ b8 HashMap_put(HashMap* map, const u8* key, const u8* val)
     if (IS_POD_K(map)) {
         memcpy(STAGE_KEY(map), key, map->key_size);
     } else {
-        copy_fn k_cp = map->key_ops->copy_fn;
+        wc_copy_fn k_cp = map->key_ops->copy_fn;
         if (k_cp) {
             k_cp(STAGE_KEY(map), key);
         } else {
@@ -3350,7 +3346,7 @@ b8 HashMap_put(HashMap* map, const u8* key, const u8* val)
     if (IS_POD_V(map)) {
         memcpy(STAGE_VAL(map), val, map->val_size);
     } else {
-        copy_fn v_cp = map->val_ops->copy_fn;
+        wc_copy_fn v_cp = map->val_ops->copy_fn;
         if (v_cp) {
             v_cp(STAGE_VAL(map), val);
         } else {
@@ -3372,8 +3368,8 @@ b8 HashMap_put_move(HashMap* map, u8** key, u8** val)
 {
     CHECK_FATAL(!*key || !*val, "*key/*val null");
 
-    move_fn k_mv = MAP_MOVE(map->key_ops);
-    move_fn v_mv = MAP_MOVE(map->val_ops);
+    wc_move_fn k_mv = MAP_MOVE(map->key_ops);
+    wc_move_fn v_mv = MAP_MOVE(map->val_ops);
 
     // move_fn is mandatory: it must transfer the heap resource and null the source.
     // For by-value types with no heap resources, use HashMap_put (copy semantics) instead.
@@ -3385,14 +3381,14 @@ b8 HashMap_put_move(HashMap* map, u8** key, u8** val)
 
     if (res == FOUND) {
         if (!IS_POD_V(map)) {
-            delete_fn v_del = map->val_ops->del_fn;
+            wc_delete_fn v_del = map->val_ops->del_fn;
             if (v_del) {
                 v_del(GET_VAL(map, slot));
             }
         }
         v_mv(GET_VAL(map, slot), val);
         if (!IS_POD_K(map)) {
-            delete_fn k_del = map->key_ops->del_fn;
+            wc_delete_fn k_del = map->key_ops->del_fn;
             if (k_del) {
                 k_del(*key);
             }
@@ -3420,7 +3416,7 @@ b8 HashMap_put_val_move(HashMap* map, const u8* key, u8** val)
 {
     CHECK_FATAL(!*val, "*val null");
 
-    move_fn v_mv = MAP_MOVE(map->val_ops);
+    wc_move_fn v_mv = MAP_MOVE(map->val_ops);
 
     CHECK_FATAL(!v_mv, "val move func required");
 
@@ -3430,7 +3426,7 @@ b8 HashMap_put_val_move(HashMap* map, const u8* key, u8** val)
 
     if (res == FOUND) {
         if (!IS_POD_V(map)) {
-            delete_fn v_del = map->val_ops->del_fn;
+            wc_delete_fn v_del = map->val_ops->del_fn;
             if (v_del) {
                 v_del(GET_VAL(map, slot));
             }
@@ -3442,7 +3438,7 @@ b8 HashMap_put_val_move(HashMap* map, const u8* key, u8** val)
     if (IS_POD_K(map)) {
         memcpy(STAGE_KEY(map), key, map->key_size);
     } else {
-        copy_fn k_cp = map->key_ops->copy_fn;
+        wc_copy_fn k_cp = map->key_ops->copy_fn;
         if (k_cp) {
             k_cp(STAGE_KEY(map), key);
         } else {
@@ -3464,7 +3460,7 @@ b8 HashMap_put_key_move(HashMap* map, u8** key, const u8* val)
 {
     CHECK_FATAL(!*key, "*key null");
 
-    move_fn k_mv = MAP_MOVE(map->key_ops);
+    wc_move_fn k_mv = MAP_MOVE(map->key_ops);
 
     CHECK_FATAL(!k_mv, "key move func required for HashMap_put_key_move");
 
@@ -3474,11 +3470,11 @@ b8 HashMap_put_key_move(HashMap* map, u8** key, const u8* val)
 
     if (res == FOUND) {
         if (!IS_POD_V(map)) {
-            delete_fn v_del = map->val_ops->del_fn;
+            wc_delete_fn v_del = map->val_ops->del_fn;
             if (v_del) {
                 v_del(GET_VAL(map, slot));
             }
-            copy_fn v_cp = map->val_ops->copy_fn;
+            wc_copy_fn v_cp = map->val_ops->copy_fn;
             if (v_cp) {
                 v_cp(GET_VAL(map, slot), val);
             } else {
@@ -3489,7 +3485,7 @@ b8 HashMap_put_key_move(HashMap* map, u8** key, const u8* val)
         }
         // Key already in map — consume (and discard) the incoming duplicate.
         if (!IS_POD_K(map)) {
-            delete_fn k_del = map->key_ops->del_fn;
+            wc_delete_fn k_del = map->key_ops->del_fn;
             if (k_del) {
                 k_del(*key);
             }
@@ -3504,7 +3500,7 @@ b8 HashMap_put_key_move(HashMap* map, u8** key, const u8* val)
     if (IS_POD_V(map)) {
         memcpy(STAGE_VAL(map), val, map->val_size);
     } else {
-        copy_fn v_cp = map->val_ops->copy_fn;
+        wc_copy_fn v_cp = map->val_ops->copy_fn;
         if (v_cp) {
             v_cp(STAGE_VAL(map), val);
         } else {
@@ -3533,7 +3529,7 @@ b8 HashMap_get(const HashMap* map, const u8* key, u8* val)
     if (IS_POD_V(map)) {
         memcpy(val, GET_VAL(map, slot), map->val_size);
     } else {
-        copy_fn v_copy = map->val_ops->copy_fn;
+        wc_copy_fn v_copy = map->val_ops->copy_fn;
         if (v_copy) {
             v_copy(val, GET_VAL(map, slot));
         } else {
@@ -3597,7 +3593,7 @@ b8 HashMap_del(HashMap* map, const u8* key, u8* out)
         memcpy(out, GET_VAL(map, slot), map->val_size);
     } else {
         if (!IS_POD_V(map)) {
-            delete_fn v_del = map->val_ops->del_fn;
+            wc_delete_fn v_del = map->val_ops->del_fn;
             if (v_del) {
                 v_del(GET_VAL(map, slot));
             }
@@ -3605,7 +3601,7 @@ b8 HashMap_del(HashMap* map, const u8* key, u8* out)
     }
 
     if (!IS_POD_K(map)) {
-        delete_fn k_del = map->key_ops->del_fn;
+        wc_delete_fn k_del = map->key_ops->del_fn;
         if (k_del) {
             k_del(GET_KEY(map, slot));
         }
@@ -3649,7 +3645,7 @@ b8 HashMap_has(const HashMap* map, const u8* key)
 
 
 // Print all key-value pairs.
-void HashMap_print(const HashMap* map, print_fn key_print, print_fn val_print)
+void HashMap_print(const HashMap* map, wc_print_fn key_print, wc_print_fn val_print)
 {
     printf("\t=========\n");
     printf("\tSize: %lu / Capacity: %lu\n", map->size, map->capacity);
@@ -3675,8 +3671,8 @@ void HashMap_print(const HashMap* map, print_fn key_print, print_fn val_print)
 void HashMap_clear(HashMap* map)
 {
     if (!IS_POD_K(map) || !IS_POD_V(map)) {
-        delete_fn k_del = IS_POD_K(map) ? NULL : map->key_ops->del_fn;
-        delete_fn v_del = IS_POD_V(map) ? NULL : map->val_ops->del_fn;
+        wc_delete_fn k_del = IS_POD_K(map) ? NULL : map->key_ops->del_fn;
+        wc_delete_fn v_del = IS_POD_V(map) ? NULL : map->val_ops->del_fn;
         for (u64 i = 0; i < map->capacity; i++) {
             if (*GET_PSL(map, i) == BUCKET_EMPTY) {
                 continue;
@@ -3722,8 +3718,8 @@ void HashMap_copy(HashMap* dest, const HashMap* src)
     dest->key_ops  = src->key_ops;
     dest->val_ops  = src->val_ops;
 
-    copy_fn k_cp = IS_POD_K(src) ? NULL : src->key_ops->copy_fn;
-    copy_fn v_cp = IS_POD_V(src) ? NULL : src->val_ops->copy_fn;
+    wc_copy_fn k_cp = IS_POD_K(src) ? NULL : src->key_ops->copy_fn;
+    wc_copy_fn v_cp = IS_POD_V(src) ? NULL : src->val_ops->copy_fn;
 
     for (u64 i = 0; i < src->capacity; i++) {
         u8 psl = *GET_PSL(src, i);
@@ -3764,7 +3760,7 @@ static u64 map_lookup(const HashMap* map, const u8* key, LOOKUP_RES* res, u8* ou
 {
     u64        idx = MAP_IDX(map, key);
     u8         psl = 1; // stored PSL=1 means real probe distance 0 (home slot)
-    compare_fn cmp = map->cmp_fn;
+    wc_compare_fn cmp = map->cmp_fn;
 
     for (u64 i = idx;; i = MAP_NEXT(map, i)) {
         u8 slot_psl = *GET_PSL(map, i);
@@ -3956,7 +3952,7 @@ static inline void set_maybe_resize(HashSet* set);
 ====================PUBLIC FUNCTIONS====================
 */
 
-void HashSet_create_stk(HashSet* set, u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn, const wc_container_ops* ops)
+void HashSet_create_stk(HashSet* set, u32 elm_size, custom_hash_fn hash_fn, wc_compare_fn cmp_fn, const wc_container_ops* ops)
 {
     CHECK_FATAL(elm_size == 0, "elm_size can't be 0");
 
@@ -3979,7 +3975,7 @@ void HashSet_create_stk(HashSet* set, u32 elm_size, custom_hash_fn hash_fn, comp
     set->ops = ops;
 }
 
-HashSet* HashSet_create(u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
+HashSet* HashSet_create(u32 elm_size, custom_hash_fn hash_fn, wc_compare_fn cmp_fn,
                         const wc_container_ops* ops)
 {
     HashSet* set = malloc(sizeof(HashSet));
@@ -3999,7 +3995,7 @@ void HashSet_destroy(HashSet* set)
 
 void HashSet_destroy_stk(HashSet* set)
 {
-    delete_fn e_del = SET_DEL(set->ops);
+    wc_delete_fn e_del = SET_DEL(set->ops);
 
     if (e_del) {
         for (u64 i = 0; i < set->capacity; i++) {
@@ -4020,7 +4016,7 @@ void HashSet_destroy_stk(HashSet* set)
 // Returns 1 if already existed (no-op), 0 if newly inserted.
 b8 HashSet_insert(HashSet* set, const u8* elm)
 {
-    copy_fn e_cp = SET_COPY(set->ops);
+    wc_copy_fn e_cp = SET_COPY(set->ops);
 
     LOOKUP_RES res;
     u8             out_psl;
@@ -4050,8 +4046,8 @@ b8 HashSet_insert_move(HashSet* set, u8** elm)
 {
     CHECK_FATAL(!*elm, "*elm null");
 
-    move_fn   e_mv  = SET_MOVE(set->ops);
-    delete_fn e_del = SET_DEL(set->ops);
+    wc_move_fn   e_mv  = SET_MOVE(set->ops);
+    wc_delete_fn e_del = SET_DEL(set->ops);
 
     CHECK_FATAL(!e_mv, "elm move func required");
 
@@ -4122,7 +4118,7 @@ b8 HashSet_remove(HashSet* set, const u8* elm)
         return 0;
     }
 
-    delete_fn e_del = SET_DEL(set->ops);
+    wc_delete_fn e_del = SET_DEL(set->ops);
 
     if (e_del) {
         e_del(GET_ELM(set, slot));
@@ -4152,7 +4148,7 @@ b8 HashSet_remove(HashSet* set, const u8* elm)
 
 
 // Print all elements.
-void HashSet_print(const HashSet* set, print_fn print)
+void HashSet_print(const HashSet* set, wc_print_fn print)
 {
     printf("\t=========\n");
     printf("\tSize: %lu / Capacity: %lu\n", set->size, set->capacity);
@@ -4174,7 +4170,7 @@ void HashSet_print(const HashSet* set, print_fn print)
 // Remove all elements, keep capacity.
 void HashSet_clear(HashSet* set)
 {
-    delete_fn e_del = SET_DEL(set->ops);
+    wc_delete_fn e_del = SET_DEL(set->ops);
 
     for (u64 i = 0; i < set->capacity; i++) {
         if (*GET_PSL(set, i) == BUCKET_EMPTY) {
@@ -4212,7 +4208,7 @@ void HashSet_copy(HashSet* dest, const HashSet* src)
     dest->cmp_fn   = src->cmp_fn;
     dest->ops      = src->ops;
 
-    copy_fn e_cp = SET_COPY(src->ops);
+    wc_copy_fn e_cp = SET_COPY(src->ops);
 
     for (u64 i = 0; i < src->capacity; i++) {
         u8 psl = *GET_PSL(src, i);
@@ -4540,7 +4536,7 @@ void Queue_pop(Queue* q, u8* out)
     }
 
     // Clean up the element if del_fn exists
-    delete_fn del = VEC_DEL_FN(q->arr);
+    wc_delete_fn del = VEC_DEL_FN(q->arr);
     if (del) {
         u8* elem = (u8*)GenVec_get_ptr(q->arr, q->head);
         del(elem);
@@ -4566,7 +4562,7 @@ const u8* Queue_peek_ptr(const Queue* q)
     return GenVec_get_ptr(q->arr, q->head);
 }
 
-void Queue_print(Queue* q, print_fn print)
+void Queue_print(Queue* q, wc_print_fn print)
 {
     u64 h   = q->head;
     u64 cap = GenVec_capacity(q->arr);

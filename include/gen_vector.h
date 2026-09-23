@@ -68,18 +68,21 @@ GenVec* GenVec_create(u64 n, u32 data_size, const wc_container_ops* ops) __attri
 void GenVec_create_stk(GenVec* vec, u64 n, u32 data_size, const wc_container_ops* ops) __attribute__((nonnull(1)));
 
 // Initialize vector of size n with all elements set to val.
-GenVec* GenVec_create_val(u64 n, const u8* val, u32 data_size, const wc_container_ops* ops) __attribute__((nonnull(2), warn_unused_result));
+GenVec* GenVec_create_val(u64 n, const u8* val, u32 data_size, const wc_container_ops* ops)
+    __attribute__((nonnull(2), warn_unused_result));
 
 void GenVec_create_val_stk(GenVec* vec, u64 n, const u8* val, u32 data_size, const wc_container_ops* ops)
     __attribute__((nonnull(1, 3)));
 
-GenVec* GenVec_create_arr(u64 n, u32 data_size, const wc_container_ops* ops, u8* arr) __attribute__((nonnull(4), warn_unused_result));
+GenVec* GenVec_create_arr(u64 n, u32 data_size, const wc_container_ops* ops, u8* arr)
+    __attribute__((nonnull(4), warn_unused_result));
 
 // Vector COMPLETELY on Stack (can't grow in size).
 // You provide a Stack-allocated array which becomes the internal array.
 // should only use if you need GenVec operations on C array
 // WARNING: crashes when size == capacity and you try to push.
-void GenVec_create_stk_arr(GenVec* vec, u64 n, u8* arr, u32 data_size, const wc_container_ops* ops) __attribute__((nonnull(1, 3)));
+void GenVec_create_stk_arr(GenVec* vec, u64 n, u8* arr, u32 data_size, const wc_container_ops* ops)
+    __attribute__((nonnull(1, 3)));
 
 // Destroy heap-allocated vector and clean up all elements.
 void GenVec_destroy(GenVec* vec) __attribute__((nonnull(1)));
@@ -139,7 +142,10 @@ u8* GenVec_get_ptr_mut(GenVec* vec, u64 i) __attribute__((nonnull(1)));
 // Use on hot paths where the check is provably redundant (macros, internal loops).
 const u8* GenVec_get_ptr_unsafe(const GenVec* vec, u64 i) __attribute__((nonnull(1)));
 
-u8* GenVec_get_ptr_mut_unsafe(GenVec* vec, u64 i) __attribute__((nonnull(1)));
+static inline __attribute__((nonnull(1))) u8* GenVec_get_ptr_mut_unsafe(GenVec* vec, u64 i)
+{
+    return (vec->data + (i * ((vec)->data_size)));
+}
 
 // Replace element at index i with data (cleans up old element).
 void GenVec_replace(GenVec* vec, u64 i, const u8* data) __attribute__((nonnull(1, 3)));
@@ -175,7 +181,7 @@ const u8* GenVec_back(const GenVec* vec) __attribute__((nonnull(1)));
 // ===========================
 
 // if cmp_fn = NULL, then use memcmp
-u64 GenVec_find(const GenVec* vec, u8* elm, compare_fn cmp_fn) __attribute__((nonnull(1, 2)));
+u64 GenVec_find(const GenVec* vec, u8* elm, wc_compare_fn cmp_fn) __attribute__((nonnull(1, 2)));
 
 GenVec* GenVec_subarr(const GenVec* vec, u64 start, u64 len) __attribute__((nonnull(1), warn_unused_result));
 
@@ -184,7 +190,7 @@ GenVec* GenVec_subarr(const GenVec* vec, u64 start, u64 len) __attribute__((nonn
 // ===========================
 
 // Print all elements using provided print function.
-void GenVec_print(const GenVec* vec, print_fn fn) __attribute__((nonnull(1, 2)));
+void GenVec_print(const GenVec* vec, wc_print_fn fn) __attribute__((nonnull(1, 2)));
 
 // Deep copy src vector into dest.
 // REQUIRES: dest must be uninitialized (or already destroyed/reset) before calling.

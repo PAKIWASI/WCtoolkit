@@ -23,7 +23,7 @@ typedef struct {
     u32            elm_size;
     u8*            scratch; // 2 * elm_size bytes — stage (first half) + RH swap (second half)
     custom_hash_fn hash_fn;
-    compare_fn     cmp_fn;
+    wc_compare_fn     cmp_fn;
 
     // Shared ops vtable for elements.
     // Pass NULL for POD types (int, float, flat structs).
@@ -40,9 +40,9 @@ typedef struct {
 // Create a new HashSet.
 // hash_fn and cmp_fn default to wyhash / default_compare if NULL.
 // ops: pass NULL for POD types.
-HashSet* HashSet_create(u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn, const wc_container_ops* ops)
+HashSet* HashSet_create(u32 elm_size, custom_hash_fn hash_fn, wc_compare_fn cmp_fn, const wc_container_ops* ops)
     __attribute__((warn_unused_result));
-void HashSet_create_stk(HashSet* set, u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn, const wc_container_ops* ops)
+void HashSet_create_stk(HashSet* set, u32 elm_size, custom_hash_fn hash_fn, wc_compare_fn cmp_fn, const wc_container_ops* ops)
     __attribute__((nonnull(1)));
 
 void HashSet_destroy(HashSet* set) __attribute__((nonnull(1)));
@@ -80,7 +80,7 @@ const u8* HashSet_bucket_elm_ptr(const HashSet* set, u64 i) __attribute__((nonnu
 b8 HashSet_remove(HashSet* set, const u8* elm) __attribute__((nonnull(1, 2)));
 
 // Print all elements.
-void HashSet_print(const HashSet* set, print_fn print) __attribute__((nonnull(1, 2)));
+void HashSet_print(const HashSet* set, wc_print_fn print) __attribute__((nonnull(1, 2)));
 
 // Remove all elements, keep capacity.
 void HashSet_clear(HashSet* set) __attribute__((nonnull(1)));

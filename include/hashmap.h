@@ -25,7 +25,7 @@ typedef struct {
     u32            val_size;
     u8*            scratch; // key_size + val_size bytes + alignment: temp buffer for robin hood swaps
     custom_hash_fn hash_fn;
-    compare_fn     cmp_fn;
+    wc_compare_fn     cmp_fn;
 
     // Shared ops vtables for keys and values.
     // Pass NULL for POD types (int, float, flat structs).
@@ -51,9 +51,9 @@ typedef struct {
 // Create a new HashMap.
 // hash_fn and cmp_fn default to fnv1a_hash / default_compare if NULL.
 // key_ops / val_ops: pass NULL for POD types.
-HashMap* HashMap_create(u32 key_size, u32 val_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
+HashMap* HashMap_create(u32 key_size, u32 val_size, custom_hash_fn hash_fn, wc_compare_fn cmp_fn,
                         const wc_container_ops* key_ops, const wc_container_ops* val_ops) __attribute__((warn_unused_result));
-void     HashMap_create_stk(HashMap* map, u32 key_size, u32 val_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
+void     HashMap_create_stk(HashMap* map, u32 key_size, u32 val_size, custom_hash_fn hash_fn, wc_compare_fn cmp_fn,
                             const wc_container_ops* key_ops, const wc_container_ops* val_ops)
     __attribute__((nonnull(1)));
 
@@ -103,7 +103,7 @@ b8 HashMap_del(HashMap* map, const u8* key, u8* out) __attribute__((nonnull(1, 2
 b8 HashMap_has(const HashMap* map, const u8* key) __attribute__((nonnull(1, 2)));
 
 // Print all key-value pairs.
-void HashMap_print(const HashMap* map, print_fn key_print, print_fn val_print) __attribute__((nonnull(1, 2, 3)));
+void HashMap_print(const HashMap* map, wc_print_fn key_print, wc_print_fn val_print) __attribute__((nonnull(1, 2, 3)));
 
 // Remove all elements, keep capacity.
 void HashMap_clear(HashMap* map) __attribute__((nonnull(1)));

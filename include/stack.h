@@ -26,7 +26,7 @@ static inline __attribute__((nonnull(1))) u64 Stack_size(const Stack* stk) { ret
 static inline __attribute__((nonnull(1))) u8 Stack_empty(const Stack* stk) { return GenVec_empty(stk);    }
 static inline __attribute__((nonnull(1))) u64 Stack_capacity(const Stack* stk) { return GenVec_capacity(stk); }
 
-void Stack_print(Stack* stk, print_fn print_fn) __attribute__((nonnull(1, 2)));
+void Stack_print(Stack* stk, wc_print_fn print_fn) __attribute__((nonnull(1, 2)));
 
 
 #endif // STACK_H

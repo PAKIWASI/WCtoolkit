@@ -100,7 +100,7 @@ wc_fatal_report(const char* file, int line, const char* func, const char* fmt, .
 
 #define MALLOC(size, cap, name)                \
     ({                                         \
-        void* _mlcd = malloc(size * cap);      \
+        void* _mlcd = malloc((size) * (cap));      \
         CHECK_FATAL(!_mlcd, "\"" #name "\""    \
                             " malloc failed"); \
         _mlcd;                                 \
@@ -120,25 +120,22 @@ typedef uint64_t u64;
 
 #define WC_NOT_FOUND ((u64) - 1)
 
-// #define false ((b8)0)
-// #define true  ((b8)1)
-
 
 // GENERIC FUNCTIONS
-typedef void (*copy_fn)(u8* dest, const u8* src);
-typedef void (*move_fn)(u8* dest, u8** src);
-typedef void (*delete_fn)(u8* key);
-typedef void (*print_fn)(const u8* elm);
-typedef int (*compare_fn)(const u8* a, const u8* b, u64 size);
+typedef void (*wc_copy_fn)(u8* dest, const u8* src);
+typedef void (*wc_move_fn)(u8* dest, u8** src);
+typedef void (*wc_delete_fn)(u8* key);
+typedef void (*wc_print_fn)(const u8* elm);
+typedef int  (*wc_compare_fn)(const u8* a, const u8* b, u64 size);
 
 
 // Vtable: one instance shared across all vectors of the same type.
 // Pass NULL for any callback not needed.
 // For POD types, pass NULL for the whole ops pointer.
 typedef struct {
-    copy_fn   copy_fn; // Deep copy function for owned resources (or NULL)
-    move_fn   move_fn; // Transfer ownership and null original (or NULL)
-    delete_fn del_fn;  // Cleanup function for owned resources (or NULL)
+    wc_copy_fn   copy_fn; // Deep copy function for owned resources (or NULL)
+    wc_move_fn   move_fn; // Transfer ownership and null original (or NULL)
+    wc_delete_fn del_fn;  // Cleanup function for owned resources (or NULL)
 } wc_container_ops;
 
 
@@ -558,7 +555,7 @@ typedef struct {
     u32            val_size;
     u8*            scratch; // key_size + val_size bytes + alignment: temp buffer for robin hood swaps
     custom_hash_fn hash_fn;
-    compare_fn     cmp_fn;
+    wc_compare_fn     cmp_fn;
 
     // Shared ops vtables for keys and values.
     // Pass NULL for POD types (int, float, flat structs).
@@ -584,9 +581,9 @@ typedef struct {
 // Create a new HashMap.
 // hash_fn and cmp_fn default to fnv1a_hash / default_compare if NULL.
 // key_ops / val_ops: pass NULL for POD types.
-HashMap* HashMap_create(u32 key_size, u32 val_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
+HashMap* HashMap_create(u32 key_size, u32 val_size, custom_hash_fn hash_fn, wc_compare_fn cmp_fn,
                         const wc_container_ops* key_ops, const wc_container_ops* val_ops) __attribute__((warn_unused_result));
-void     HashMap_create_stk(HashMap* map, u32 key_size, u32 val_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
+void     HashMap_create_stk(HashMap* map, u32 key_size, u32 val_size, custom_hash_fn hash_fn, wc_compare_fn cmp_fn,
                             const wc_container_ops* key_ops, const wc_container_ops* val_ops)
     __attribute__((nonnull(1)));
 
@@ -636,7 +633,7 @@ b8 HashMap_del(HashMap* map, const u8* key, u8* out) __attribute__((nonnull(1, 2
 b8 HashMap_has(const HashMap* map, const u8* key) __attribute__((nonnull(1, 2)));
 
 // Print all key-value pairs.
-void HashMap_print(const HashMap* map, print_fn key_print, print_fn val_print) __attribute__((nonnull(1, 2, 3)));
+void HashMap_print(const HashMap* map, wc_print_fn key_print, wc_print_fn val_print) __attribute__((nonnull(1, 2, 3)));
 
 // Remove all elements, keep capacity.
 void HashMap_clear(HashMap* map) __attribute__((nonnull(1)));
@@ -1305,7 +1302,7 @@ static void        map_resize(HashMap* map, u64 new_capacity);
 ====================PUBLIC FUNCTIONS====================
 */
 
-void HashMap_create_stk(HashMap* map, u32 key_size, u32 val_size, custom_hash_fn hash_fn, compare_fn cmp_fn, const wc_container_ops* key_ops, const wc_container_ops* val_ops)
+void HashMap_create_stk(HashMap* map, u32 key_size, u32 val_size, custom_hash_fn hash_fn, wc_compare_fn cmp_fn, const wc_container_ops* key_ops, const wc_container_ops* val_ops)
 {
     CHECK_FATAL(key_size == 0 || val_size == 0, "key/val size can't be 0");
 
@@ -1331,7 +1328,7 @@ void HashMap_create_stk(HashMap* map, u32 key_size, u32 val_size, custom_hash_fn
     map->val_ops = val_ops;
 }
 
-HashMap* HashMap_create(u32 key_size, u32 val_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
+HashMap* HashMap_create(u32 key_size, u32 val_size, custom_hash_fn hash_fn, wc_compare_fn cmp_fn,
                         const wc_container_ops* key_ops, const wc_container_ops* val_ops)
 {
     HashMap* map = malloc(sizeof(HashMap));
@@ -1352,8 +1349,8 @@ void HashMap_destroy(HashMap* map)
 void HashMap_destroy_stk(HashMap* map)
 {
     if (!IS_POD_K(map) || !IS_POD_V(map)) {
-        delete_fn k_del = IS_POD_K(map) ? NULL : map->key_ops->del_fn;
-        delete_fn v_del = IS_POD_V(map) ? NULL : map->val_ops->del_fn;
+        wc_delete_fn k_del = IS_POD_K(map) ? NULL : map->key_ops->del_fn;
+        wc_delete_fn v_del = IS_POD_V(map) ? NULL : map->val_ops->del_fn;
         if (k_del || v_del) {
             for (u64 i = 0; i < map->capacity; i++) {
                 if (*GET_PSL(map, i) == BUCKET_EMPTY) {
@@ -1390,11 +1387,11 @@ b8 HashMap_put(HashMap* map, const u8* key, const u8* val)
         if (IS_POD_V(map)) {
             memcpy(GET_VAL(map, slot), val, map->val_size);
         } else {
-            delete_fn v_del = map->val_ops->del_fn;
+            wc_delete_fn v_del = map->val_ops->del_fn;
             if (v_del) {
                 v_del(GET_VAL(map, slot));
             }
-            copy_fn v_cp = map->val_ops->copy_fn;
+            wc_copy_fn v_cp = map->val_ops->copy_fn;
             if (v_cp) {
                 v_cp(GET_VAL(map, slot), val);
             } else {
@@ -1407,7 +1404,7 @@ b8 HashMap_put(HashMap* map, const u8* key, const u8* val)
     if (IS_POD_K(map)) {
         memcpy(STAGE_KEY(map), key, map->key_size);
     } else {
-        copy_fn k_cp = map->key_ops->copy_fn;
+        wc_copy_fn k_cp = map->key_ops->copy_fn;
         if (k_cp) {
             k_cp(STAGE_KEY(map), key);
         } else {
@@ -1417,7 +1414,7 @@ b8 HashMap_put(HashMap* map, const u8* key, const u8* val)
     if (IS_POD_V(map)) {
         memcpy(STAGE_VAL(map), val, map->val_size);
     } else {
-        copy_fn v_cp = map->val_ops->copy_fn;
+        wc_copy_fn v_cp = map->val_ops->copy_fn;
         if (v_cp) {
             v_cp(STAGE_VAL(map), val);
         } else {
@@ -1439,8 +1436,8 @@ b8 HashMap_put_move(HashMap* map, u8** key, u8** val)
 {
     CHECK_FATAL(!*key || !*val, "*key/*val null");
 
-    move_fn k_mv = MAP_MOVE(map->key_ops);
-    move_fn v_mv = MAP_MOVE(map->val_ops);
+    wc_move_fn k_mv = MAP_MOVE(map->key_ops);
+    wc_move_fn v_mv = MAP_MOVE(map->val_ops);
 
     // move_fn is mandatory: it must transfer the heap resource and null the source.
     // For by-value types with no heap resources, use HashMap_put (copy semantics) instead.
@@ -1452,14 +1449,14 @@ b8 HashMap_put_move(HashMap* map, u8** key, u8** val)
 
     if (res == FOUND) {
         if (!IS_POD_V(map)) {
-            delete_fn v_del = map->val_ops->del_fn;
+            wc_delete_fn v_del = map->val_ops->del_fn;
             if (v_del) {
                 v_del(GET_VAL(map, slot));
             }
         }
         v_mv(GET_VAL(map, slot), val);
         if (!IS_POD_K(map)) {
-            delete_fn k_del = map->key_ops->del_fn;
+            wc_delete_fn k_del = map->key_ops->del_fn;
             if (k_del) {
                 k_del(*key);
             }
@@ -1487,7 +1484,7 @@ b8 HashMap_put_val_move(HashMap* map, const u8* key, u8** val)
 {
     CHECK_FATAL(!*val, "*val null");
 
-    move_fn v_mv = MAP_MOVE(map->val_ops);
+    wc_move_fn v_mv = MAP_MOVE(map->val_ops);
 
     CHECK_FATAL(!v_mv, "val move func required");
 
@@ -1497,7 +1494,7 @@ b8 HashMap_put_val_move(HashMap* map, const u8* key, u8** val)
 
     if (res == FOUND) {
         if (!IS_POD_V(map)) {
-            delete_fn v_del = map->val_ops->del_fn;
+            wc_delete_fn v_del = map->val_ops->del_fn;
             if (v_del) {
                 v_del(GET_VAL(map, slot));
             }
@@ -1509,7 +1506,7 @@ b8 HashMap_put_val_move(HashMap* map, const u8* key, u8** val)
     if (IS_POD_K(map)) {
         memcpy(STAGE_KEY(map), key, map->key_size);
     } else {
-        copy_fn k_cp = map->key_ops->copy_fn;
+        wc_copy_fn k_cp = map->key_ops->copy_fn;
         if (k_cp) {
             k_cp(STAGE_KEY(map), key);
         } else {
@@ -1531,7 +1528,7 @@ b8 HashMap_put_key_move(HashMap* map, u8** key, const u8* val)
 {
     CHECK_FATAL(!*key, "*key null");
 
-    move_fn k_mv = MAP_MOVE(map->key_ops);
+    wc_move_fn k_mv = MAP_MOVE(map->key_ops);
 
     CHECK_FATAL(!k_mv, "key move func required for HashMap_put_key_move");
 
@@ -1541,11 +1538,11 @@ b8 HashMap_put_key_move(HashMap* map, u8** key, const u8* val)
 
     if (res == FOUND) {
         if (!IS_POD_V(map)) {
-            delete_fn v_del = map->val_ops->del_fn;
+            wc_delete_fn v_del = map->val_ops->del_fn;
             if (v_del) {
                 v_del(GET_VAL(map, slot));
             }
-            copy_fn v_cp = map->val_ops->copy_fn;
+            wc_copy_fn v_cp = map->val_ops->copy_fn;
             if (v_cp) {
                 v_cp(GET_VAL(map, slot), val);
             } else {
@@ -1556,7 +1553,7 @@ b8 HashMap_put_key_move(HashMap* map, u8** key, const u8* val)
         }
         // Key already in map — consume (and discard) the incoming duplicate.
         if (!IS_POD_K(map)) {
-            delete_fn k_del = map->key_ops->del_fn;
+            wc_delete_fn k_del = map->key_ops->del_fn;
             if (k_del) {
                 k_del(*key);
             }
@@ -1571,7 +1568,7 @@ b8 HashMap_put_key_move(HashMap* map, u8** key, const u8* val)
     if (IS_POD_V(map)) {
         memcpy(STAGE_VAL(map), val, map->val_size);
     } else {
-        copy_fn v_cp = map->val_ops->copy_fn;
+        wc_copy_fn v_cp = map->val_ops->copy_fn;
         if (v_cp) {
             v_cp(STAGE_VAL(map), val);
         } else {
@@ -1600,7 +1597,7 @@ b8 HashMap_get(const HashMap* map, const u8* key, u8* val)
     if (IS_POD_V(map)) {
         memcpy(val, GET_VAL(map, slot), map->val_size);
     } else {
-        copy_fn v_copy = map->val_ops->copy_fn;
+        wc_copy_fn v_copy = map->val_ops->copy_fn;
         if (v_copy) {
             v_copy(val, GET_VAL(map, slot));
         } else {
@@ -1664,7 +1661,7 @@ b8 HashMap_del(HashMap* map, const u8* key, u8* out)
         memcpy(out, GET_VAL(map, slot), map->val_size);
     } else {
         if (!IS_POD_V(map)) {
-            delete_fn v_del = map->val_ops->del_fn;
+            wc_delete_fn v_del = map->val_ops->del_fn;
             if (v_del) {
                 v_del(GET_VAL(map, slot));
             }
@@ -1672,7 +1669,7 @@ b8 HashMap_del(HashMap* map, const u8* key, u8* out)
     }
 
     if (!IS_POD_K(map)) {
-        delete_fn k_del = map->key_ops->del_fn;
+        wc_delete_fn k_del = map->key_ops->del_fn;
         if (k_del) {
             k_del(GET_KEY(map, slot));
         }
@@ -1716,7 +1713,7 @@ b8 HashMap_has(const HashMap* map, const u8* key)
 
 
 // Print all key-value pairs.
-void HashMap_print(const HashMap* map, print_fn key_print, print_fn val_print)
+void HashMap_print(const HashMap* map, wc_print_fn key_print, wc_print_fn val_print)
 {
     printf("\t=========\n");
     printf("\tSize: %lu / Capacity: %lu\n", map->size, map->capacity);
@@ -1742,8 +1739,8 @@ void HashMap_print(const HashMap* map, print_fn key_print, print_fn val_print)
 void HashMap_clear(HashMap* map)
 {
     if (!IS_POD_K(map) || !IS_POD_V(map)) {
-        delete_fn k_del = IS_POD_K(map) ? NULL : map->key_ops->del_fn;
-        delete_fn v_del = IS_POD_V(map) ? NULL : map->val_ops->del_fn;
+        wc_delete_fn k_del = IS_POD_K(map) ? NULL : map->key_ops->del_fn;
+        wc_delete_fn v_del = IS_POD_V(map) ? NULL : map->val_ops->del_fn;
         for (u64 i = 0; i < map->capacity; i++) {
             if (*GET_PSL(map, i) == BUCKET_EMPTY) {
                 continue;
@@ -1789,8 +1786,8 @@ void HashMap_copy(HashMap* dest, const HashMap* src)
     dest->key_ops  = src->key_ops;
     dest->val_ops  = src->val_ops;
 
-    copy_fn k_cp = IS_POD_K(src) ? NULL : src->key_ops->copy_fn;
-    copy_fn v_cp = IS_POD_V(src) ? NULL : src->val_ops->copy_fn;
+    wc_copy_fn k_cp = IS_POD_K(src) ? NULL : src->key_ops->copy_fn;
+    wc_copy_fn v_cp = IS_POD_V(src) ? NULL : src->val_ops->copy_fn;
 
     for (u64 i = 0; i < src->capacity; i++) {
         u8 psl = *GET_PSL(src, i);
@@ -1831,7 +1828,7 @@ static u64 map_lookup(const HashMap* map, const u8* key, LOOKUP_RES* res, u8* ou
 {
     u64        idx = MAP_IDX(map, key);
     u8         psl = 1; // stored PSL=1 means real probe distance 0 (home slot)
-    compare_fn cmp = map->cmp_fn;
+    wc_compare_fn cmp = map->cmp_fn;
 
     for (u64 i = idx;; i = MAP_NEXT(map, i)) {
         u8 slot_psl = *GET_PSL(map, i);

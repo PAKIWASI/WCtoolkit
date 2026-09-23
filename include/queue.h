@@ -33,7 +33,7 @@ void      Queue_pop(Queue* q, u8* out) __attribute__((nonnull(1)));
 void      Queue_peek(Queue* q, u8* peek) __attribute__((nonnull(1, 2)));
 const u8* Queue_peek_ptr(const Queue* q) __attribute__((nonnull(1)));
 
-void      Queue_print(Queue* q, print_fn print_fn) __attribute__((nonnull(1, 2)));
+void      Queue_print(Queue* q, wc_print_fn print_fn) __attribute__((nonnull(1, 2)));
 
 // 6-J: nonnull-validated — no CHECK_FATAL(!q) re-checks (mirrors gen_vector.c)
 static inline __attribute__((nonnull(1))) u64 Queue_size(const Queue* q) { return q->size;                  }

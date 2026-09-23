@@ -1,31 +1,20 @@
 #include "common.h"
-#include "views.h"
-#include <string.h>
-
+#include "gen_vector.h"
+#include "map_setup.h"
+#include "priority_queue.h"
+#include "wc_macros.h"
+#include <stdio.h>
 
 int main(void)
 {
-    StringStore ss;
-    StringStore_create(&ss);
+    GenVec* vec = VEC_FROM_ARR(int, 5, ((int[5]){3, 2, 5, 9, 1}));
+    GenVec_print(vec, wc_print_int); putchar('\n');
 
-    StrView sv1 = StringStore_cstr(&ss, "hellow", strlen("hellow"));
-    StrView sv2 = StringStore_cstr(&ss, "hellow", strlen("hellow"));
-    StrView sv3 = StringStore_cstr(&ss, "hellow", strlen("hellow"));
-    StrView sv4 = StringStore_cstr(&ss, "hellow", strlen("hellow"));
-    StrView sv5 = StringStore_cstr(&ss, "hellow", strlen("hellow"));
-    StrView sv6 = StringStore_cstr(&ss, "hellow", strlen("hellow"));
-    StrView sv7 = StringStore_cstr(&ss, "hellow", strlen("hellow"));
+    PriorityQueue* pq = PriorityQueue_from_vec(vec, default_compare);
+    // GenVec_print(&pq->arr, wc_print_int);
 
-    StrView_print(sv1);
-    StrView_print(sv2);
-    StrView_print(sv3);
-    StrView_print(sv4);
-    StrView_print(sv5);
-    StrView_print(sv6);
-    StrView_print(sv7);
 
-    print_hex((const u8*)ss.head->buf, 124, 32);
-
-    StringStore_destroy(&ss);
+    GenVec_destroy(vec);
+    // PriorityQueue_destroy(pq);
     return 0;
 }

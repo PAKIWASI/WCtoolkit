@@ -40,7 +40,7 @@ static inline void set_maybe_resize(HashSet* set);
 ====================PUBLIC FUNCTIONS====================
 */
 
-void HashSet_create_stk(HashSet* set, u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn, const wc_container_ops* ops)
+void HashSet_create_stk(HashSet* set, u32 elm_size, custom_hash_fn hash_fn, wc_compare_fn cmp_fn, const wc_container_ops* ops)
 {
     CHECK_FATAL(elm_size == 0, "elm_size can't be 0");
 
@@ -63,7 +63,7 @@ void HashSet_create_stk(HashSet* set, u32 elm_size, custom_hash_fn hash_fn, comp
     set->ops = ops;
 }
 
-HashSet* HashSet_create(u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
+HashSet* HashSet_create(u32 elm_size, custom_hash_fn hash_fn, wc_compare_fn cmp_fn,
                         const wc_container_ops* ops)
 {
     HashSet* set = malloc(sizeof(HashSet));
@@ -83,7 +83,7 @@ void HashSet_destroy(HashSet* set)
 
 void HashSet_destroy_stk(HashSet* set)
 {
-    delete_fn e_del = SET_DEL(set->ops);
+    wc_delete_fn e_del = SET_DEL(set->ops);
 
     if (e_del) {
         for (u64 i = 0; i < set->capacity; i++) {
@@ -104,7 +104,7 @@ void HashSet_destroy_stk(HashSet* set)
 // Returns 1 if already existed (no-op), 0 if newly inserted.
 b8 HashSet_insert(HashSet* set, const u8* elm)
 {
-    copy_fn e_cp = SET_COPY(set->ops);
+    wc_copy_fn e_cp = SET_COPY(set->ops);
 
     LOOKUP_RES res;
     u8             out_psl;
@@ -134,8 +134,8 @@ b8 HashSet_insert_move(HashSet* set, u8** elm)
 {
     CHECK_FATAL(!*elm, "*elm null");
 
-    move_fn   e_mv  = SET_MOVE(set->ops);
-    delete_fn e_del = SET_DEL(set->ops);
+    wc_move_fn   e_mv  = SET_MOVE(set->ops);
+    wc_delete_fn e_del = SET_DEL(set->ops);
 
     CHECK_FATAL(!e_mv, "elm move func required");
 
@@ -206,7 +206,7 @@ b8 HashSet_remove(HashSet* set, const u8* elm)
         return 0;
     }
 
-    delete_fn e_del = SET_DEL(set->ops);
+    wc_delete_fn e_del = SET_DEL(set->ops);
 
     if (e_del) {
         e_del(GET_ELM(set, slot));
@@ -236,7 +236,7 @@ b8 HashSet_remove(HashSet* set, const u8* elm)
 
 
 // Print all elements.
-void HashSet_print(const HashSet* set, print_fn print)
+void HashSet_print(const HashSet* set, wc_print_fn print)
 {
     printf("\t=========\n");
     printf("\tSize: %lu / Capacity: %lu\n", set->size, set->capacity);
@@ -258,7 +258,7 @@ void HashSet_print(const HashSet* set, print_fn print)
 // Remove all elements, keep capacity.
 void HashSet_clear(HashSet* set)
 {
-    delete_fn e_del = SET_DEL(set->ops);
+    wc_delete_fn e_del = SET_DEL(set->ops);
 
     for (u64 i = 0; i < set->capacity; i++) {
         if (*GET_PSL(set, i) == BUCKET_EMPTY) {
@@ -296,7 +296,7 @@ void HashSet_copy(HashSet* dest, const HashSet* src)
     dest->cmp_fn   = src->cmp_fn;
     dest->ops      = src->ops;
 
-    copy_fn e_cp = SET_COPY(src->ops);
+    wc_copy_fn e_cp = SET_COPY(src->ops);
 
     for (u64 i = 0; i < src->capacity; i++) {
         u8 psl = *GET_PSL(src, i);

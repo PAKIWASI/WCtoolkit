@@ -86,7 +86,7 @@ wc_fatal_report(const char* file, int line, const char* func, const char* fmt, .
 
 #define MALLOC(size, cap, name)                \
     ({                                         \
-        void* _mlcd = malloc(size * cap);      \
+        void* _mlcd = malloc((size) * (cap));      \
         CHECK_FATAL(!_mlcd, "\"" #name "\""    \
                             " malloc failed"); \
         _mlcd;                                 \
@@ -106,25 +106,22 @@ typedef uint64_t u64;
 
 #define WC_NOT_FOUND ((u64) - 1)
 
-// #define false ((b8)0)
-// #define true  ((b8)1)
-
 
 // GENERIC FUNCTIONS
-typedef void (*copy_fn)(u8* dest, const u8* src);
-typedef void (*move_fn)(u8* dest, u8** src);
-typedef void (*delete_fn)(u8* key);
-typedef void (*print_fn)(const u8* elm);
-typedef int (*compare_fn)(const u8* a, const u8* b, u64 size);
+typedef void (*wc_copy_fn)(u8* dest, const u8* src);
+typedef void (*wc_move_fn)(u8* dest, u8** src);
+typedef void (*wc_delete_fn)(u8* key);
+typedef void (*wc_print_fn)(const u8* elm);
+typedef int  (*wc_compare_fn)(const u8* a, const u8* b, u64 size);
 
 
 // Vtable: one instance shared across all vectors of the same type.
 // Pass NULL for any callback not needed.
 // For POD types, pass NULL for the whole ops pointer.
 typedef struct {
-    copy_fn   copy_fn; // Deep copy function for owned resources (or NULL)
-    move_fn   move_fn; // Transfer ownership and null original (or NULL)
-    delete_fn del_fn;  // Cleanup function for owned resources (or NULL)
+    wc_copy_fn   copy_fn; // Deep copy function for owned resources (or NULL)
+    wc_move_fn   move_fn; // Transfer ownership and null original (or NULL)
+    wc_delete_fn del_fn;  // Cleanup function for owned resources (or NULL)
 } wc_container_ops;
 
 

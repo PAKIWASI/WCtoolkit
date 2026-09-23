@@ -174,7 +174,7 @@ void Queue_pop(Queue* q, u8* out)
     }
 
     // Clean up the element if del_fn exists
-    delete_fn del = VEC_DEL_FN(q->arr);
+    wc_delete_fn del = VEC_DEL_FN(q->arr);
     if (del) {
         u8* elem = (u8*)GenVec_get_ptr(q->arr, q->head);
         del(elem);
@@ -200,7 +200,7 @@ const u8* Queue_peek_ptr(const Queue* q)
     return GenVec_get_ptr(q->arr, q->head);
 }
 
-void Queue_print(Queue* q, print_fn print)
+void Queue_print(Queue* q, wc_print_fn print)
 {
     u64 h   = q->head;
     u64 cap = GenVec_capacity(q->arr);

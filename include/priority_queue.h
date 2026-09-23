@@ -1,6 +1,8 @@
 #ifndef PRIORITY_QUEUE_H
 #define PRIORITY_QUEUE_H
 
+#include "common.h"
+#include "gen_vector.h"
 
 /* Priority Queue
 
@@ -49,11 +51,33 @@
     This is called sift down or bubble down.
     O(log n)
 
-    4. heapify_down/up() - maintains the heap property
-    O(n)
+    4. heapify_down/up() - (internal) maintains the heap property
+    O(log n)
 
     5. build_heap() - create a new heap from a vector or array
-
+    O(n)
 */
+
+typedef struct {
+    GenVec        arr;
+    wc_compare_fn cmp_fn;
+} PriorityQueue;
+
+
+PriorityQueue* PriorityQueue_create(u64 n, u32 data_size, const wc_container_ops* ops, wc_compare_fn cmp_fn)
+    __attribute__((nonnull(4)));
+
+void PriorityQueue_destroy(PriorityQueue* pq) __attribute__((nonnull(1)));
+
+void PriorityQueue_create_stk(PriorityQueue* pq, u64 n, u32 data_size, const wc_container_ops* ops,
+                              wc_compare_fn cmp_fn) __attribute__((nonnull(1, 5)));
+
+void PriorityQueue_destroy_stk(PriorityQueue* pq) __attribute__((nonnull(1)));
+
+PriorityQueue* PriorityQueue_from_vec(GenVec* vec, wc_compare_fn cmp_fn)__attribute__((nonnull(1, 2)));
+
+void PriorityQueue_from_vec_stk(PriorityQueue* pq, GenVec* vec, wc_compare_fn cmp_fn) __attribute__((nonnull(1, 2, 3)));
+
+
 
 #endif // PRIORITY_QUEUE_H

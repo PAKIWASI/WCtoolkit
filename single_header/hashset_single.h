@@ -100,7 +100,7 @@ wc_fatal_report(const char* file, int line, const char* func, const char* fmt, .
 
 #define MALLOC(size, cap, name)                \
     ({                                         \
-        void* _mlcd = malloc(size * cap);      \
+        void* _mlcd = malloc((size) * (cap));      \
         CHECK_FATAL(!_mlcd, "\"" #name "\""    \
                             " malloc failed"); \
         _mlcd;                                 \
@@ -120,25 +120,22 @@ typedef uint64_t u64;
 
 #define WC_NOT_FOUND ((u64) - 1)
 
-// #define false ((b8)0)
-// #define true  ((b8)1)
-
 
 // GENERIC FUNCTIONS
-typedef void (*copy_fn)(u8* dest, const u8* src);
-typedef void (*move_fn)(u8* dest, u8** src);
-typedef void (*delete_fn)(u8* key);
-typedef void (*print_fn)(const u8* elm);
-typedef int (*compare_fn)(const u8* a, const u8* b, u64 size);
+typedef void (*wc_copy_fn)(u8* dest, const u8* src);
+typedef void (*wc_move_fn)(u8* dest, u8** src);
+typedef void (*wc_delete_fn)(u8* key);
+typedef void (*wc_print_fn)(const u8* elm);
+typedef int  (*wc_compare_fn)(const u8* a, const u8* b, u64 size);
 
 
 // Vtable: one instance shared across all vectors of the same type.
 // Pass NULL for any callback not needed.
 // For POD types, pass NULL for the whole ops pointer.
 typedef struct {
-    copy_fn   copy_fn; // Deep copy function for owned resources (or NULL)
-    move_fn   move_fn; // Transfer ownership and null original (or NULL)
-    delete_fn del_fn;  // Cleanup function for owned resources (or NULL)
+    wc_copy_fn   copy_fn; // Deep copy function for owned resources (or NULL)
+    wc_move_fn   move_fn; // Transfer ownership and null original (or NULL)
+    wc_delete_fn del_fn;  // Cleanup function for owned resources (or NULL)
 } wc_container_ops;
 
 
@@ -556,7 +553,7 @@ typedef struct {
     u32            elm_size;
     u8*            scratch; // 2 * elm_size bytes — stage (first half) + RH swap (second half)
     custom_hash_fn hash_fn;
-    compare_fn     cmp_fn;
+    wc_compare_fn     cmp_fn;
 
     // Shared ops vtable for elements.
     // Pass NULL for POD types (int, float, flat structs).
@@ -573,9 +570,9 @@ typedef struct {
 // Create a new HashSet.
 // hash_fn and cmp_fn default to wyhash / default_compare if NULL.
 // ops: pass NULL for POD types.
-HashSet* HashSet_create(u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn, const wc_container_ops* ops)
+HashSet* HashSet_create(u32 elm_size, custom_hash_fn hash_fn, wc_compare_fn cmp_fn, const wc_container_ops* ops)
     __attribute__((warn_unused_result));
-void HashSet_create_stk(HashSet* set, u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn, const wc_container_ops* ops)
+void HashSet_create_stk(HashSet* set, u32 elm_size, custom_hash_fn hash_fn, wc_compare_fn cmp_fn, const wc_container_ops* ops)
     __attribute__((nonnull(1)));
 
 void HashSet_destroy(HashSet* set) __attribute__((nonnull(1)));
@@ -613,7 +610,7 @@ const u8* HashSet_bucket_elm_ptr(const HashSet* set, u64 i) __attribute__((nonnu
 b8 HashSet_remove(HashSet* set, const u8* elm) __attribute__((nonnull(1, 2)));
 
 // Print all elements.
-void HashSet_print(const HashSet* set, print_fn print) __attribute__((nonnull(1, 2)));
+void HashSet_print(const HashSet* set, wc_print_fn print) __attribute__((nonnull(1, 2)));
 
 // Remove all elements, keep capacity.
 void HashSet_clear(HashSet* set) __attribute__((nonnull(1)));
@@ -1272,7 +1269,7 @@ static inline void set_maybe_resize(HashSet* set);
 ====================PUBLIC FUNCTIONS====================
 */
 
-void HashSet_create_stk(HashSet* set, u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn, const wc_container_ops* ops)
+void HashSet_create_stk(HashSet* set, u32 elm_size, custom_hash_fn hash_fn, wc_compare_fn cmp_fn, const wc_container_ops* ops)
 {
     CHECK_FATAL(elm_size == 0, "elm_size can't be 0");
 
@@ -1295,7 +1292,7 @@ void HashSet_create_stk(HashSet* set, u32 elm_size, custom_hash_fn hash_fn, comp
     set->ops = ops;
 }
 
-HashSet* HashSet_create(u32 elm_size, custom_hash_fn hash_fn, compare_fn cmp_fn,
+HashSet* HashSet_create(u32 elm_size, custom_hash_fn hash_fn, wc_compare_fn cmp_fn,
                         const wc_container_ops* ops)
 {
     HashSet* set = malloc(sizeof(HashSet));
@@ -1315,7 +1312,7 @@ void HashSet_destroy(HashSet* set)
 
 void HashSet_destroy_stk(HashSet* set)
 {
-    delete_fn e_del = SET_DEL(set->ops);
+    wc_delete_fn e_del = SET_DEL(set->ops);
 
     if (e_del) {
         for (u64 i = 0; i < set->capacity; i++) {
@@ -1336,7 +1333,7 @@ void HashSet_destroy_stk(HashSet* set)
 // Returns 1 if already existed (no-op), 0 if newly inserted.
 b8 HashSet_insert(HashSet* set, const u8* elm)
 {
-    copy_fn e_cp = SET_COPY(set->ops);
+    wc_copy_fn e_cp = SET_COPY(set->ops);
 
     LOOKUP_RES res;
     u8             out_psl;
@@ -1366,8 +1363,8 @@ b8 HashSet_insert_move(HashSet* set, u8** elm)
 {
     CHECK_FATAL(!*elm, "*elm null");
 
-    move_fn   e_mv  = SET_MOVE(set->ops);
-    delete_fn e_del = SET_DEL(set->ops);
+    wc_move_fn   e_mv  = SET_MOVE(set->ops);
+    wc_delete_fn e_del = SET_DEL(set->ops);
 
     CHECK_FATAL(!e_mv, "elm move func required");
 
@@ -1438,7 +1435,7 @@ b8 HashSet_remove(HashSet* set, const u8* elm)
         return 0;
     }
 
-    delete_fn e_del = SET_DEL(set->ops);
+    wc_delete_fn e_del = SET_DEL(set->ops);
 
     if (e_del) {
         e_del(GET_ELM(set, slot));
@@ -1468,7 +1465,7 @@ b8 HashSet_remove(HashSet* set, const u8* elm)
 
 
 // Print all elements.
-void HashSet_print(const HashSet* set, print_fn print)
+void HashSet_print(const HashSet* set, wc_print_fn print)
 {
     printf("\t=========\n");
     printf("\tSize: %lu / Capacity: %lu\n", set->size, set->capacity);
@@ -1490,7 +1487,7 @@ void HashSet_print(const HashSet* set, print_fn print)
 // Remove all elements, keep capacity.
 void HashSet_clear(HashSet* set)
 {
-    delete_fn e_del = SET_DEL(set->ops);
+    wc_delete_fn e_del = SET_DEL(set->ops);
 
     for (u64 i = 0; i < set->capacity; i++) {
         if (*GET_PSL(set, i) == BUCKET_EMPTY) {
@@ -1528,7 +1525,7 @@ void HashSet_copy(HashSet* dest, const HashSet* src)
     dest->cmp_fn   = src->cmp_fn;
     dest->ops      = src->ops;
 
-    copy_fn e_cp = SET_COPY(src->ops);
+    wc_copy_fn e_cp = SET_COPY(src->ops);
 
     for (u64 i = 0; i < src->capacity; i++) {
         u8 psl = *GET_PSL(src, i);
