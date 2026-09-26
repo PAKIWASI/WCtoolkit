@@ -3,6 +3,7 @@
 
 #include "common.h"
 #include "gen_vector.h"
+#include "queue.h"
 
 /* Priority Queue
 
@@ -59,25 +60,35 @@
 */
 
 typedef struct {
-    GenVec        arr;
+    Queue         q;
     wc_compare_fn cmp_fn;
 } PriorityQueue;
 
 
+// Creation
 PriorityQueue* PriorityQueue_create(u64 n, u32 data_size, const wc_container_ops* ops, wc_compare_fn cmp_fn)
     __attribute__((nonnull(4)));
-
 void PriorityQueue_destroy(PriorityQueue* pq) __attribute__((nonnull(1)));
 
 void PriorityQueue_create_stk(PriorityQueue* pq, u64 n, u32 data_size, const wc_container_ops* ops,
                               wc_compare_fn cmp_fn) __attribute__((nonnull(1, 5)));
-
 void PriorityQueue_destroy_stk(PriorityQueue* pq) __attribute__((nonnull(1)));
 
-PriorityQueue* PriorityQueue_from_vec(GenVec* vec, wc_compare_fn cmp_fn)__attribute__((nonnull(1, 2)));
-
+// Build heap from other structures
+PriorityQueue* PriorityQueue_from_vec(GenVec* vec, wc_compare_fn cmp_fn) __attribute__((nonnull(1, 2)));
 void PriorityQueue_from_vec_stk(PriorityQueue* pq, GenVec* vec, wc_compare_fn cmp_fn) __attribute__((nonnull(1, 2, 3)));
 
+// operations
 
+static inline const u8* __attribute__((nonnull(1))) PriorityQueue_peek(PriorityQueue* pq)
+{
+    return Queue_peek_ptr(&pq->q);
+}
+
+void PriorityQueue_push(PriorityQueue* pq, u8* data) __attribute__((nonnull(1, 2)));
+
+u8* PriorityQueue_pop(PriorityQueue* pq) __attribute__((nonnull(1)));
+
+void PriorityQueue_print(PriorityQueue* pq, wc_print_fn print_fn) __attribute__((nonnull(1, 2)));
 
 #endif // PRIORITY_QUEUE_H

@@ -1,17 +1,24 @@
 #include "priority_queue.h"
 #include "common.h"
-
 #include "gen_vector.h"
+#include "queue.h"
+
+#include <stdio.h>
 #include <stdlib.h>
 
 
-#define PARENT(i)     ((i - 1) / 2)
-#define LEFT_NODE(i)  ((2 * i) + 1)
-#define RIGHT_NODE(i) ((2 * i) + 2)
-#define GET(pq, i)    (GenVec_get_ptr_mut_unsafe(&(pq)->arr, i))
-#define CMP(pq, i, j) ((pq)->cmp_fn(GET(pq, idx), GET(pq, PARENT(idx)), pq->arr.data_size))
+#define PARENT(i)     ((((i)) - 1) / 2)
+#define LEFT_NODE(i)  ((2 * (i)) + 1)
+#define RIGHT_NODE(i) ((2 * (i)) + 2)
+
+// CMP(pq, i, j) < 0  means element i has HIGHER priority than element j.
+// i and j are LOGICAL heap indices; Queue_get() maps them through `head`
+// to their real physical slot
+#define CMP(pq, i, j) ((pq)->cmp_fn(Queue_get(&(pq)->q, i), Queue_get(&(pq)->q, j), (pq)->q.arr.data_size))
+
 
 static void heapify_down(PriorityQueue* pq, u64 idx);
+
 static void heapify_up(PriorityQueue* pq, u64 idx);
 
 
@@ -20,27 +27,27 @@ PriorityQueue* PriorityQueue_create(u64 n, u32 data_size, const wc_container_ops
 {
     PriorityQueue* pq = malloc(sizeof(PriorityQueue));
     CHECK_FATAL(!pq, "pq malloc failed");
-    GenVec_create_stk(&pq->arr, n, data_size, ops);
+    Queue_create_stk(&pq->q, n, data_size, ops);
     pq->cmp_fn = cmp_fn;
     return pq;
 }
 
 void PriorityQueue_destroy(PriorityQueue* pq)
 {
-    GenVec_destroy_stk(&pq->arr);
+    Queue_destroy_stk(&pq->q);
     free(pq);
 }
 
 void PriorityQueue_create_stk(PriorityQueue* pq, u64 n, u32 data_size, const wc_container_ops* ops,
                               wc_compare_fn cmp_fn)
 {
-    GenVec_create_stk(&pq->arr, n, data_size, ops);
+    Queue_create_stk(&pq->q, n, data_size, ops);
     pq->cmp_fn = cmp_fn;
 }
 
 void PriorityQueue_destroy_stk(PriorityQueue* pq)
 {
-    GenVec_destroy_stk(&pq->arr);
+    Queue_destroy_stk(&pq->q);
 }
 
 /*
@@ -53,30 +60,102 @@ PriorityQueue* PriorityQueue_from_vec(GenVec* vec, wc_compare_fn cmp_fn)
 {
     PriorityQueue* pq = malloc(sizeof(PriorityQueue));
     CHECK_FATAL(!pq, "pq malloc failed");
-    GenVec_copy(&pq->arr, vec); // deep copy all elements
+
+    PriorityQueue_from_vec_stk(pq, vec, cmp_fn);
+
+    return pq;
+}
+
+void PriorityQueue_from_vec_stk(PriorityQueue* pq, GenVec* vec, wc_compare_fn cmp_fn)
+{
+    GenVec_copy(&pq->q.arr, vec); // deep copy all elements
+
+    // A freshly-copied GenVec has no wraparound yet, so head starts at 0 and
+    // tail/size follow the same convention Queue_create_val uses.
+    pq->q.head = 0;
+    pq->q.tail = vec->size % GenVec_capacity(&pq->q.arr);
+    pq->q.size = vec->size;
+
     pq->cmp_fn = cmp_fn;
 
     if (vec->size > 1) {
         // calling heapify_down on every internal node, from the bottom up. O(n)
         // last internal node is at size/2 - 1
         // Leaves (size/2 ... size-1) are already valid heaps
-        for (u64 i = vec->size / 2; i --> 0;) {
+        for (u64 i = vec->size / 2; i-- > 0;) {
             heapify_down(pq, i);
         }
     }
-
-    return pq;
 }
 
+void PriorityQueue_push(PriorityQueue* pq, u8* data)
+{
+    u64 off = Queue_size(&pq->q); // logical index the new element will land at
+    Queue_push(&pq->q, data);
+    heapify_up(pq, off);
+}
+
+u8* PriorityQueue_pop(PriorityQueue* pq)
+{
+    CHECK_FATAL(Queue_empty(&pq->q), "queue is empty");
+
+    u8* result = malloc(pq->q.arr.data_size);
+    CHECK_FATAL(!result, "PriorityQueue_pop malloc failed");
+
+    // Standard heap-extract, adapted for circular storage
+    // logical index 0 (== q.head) is the root we want to return.
+    // swap it with the last logical element
+    u64 last = pq->q.size - 1;
+    Queue_swap(&pq->q, 0, last);
+
+    // then pop that last slot (which now holds the old root) off the
+    // BACK of the queue. This shrinks size by one without disturbing head
+    // disturing the head will void the heap property, as the tree structure is
+    // determined by the head index, which is the logical index 0
+    Queue_pop_back(&pq->q, result);
+
+    // sift the new root down to restore the heap property.
+    if (!Queue_empty(&pq->q)) {
+        heapify_down(pq, 0);
+    }
+
+    return result;
+}
+
+static inline void print_tree(Queue* q, u64 i, u32 depth, wc_print_fn print_fn)
+{
+    if (i >= q->size) {
+        return;
+    }
+
+    print_tree(q, RIGHT_NODE(i), depth + 1, print_fn); // right subtree above
+
+    for (u32 d = 0; d < depth; d++) {
+        printf("    "); // 4 spaces per level of depth
+    }
+    print_fn(Queue_get(q, i));
+    putchar('\n');
+
+    print_tree(q, LEFT_NODE(i), depth + 1, print_fn);  // left subtree below
+}
+
+void PriorityQueue_print(PriorityQueue* pq, wc_print_fn print_fn)
+{
+    print_tree(&pq->q, 0, 0, print_fn);
+}
+
+
+// Private Functions
 
 static void heapify_up(PriorityQueue* pq, u64 idx)
 {
     while (idx > 0) {
-        if (CMP(pq, idx, PARENT(idx)) <= 0) {
-            break; // parent is already the best
+        if (CMP(pq, idx, PARENT(idx)) >= 0) {
+            break; // idx does not have higher priority than its parent, done
         }
-        GenVec_swap(&pq->arr, idx, PARENT(idx));
-        idx = PARENT(idx); // we swapped, now check with it's parents
+
+        Queue_swap(&pq->q, idx, PARENT(idx));
+        idx = PARENT(idx); // we swapped, now check with it's parent
     }
 }
 
@@ -87,10 +166,10 @@ static void heapify_down(PriorityQueue* pq, u64 idx)
         u64 right = RIGHT_NODE(idx);
         u64 best  = idx;
 
-        if (left < pq->arr.size && CMP(pq, left, best) < 0) {
+        if (left < pq->q.size && CMP(pq, left, best) < 0) {
             best = left;
         }
-        if (right < pq->arr.size && CMP(pq, right, best) < 0) {
+        if (right < pq->q.size && CMP(pq, right, best) < 0) {
             best = right;
         }
 
@@ -98,7 +177,7 @@ static void heapify_down(PriorityQueue* pq, u64 idx)
             break;
         }
 
-        GenVec_swap(&pq->arr, idx, best);
+        Queue_swap(&pq->q, idx, best);
         idx = best;
     }
 }
