@@ -275,7 +275,7 @@ static void Queue_grow(Queue* q)
 
 static void Queue_shrink(Queue* q)
 {
-    u64 current_cap = GenVec_capacity(&q->arr);
+    u64 current_cap = q->arr.capacity;
     u64 new_cap     = (u64)((float)current_cap * QUEUE_SHRINK_BY);
 
     u64 min_capacity = q->size > QUEUE_MIN_CAP ? q->size : QUEUE_MIN_CAP;
@@ -296,18 +296,17 @@ static void Queue_compact(Queue* q, u64 new_capacity)
     GenVec new_arr;
     GenVec_create_stk(&new_arr, new_capacity, q->arr.data_size, q->arr.ops);
 
-    u64 h       = q->head;
-    u64 old_cap = GenVec_capacity(&q->arr);
+    u64 old_cap = q->arr.capacity;
 
-    for (u64 i = 0; i < q->size; i++) {
-        const u8* elem = GenVec_get_ptr(&q->arr, h);
+    for (u64 i = q->head; i != q->tail; i = (i + 1) % old_cap) {
+        const u8* elem = GenVec_get_ptr(&q->arr, i);
         GenVec_push(&new_arr, elem);
-        h = (h + 1) % old_cap;
     }
 
-    GenVec_destroy(&q->arr);
+    GenVec_destroy_stk(&q->arr);
     q->arr = new_arr;
 
     q->head = 0;
     q->tail = q->size % new_capacity;
 }
+

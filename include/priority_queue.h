@@ -59,8 +59,10 @@
     O(n)
 */
 
+// TODO: test
+
 typedef struct {
-    Queue         q;
+    Queue         q; // circular queue
     wc_compare_fn cmp_fn;
 } PriorityQueue;
 
@@ -87,7 +89,7 @@ static inline const u8* __attribute__((nonnull(1))) PriorityQueue_peek(PriorityQ
 
 void PriorityQueue_push(PriorityQueue* pq, u8* data) __attribute__((nonnull(1, 2)));
 
-u8* PriorityQueue_pop(PriorityQueue* pq) __attribute__((nonnull(1)));
+void PriorityQueue_pop(PriorityQueue* pq, u8* popped) __attribute__((nonnull(1, 2)));
 
 void PriorityQueue_print(PriorityQueue* pq, wc_print_fn print_fn) __attribute__((nonnull(1, 2)));
 

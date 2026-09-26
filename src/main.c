@@ -20,6 +20,12 @@ int main(void)
     PriorityQueue* pq = PriorityQueue_from_vec(vec, int_compare);
     PriorityQueue_print(pq, wc_print_int);
 
+    int p;
+    for (int i = 0; i < 7; i++) {
+        PriorityQueue_pop(pq, cast(p));
+        printf("popped: %d\n", p);
+        PriorityQueue_print(pq, wc_print_int);
+    }
 
     GenVec_destroy(vec);
     PriorityQueue_destroy(pq);

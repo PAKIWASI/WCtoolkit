@@ -95,12 +95,9 @@ void PriorityQueue_push(PriorityQueue* pq, u8* data)
     heapify_up(pq, off);
 }
 
-u8* PriorityQueue_pop(PriorityQueue* pq)
+void PriorityQueue_pop(PriorityQueue* pq, u8* popped)
 {
     CHECK_FATAL(Queue_empty(&pq->q), "queue is empty");
-
-    u8* result = malloc(pq->q.arr.data_size);
-    CHECK_FATAL(!result, "PriorityQueue_pop malloc failed");
 
     // Standard heap-extract, adapted for circular storage
     // logical index 0 (== q.head) is the root we want to return.
@@ -112,14 +109,12 @@ u8* PriorityQueue_pop(PriorityQueue* pq)
     // BACK of the queue. This shrinks size by one without disturbing head
     // disturing the head will void the heap property, as the tree structure is
     // determined by the head index, which is the logical index 0
-    Queue_pop_back(&pq->q, result);
+    Queue_pop_back(&pq->q, popped);
 
     // sift the new root down to restore the heap property.
     if (!Queue_empty(&pq->q)) {
         heapify_down(pq, 0);
     }
-
-    return result;
 }
 
 static inline void print_tree(Queue* q, u64 i, u32 depth, wc_print_fn print_fn)
