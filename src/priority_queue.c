@@ -12,8 +12,7 @@
 #define RIGHT_NODE(i) ((2 * (i)) + 2)
 
 // CMP(pq, i, j) < 0  means element i has HIGHER priority than element j.
-// i and j are LOGICAL heap indices; Queue_get() maps them through `head`
-// to their real physical slot
+// i and j are LOGICAL heap indices; Queue_get() maps them through `head` to their real physical slot
 #define CMP(pq, i, j) ((pq)->cmp_fn(Queue_get(&(pq)->q, i), Queue_get(&(pq)->q, j), (pq)->q.arr.data_size))
 
 
@@ -117,6 +116,21 @@ void PriorityQueue_pop(PriorityQueue* pq, u8* popped)
     }
 }
 
+void PriorityQueue_remove(PriorityQueue* pq, u64 idx, u8* out)
+{
+    CHECK_FATAL(Queue_empty(&pq->q), "queue is empty");
+    CHECK_FATAL(idx >= pq->q.size, "idx out of range");
+
+    // swap the element to remove with the last one
+    Queue_swap(&pq->q, idx, pq->q.size - 1);
+    // pop from the back to reduce the size and/or get the element
+    Queue_pop_back(&pq->q, out);
+    // run heapify down on the swapped element to put it in a valid position
+    if (!Queue_empty(&pq->q)) {
+        heapify_down(pq, idx);
+    }
+}
+
 static inline void print_tree(Queue* q, u64 i, u32 depth, wc_print_fn print_fn)
 {
     if (i >= q->size) {
@@ -134,9 +148,13 @@ static inline void print_tree(Queue* q, u64 i, u32 depth, wc_print_fn print_fn)
     print_tree(q, LEFT_NODE(i), depth + 1, print_fn);  // left subtree below
 }
 
+
+
 void PriorityQueue_print(PriorityQueue* pq, wc_print_fn print_fn)
 {
+    putchar('\n');
     print_tree(&pq->q, 0, 0, print_fn);
+    putchar('\n');
 }
 
 

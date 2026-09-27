@@ -3,6 +3,7 @@
 
 #include "arena.h"
 #include "common.h"
+#include "priority_queue.h"
 #include "wc_string.h"
 
 
@@ -14,7 +15,7 @@ typedef struct {
 
 StrView StrView_from_String(String* str) __attribute__((nonnull(1)));
 
-StrView StrView_from_String_explicit(String* str, u64 off, u64 len) __attribute__((nonnull(1)));
+StrView StrView_from_String_ex(String* str, u64 off, u64 len) __attribute__((nonnull(1)));
 
 // allocate a cstr to an Arena and return a view over it
 // kinda like an append only store
@@ -24,16 +25,15 @@ void StrView_print(StrView sv);
 
 
 
-#define StringStore_NODE_SIZE 1024
+#define StringStore_NODE_SIZE 1015 // + 1 + 8 = 1024
 
 
 typedef struct StringStore_node {
     union {
-        char  buf[StringStore_NODE_SIZE];
+        char  buf[StringStore_NODE_SIZE + 1]; // last bit is NULL (0) -> heap is active
         char* heap;
     };
     struct StringStore_node* next;
-    bool                     owns_heap;
 } StringStore_node;
 
 // append-only, immutable String storage with a chain Arena-like backing
@@ -41,8 +41,10 @@ typedef struct StringStore_node {
 typedef struct {
     StringStore_node* tail;
     StringStore_node* head;
-    u32               tail_off; // how much of th tail node is used
-    u32               num;      // total number of nodes
+    u32               tail_off;    // how much of th tail node is used
+    u32               num;         // total number of nodes
+    PriorityQueue     free_ranges; // a priority queue of all free ranges (a range is just a stringview)
+    // priority given to largest range. ranges with length below the cutoff are not considered
 } StringStore;
 
 void StringStore_create(StringStore* ss) __attribute__((nonnull(1)));

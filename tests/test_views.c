@@ -83,7 +83,7 @@ static void test_overflow_by_one_goes_to_heap(void)
     WC_ASSERT(v.ptr[0] == 'B');
     WC_ASSERT(v.ptr[StringStore_NODE_SIZE] == 'B');
     WC_ASSERT_EQ_U64(ss.num, 3); // initial node + overflow node + fresh tail
-    WC_ASSERT(ss.head->owns_heap);
+    WC_ASSERT(ss.head->buf[StringStore_NODE_SIZE] == 1);
 
     StringStore_destroy(&ss); // must free the heap buffer too
 }
@@ -96,7 +96,7 @@ static void test_overflow_way_past_node(void)
     StringStore ss;
     StringStore_create(&ss);
 
-    u64   big_len = StringStore_NODE_SIZE * 3 + 7;
+    u64   big_len = (StringStore_NODE_SIZE * 3) + 7;
     char* big     = malloc(big_len);
     WC_ASSERT_NOT_NULL(big);
     memset(big, 'C', big_len);
@@ -142,7 +142,7 @@ static void test_multiple_overflows_keep_content(void)
     }
 
     // each overflow adds its own node + a fresh tail
-    WC_ASSERT_EQ_U64(ss.num, 1 + 2 * OVER_N);
+    WC_ASSERT_EQ_U64(ss.num, 1 + (2 * OVER_N));
 
     StringStore_destroy(&ss);
 }

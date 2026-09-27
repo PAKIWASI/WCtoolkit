@@ -13,15 +13,17 @@
 #define QUEUE_SHRINK_AT 0.25f
 #define QUEUE_SHRINK_BY 0.5f
 
+#define REAL_IDX(q, i) ((i) % q->arr.capacity)
 
-#define HEAD_UPDATE(q)                                   \
-    {                                                    \
-        (q)->head = ((q)->head + 1) % (q)->arr.capacity; \
+
+#define HEAD_UPDATE(q)                            \
+    {                                             \
+        (q)->head = REAL_IDX((q), (q)->head + 1); \
     }
 
-#define TAIL_UPDATE(q)                                             \
-    {                                                              \
-        (q)->tail = (((q)->head + (q)->size) % (q)->arr.capacity); \
+#define TAIL_UPDATE(q)                                    \
+    {                                                     \
+        (q)->tail = REAL_IDX((q), (q)->head + (q)->size); \
     }
 
 #define Q_MAYBE_GROW(q)                       \
@@ -190,7 +192,7 @@ void Queue_pop_back(Queue* q, u8* out)
 {
     WC_SET_RET(WC_ERR_EMPTY, q->size == 0, );
 
-    u64 last = (q->head + q->size - 1) % q->arr.capacity;
+    u64 last = REAL_IDX(q, q->head + q->size - 1);
 
     if (out) {
         GenVec_get(&q->arr, last, out);
@@ -212,8 +214,8 @@ void Queue_swap(Queue* q, u64 i, u64 j)
 {
     CHECK_FATAL(i >= q->size || j >= q->size, "Queue_swap: index out of bounds");
 
-    u64 real_i = (q->head + i) % q->arr.capacity;
-    u64 real_j = (q->head + j) % q->arr.capacity;
+    u64 real_i = REAL_IDX(q, q->head + i);
+    u64 real_j = REAL_IDX(q, q->head + j);
 
     GenVec_swap(&q->arr, real_i, real_j);
 }
@@ -233,7 +235,7 @@ const u8* Queue_peek_ptr(const Queue* q)
 void Queue_print(Queue* q, wc_print_fn print)
 {
     printf("[ ");
-    for (u64 i = q->head; i != q->tail; i = (i + 1) % (q)->arr.capacity) {
+    for (u64 i = q->head; i != q->tail; i = REAL_IDX(q, i + 1)) {
         const u8* out = GenVec_get_ptr_unsafe(&q->arr, i);
         print(out);
         putchar(' ');
@@ -309,4 +311,3 @@ static void Queue_compact(Queue* q, u64 new_capacity)
     q->head = 0;
     q->tail = q->size % new_capacity;
 }
-

@@ -82,15 +82,35 @@ void PriorityQueue_from_vec_stk(PriorityQueue* pq, GenVec* vec, wc_compare_fn cm
 
 // operations
 
+// get the highest priority element without popping
 static inline const u8* __attribute__((nonnull(1))) PriorityQueue_peek(PriorityQueue* pq)
 {
     return Queue_peek_ptr(&pq->q);
 }
 
+// push into the heap, heap property maintained
 void PriorityQueue_push(PriorityQueue* pq, u8* data) __attribute__((nonnull(1, 2)));
 
+// pop the highest priority element from the heap, maintian the heap property
 void PriorityQueue_pop(PriorityQueue* pq, u8* popped) __attribute__((nonnull(1, 2)));
 
+// get the element at the logical index `idx` of the tree, maintain heap property
+static inline const u8* __attribute__((nonnull(1))) PriorityQueue_get(PriorityQueue* pq, u64 idx)
+{
+    CHECK_FATAL(idx >= pq->q.size, "idx out of range");
+    return Queue_get(&pq->q, idx);
+}
+
+// remove an element at logical index `idx` of the tree, maintain heap property. optional `out` param
+void PriorityQueue_remove(PriorityQueue* pq, u64 idx, u8* out) __attribute__((nonnull(1)));
+
+static inline u64 __attribute__((nonnull(1))) PriorityQueue_size(PriorityQueue* pq)
+{
+    return pq->q.size;
+}
+
 void PriorityQueue_print(PriorityQueue* pq, wc_print_fn print_fn) __attribute__((nonnull(1, 2)));
+
+
 
 #endif // PRIORITY_QUEUE_H
