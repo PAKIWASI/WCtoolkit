@@ -235,8 +235,9 @@ const u8* Queue_peek_ptr(const Queue* q)
 void Queue_print(Queue* q, wc_print_fn print)
 {
     printf("[ ");
-    for (u64 i = q->head; i != q->tail; i = REAL_IDX(q, i + 1)) {
-        const u8* out = GenVec_get_ptr_unsafe(&q->arr, i);
+    u64 h = q->head;
+    for (u64 i = 0; i < q->size; i++, h = REAL_IDX(q, h + 1)) {
+        const u8* out = GenVec_get_ptr_unsafe(&q->arr, h);
         print(out);
         putchar(' ');
     }
@@ -292,17 +293,14 @@ static void Queue_shrink(Queue* q)
 
 static void Queue_compact(Queue* q, u64 new_capacity)
 {
-    CHECK_FATAL(new_capacity < q->size, "new_capacity must be >= current size");
-
     // Share the same ops pointer
     GenVec new_arr;
     GenVec_create_stk(&new_arr, new_capacity, q->arr.data_size, q->arr.ops);
 
-    u64 old_cap = q->arr.capacity;
-
-    for (u64 i = q->head; i != q->tail; i = (i + 1) % old_cap) {
-        const u8* elem = GenVec_get_ptr(&q->arr, i);
-        GenVec_push(&new_arr, elem);
+    u64 h = q->head;
+    for (u64 i = 0; i < q->size; i++, h = REAL_IDX(q, h + 1)) {
+        const u8* elm = GenVec_get_ptr(&q->arr, h);
+        GenVec_push(&new_arr, elm);
     }
 
     GenVec_destroy_stk(&q->arr);

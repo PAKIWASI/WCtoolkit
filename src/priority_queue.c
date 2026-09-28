@@ -49,12 +49,6 @@ void PriorityQueue_destroy_stk(PriorityQueue* pq)
     Queue_destroy_stk(&pq->q);
 }
 
-/*
-    [4, 2, 3, 1, 5]
-    cmp = return a > b
-
-->  []
-*/
 PriorityQueue* PriorityQueue_from_vec(GenVec* vec, wc_compare_fn cmp_fn)
 {
     PriorityQueue* pq = malloc(sizeof(PriorityQueue));
@@ -145,7 +139,7 @@ static inline void print_tree(Queue* q, u64 i, u32 depth, wc_print_fn print_fn)
     print_fn(Queue_get(q, i));
     putchar('\n');
 
-    print_tree(q, LEFT_NODE(i), depth + 1, print_fn);  // left subtree below
+    print_tree(q, LEFT_NODE(i), depth + 1, print_fn); // left subtree below
 }
 
 

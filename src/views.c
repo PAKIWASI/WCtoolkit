@@ -19,10 +19,13 @@ StrView StrView_from_String_ex(String* str, u64 off, u64 len)
     return (StrView){.ptr = String_data_ptr(str) + off, .len = len};
 }
 
-StrView StrView_cstr_Arena(Arena* a, const char* cstr, u64 clen)
+StrView StrView_from_cstr(const char* cstr, u64 clen, Arena* a)
 {
-    char* p = ARENA_ALLOC_N(a, char, clen + 1); // for NULL Terminator
-    memcpy(p, cstr, clen + 1);
+    const char* p = cstr;
+    if (a) {
+        p = ARENA_ALLOC_N(a, char, clen + 1); // for NULL Terminator
+        memcpy((char*)p, cstr, clen + 1);
+    }
     return (StrView){.ptr = p, .len = clen};
 }
 
@@ -51,6 +54,18 @@ void StringStore_create(StringStore* ss)
     ss->num                          = 1;
 }
 
+
+static void StringStore_destroy_node(StringStore_node* node)
+{
+    if (node) {
+        if (node->buf[StringStore_NODE_SIZE] == 0) {
+            free(node->heap);
+        }
+        free(node);
+    }
+}
+
+
 void StringStore_destroy(StringStore* ss)
 {
     if (!ss || !ss->head) {
@@ -78,6 +93,7 @@ static inline void add_node(StringStore* ss)
     ss->tail_off                     = 0;
     ss->num++;
 }
+
 
 StrView StringStore_cstr(StringStore* ss, const char* cstr, u64 clen)
 {
@@ -117,12 +133,10 @@ StrView StringStore_cstr(StringStore* ss, const char* cstr, u64 clen)
 }
 
 
-void StringStore_destroy_node(StringStore_node* node)
+
+StrView StringStore_append(StringStore* ss, StrView sv1, StrView sv2)
 {
-    if (node) {
-        if (node->buf[StringStore_NODE_SIZE] == 0) {
-            free(node->heap);
-        }
-        free(node);
-    }
 }
+
+
+
