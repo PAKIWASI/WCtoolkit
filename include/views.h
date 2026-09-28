@@ -3,7 +3,6 @@
 
 #include "arena.h"
 #include "common.h"
-#include "priority_queue.h"
 #include "wc_string.h"
 
 
@@ -43,8 +42,6 @@ typedef struct {
     StringStore_node* head;
     u32               tail_off;    // how much of th tail node is used
     u32               num;         // total number of nodes
-    PriorityQueue     free_ranges; // a priority queue of all free ranges (a range is just a stringview)
-    // priority given to largest range. ranges with length below the cutoff are not considered
 } StringStore;
 
 void StringStore_create(StringStore* ss) __attribute__((nonnull(1)));

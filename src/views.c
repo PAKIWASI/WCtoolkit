@@ -1,7 +1,6 @@
 #include "views.h"
 #include "arena.h"
 #include "common.h"
-#include "priority_queue.h"
 #include "wc_string.h"
 
 #include <stdio.h>
@@ -37,22 +36,6 @@ void StrView_print(StrView sv)
 
 
 #define TAIL_BUF_OFF(ss) ((ss)->tail->buf + (ss)->tail_off)
-#define RANGE_CUTOFF 8 // range if len 8 or less will not be added to the free ranges priority queue when freed
-
-
-// < 0 means a has higher priority than b
-static int strview_larger_range_cmp(const u8* a, const u8* b, u64 size)
-{
-    (void)size;
-    if (((StrView*)a)->len > ((StrView*)b)->len) {
-        return -1; // a has higher priority
-    }
-    if (((StrView*)a)->len == ((StrView*)b)->len) {
-        return 0; // equal priority
-    }
-    // a < b, b has higher priority
-    return 1;
-}
 
 
 void StringStore_create(StringStore* ss)
@@ -66,8 +49,6 @@ void StringStore_create(StringStore* ss)
     ss->tail                         = node;
     ss->tail_off                     = 0;
     ss->num                          = 1;
-
-    PriorityQueue_create_stk(&ss->free_ranges, 10, sizeof(StrView), NULL, strview_larger_range_cmp);
 }
 
 void StringStore_destroy(StringStore* ss)
@@ -83,8 +64,6 @@ void StringStore_destroy(StringStore* ss)
         StringStore_destroy_node(curr);
         curr = next;
     } while (curr);
-
-    PriorityQueue_destroy_stk(&ss->free_ranges);
 }
 
 static inline void add_node(StringStore* ss)
@@ -100,9 +79,6 @@ static inline void add_node(StringStore* ss)
     ss->num++;
 }
 
-// TODO: when we create a new node and some space is left over from the old one, add that to free_ranges
-// first we check if cstr can fit in any free range: check how much free space will remain if we put cstr
-// into the highest priority range, if 50% or more will remain, check it' children to see if it fits there
 StrView StringStore_cstr(StringStore* ss, const char* cstr, u64 clen)
 {
     // Strings larger than a whole node go into a dedicated overflow node that
@@ -123,10 +99,9 @@ StrView StringStore_cstr(StringStore* ss, const char* cstr, u64 clen)
         ss->head   = node;
         ss->num++;
 
-        // Fresh empty tail so the old tail's data stays intact — its remaining
-        // free space is abandoned (append-only store, rare path, acceptable).
+        // Fresh empty tail so the old tail's data stays intact, its remaining
+        // free space is abandoned (append-only store, rare path, acceptable)
         add_node(ss);
-
         return (StrView){.ptr = node->heap, .len = clen};
     }
 
@@ -144,12 +119,10 @@ StrView StringStore_cstr(StringStore* ss, const char* cstr, u64 clen)
 
 void StringStore_destroy_node(StringStore_node* node)
 {
-    if (!node) {
-        return;
+    if (node) {
+        if (node->buf[StringStore_NODE_SIZE] == 0) {
+            free(node->heap);
+        }
+        free(node);
     }
-
-    if (node->buf[StringStore_NODE_SIZE] == 0) {
-        free(node->heap);
-    }
-    free(node);
 }
