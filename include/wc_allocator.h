@@ -39,13 +39,13 @@ typedef struct {
  * the value set on the main thread.
  *
  * Simple API (uses the global):
- *   wc_alloc(n)  wc_realloc(p, old_n, n)  wc_free(p, n)
- *   wc_alloc_aligned(n, al)  wc_realloc_aligned(p, old_n, n, al)  wc_free_aligned(p, n, al)
- *   WC_NEW(T)  WC_NEW_N(T, n)  WC_DELETE(T, p)  WC_DELETE_N(T, p, n)
+ *   wc_alloc(n) | wc_realloc(p, old_n, n) | wc_free(p, n)
+ *   wc_alloc_aligned(n, al) | wc_realloc_aligned(p, old_n, n, al) | wc_free_aligned(p, n, al)
+ *   WC_NEW(T) | WC_NEW_N(T, n) | WC_DELETE(T, p) | WC_DELETE_N(T, p, n)
  *
  * Explicit API (for types that let the user pick an allocator):
- *   wc_alloc_ex(a, n, al)  wc_realloc_ex(a, p, old_n, n, al)  wc_free_ex(a, p, n, al)
- *   WC_NEW_IN(a, T)  WC_NEW_N_IN(a, T, n)  WC_DELETE_IN(a, T, p)  WC_DELETE_N_IN(a, T, p, n)
+ *   wc_alloc_ex(a, n, al) | wc_realloc_ex(a, p, old_n, n, al) | wc_free_ex(a, p, n, al)
+ *   WC_NEW_IN(a, T) | WC_NEW_N_IN(a, T, n) | WC_DELETE_IN(a, T, p) | WC_DELETE_N_IN(a, T, p, n)
  *   `a == NULL` means "use the global at call time".
  *   Use &wc_libc_allocator to force libc regardless of the global.
  *

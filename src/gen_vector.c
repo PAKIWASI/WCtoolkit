@@ -651,7 +651,7 @@ void GenVec_remove_range(GenVec* vec, u64 start, u64 len)
     }
     CHECK_FATAL(start >= vec->size, "start out of range");
 
-    if (start + len >= vec->size) {
+    if (len > vec->size - start) {
         len = vec->size - start;
     }
 
@@ -708,7 +708,7 @@ GenVec* GenVec_subarr(const GenVec* vec, u64 start, u64 len)
 {
     CHECK_FATAL(start >= vec->size, "out of bounds");
 
-    if (start + len >= vec->size) {
+    if (len > vec->size - start) {
         len = vec->size - start;
     }
 
