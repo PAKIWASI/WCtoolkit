@@ -2,6 +2,7 @@
 #define ARENA_H
 
 #include "common.h"
+#include "wc_allocator.h"
 #include <stdlib.h>
 
 
@@ -14,10 +15,10 @@ typedef struct {
 
 // Tweakable settings
 #ifndef ARENA_DEFAULT_ALIGNMENT
-    #define ARENA_DEFAULT_ALIGNMENT (sizeof(void*)) // 8 bytes
+#define ARENA_DEFAULT_ALIGNMENT (sizeof(void*)) // 8 bytes
 #endif
 #ifndef ARENA_DEFAULT_SIZE
-    #define ARENA_DEFAULT_SIZE      (nKB(4))      // 4 KB
+#define ARENA_DEFAULT_SIZE (nKB(4)) // 4 KB
 #endif
 
 
@@ -139,26 +140,31 @@ static inline __attribute__((nonnull(1))) u64 Arena_remaining(Arena* Arena)
     return Arena->size - Arena->idx;
 }
 
+// arena allocator
+
+// returns an allocator struct tied to the passed arena
+wc_allocator Arena_allocator(Arena* a);
+
 
 
 // explicit scratch Arena
 
 typedef struct {
     Arena* Arena;
-    u64 mark;
+    u64    mark;
 } ArenaScratch;
 
 
 static inline __attribute__((nonnull(1))) ArenaScratch Arena_scratch_begin(Arena* Arena)
 {
-    return (ArenaScratch){ .Arena = Arena, .mark = Arena->idx };
+    return (ArenaScratch){.Arena = Arena, .mark = Arena->idx};
 }
 
 static inline void Arena_scratch_end(ArenaScratch scratch)
 {
     if (scratch.Arena) {
         scratch.Arena->idx = scratch.mark;
-        scratch.Arena = NULL;
+        scratch.Arena      = NULL;
     }
 }
 
@@ -166,15 +172,15 @@ static inline void wc_Arena_scratch_cleanup(ArenaScratch* s)
 {
     if (s && s->Arena) {
         s->Arena->idx = s->mark;
-        s->Arena = NULL;
+        s->Arena      = NULL;
     }
 }
 
 // macro for automatic cleanup Arena_scratch — safe with return/break/goto
-#define ARENA_SCRATCH(Arena_ptr)                                                                             \
-    for (int _as_once = 1; _as_once; _as_once = 0)                                                          \
+#define ARENA_SCRATCH(Arena_ptr)                                                                                     \
+    for (int _as_once = 1; _as_once; _as_once = 0)                                                                   \
         for (ArenaScratch __attribute__((cleanup(wc_Arena_scratch_cleanup))) _as_s = Arena_scratch_begin(Arena_ptr); \
-             _as_once; _as_once = 0)
+             _as_once; _as_once                                                    = 0)
 
 /* USAGE:
 // Manual:

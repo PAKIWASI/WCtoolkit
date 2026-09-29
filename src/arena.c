@@ -1,5 +1,6 @@
 #include "arena.h"
 #include "common.h"
+#include "wc_allocator.h"
 #include "wc_errno.h"
 
 #include <stdlib.h>
@@ -94,7 +95,6 @@ u8* Arena_alloc_aligned(Arena* arena, u64 size, u32 alignment)
     CHECK_FATAL((alignment & (alignment - 1)) != 0,
                 "alignment must be power of two");
 
-
     u64 aligned_idx = ALIGN_UP(arena->idx, alignment);
 
     WC_SET_RET(WC_ERR_FULL, arena->size - aligned_idx < size, NULL);
@@ -103,6 +103,21 @@ u8* Arena_alloc_aligned(Arena* arena, u64 size, u32 alignment)
     arena->idx = aligned_idx + size;
 
     return ptr;
+}
+
+static inline void* wc_arena_alloc(void* ctx, size_t size, size_t align)
+{
+    return Arena_alloc_aligned((Arena*)ctx, size, (u32)align);
+}
+
+wc_allocator Arena_allocator(Arena* a)
+{
+    return (wc_allocator){
+        .alloc   = wc_arena_alloc,
+        .realloc = NULL, // use default behavior: alloc new block, copy over, free old block
+        .free    = NULL, // no op for arena
+        .ctx     = a,    // tie it to an arena instance
+    };
 }
 
 
