@@ -10,20 +10,20 @@
 
 int main(void)
 {
-    Arena* a = Arena_create(nKB(4));
-    WC_SET_ALLOCATOR(Arena_allocator(a));
+    Arena* a = Arena_create(nKB(1));      // default allocator is libc
+    WC_SET_ALLOCATOR(Arena_allocator(a)); // set global allocator to arena itself
 
     GenVec* v = VEC_CREATE_OF(int, 5);
 
-    for (int i = 0; i < 20; i++) {
+    for (int i = 0; i < 70; i++) {
         VEC_PUSH(v, i);
     }
 
     GenVec_print(v, wc_print_int); putchar('\n');
 
-    print_hex(a->base, 512, 32);
+    print_hex(a->base, nKB(1), 32);
 
-    GenVec_destroy(v);
+    WC_SET_ALLOCATOR((wc_libc_allocator));
     Arena_destroy(a);
     return 0;
 }

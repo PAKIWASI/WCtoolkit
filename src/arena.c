@@ -110,9 +110,9 @@ static inline void* wc_arena_alloc(void* ctx, size_t size, size_t align)
     return Arena_alloc_aligned((Arena*)ctx, size, (u32)align);
 }
 
-wc_allocator Arena_allocator(Arena* a)
+wc_allocator_t Arena_allocator(Arena* a)
 {
-    return (wc_allocator){
+    return (wc_allocator_t){
         .alloc   = wc_arena_alloc,
         .realloc = NULL, // use default behavior: alloc new block, copy over, free old block
         .free    = NULL, // no op for arena

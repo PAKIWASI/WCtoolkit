@@ -7,6 +7,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+// TODO: test
+
 /*
  * Allocator type for WCtoolkit: arbitrary ctx, explicit sizes and alignment.
  *
@@ -25,10 +27,10 @@ typedef struct {
     void* (*realloc)(void* ctx, void* ptr, size_t old_size, size_t new_size, size_t align);
     void (*free)(void* ctx, void* ptr, size_t size, size_t align);
     void* ctx;
-} wc_allocator;
+} wc_allocator_t;
 
 #ifndef WC_DEFAULT_ALLOCATOR
-#define WC_DEFAULT_ALLOCATOR {0} // libc. Override: -DWC_DEFAULT_ALLOCATOR='{a,r,f,0}'
+#define WC_DEFAULT_ALLOCATOR {0} // libc
 #endif
 
 /*
@@ -51,8 +53,8 @@ typedef struct {
  *
  * Over-aligned T (alignof(T) > WC_MAX_ALIGN): free with WC_DELETE*, not wc_free.
  */
-extern _Thread_local wc_allocator wc_default_allocator;
-extern const wc_allocator         wc_libc_allocator;
+extern _Thread_local wc_allocator_t wc_default_allocator;
+extern const wc_allocator_t         wc_libc_allocator;
 
 #define WC_MAX_ALIGN alignof(max_align_t)
 
@@ -120,14 +122,14 @@ static inline size_t wc_norm_align(size_t align)
 
 /* explicit allocator API (a == NULL -> global) */
 
-static inline void* wc_alloc_ex(const wc_allocator* a, size_t n, size_t align)
+static inline void* wc_alloc_ex(const wc_allocator_t* a, size_t n, size_t align)
 {
     a     = WC_RESOLVE(a);
     align = wc_norm_align(align);
     return a->alloc ? a->alloc(a->ctx, n, align) : wc_libc_alloc(n, align);
 }
 
-static inline void wc_free_ex(const wc_allocator* a, void* p, size_t n, size_t align)
+static inline void wc_free_ex(const wc_allocator_t* a, void* p, size_t n, size_t align)
 {
     if (!p) {
         return;
@@ -144,7 +146,7 @@ static inline void wc_free_ex(const wc_allocator* a, void* p, size_t n, size_t a
     }
 }
 
-static inline void* wc_realloc_ex(const wc_allocator* a, void* p, size_t old_n, size_t n, size_t align)
+static inline void* wc_realloc_ex(const wc_allocator_t* a, void* p, size_t old_n, size_t n, size_t align)
 {
     a     = WC_RESOLVE(a);
     align = wc_norm_align(align);
@@ -194,15 +196,17 @@ static inline void wc_free_aligned(void* p, size_t n, size_t align)
 
 /* typed helpers */
 
-#define WC_NEW(T)            ((T*)wc_alloc_aligned(sizeof(T), alignof(T)))
-#define WC_NEW_N(T, n)       ((T*)wc_alloc_aligned(sizeof(T) * (n), alignof(T)))
-#define WC_DELETE(T, p)      wc_free_aligned((p), sizeof(T), alignof(T))
-#define WC_DELETE_N(T, p, n) wc_free_aligned((p), sizeof(T) * (n), alignof(T))
+#define WC_NEW(T)             ((T*)wc_alloc_aligned(sizeof(T), alignof(T)))
+#define WC_NEW_N(T, n)        ((T*)wc_alloc_aligned(sizeof(T) * (n), alignof(T)))
+#define WC_REALLOC_N(T, p, n) ((T*)wc_realloc_aligned((p), sizeof(T) * (n), alignof(T)))
+#define WC_DELETE(T, p)       wc_free_aligned((p), sizeof(T), alignof(T))
+#define WC_DELETE_N(T, p, n)  wc_free_aligned((p), sizeof(T) * (n), alignof(T))
 
-#define WC_NEW_IN(a, T)            ((T*)wc_alloc_ex((a), sizeof(T), alignof(T)))
-#define WC_NEW_N_IN(a, T, n)       ((T*)wc_alloc_ex((a), sizeof(T) * (n), alignof(T)))
-#define WC_DELETE_IN(a, T, p)      wc_free_ex((a), (p), sizeof(T), alignof(T))
-#define WC_DELETE_N_IN(a, T, p, n) wc_free_ex((a), (p), sizeof(T) * (n), alignof(T))
+#define WC_NEW_IN(a, T)                ((T*)wc_alloc_ex((a), sizeof(T), alignof(T)))
+#define WC_NEW_N_IN(a, T, n)           ((T*)wc_alloc_ex((a), sizeof(T) * (n), alignof(T)))
+#define WC_REALLOC_N_IN(a, T, p, o, n) ((T*)wc_realloc_ex((a), (p), (o), sizeof(T) * (n), alignof(T)))
+#define WC_DELETE_IN(a, T, p)          wc_free_ex((a), (p), sizeof(T), alignof(T))
+#define WC_DELETE_N_IN(a, T, p, n)     wc_free_ex((a), (p), sizeof(T) * (n), alignof(T))
 
 
 

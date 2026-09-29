@@ -3,6 +3,7 @@
 
 #include "common.h"
 #include "wc_allocator.h"
+
 #include <stdlib.h>
 
 
@@ -143,7 +144,7 @@ static inline __attribute__((nonnull(1))) u64 Arena_remaining(Arena* Arena)
 // arena allocator
 
 // returns an allocator struct tied to the passed arena
-wc_allocator Arena_allocator(Arena* a);
+wc_allocator_t Arena_allocator(Arena* a);
 
 
 
