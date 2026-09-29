@@ -46,14 +46,14 @@ GenVec* GenVec_create(u64 n, u32 data_size, const wc_container_ops* ops)
 {
     CHECK_FATAL(data_size == 0, "data_size can't be 0");
 
-    GenVec* vec = malloc(sizeof(GenVec));
+    GenVec* vec = wc_alloc(sizeof(GenVec));
     CHECK_FATAL(!vec, "vec init failed");
 
     // Only allocate memory if n > 0, otherwise data can be NULL
     vec->data = (n > 0) ? wc_alloc(data_size * n) : NULL;
 
     if (n > 0 && !vec->data) {
-        free(vec);
+        wc_free(vec, sizeof(GenVec));
         FATAL("data init failed");
     }
 
@@ -71,7 +71,7 @@ void GenVec_create_stk(GenVec* vec, u64 n, u32 data_size, const wc_container_ops
 {
     CHECK_FATAL(data_size == 0, "data_size can't be 0");
 
-    vec->data = (n > 0) ? malloc(data_size * n) : NULL;
+    vec->data = (n > 0) ? wc_alloc(data_size * n) : NULL;
     CHECK_FATAL(n > 0 && !vec->data, "data init failed");
 
     vec->size      = 0;
@@ -184,7 +184,7 @@ void GenVec_destroy_stk(GenVec* vec)
         }
     }
 
-    wc_free(vec->data, vec->data_size * vec->capacity);
+    wc_free(vec->data, GET_SCALED(vec, vec->capacity));
     vec->data = NULL;
 }
 
@@ -215,7 +215,7 @@ void GenVec_reset(GenVec* vec)
         }
     }
 
-    free(vec->data);
+    wc_free(vec->data, GET_SCALED(vec, vec->capacity));
     vec->data     = NULL;
     vec->size     = 0;
     vec->capacity = 0;
@@ -228,7 +228,7 @@ void GenVec_reserve(GenVec* vec, u64 new_capacity)
         return;
     }
 
-    u8* new_data = realloc(vec->data, GET_SCALED(vec, new_capacity));
+    u8* new_data = wc_realloc(vec->data, GET_SCALED(vec, vec->capacity), GET_SCALED(vec, new_capacity));
     CHECK_FATAL(!new_data, "realloc failed");
 
     vec->data     = new_data;
@@ -271,7 +271,7 @@ void GenVec_shrink_to_fit(GenVec* vec)
         return;
     }
 
-    u8* new_data = realloc(vec->data, GET_SCALED(vec, min_cap));
+    u8* new_data = wc_realloc(vec->data, GET_SCALED(vec, curr_cap), GET_SCALED(vec, min_cap));
     CHECK_FATAL(!new_data, "data realloc failed");
 
     vec->data     = new_data;
@@ -644,12 +644,6 @@ void GenVec_remove(GenVec* vec, u64 i, u8* out)
 }
 
 
-/*
-    0 1 2 3 4 5, (1, 3) -> [1, 4)
-    start = 1
-    len = 3
-    end = 1 + 3 - 1 = 3
-*/
 void GenVec_remove_range(GenVec* vec, u64 start, u64 len)
 {
     if (len == 0) {
@@ -672,7 +666,7 @@ void GenVec_remove_range(GenVec* vec, u64 start, u64 len)
 
     u8* dest = GET_PTR(vec, start);
     u8* src  = GET_PTR(vec, start + len);
-    memmove(dest, src, GET_SCALED(vec, vec->size - start - len));   // TODO: is this right
+    memmove(dest, src, GET_SCALED(vec, vec->size - start - len));
 
     vec->size -= len;
 }
@@ -760,7 +754,7 @@ void GenVec_copy(GenVec* dest, const GenVec* src)
     // Copy all fields (including ops pointer)
     memcpy(dest, src, sizeof(GenVec));
 
-    dest->data = malloc(GET_SCALED(src, src->capacity));
+    dest->data = wc_alloc(GET_SCALED(src, src->capacity));
     CHECK_FATAL(!dest->data, "dest data malloc failed");
 
     if (src->is_pod) {
@@ -790,24 +784,25 @@ void GenVec_move(GenVec* dest, GenVec** src)
     memcpy(dest, *src, sizeof(GenVec));
 
     (*src)->data = NULL;
-    free(*src);
+    wc_free(*src, sizeof(GenVec));
     *src = NULL;
 }
 
 
 static void GenVec_grow(GenVec* vec)
 {
+    u64 old_cap = vec->capacity;
     u64 new_cap;
-    if (vec->capacity < GENVEC_MIN_CAPACITY) {
-        new_cap = vec->capacity + 1;
+    if (old_cap < GENVEC_MIN_CAPACITY) {
+        new_cap = old_cap + 1;
     } else {
-        new_cap = (u64)((float)vec->capacity * GENVEC_GROWTH);
-        if (new_cap <= vec->capacity) {
-            new_cap = vec->capacity + 1;
+        new_cap = (u64)((float)old_cap * GENVEC_GROWTH);
+        if (new_cap <= old_cap) {
+            new_cap = old_cap + 1;
         }
     }
 
-    u8* new_data = realloc(vec->data, GET_SCALED(vec, new_cap));
+    u8* new_data = wc_realloc(vec->data, GET_SCALED(vec, old_cap), GET_SCALED(vec, new_cap));
     CHECK_FATAL(!new_data, "data realloc failed");
 
     vec->data     = new_data;

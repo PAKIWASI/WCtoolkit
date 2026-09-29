@@ -106,6 +106,7 @@ set(LIB_SOURCES
     src/priority_queue.c
     src/random.c
     src/stack.c
+    src/wc_allocator.c
     src/wc_string.c
     src/wc_errno.c
     src/views.c
