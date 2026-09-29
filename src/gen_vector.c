@@ -1,5 +1,6 @@
 #include "common.h"
 #include "gen_vector.h"
+#include "wc_allocator.h"
 #include "wc_errno.h"
 
 #include <stdio.h>
@@ -49,7 +50,7 @@ GenVec* GenVec_create(u64 n, u32 data_size, const wc_container_ops* ops)
     CHECK_FATAL(!vec, "vec init failed");
 
     // Only allocate memory if n > 0, otherwise data can be NULL
-    vec->data = (n > 0) ? malloc(data_size * n) : NULL;
+    vec->data = (n > 0) ? wc_alloc(data_size * n) : NULL;
 
     if (n > 0 && !vec->data) {
         free(vec);
@@ -164,7 +165,7 @@ void GenVec_create_stk_arr(GenVec* vec, u64 n, u8* arr, u32 data_size, const wc_
 void GenVec_destroy(GenVec* vec)
 {
     GenVec_destroy_stk(vec);
-    free(vec);
+    wc_free(vec, sizeof(GenVec));
 }
 
 
@@ -183,7 +184,7 @@ void GenVec_destroy_stk(GenVec* vec)
         }
     }
 
-    free(vec->data);
+    wc_free(vec->data, vec->data_size * vec->capacity);
     vec->data = NULL;
 }
 

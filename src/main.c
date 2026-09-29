@@ -1,48 +1,22 @@
+
 #include "common.h"
 #include "gen_vector.h"
-#include "priority_queue.h"
 #include "wc_macros.h"
-
 #include <stdio.h>
 
 
-static int int_compare(const u8* a, const u8* b, u64 size)
-{
-    (void)size;
-    int ia = *(const int*)a;
-    int ib = *(const int*)b;
-    return (ia > ib) - (ia < ib);
-}
 
 int main(void)
 {
-    GenVec* vec = VEC_FROM_ARR(int, 10, ((int[10]){3, 2, 5, 9, 1, 10, 47, 0, 2, 1}));
-    GenVec_print(vec, wc_print_int);
-    putchar('\n');
+    GenVec* v = GenVec_create(10, sizeof(int), NULL);
 
-    PriorityQueue* pq = PriorityQueue_from_vec(vec, int_compare);
-    PriorityQueue_print(pq, wc_print_int);
+    VEC_PUSH(v, 1);
+    VEC_PUSH(v, 2);
+    VEC_PUSH(v, 3);
+    VEC_PUSH(v, 4);
 
-    int p;
-    for (int i = 0; i < 7; i++) {
-        PriorityQueue_pop(pq, cast(p));
-        printf("popped: %d\n", p);
-        PriorityQueue_print(pq, wc_print_int);
-    }
+    GenVec_print(v, wc_print_int); putchar('\n');
 
-    PriorityQueue_push(pq, (u8*)(&(int){69}));
-    PriorityQueue_push(pq, (u8*)(&(int){0}));
-    PriorityQueue_push(pq, (u8*)(&(int){3}));
-    PriorityQueue_print(pq, wc_print_int);
-
-    printf("%d\n", *(int*)PriorityQueue_get(pq, PriorityQueue_size(pq) - 2));
-
-    int r;
-    PriorityQueue_remove(pq, 1, cast(r));
-    printf("removed: %d\n", r);
-    PriorityQueue_print(pq, wc_print_int);
-
-    GenVec_destroy(vec);
-    PriorityQueue_destroy(pq);
+    GenVec_destroy(v);
     return 0;
 }
