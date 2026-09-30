@@ -179,6 +179,30 @@ extern int wc_test_failed;
     } while (0)
 
 /*
+ * WC_RUN_XFAIL(fn)
+ * Run a test that is EXPECTED to fail (a known defect with a regression test
+ * written before the fix). A failure prints XFAIL and counts as passed.
+ * A pass prints XPASS and counts as FAILED: the defect is fixed, so switch
+ * the call to WC_RUN so the test guards the fix from now on.
+ * Assertion output is still printed so the failure mode stays visible.
+ */
+#define WC_RUN_XFAIL(fn)                                                                      \
+    do {                                                                                      \
+        wc_test_failed = 0;                                                                   \
+        wc_total++;                                                                           \
+        printf("  %-48s", #fn);                                                               \
+        fflush(stdout);                                                                       \
+        fn();                                                                                 \
+        if (wc_test_failed != 0) {                                                            \
+            printf(WC_YELLOW "XFAIL" WC_RESET " (known defect, %d assertion(s))\n", wc_test_failed); \
+            wc_passed++;                                                                      \
+        } else {                                                                              \
+            printf(WC_RED "XPASS" WC_RESET " (defect fixed: switch to WC_RUN)\n");           \
+            wc_failed++;                                                                      \
+        }                                                                                     \
+    } while (0)
+
+/*
  * WC_REPORT()
  * Print summary and return exit code.
  * Put this as the last statement in main():  return WC_REPORT();

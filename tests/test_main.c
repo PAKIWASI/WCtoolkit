@@ -16,6 +16,8 @@ void fast_math_suite(void);
 void complex_suite(void);
 void macros_suite(void);
 void views_suite(void);
+void test_allocator_suite(void);
+void regression_suite(void);
 
 int speed_suite(void);
 
@@ -48,6 +50,10 @@ int main(void)
     macros_suite();
 
     views_suite();
+
+    test_allocator_suite();
+
+    regression_suite();
 
     speed_suite();
 

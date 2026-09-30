@@ -279,7 +279,11 @@ Usage:
     ({                                                                                           \
         V           _out;                                                                        \
         typeof(key) _mk = (key);                                                                 \
-        CHECK_FATAL(!HashMap_get((map), (const u8*)&_mk, (u8*)&_out), "MAP_GET: key not found"); \
+        memset(&_out, 0, sizeof(_out));                                                          \
+        /* the lookup must stay OUTSIDE CHECK_FATAL: it compiles to nothing under NDEBUG */      \
+        b8 _found = HashMap_get((map), (const u8*)&_mk, (u8*)&_out);                             \
+        CHECK_FATAL(!_found, "MAP_GET: key not found");                                          \
+        (void)_found;                                                                            \
         _out;                                                                                    \
     })
 

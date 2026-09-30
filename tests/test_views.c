@@ -83,7 +83,10 @@ static void test_overflow_by_one_goes_to_heap(void)
     WC_ASSERT(v.ptr[0] == 'B');
     WC_ASSERT(v.ptr[StringStore_NODE_SIZE] == 'B');
     WC_ASSERT_EQ_U64(ss.num, 3); // initial node + overflow node + fresh tail
-    WC_ASSERT(ss.head->buf[StringStore_NODE_SIZE] == 1);
+    // The overflow node is pushed at the head and owns a heap buffer,
+    // so its flag byte is 0 (heap active) and the view points into it.
+    WC_ASSERT(ss.head->buf[StringStore_NODE_SIZE] == 0);
+    WC_ASSERT(v.ptr == ss.head->heap);
 
     StringStore_destroy(&ss); // must free the heap buffer too
 }

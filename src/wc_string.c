@@ -194,15 +194,11 @@ void String_shrink_to_fit(String* s)
         return;
     } // already optimal
 
-    if (s->size == 0) {
-        free(s->heap);
-        s->heap     = NULL;
-        s->capacity = STR_SSO_SIZE - 1;
-        return;
-    }
-
     if (s->size <= STR_SSO_SIZE - 1) {
-        // Bring back to SSO (only place this happens)
+        // Bring back to SSO (only place this happens).
+        // Covers size == 0: heap_to_stk frees the buffer AND restores the SSO flag.
+        // (A8: the old size == 0 branch freed the buffer but stayed in heap mode,
+        //  leaving heap == NULL with capacity 23; the next append wrote to NULL.)
         heap_to_stk(s);
         return;
     }

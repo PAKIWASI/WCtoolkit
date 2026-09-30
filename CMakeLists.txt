@@ -138,6 +138,9 @@ add_executable(tests
     tests/macros_test.c
     tests/test_views.c
     tests/speed_test.c
+    tests/wc_test_allocator.c
+    tests/test_allocator_test.c
+    tests/regression_test.c
     ${LIB_SOURCES}
 )
 target_include_directories(tests PRIVATE include tests)
@@ -147,6 +150,14 @@ target_link_libraries(tests m)
 # Register with CTest so `ctest` works from the build directory
 enable_testing()
 add_test(NAME unit_tests COMMAND tests)
+
+# A5: WC_REALLOC_N has the wrong arity and does not compile when used.
+# Expected to fail until Phase 1 fixes it; then remove WILL_FAIL.
+add_test(NAME a5_realloc_n_compiles
+    COMMAND ${CMAKE_C_COMPILER} -std=gnu11 -fsyntax-only
+            -I${CMAKE_SOURCE_DIR}/include
+            ${CMAKE_SOURCE_DIR}/tests/compile/a5_realloc_n.c)
+set_tests_properties(a5_realloc_n_compiles PROPERTIES WILL_FAIL TRUE)
 
 
 # Example projects

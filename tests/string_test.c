@@ -625,6 +625,31 @@ static void test_sso_promotes_at_overflow(void)
     String_destroy(s);
 }
 
+// A8 regression: shrink_to_fit on an empty heap-mode string used to free the
+// buffer but stay in heap mode (heap == NULL, capacity 23); next append wrote to NULL.
+static void test_shrink_empty_heap_string_returns_to_sso(void)
+{
+    String* s = String_create();
+    for (int i = 0; i < 40; i++) {
+        String_append_char(s, 'a');
+    }
+    WC_ASSERT_FALSE(String_is_sso(s));
+
+    String_clear(s);
+    String_shrink_to_fit(s);
+
+    WC_ASSERT_TRUE(String_is_sso(s));
+    WC_ASSERT_EQ_U64(String_len(s), 0);
+    WC_ASSERT_EQ_U64(s->capacity, STR_SSO_SIZE - 1);
+
+    String_append_char(s, 'b');
+    String_append_cstr(s, "cd");
+    WC_ASSERT_EQ_U64(String_len(s), 3);
+    WC_ASSERT(String_equals_cstr(s, "bcd"));
+
+    String_destroy(s);
+}
+
 
 
 // Suite entry point
@@ -675,6 +700,7 @@ void String_suite(void)
     WC_RUN(test_to_cstr);
     WC_RUN(test_growth);
     WC_RUN(test_shrink);
+    WC_RUN(test_shrink_empty_heap_string_returns_to_sso);
 
     // new tests
     WC_RUN(test_insert_String_front);
