@@ -804,37 +804,39 @@ static void bench_ss_StringStore(void)
 
 static void bench_ss_chain_Arena(void)
 {
-    ChainArena* ca = chain_Arena_create();
+    ChainArena ca;
+    ChainArena_create(&ca, WC_LIBC);
 
     char buf[64];
     u64  t0 = ns_now();
     for (int i = 0; i < STRSTORE_N; i++) {
         int   len = strstore_fmt(buf, sizeof(buf), i);
-        char* p   = (char*)chain_Arena_alloc(ca, (u64)len);
+        char* p   = (char*)ChainArena_alloc(&ca, (u64)len);
         memcpy(p, buf, (u64)len);
     }
     u64 t1 = ns_now();
 
-    bench("chain_Arena_alloc + memcpy", STRSTORE_N, t0, t1);
-    chain_Arena_destroy(ca);
+    bench("ChainArena_alloc + memcpy", STRSTORE_N, t0, t1);
+    ChainArena_destroy(&ca);
 }
 
 static void bench_ss_Arena(void)
 {
     // Sized generously up front — Arena doesn't grow, unlike the other three.
-    Arena* a = Arena_create(STRSTORE_N * 32ULL);
+    Arena a;
+    Arena_create(&a, WC_LIBC, STRSTORE_N * 32ULL);
 
     char buf[64];
     u64  t0 = ns_now();
     for (int i = 0; i < STRSTORE_N; i++) {
         int   len = strstore_fmt(buf, sizeof(buf), i);
-        char* p   = (char*)Arena_alloc(a, (u64)len);
+        char* p   = (char*)Arena_alloc(&a, (u64)len);
         memcpy(p, buf, (u64)len);
     }
     u64 t1 = ns_now();
 
     bench("Arena (fixed) alloc + memcpy", STRSTORE_N, t0, t1);
-    Arena_destroy(a);
+    Arena_destroy(&a);
 }
 
 static void bench_ss_malloc(void)

@@ -295,34 +295,37 @@ static void test_det_identity(void)
 
 static void test_Arena_alloc(void)
 {
-    Arena*   Arena = Arena_create(nKB(4));
-    Matrixf* m     = matrix_Arena_alloc(Arena, 3, 3);
+    Arena    arena;
+    Arena_create(&arena, WC_LIBC, nKB(4));
+    Matrixf* m = matrix_Arena_alloc(&arena, 3, 3);
     WC_ASSERT_NOT_NULL(m);
     WC_ASSERT_NOT_NULL(m->data);
     WC_ASSERT_EQ_U64(m->m, 3);
     WC_ASSERT_EQ_U64(m->n, 3);
-    Arena_destroy(Arena);
+    Arena_destroy(&arena);
 }
 
 static void test_Arena_arr_alloc(void)
 {
-    Arena* Arena = Arena_create(nKB(4));
+    Arena arena;
+    Arena_create(&arena, WC_LIBC, nKB(4));
     float  src[] = {1,2,3,4};
-    Matrixf* m   = matrix_Arena_arr_alloc(Arena, 2, 2, src);
+    Matrixf* m   = matrix_Arena_arr_alloc(&arena, 2, 2, src);
     WC_ASSERT(mat_eq(m, src, FLOAT_EPS));
-    Arena_destroy(Arena);
+    Arena_destroy(&arena);
 }
 
 static void test_Arena_scratch_temporaries(void)
 {
     // Temporaries inside scratch don't leak; result outside scratch survives
-    Arena*   Arena = Arena_create(nKB(2));
-    Matrixf* result = matrix_Arena_alloc(Arena, 2, 2);
+    Arena    arena;
+    Arena_create(&arena, WC_LIBC, nKB(2));
+    Matrixf* result = matrix_Arena_alloc(&arena, 2, 2);
 
-    ARENA_SCRATCH(Arena) {
-        Matrixf* t1 = matrix_Arena_arr_alloc(Arena, 2, 2,
+    ARENA_SCRATCH(&arena) {
+        Matrixf* t1 = matrix_Arena_arr_alloc(&arena, 2, 2,
                         (float[]){1,0,0,1});
-        Matrixf* t2 = matrix_Arena_arr_alloc(Arena, 2, 2,
+        Matrixf* t2 = matrix_Arena_arr_alloc(&arena, 2, 2,
                         (float[]){5,6,7,8});
         matrix_xply(result, t1, t2);
         (void)t1; (void)t2;
@@ -331,7 +334,7 @@ static void test_Arena_scratch_temporaries(void)
     // t1 and t2 memory reclaimed; result still holds correct values
     float expected[] = {5,6,7,8};
     WC_ASSERT(mat_eq(result, expected, FLOAT_EPS));
-    Arena_destroy(Arena);
+    Arena_destroy(&arena);
 }
 
 

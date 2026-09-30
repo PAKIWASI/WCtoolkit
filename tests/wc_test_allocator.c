@@ -1,5 +1,8 @@
 #include "wc_test_allocator.h"
+#include "common.h"
+#include "wc_allocator.h"
 
+#include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -110,6 +113,23 @@ static void ta_untrack(wc_test_alloc* ta, wc_ta_block* b)
 }
 
 
+// Backing dispatch (old or new API)
+
+static inline void* ta_b_alloc(wc_test_alloc* ta, size_t size, size_t align)
+{
+    return ta->use_backing2 ? wc2_alloc(ta->backing2, size, align) : wc_alloc_ex(&ta->backing, size, align);
+}
+
+static inline void ta_b_free(wc_test_alloc* ta, void* p, size_t size, size_t align)
+{
+    if (ta->use_backing2) {
+        wc2_free(ta->backing2, p, size, align);
+    } else {
+        wc_free_ex(&ta->backing, p, size, align);
+    }
+}
+
+
 // Contract checks shared by alloc and realloc
 
 static b8 ta_check_request(wc_test_alloc* ta, const char* op, size_t size, size_t align)
@@ -165,7 +185,7 @@ void* wc_test_alloc_cb_alloc(void* ctx, size_t size, size_t align)
         return NULL;
     }
 
-    void* p = wc_alloc_ex(&ta->backing, size, align);
+    void* p = ta_b_alloc(ta, size, align);
     if (!p) {
         return NULL;
     }
@@ -193,7 +213,7 @@ void* wc_test_alloc_cb_realloc(void* ctx, void* p, size_t old_size, size_t new_s
 
     // Always move: alloc new, copy, poison + free old. Catches callers that
     // keep using the old pointer, which an in-place libc realloc would hide.
-    void* q = wc_alloc_ex(&ta->backing, new_size, align);
+    void* q = ta_b_alloc(ta, new_size, align);
     if (!q) {
         return NULL;
     }
@@ -209,7 +229,7 @@ void* wc_test_alloc_cb_realloc(void* ctx, void* p, size_t old_size, size_t new_s
 
     memset(p, WC_TA_POISON, old_size);
     ta_untrack(ta, b);
-    wc_free_ex(&ta->backing, p, old_size, align);
+    ta_b_free(ta, p, old_size, align);
 
     ta_track(ta, q, new_size, align);
     ta->n_realloc++;
@@ -227,7 +247,7 @@ void wc_test_alloc_cb_free(void* ctx, void* p, size_t size, size_t align)
 
     memset(p, WC_TA_POISON, size);
     ta_untrack(ta, b);
-    wc_free_ex(&ta->backing, p, size, align);
+    ta_b_free(ta, p, size, align);
     ta->n_free++;
 }
 
@@ -245,6 +265,13 @@ void wc_test_alloc_init(wc_test_alloc* ta, const wc_allocator_t* backing)
     }
 }
 
+void wc_test_alloc_init2(wc_test_alloc* ta, wc_allocator backing)
+{
+    wc_test_alloc_init(ta, NULL);
+    ta->backing2     = backing;
+    ta->use_backing2 = 1;
+}
+
 u64 wc_test_alloc_destroy(wc_test_alloc* ta)
 {
     u64 leaks = ta->live_blocks;
@@ -257,7 +284,7 @@ u64 wc_test_alloc_destroy(wc_test_alloc* ta)
         wc_ta_block* b = &ta->blocks[i];
         if (b->ptr != NULL && b->ptr != WC_TA_TOMBSTONE) {
             fprintf(stderr, "    leak: %p size=%zu align=%zu\n", b->ptr, b->size, b->align);
-            wc_free_ex(&ta->backing, b->ptr, b->size, b->align);
+            ta_b_free(ta, b->ptr, b->size, b->align);
         }
     }
 
@@ -277,6 +304,17 @@ wc_allocator_t wc_test_alloc_allocator(wc_test_alloc* ta)
         .free    = wc_test_alloc_cb_free,
         .ctx     = ta,
     };
+}
+
+static const wc_alloc_vtable wc_test_alloc_vt = {
+    .alloc   = wc_test_alloc_cb_alloc,
+    .realloc = wc_test_alloc_cb_realloc,
+    .free    = wc_test_alloc_cb_free,
+};
+
+wc_allocator wc_test_alloc_allocator2(wc_test_alloc* ta)
+{
+    return (wc_allocator){.vt = &wc_test_alloc_vt, .ctx = ta};
 }
 
 b8 wc_test_alloc_owns(const wc_test_alloc* ta, const void* p)

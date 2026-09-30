@@ -5,6 +5,8 @@
 // Correctness suites 
 void String_suite(void);
 void Arena_suite(void);
+void ChainArena_suite(void);
+void allocator_core_suite(void);
 void gen_vector_suite(void);
 void HashMap_suite(void);
 void HashSet_suite(void);
@@ -27,7 +29,11 @@ int main(void)
     // Correctness 
     String_suite();
 
+    allocator_core_suite();
+
     Arena_suite();
+
+    ChainArena_suite();
 
     gen_vector_suite();
 

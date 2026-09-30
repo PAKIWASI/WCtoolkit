@@ -140,6 +140,8 @@ add_executable(tests
     tests/speed_test.c
     tests/wc_test_allocator.c
     tests/test_allocator_test.c
+    tests/allocator_core_test.c
+    tests/chain_arena_test.c
     tests/regression_test.c
     ${LIB_SOURCES}
 )
@@ -151,13 +153,11 @@ target_link_libraries(tests m)
 enable_testing()
 add_test(NAME unit_tests COMMAND tests)
 
-# A5: WC_REALLOC_N has the wrong arity and does not compile when used.
-# Expected to fail until Phase 1 fixes it; then remove WILL_FAIL.
+# A5: the typed realloc macro must compile when used (fixed in Phase 1).
 add_test(NAME a5_realloc_n_compiles
-    COMMAND ${CMAKE_C_COMPILER} -std=gnu11 -fsyntax-only
+    COMMAND ${CMAKE_C_COMPILER} -std=gnu11 -fsyntax-only -Wall -Wextra -Werror
             -I${CMAKE_SOURCE_DIR}/include
             ${CMAKE_SOURCE_DIR}/tests/compile/a5_realloc_n.c)
-set_tests_properties(a5_realloc_n_compiles PROPERTIES WILL_FAIL TRUE)
 
 
 # Example projects

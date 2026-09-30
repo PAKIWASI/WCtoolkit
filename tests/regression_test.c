@@ -15,7 +15,7 @@
 void regression_suite(void);
 
 
-/* ── Known defects (expected to FAIL until Phase 1) ──────────────────────── */
+/* ── Fixed defects (regression tests, written before the fix in Phase 0) ─── */
 
 // A1: capacity check `size - aligned_idx < req` underflows when alignment
 // pushes aligned_idx past `size`, so a full arena hands out a pointer past its end.
@@ -23,7 +23,7 @@ static void test_A1_arena_alloc_past_end_returns_null(void)
 {
     alignas(16) u8 buf[13];
     Arena arena;
-    Arena_create_arr_stk(&arena, sizeof(buf), buf);
+    Arena_create_buf(&arena, buf, sizeof(buf));
 
     WC_ASSERT_NOT_NULL(Arena_alloc(&arena, 1)); // idx 0 -> 1
     WC_ASSERT_NOT_NULL(Arena_alloc(&arena, 4)); // aligned to 8, idx -> 12
@@ -38,7 +38,7 @@ static void test_A1_arena_alloc_aligned_past_end_returns_null(void)
 {
     alignas(16) u8 buf[20];
     Arena arena;
-    Arena_create_arr_stk(&arena, sizeof(buf), buf);
+    Arena_create_buf(&arena, buf, sizeof(buf));
 
     WC_ASSERT_NOT_NULL(Arena_alloc_aligned(&arena, 17, 1)); // idx -> 17
     u8* p = Arena_alloc_aligned(&arena, 1, 32);              // aligned_idx = 32 > 20
@@ -50,7 +50,7 @@ static void test_A2_arena_aligns_address_not_offset(void)
 {
     alignas(64) u8 buf[256];
     Arena arena;
-    Arena_create_arr_stk(&arena, sizeof(buf) - 4, buf + 4); // base is 4 mod 16
+    Arena_create_buf(&arena, buf + 4, sizeof(buf) - 4); // base is 4 mod 16
 
     u8* p16 = Arena_alloc_aligned(&arena, 8, 16);
     u8* p64 = Arena_alloc_aligned(&arena, 8, 64);
@@ -64,19 +64,60 @@ static void test_A2_arena_aligns_address_not_offset(void)
 // so any request aligned above 8 is misaligned by construction.
 static void test_A2_chain_arena_aligns_address(void)
 {
-    ChainArena* ca = chain_Arena_create();
+    ChainArena ca;
+    ChainArena_create(&ca, WC_LIBC);
 
-    u8* p16 = chain_Arena_alloc_aligned(ca, 8, 16);
-    u8* p64 = chain_Arena_alloc_aligned(ca, 8, 64);
+    u8* p16 = ChainArena_alloc_aligned(&ca, 8, 16);
+    u8* p64 = ChainArena_alloc_aligned(&ca, 8, 64);
     WC_ASSERT_EQ_U64((uintptr_t)p16 % 16, 0);
     WC_ASSERT_EQ_U64((uintptr_t)p64 % 64, 0);
 
-    chain_Arena_destroy(ca);
+    ChainArena_destroy(&ca);
 }
 
-// A5 is a compile-time defect (WC_REALLOC_N has the wrong arity). It cannot
+// A3: a request larger than one node used to be fatal, so a GenVec growing past
+// 4 KB on a ChainArena aborted. Now it gets a dedicated node.
+static void test_A3_chain_arena_oversize_request(void)
+{
+    ChainArena ca;
+    ChainArena_create(&ca, WC_LIBC);
+    wc_allocator al = ChainArena_allocator(&ca);
+
+    u8* p = NULL;
+    u64 n = 0;
+    for (u64 cap = 64; cap <= nKB(64); cap *= 2) { // GenVec-style doubling past a node
+        p = wc2_realloc(al, p, n, cap, 8);
+        WC_ASSERT_NOT_NULL(p);
+        memset(p + n, (int)(cap & 0xFF), cap - n);
+        n = cap;
+    }
+    WC_ASSERT_EQ_INT(p[nKB(64) - 1], (int)(nKB(64) & 0xFF));
+    ChainArena_destroy(&ca);
+}
+
+// A4: the arena allocator had no realloc, so every growth abandoned the old
+// block (about half of a 1 KB arena was dead blocks in the main.c scenario).
+static void test_A4_arena_grows_last_block_in_place(void)
+{
+    Arena a;
+    Arena_create(&a, WC_LIBC, nKB(1));
+    wc_allocator al = Arena_allocator(&a);
+
+    u8* p = NULL;
+    u64 n = 0;
+    for (u64 cap = 8; cap <= 512; cap *= 2) {
+        u8* q = wc2_realloc(al, p, n, cap, 8);
+        WC_ASSERT(p == NULL || q == p); // never moves: it is always the last block
+        p = q;
+        n = cap;
+    }
+    WC_ASSERT_EQ_U64(Arena_used(&a), 512); // no dead blocks
+    Arena_destroy(&a);
+}
+
+// A5 is a compile-time defect (WC_REALLOC_N had the wrong arity). It cannot
 // live in this binary; see tests/compile/a5_realloc_n.c and the
-// `a5_realloc_n_compiles` ctest entry (WILL_FAIL until Phase 1).
+// `a5_realloc_n_compiles` ctest entry.
 
 
 /* ── Golden scenarios (behaviour to preserve through the refactor) ───────── */
@@ -84,14 +125,16 @@ static void test_A2_chain_arena_aligns_address(void)
 // Baseline measured on the pre-refactor code (Phase 0). The refactor must keep
 // the contents identical and must not use MORE arena bytes; Phase 2's exit
 // criterion (in-place realloc, size-derived alignment) is to go below it.
-#define GOLDEN_MAIN_ARENA_USED_BASELINE 964
+#define GOLDEN_MAIN_ARENA_USED_BASELINE 340
 
 // src/main.c scenario: 70 pushes of int into a vector, global allocator = 1 KB arena.
 static void test_golden_main_70_push(void)
 {
-    Arena*         a     = Arena_create(nKB(1));
+    Arena          arena;
+    Arena_create(&arena, WC_LIBC, nKB(1));
+    Arena*         a     = &arena;
     wc_allocator_t saved = wc_default_allocator;
-    WC_SET_ALLOCATOR(Arena_allocator(a));
+    WC_SET_ALLOCATOR(Arena_allocator_legacy(a));
 
     GenVec* v = VEC_CREATE_OF(int, 5);
     for (int i = 0; i < 70; i++) {
@@ -198,12 +241,14 @@ static void test_golden_queue_hashmap_fixed_seed(void)
 
 void regression_suite(void)
 {
-    WC_SUITE("Known defects (XFAIL until fixed)");
+    WC_SUITE("Fixed defects A1-A4");
 
-    WC_RUN_XFAIL(test_A1_arena_alloc_past_end_returns_null);
-    WC_RUN_XFAIL(test_A1_arena_alloc_aligned_past_end_returns_null);
-    WC_RUN_XFAIL(test_A2_arena_aligns_address_not_offset);
-    WC_RUN_XFAIL(test_A2_chain_arena_aligns_address);
+    WC_RUN(test_A1_arena_alloc_past_end_returns_null);
+    WC_RUN(test_A1_arena_alloc_aligned_past_end_returns_null);
+    WC_RUN(test_A2_arena_aligns_address_not_offset);
+    WC_RUN(test_A2_chain_arena_aligns_address);
+    WC_RUN(test_A3_chain_arena_oversize_request);
+    WC_RUN(test_A4_arena_grows_last_block_in_place);
 
     WC_SUITE("Golden scenarios");
 

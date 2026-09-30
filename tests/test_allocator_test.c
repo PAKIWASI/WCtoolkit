@@ -8,6 +8,11 @@
 
 #include <stdint.h>
 
+// These tests hand stack buffers to allocators on purpose (wc_borrowed, foreign
+// pointer detection). The pointer never reaches libc, but GCC cannot prove the
+// vtable is non-NULL and warns about the libc branch.
+#pragma GCC diagnostic ignored "-Wfree-nonheap-object"
+
 void test_allocator_suite(void);
 
 
@@ -194,8 +199,8 @@ static void test_ta_over_arena_backing(void)
 {
     // backing is an arena: checks contract on top of a non-libc backend
     Arena arena;
-    Arena_create_stk(&arena, nKB(4));
-    wc_allocator_t backing = Arena_allocator(&arena);
+    Arena_create(&arena, WC_LIBC, nKB(4));
+    wc_allocator_t backing = Arena_allocator_legacy(&arena);
 
     wc_test_alloc ta;
     wc_test_alloc_init(&ta, &backing);
@@ -208,7 +213,7 @@ static void test_ta_over_arena_backing(void)
 
     WC_ASSERT_EQ_U64(ta.n_errors, 0);
     WC_ASSERT_EQ_U64(wc_test_alloc_destroy(&ta), 0);
-    Arena_destroy_stk(&arena);
+    Arena_destroy(&arena);
 }
 
 

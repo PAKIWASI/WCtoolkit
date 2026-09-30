@@ -10,8 +10,9 @@
 
 int main(void)
 {
-    Arena* a = Arena_create(nKB(1));      // default allocator is libc
-    WC_SET_ALLOCATOR(Arena_allocator(a)); // set global allocator to arena itself
+    Arena a;
+    Arena_create(&a, WC_LIBC, nKB(1));            // region comes from libc
+    WC_SET_ALLOCATOR(Arena_allocator_legacy(&a)); // global -> arena (transitional, D11)
 
     GenVec* v = VEC_CREATE_OF(int, 5);
 
@@ -21,9 +22,9 @@ int main(void)
 
     GenVec_print(v, wc_print_int); putchar('\n');
 
-    print_hex(a->base, nKB(1), 32);
+    print_hex(a.base, nKB(1), 32);
 
     WC_SET_ALLOCATOR((wc_libc_allocator));
-    Arena_destroy(a);
+    Arena_destroy(&a);
     return 0;
 }
