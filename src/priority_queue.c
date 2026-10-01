@@ -2,10 +2,8 @@
 #include "common.h"
 #include "gen_vector.h"
 #include "queue.h"
-#include "wc_allocator.h"
 
 #include <stdio.h>
-#include <stdlib.h>
 
 
 #define PARENT(i)     ((((i)) - 1) / 2)
@@ -18,68 +16,43 @@
 
 
 static void heapify_down(PriorityQueue* pq, u64 idx);
-
 static void heapify_up(PriorityQueue* pq, u64 idx);
+static void build_heap(PriorityQueue* pq);
 
 
 
-PriorityQueue* PriorityQueue_create(u64 n, u32 data_size, const wc_container_ops* ops, wc_compare_fn cmp_fn)
+PriorityQueue PriorityQueue_create(wc_allocator a, u64 n, u32 data_size, const wc_container_ops* ops,
+                                   wc_compare_fn cmp_fn)
 {
-    PriorityQueue* pq = malloc(sizeof(PriorityQueue));
-    CHECK_FATAL(!pq, "pq malloc failed");
-    Queue_create_stk(&pq->q, n, data_size, ops);
-    pq->cmp_fn = cmp_fn;
+    PriorityQueue pq;
+    pq.q      = Queue_create(a, n, data_size, ops);
+    pq.cmp_fn = cmp_fn;
     return pq;
 }
 
 void PriorityQueue_destroy(PriorityQueue* pq)
 {
-    Queue_destroy_stk(&pq->q);
-    free(pq);
+    Queue_destroy(&pq->q);
+    pq->cmp_fn = NULL;
 }
 
-void PriorityQueue_create_stk(PriorityQueue* pq, u64 n, u32 data_size, const wc_container_ops* ops,
-                              wc_compare_fn cmp_fn)
+PriorityQueue PriorityQueue_from_vec(wc_allocator a, const GenVec* vec, wc_compare_fn cmp_fn)
 {
-    Queue_create_stk(&pq->q, n, data_size, ops);
-    pq->cmp_fn = cmp_fn;
-}
+    PriorityQueue pq;
 
-void PriorityQueue_destroy_stk(PriorityQueue* pq)
-{
-    Queue_destroy_stk(&pq->q);
-}
-
-PriorityQueue* PriorityQueue_from_vec(GenVec* vec, wc_compare_fn cmp_fn)
-{
-    PriorityQueue* pq = malloc(sizeof(PriorityQueue));
-    CHECK_FATAL(!pq, "pq malloc failed");
-
-    PriorityQueue_from_vec_stk(pq, vec, cmp_fn);
-
-    return pq;
-}
-
-void PriorityQueue_from_vec_stk(PriorityQueue* pq, GenVec* vec, wc_compare_fn cmp_fn)
-{
-    pq->q.arr = GenVec_copy(WC_LIBC, vec); // deep copy all elements (TRANSITIONAL: libc until Phase 3)
+    pq.q.arr = GenVec_copy(a, vec); // deep copy all elements into allocator `a`
 
     // A freshly-copied GenVec has no wraparound yet, so head starts at 0 and
     // tail/size follow the same convention Queue_create_val uses.
-    pq->q.head = 0;
-    pq->q.tail = vec->size % GenVec_capacity(&pq->q.arr);
-    pq->q.size = vec->size;
+    pq.q.head = 0;
+    pq.q.tail = vec->size % GenVec_capacity(&pq.q.arr);
+    pq.q.size = vec->size;
 
-    pq->cmp_fn = cmp_fn;
+    pq.cmp_fn = cmp_fn;
 
-    if (vec->size > 1) {
-        // calling heapify_down on every internal node, from the bottom up. O(n)
-        // last internal node is at size/2 - 1
-        // Leaves (size/2 ... size-1) are already valid heaps
-        for (u64 i = vec->size / 2; i-- > 0;) {
-            heapify_down(pq, i);
-        }
-    }
+    build_heap(&pq);
+
+    return pq;
 }
 
 void PriorityQueue_push(PriorityQueue* pq, u8* data)
@@ -187,5 +160,17 @@ static void heapify_down(PriorityQueue* pq, u64 idx)
 
         Queue_swap(&pq->q, idx, best);
         idx = best;
+    }
+}
+
+static void build_heap(PriorityQueue* pq)
+{
+    if (pq->q.size > 1) {
+        // calling heapify_down on every internal node, from the bottom up. O(n)
+        // last internal node is at size/2 - 1
+        // Leaves (size/2 ... size-1) are already valid heaps
+        for (u64 i = pq->q.size / 2; i-- > 0;) {
+            heapify_down(pq, i);
+        }
     }
 }

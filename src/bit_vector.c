@@ -4,29 +4,22 @@
 #include "wc_allocator.h"
 #include "wc_errno.h"
 #include <stdio.h>
-#include <stdlib.h>
 
 
 
-BitVec* BitVec_create(void)
+BitVec BitVec_create(wc_allocator a)
 {
-    BitVec* bvec = malloc(sizeof(BitVec));
-    CHECK_FATAL(!bvec, "bvec init failed");
-
-    // u8 is POD — no ops needed
-    // TRANSITIONAL: heap GenVec shell, libc storage
-    bvec->arr = WC_BOX_IN(WC_LIBC, GenVec, GenVec_create, 0, sizeof(u8), NULL);
-
-    bvec->size = 0;
-
+    BitVec bvec;
+    // u8 is POD — no ops needed; initial capacity of 0 is fine (grows on first set)
+    bvec.arr  = GenVec_create(a, 0, sizeof(u8), NULL);
+    bvec.size = 0;
     return bvec;
 }
 
 void BitVec_destroy(BitVec* bvec)
 {
-    GenVec_destroy(bvec->arr);
-    WC_DELETE(WC_LIBC, GenVec, bvec->arr); // shell came from WC_BOX_IN(WC_LIBC, ...)
-    free(bvec);
+    GenVec_destroy(&bvec->arr);
+    bvec->size = 0;
 }
 
 // Set bit i to 1
@@ -35,12 +28,12 @@ void BitVec_set(BitVec* bvec, u64 i)
     u64 byte_index = i / 8;
     u64 bit_index  = i % 8;
 
-    while (byte_index >= bvec->arr->size) {
+    while (byte_index >= bvec->arr.size) {
         u8 zero = 0;
-        GenVec_push(bvec->arr, &zero);
+        GenVec_push(&bvec->arr, &zero);
     }
 
-    u8* byte = (u8*)GenVec_get_ptr(bvec->arr, byte_index);
+    u8* byte = (u8*)GenVec_get_ptr(&bvec->arr, byte_index);
     *byte |= (u8)(1u << bit_index);
 
     if (i + 1 > bvec->size) {
@@ -56,7 +49,7 @@ void BitVec_clear(BitVec* bvec, u64 i)
     u64 byte_index = i / 8;
     u64 bit_index  = i % 8;
 
-    u8* byte = (u8*)GenVec_get_ptr(bvec->arr, byte_index);
+    u8* byte = (u8*)GenVec_get_ptr(&bvec->arr, byte_index);
     *byte &= (u8)~(1u << bit_index);
 }
 
@@ -68,7 +61,7 @@ u8 BitVec_test(const BitVec* bvec, u64 i)
     u64 byte_index = i / 8;
     u64 bit_index  = i % 8;
 
-    return (*GenVec_get_ptr(bvec->arr, byte_index) >> bit_index) & 1;
+    return (*GenVec_get_ptr(&bvec->arr, byte_index) >> bit_index) & 1;
 }
 
 // Toggle bit i
@@ -79,7 +72,7 @@ void BitVec_toggle(BitVec* bvec, u64 i)
     u64 byte_index = i / 8;
     u64 bit_index  = i % 8;
 
-    u8* byte = (u8*)GenVec_get_ptr(bvec->arr, byte_index);
+    u8* byte = (u8*)GenVec_get_ptr(&bvec->arr, byte_index);
     *byte ^= (u8)(1u << bit_index);
 }
 
@@ -96,21 +89,21 @@ void BitVec_pop(BitVec* bvec)
 
     bvec->size--;
     if (bvec->size % 8 == 0) {
-        GenVec_pop(bvec->arr, NULL);
+        GenVec_pop(&bvec->arr, NULL);
     }
 }
 
 void BitVec_print(BitVec* bvec, u64 byteI)
 {
-    CHECK_FATAL(byteI >= bvec->arr->size, "index out of bounds");
+    CHECK_FATAL(byteI >= bvec->arr.size, "index out of bounds");
 
     u8 bits_to_print = 8;
-    if (byteI == bvec->arr->size - 1) {
+    if (byteI == bvec->arr.size - 1) {
         u64 remaining = bvec->size % 8;
         bits_to_print = (remaining == 0) ? 8 : (u8)remaining;
     }
 
     for (u8 i = 0; i < bits_to_print; i++) {
-        printf("%d", ((*GenVec_get_ptr(bvec->arr, byteI)) >> i) & 1);
+        printf("%d", ((*GenVec_get_ptr(&bvec->arr, byteI)) >> i) & 1);
     }
 }

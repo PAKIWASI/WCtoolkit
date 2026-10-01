@@ -3,38 +3,31 @@
 #include "gen_vector.h"
 #include "wc_errno.h"
 
-#include <stdlib.h>
 
 
-
-static Stack* stack_box(void)
+Stack Stack_create(wc_allocator a, u64 n, u32 data_size, const wc_container_ops* ops)
 {
-    Stack* s = malloc(sizeof(Stack));
-    if (!s) {
-        FATAL("Stack malloc failed");
-    }
-    return s;
+    return GenVec_create(a, n, data_size, ops);
 }
 
-Stack* Stack_create(u64 n, u32 data_size, const wc_container_ops* ops)
+Stack Stack_create_val(wc_allocator a, u64 n, const u8* val, u32 data_size, const wc_container_ops* ops)
 {
-    Stack* s = stack_box();
-    *s       = GenVec_create(WC_LIBC, n, data_size, ops);
-    return s;
+    return GenVec_create_val(a, n, val, data_size, ops);
 }
-
-Stack* Stack_create_val(u64 n, const u8* val, u32 data_size, const wc_container_ops* ops)
-{
-    Stack* s = stack_box();
-    *s       = GenVec_create_val(WC_LIBC, n, val, data_size, ops);
-    return s;
-}
-
 
 void Stack_destroy(Stack* stk)
 {
     GenVec_destroy(stk);
-    free(stk);
+}
+
+Stack Stack_copy(wc_allocator a, const Stack* src)
+{
+    return GenVec_copy(a, src);
+}
+
+void Stack_move(Stack* dest, Stack* src)
+{
+    GenVec_move(dest, src);
 }
 
 void Stack_clear(Stack* stk)

@@ -3,6 +3,7 @@
 
 #include "common.h"
 #include "gen_vector.h"
+#include "wc_allocator.h"
 
 
 typedef struct { // Circular Queue
@@ -12,21 +13,20 @@ typedef struct { // Circular Queue
     u64    size;
 } Queue;
 
+_Static_assert(sizeof(Queue) == 80, "Queue size mismatch");
 
-Queue* Queue_create(u64 n, u32 data_size, const wc_container_ops* ops) __attribute__((warn_unused_result));
-Queue* Queue_create_val(u64 n, const u8* val, u32 data_size, const wc_container_ops* ops)
-    __attribute__((nonnull(2), warn_unused_result));
-void Queue_create_stk(Queue* q, u64 n, u32 data_size, const wc_container_ops* ops) __attribute__((nonnull(1)));
+
+Queue Queue_create(wc_allocator a, u64 n, u32 data_size, const wc_container_ops* ops) __attribute__((warn_unused_result));
+Queue Queue_create_val(wc_allocator a, u64 n, const u8* val, u32 data_size, const wc_container_ops* ops)
+    __attribute__((nonnull(3), warn_unused_result));
 
 void Queue_destroy(Queue* q) __attribute__((nonnull(1)));
-void Queue_destroy_stk(Queue* q) __attribute__((nonnull(1)));
 void Queue_clear(Queue* q) __attribute__((nonnull(1)));
 void Queue_reset(Queue* q) __attribute__((nonnull(1)));
 void Queue_shrink_to_fit(Queue* q) __attribute__((nonnull(1)));
 
-// SAFE ON: raw/uninitialized dest. Never reads dest before writing it.
-void Queue_copy(Queue* dest, const Queue* src) __attribute__((nonnull(1, 2)));
-void Queue_move(Queue* dest, Queue** src) __attribute__((nonnull(1, 2)));
+Queue Queue_copy(wc_allocator a, const Queue* src) __attribute__((nonnull(2), warn_unused_result));
+void  Queue_move(Queue* dest, Queue* src) __attribute__((nonnull(1, 2)));
 
 void      Queue_push(Queue* q, const u8* x) __attribute__((nonnull(1, 2)));
 void      Queue_push_move(Queue* q, u8* x) __attribute__((nonnull(1, 2))); // *x is moved in and zeroed
@@ -58,6 +58,7 @@ static inline __attribute__((nonnull(1))) u64 Queue_capacity(const Queue* q)
 // converts the element at the logical `idx` position. Circular queue nuance is handeled
 static inline __attribute__((nonnull(1))) const u8* Queue_get(Queue* q, u64 idx)
 {
+    CHECK_FATAL(idx >= q->size, "Queue_get: idx out of bounds");
     return GenVec_get_ptr_unsafe(&q->arr, (q->head + idx) % q->arr.capacity);
 }
 

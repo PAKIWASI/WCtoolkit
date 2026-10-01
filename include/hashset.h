@@ -3,6 +3,7 @@
 
 #include "common.h"
 #include "map_setup.h"
+#include "wc_allocator.h"
 
 
 /* Generic Hashset with Ownership Semantics
@@ -23,12 +24,15 @@ typedef struct {
     u32            elm_size;
     u8*            scratch; // 2 * elm_size bytes — stage (first half) + RH swap (second half)
     custom_hash_fn hash_fn;
-    wc_compare_fn     cmp_fn;
+    wc_compare_fn  cmp_fn;
 
     // Shared ops vtable for elements.
     // Pass NULL for POD types (int, float, flat structs).
     const wc_container_ops* ops;
+    wc_allocator            alloc;
 } HashSet;
+
+_Static_assert(sizeof(HashSet) == 88, "HashSet must be 88 bytes");
 
 
 // Safely extract callbacks — always NULL-safe on ops itself.
@@ -37,16 +41,22 @@ typedef struct {
 #define SET_DEL(ops)  ((ops) ? (ops)->del_fn : NULL)
 
 
-// Create a new HashSet.
+// Create a new HashSet by value.
 // hash_fn and cmp_fn default to wyhash / default_compare if NULL.
 // ops: pass NULL for POD types.
-HashSet* HashSet_create(u32 elm_size, custom_hash_fn hash_fn, wc_compare_fn cmp_fn, const wc_container_ops* ops)
+HashSet HashSet_create(wc_allocator a, u32 elm_size, custom_hash_fn hash_fn, wc_compare_fn cmp_fn, const wc_container_ops* ops)
     __attribute__((warn_unused_result));
-void HashSet_create_stk(HashSet* set, u32 elm_size, custom_hash_fn hash_fn, wc_compare_fn cmp_fn, const wc_container_ops* ops)
-    __attribute__((nonnull(1)));
 
+// Destroy all elements and free internal buffers via set->alloc.
+// Safe on zeroed/moved-from sets. Leaves struct zeroed.
 void HashSet_destroy(HashSet* set) __attribute__((nonnull(1)));
-void HashSet_destroy_stk(HashSet* set) __attribute__((nonnull(1)));
+
+// Deep copy src into a new HashSet allocated from `a`.
+HashSet HashSet_copy(wc_allocator a, const HashSet* src)
+    __attribute__((nonnull(2), warn_unused_result));
+
+// Transfer ownership from src to dest. src is left zeroed.
+void HashSet_move(HashSet* dest, HashSet* src) __attribute__((nonnull(1, 2)));
 
 // Insert element — COPY semantics.
 // Returns 1 if already existed (no-op), 0 if newly inserted.
@@ -85,21 +95,14 @@ void HashSet_print(const HashSet* set, wc_print_fn print) __attribute__((nonnull
 // Remove all elements, keep capacity.
 void HashSet_clear(HashSet* set) __attribute__((nonnull(1)));
 
-// Deep copy src into dest
-// SAFE ON: raw/uninitialized dest. Never reads dest before writing it.
-void HashSet_copy(HashSet* dest, const HashSet* src) __attribute__((nonnull(1, 2)));
-
-
 static inline __attribute__((nonnull(1))) u64 HashSet_size(const HashSet* set)
 {
     return set->size;
 }
-
 static inline __attribute__((nonnull(1))) u64 HashSet_capacity(const HashSet* set)
 {
     return set->capacity;
 }
-
 static inline __attribute__((nonnull(1))) b8 HashSet_empty(const HashSet* set)
 {
     return set->size == 0;

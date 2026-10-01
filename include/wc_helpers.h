@@ -32,23 +32,19 @@
  *
  *   del_fn(u8* elm)
  *     job   — free owned resources (with the element's OWN stored allocator)
- *             but NOT elm itself → GenVec_destroy, String_destroy_stk, ...
+ *             but NOT elm itself → GenVec_destroy, String_destroy, ...
  *
  * BY POINTER  (slot holds T*, sizeof(T*) = 8 bytes)
  *   copy_fn: *(T**)dest = a new shell from `dst` holding a deep copy (WC_BOX_IN)
  *   move_fn: *(T**)dest = *(T**)src;  *(T**)src = NULL;
  *   del_fn : destroy the pointee, then free the shell with the pointee's own
  *            allocator (shell allocator == child allocator, plan D6)
- *
- * TRANSITIONAL (until Phase 4): String does not store an allocator yet, so the
- * String callbacks ignore `dst` and use libc, exactly as String itself does.
  */
 
 #include "wc_string.h"
 #include "common.h"
 #include "gen_vector.h"
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
 
@@ -56,27 +52,15 @@
 /* ══════════════════════════════════════════════════════════════════════════
  * 1.  STRING BY VALUE
  *
- * String is SSO-based (no data_size / data fields).
- * str_copy  — delegates to String_copy()  (handles SSO vs heap correctly)
+ * String stores its own allocator since Phase 4.
+ * str_copy  — copies using dst allocator (so a String follows its outer container)
  * str_move  — memcpy the struct, zero the source
- * str_del   — delegates to String_destroy_stk() (frees heap buf if any)
+ * str_del   — delegates to String_destroy() (frees heap buf via str->alloc, NOT the slot)
  * ══════════════════════════════════════════════════════════════════════════ */
 
 static inline void str_copy(wc_allocator dst, u8* dest, const u8* src)
 {
-    (void)dst; // TRANSITIONAL: String allocates from libc until Phase 4
-    String*       d = (String*)dest;
-    const String* s = (const String*)src;
-    memcpy(d, s, sizeof(String));
-
-    if (String_is_sso(s)) {
-        return; // str stored inline, we have everything
-    }
-
-    // src owns resources, copy them
-    d->heap = malloc(s->capacity);
-    CHECK_FATAL(!d->heap, "malloc failed");
-    memcpy(d->heap, s->heap, s->capacity);
+    *(String*)dest = String_copy(dst, (const String*)src);
 }
 
 static inline void str_move(u8* dest, u8* src)
@@ -89,7 +73,7 @@ static inline void str_move(u8* dest, u8* src)
 
 static inline void str_del(u8* elm)
 {
-    String_destroy_stk((String*)elm);   // free data buffer, NOT the slot
+    String_destroy((String*)elm);   // free data buffer via str->alloc, NOT the slot
 }
 
 static inline void str_print(const u8* elm)
@@ -101,15 +85,15 @@ static inline void str_print(const u8* elm)
 /* ══════════════════════════════════════════════════════════════════════════
  * 2.  STRING BY POINTER
  *
- * str_copy_ptr — delegates to String_from_String() for a full heap copy
+ * str_copy_ptr — box a deep copy in allocator `dst` (shell + contents from dst)
  * str_move_ptr — pointer swap, nulls source
- * str_del_ptr  — delegates to String_destroy() (frees buf + struct)
+ * str_del_ptr  — destroy pointee via its own allocator, then free shell
  * ══════════════════════════════════════════════════════════════════════════ */
 
 static inline void str_copy_ptr(wc_allocator dst, u8* dest, const u8* src)
 {
-    (void)dst; // TRANSITIONAL: heap String shells come from libc until Phase 4
-    *(String**)dest = String_from_String(*(const String**)src);
+    // Box a deep copy: shell and contents both from dst (D6)
+    *(String**)dest = (String*)WC_BOX_IN(dst, String, String_copy, *(const String* const*)src);
 }
 
 static inline void str_move_ptr(u8* dest, u8* src)
@@ -120,7 +104,14 @@ static inline void str_move_ptr(u8* dest, u8* src)
 
 static inline void str_del_ptr(u8* elm)
 {
-    String_destroy(*(String**)elm);
+    String* s = *(String**)elm;
+    if (!s) {
+        return;
+    }
+    // Read allocator before destroy zeroes the struct
+    wc_allocator a = s->alloc;
+    String_destroy(s);                             // free heap buffer via s->alloc
+    wc_free(a, s, sizeof(String), alignof(String)); // free the shell
 }
 
 static inline void str_print_ptr(const u8* elm)
@@ -213,7 +204,7 @@ static inline void vec_print_int_ptr(const u8* elm)
  *
  * Usage:
  *   GenVec v = GenVec_create(WC_LIBC, 8, sizeof(String), &wc_str_ops);
- *   HashMap* m = HashMap_create(..., &wc_str_ops, &wc_str_ops);
+ *   HashMap m = HashMap_create(WC_LIBC, ..., &wc_str_ops, &wc_str_ops);
  * ══════════════════════════════════════════════════════════════════════════ */
 
 static const wc_container_ops wc_str_ops     = { str_copy,     str_move,     str_del     };
@@ -221,5 +212,7 @@ static const wc_container_ops wc_str_ptr_ops = { str_copy_ptr, str_move_ptr, str
 static const wc_container_ops wc_vec_ops     = { vec_copy,     vec_move,     vec_del     };
 static const wc_container_ops wc_vec_ptr_ops = { vec_copy_ptr, vec_move_ptr, vec_del_ptr };
 
+// NOTE: sizeof(String) == 64, sizeof(GenVec) == 56 (D9 detail):
+// the old _Static_assert(sizeof(String) == sizeof(GenVec)) is intentionally removed.
 
 #endif // HELPERS_H

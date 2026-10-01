@@ -199,11 +199,11 @@ static void test_destroy_mixed_chain(void)
 
 static void test_strview_from_String(void)
 {
-    String* s = String_from_cstr("viewme");
-    StrView sv = StrView_from_String(s);
+    String s = String_from_cstr(WC_LIBC, "viewme");
+    StrView sv = StrView_from_String(&s);
     WC_ASSERT_TRUE(sv_equals_cstr(sv, "viewme"));
     WC_ASSERT_EQ_U64(sv.len, 6);
-    String_destroy(s);
+    String_destroy(&s);
 }
 
 

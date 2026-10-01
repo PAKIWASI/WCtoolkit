@@ -3,14 +3,15 @@
 
 #include "common.h"
 #include "map_setup.h"
+#include "wc_allocator.h"
 
 
 /* Generic Hashmap with Ownership Semantics
   - Robin Hood Hashing
   - we have 3 arrays: keys, psls, and vals
   - PSL: probe sequence length: the distance from hashing location
-  - we actuall store psl + 1 as psl = 0 means empty bucket
-  - Robin Hood Invarient: all keys that hash to i come before keys that hash to i + 1
+  - we actually store psl + 1 as psl = 0 means empty bucket
+  - Robin Hood Invariant: all keys that hash to i come before keys that hash to i + 1
   - vals store [val] inline
 */
 
@@ -25,14 +26,17 @@ typedef struct {
     u32            val_size;
     u8*            scratch; // key_size + val_size bytes + alignment: temp buffer for robin hood swaps
     custom_hash_fn hash_fn;
-    wc_compare_fn     cmp_fn;
+    wc_compare_fn  cmp_fn;
 
     // Shared ops vtables for keys and values.
     // Pass NULL for POD types (int, float, flat structs).
     // For types with heap resources define one static ops per type:
     const wc_container_ops* key_ops;
     const wc_container_ops* val_ops;
+    wc_allocator            alloc;
 } HashMap;
+
+_Static_assert(sizeof(HashMap) == 104, "HashMap must be 104 bytes");
 
 
 // Safely extract callbacks — always NULL-safe on ops itself.
@@ -40,25 +44,24 @@ typedef struct {
 #define MAP_MOVE(ops) ((ops) ? (ops)->move_fn : NULL)
 #define MAP_DEL(ops)  ((ops) ? (ops)->del_fn : NULL)
 
-/* TODO:
-    reserve one extra slot at the end of the key/val arrays that never holds a real entry.
-    During insert, you keep the “current” key/value in registers or local variables
-    and only write them into the array when the final empty slot is found.
-    This requires a small rewrite of map_insert, but it saves two memcpy calls per eviction
-    and eliminates scratch
-*/
 
-// Create a new HashMap.
-// hash_fn and cmp_fn default to fnv1a_hash / default_compare if NULL.
+// Create a new HashMap by value.
+// hash_fn and cmp_fn default to wyhash / default_compare if NULL.
 // key_ops / val_ops: pass NULL for POD types.
-HashMap* HashMap_create(u32 key_size, u32 val_size, custom_hash_fn hash_fn, wc_compare_fn cmp_fn,
-                        const wc_container_ops* key_ops, const wc_container_ops* val_ops) __attribute__((warn_unused_result));
-void     HashMap_create_stk(HashMap* map, u32 key_size, u32 val_size, custom_hash_fn hash_fn, wc_compare_fn cmp_fn,
-                            const wc_container_ops* key_ops, const wc_container_ops* val_ops)
-    __attribute__((nonnull(1)));
+HashMap HashMap_create(wc_allocator a, u32 key_size, u32 val_size, custom_hash_fn hash_fn, wc_compare_fn cmp_fn,
+                       const wc_container_ops* key_ops, const wc_container_ops* val_ops)
+    __attribute__((warn_unused_result));
 
+// Destroy all elements and free internal buffers via map->alloc.
+// Safe on zeroed/moved-from maps. Leaves struct zeroed.
 void HashMap_destroy(HashMap* map) __attribute__((nonnull(1)));
-void HashMap_destroy_stk(HashMap* map) __attribute__((nonnull(1)));
+
+// Deep copy src into a new HashMap allocated from `a`.
+HashMap HashMap_copy(wc_allocator a, const HashMap* src)
+    __attribute__((nonnull(2), warn_unused_result));
+
+// Transfer ownership from src to dest. src is left zeroed.
+void HashMap_move(HashMap* dest, HashMap* src) __attribute__((nonnull(1, 2)));
 
 // Insert or update — COPY semantics.
 // Returns 1 if key existed (updated), 0 if new key inserted.
@@ -108,11 +111,6 @@ void HashMap_print(const HashMap* map, wc_print_fn key_print, wc_print_fn val_pr
 
 // Remove all elements, keep capacity.
 void HashMap_clear(HashMap* map) __attribute__((nonnull(1)));
-
-// Deep copy src into dest
-// SAFE ON: raw/uninitialized dest. Never reads dest before writing it.
-void HashMap_copy(HashMap* dest, const HashMap* src) __attribute__((nonnull(1, 2)));
-
 
 static inline __attribute__((nonnull(1))) u64 HashMap_size(const HashMap* map)
 {

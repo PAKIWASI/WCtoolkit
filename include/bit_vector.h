@@ -5,15 +5,16 @@
 #include "gen_vector.h"
 
 
-// HEAP-ONLY: no _stk variant.
+// BitVec embeds a GenVec<u8> directly (no heap shell).
+// Use BitVec_create(WC_LIBC) for the common case.
 typedef struct {
-    GenVec* arr;
-    u64 size;        // no of logical bits
+    GenVec arr;  // element type: u8; each byte holds 8 bits
+    u64    size; // no of logical bits
 } BitVec;
 
 
-BitVec* BitVec_create(void) __attribute__((warn_unused_result));
-void    BitVec_destroy(BitVec* bvec) __attribute__((nonnull(1)));
+BitVec BitVec_create(wc_allocator a) __attribute__((warn_unused_result));
+void   BitVec_destroy(BitVec* bvec) __attribute__((nonnull(1)));
 
 void BitVec_set(BitVec* bvec, u64 i) __attribute__((nonnull(1)));
 void BitVec_clear(BitVec* bvec, u64 i) __attribute__((nonnull(1)));
@@ -28,7 +29,7 @@ void BitVec_print(BitVec* bvec, u64 byteI) __attribute__((nonnull(1)));
 // get the no of BITS in the vector
 static inline __attribute__((nonnull(1))) u64 BitVec_size_bits(const BitVec* bvec)  { return bvec->size;              }
 // get the no of BYTES in the vector
-static inline __attribute__((nonnull(1))) u64 BitVec_size_bytes(const BitVec* bvec) { return GenVec_size(bvec->arr);  }
+static inline __attribute__((nonnull(1))) u64 BitVec_size_bytes(const BitVec* bvec) { return GenVec_size(&bvec->arr); }
 
 
 #endif // BIT_VECTOR_H

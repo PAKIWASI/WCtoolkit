@@ -1,13 +1,11 @@
 #include "hashset.h"
 #include "common.h"
 #include "map_setup.h"
+#include "wc_allocator.h"
+
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
-
-// TRANSITIONAL (until Phase 5): element deep copies allocate from libc.
-#define MAP_ELEM_ALLOC WC_LIBC
 
 #define GET_ELM(set, i) ((set)->elms + ((u64)(set)->elm_size * (i)))
 #define GET_PSL(set, i) ((set)->psls + (i))
@@ -29,6 +27,14 @@
 #define SWAP_ELM(set)  ((set)->scratch + (set)->elm_size)
 
 
+// ---------------------------------------------------------------------------
+// Private size helpers (parallel to hashmap.c)
+// ---------------------------------------------------------------------------
+static inline u64 set_elms_size(u64 cap, u32 elm_size) { return cap * (u64)elm_size; }
+static inline u64 set_psls_size(u64 cap)               { return cap * sizeof(u8); }
+static inline u64 set_scratch_size(u32 elm_size)       { return 2 * (u64)elm_size; }
+
+
 /*
 ====================PRIVATE DECLARATIONS====================
 */
@@ -43,36 +49,33 @@ static inline void set_maybe_resize(HashSet* set);
 ====================PUBLIC FUNCTIONS====================
 */
 
-void HashSet_create_stk(HashSet* set, u32 elm_size, custom_hash_fn hash_fn, wc_compare_fn cmp_fn, const wc_container_ops* ops)
+HashSet HashSet_create(wc_allocator a, u32 elm_size, custom_hash_fn hash_fn,
+                       wc_compare_fn cmp_fn, const wc_container_ops* ops)
 {
     CHECK_FATAL(elm_size == 0, "elm_size can't be 0");
 
-    set->elms = malloc((u64)HASHMAP_INIT_CAPACITY * elm_size);
-    CHECK_FATAL(!set->elms, "elms malloc failed");
-    set->psls = calloc(HASHMAP_INIT_CAPACITY, sizeof(u8));
-    CHECK_FATAL(!set->psls, "psls calloc failed");
+    HashSet set;
+
+    set.elms = wc_alloc(a, set_elms_size(HASHMAP_INIT_CAPACITY, elm_size), 1);
+    CHECK_FATAL(!set.elms, "elms alloc failed");
+
+    set.psls = wc_alloc(a, set_psls_size(HASHMAP_INIT_CAPACITY), 1);
+    CHECK_FATAL(!set.psls, "psls alloc failed");
+    memset(set.psls, 0, set_psls_size(HASHMAP_INIT_CAPACITY));
 
     // 2 * elm_size: first half = staging, second half = RH swap buffer
-    set->scratch = malloc(2 * (u64)elm_size);
-    CHECK_FATAL(!set->scratch, "scratch malloc failed");
+    set.scratch = wc_alloc(a, set_scratch_size(elm_size), 1);
+    CHECK_FATAL(!set.scratch, "scratch alloc failed");
 
-    set->size     = 0;
-    set->capacity = HASHMAP_INIT_CAPACITY;
-    set->elm_size = elm_size;
+    set.size     = 0;
+    set.capacity = HASHMAP_INIT_CAPACITY;
+    set.elm_size = elm_size;
 
-    set->hash_fn = hash_fn ? hash_fn : wyhash;
-    set->cmp_fn  = cmp_fn  ? cmp_fn  : default_compare;
+    set.hash_fn = hash_fn ? hash_fn : wyhash;
+    set.cmp_fn  = cmp_fn  ? cmp_fn  : default_compare;
 
-    set->ops = ops;
-}
-
-HashSet* HashSet_create(u32 elm_size, custom_hash_fn hash_fn, wc_compare_fn cmp_fn,
-                        const wc_container_ops* ops)
-{
-    HashSet* set = malloc(sizeof(HashSet));
-    CHECK_FATAL(!set, "set malloc failed");
-
-    HashSet_create_stk(set, elm_size, hash_fn, cmp_fn, ops);
+    set.ops  = ops;
+    set.alloc = a;
 
     return set;
 }
@@ -80,12 +83,12 @@ HashSet* HashSet_create(u32 elm_size, custom_hash_fn hash_fn, wc_compare_fn cmp_
 
 void HashSet_destroy(HashSet* set)
 {
-    HashSet_destroy_stk(set);
-    free(set);
-}
+    // Safe on a zeroed / moved-from struct (capacity == 0).
+    if (!set->capacity) {
+        return;
+    }
 
-void HashSet_destroy_stk(HashSet* set)
-{
+    wc_allocator a = set->alloc;
     wc_delete_fn e_del = SET_DEL(set->ops);
 
     if (e_del) {
@@ -97,9 +100,64 @@ void HashSet_destroy_stk(HashSet* set)
         }
     }
 
-    free(set->elms);
-    free(set->psls);
-    free(set->scratch);
+    wc_free(a, set->elms,   set_elms_size(set->capacity, set->elm_size), 1);
+    wc_free(a, set->psls,   set_psls_size(set->capacity), 1);
+    wc_free(a, set->scratch, set_scratch_size(set->elm_size), 1);
+
+    memset(set, 0, sizeof(*set));
+}
+
+
+void HashSet_move(HashSet* dest, HashSet* src)
+{
+    memcpy(dest, src, sizeof(HashSet));
+    memset(src,  0,   sizeof(HashSet));
+}
+
+
+// Deep copy src → new HashSet allocated from `a`.
+// Ownership: the returned set gets independently owned copies of all elements.
+HashSet HashSet_copy(wc_allocator a, const HashSet* src)
+{
+    HashSet dest;
+
+    dest.elms = wc_alloc(a, set_elms_size(src->capacity, src->elm_size), 1);
+    CHECK_FATAL(!dest.elms, "copy elms alloc failed");
+    memset(dest.elms, 0, set_elms_size(src->capacity, src->elm_size));
+
+    dest.psls = wc_alloc(a, set_psls_size(src->capacity), 1);
+    CHECK_FATAL(!dest.psls, "copy psls alloc failed");
+    memset(dest.psls, 0, set_psls_size(src->capacity));
+
+    dest.scratch = wc_alloc(a, set_scratch_size(src->elm_size), 1);
+    CHECK_FATAL(!dest.scratch, "copy scratch alloc failed");
+
+    dest.size     = src->size;
+    dest.capacity = src->capacity;
+    dest.elm_size = src->elm_size;
+    dest.hash_fn  = src->hash_fn;
+    dest.cmp_fn   = src->cmp_fn;
+    dest.ops      = src->ops;
+    dest.alloc    = a;
+
+    wc_copy_fn e_cp = SET_COPY(src->ops);
+
+    for (u64 i = 0; i < src->capacity; i++) {
+        u8 psl = *GET_PSL(src, i);
+        if (psl == BUCKET_EMPTY) {
+            continue;
+        }
+
+        *GET_PSL(&dest, i) = psl;
+
+        if (e_cp) {
+            e_cp(a, GET_ELM(&dest, i), GET_ELM(src, i));
+        } else {
+            memcpy(GET_ELM(&dest, i), GET_ELM(src, i), src->elm_size);
+        }
+    }
+
+    return dest;
 }
 
 
@@ -107,11 +165,13 @@ void HashSet_destroy_stk(HashSet* set)
 // Returns 1 if already existed (no-op), 0 if newly inserted.
 b8 HashSet_insert(HashSet* set, const u8* elm)
 {
+    FATAL_IF(set->capacity == 0, "HashSet_insert called on zero-state HashSet");
+
     wc_copy_fn e_cp = SET_COPY(set->ops);
 
     LOOKUP_RES res;
-    u8             out_psl;
-    u64            slot = set_lookup(set, elm, &res, &out_psl);
+    u8         out_psl;
+    u64        slot = set_lookup(set, elm, &res, &out_psl);
 
     if (res == FOUND) {
         return 1;
@@ -120,7 +180,7 @@ b8 HashSet_insert(HashSet* set, const u8* elm)
     // Stage a deep copy into scratch before calling set_insert.
     // set_insert only does raw memcpy moves between slots — it never calls copy/del.
     if (e_cp) {
-        e_cp(MAP_ELEM_ALLOC, STAGE_ELM(set), elm);
+        e_cp(set->alloc, STAGE_ELM(set), elm);
     } else {
         memcpy(STAGE_ELM(set), elm, set->elm_size);
     }
@@ -135,6 +195,8 @@ b8 HashSet_insert(HashSet* set, const u8* elm)
 // Returns 1 if already existed (elm freed), 0 if newly inserted.
 b8 HashSet_insert_move(HashSet* set, u8* elm)
 {
+    FATAL_IF(set->capacity == 0, "HashSet_insert_move called on zero-state HashSet");
+
     wc_move_fn   e_mv  = SET_MOVE(set->ops);
     wc_delete_fn e_del = SET_DEL(set->ops);
 
@@ -168,6 +230,9 @@ b8 HashSet_insert_move(HashSet* set, u8* elm)
 // Returns 1 if found, 0 if not.
 b8 HashSet_has(const HashSet* set, const u8* elm)
 {
+    if (!set->capacity) {
+        return 0;
+    }
     LOOKUP_RES res;
     u8         out_psl;
     set_lookup(set, elm, &res, &out_psl);
@@ -176,6 +241,9 @@ b8 HashSet_has(const HashSet* set, const u8* elm)
 
 const u8* HashSet_get_ptr(const HashSet* set, const u8* elm)
 {
+    if (!set->capacity) {
+        return NULL;
+    }
     LOOKUP_RES res;
     u8         out_psl;
     u64        slot = set_lookup(set, elm, &res, &out_psl);
@@ -201,9 +269,11 @@ const u8* HashSet_bucket_elm_ptr(const HashSet* set, u64 i)
 // position as long as they have PSL > 1 (i.e. they are not at their home slot).
 b8 HashSet_remove(HashSet* set, const u8* elm)
 {
+    FATAL_IF(set->capacity == 0, "HashSet_remove called on zero-state HashSet");
+
     LOOKUP_RES res;
-    u8             out_psl;
-    u64            slot = set_lookup(set, elm, &res, &out_psl);
+    u8         out_psl;
+    u64        slot = set_lookup(set, elm, &res, &out_psl);
 
     if (res != FOUND) {
         return 0;
@@ -261,6 +331,8 @@ void HashSet_print(const HashSet* set, wc_print_fn print)
 // Remove all elements, keep capacity.
 void HashSet_clear(HashSet* set)
 {
+    FATAL_IF(set->capacity == 0, "HashSet_clear called on zero-state HashSet");
+
     wc_delete_fn e_del = SET_DEL(set->ops);
 
     for (u64 i = 0; i < set->capacity; i++) {
@@ -272,49 +344,8 @@ void HashSet_clear(HashSet* set)
         }
     }
 
-    memset(set->psls, 0, set->capacity * sizeof(u8));
+    memset(set->psls, 0, set_psls_size(set->capacity));
     set->size = 0;
-}
-
-
-// Deep copy src into dest
-// Ownership: dest gets independently owned copies of all elements.
-void HashSet_copy(HashSet* dest, const HashSet* src)
-{
-    if (dest == src) {
-        return;
-    }
-
-    dest->elms = calloc(src->capacity, src->elm_size);
-    CHECK_FATAL(!dest->elms, "copy elms calloc failed");
-    dest->psls = calloc(src->capacity, sizeof(u8));
-    CHECK_FATAL(!dest->psls, "copy psls calloc failed");
-    dest->scratch = malloc(2 * (u64)src->elm_size);
-    CHECK_FATAL(!dest->scratch, "copy scratch malloc failed");
-
-    dest->size     = src->size;
-    dest->capacity = src->capacity;
-    dest->elm_size = src->elm_size;
-    dest->hash_fn  = src->hash_fn;
-    dest->cmp_fn   = src->cmp_fn;
-    dest->ops      = src->ops;
-
-    wc_copy_fn e_cp = SET_COPY(src->ops);
-
-    for (u64 i = 0; i < src->capacity; i++) {
-        u8 psl = *GET_PSL(src, i);
-        if (psl == BUCKET_EMPTY) {
-            continue;
-        }
-
-        *GET_PSL(dest, i) = psl;
-
-        if (e_cp) {
-            e_cp(MAP_ELEM_ALLOC, GET_ELM(dest, i), GET_ELM(src, i));
-        } else {
-            memcpy(GET_ELM(dest, i), GET_ELM(src, i), src->elm_size);
-        }
-    }
 }
 
 
@@ -417,14 +448,18 @@ static void set_resize(HashSet* set, u64 new_capacity)
         new_capacity = HASHMAP_INIT_CAPACITY;
     }
 
+    wc_allocator a = set->alloc;
+
     u8* old_elms = set->elms;
     u8* old_psls = set->psls;
     u64 old_cap  = set->capacity;
 
-    set->elms = calloc(new_capacity, set->elm_size);
-    CHECK_FATAL(!set->elms, "resize elms calloc failed");
-    set->psls = calloc(new_capacity, sizeof(u8));
-    CHECK_FATAL(!set->psls, "resize psls calloc failed");
+    set->elms = wc_alloc(a, set_elms_size(new_capacity, set->elm_size), 1);
+    CHECK_FATAL(!set->elms, "resize elms alloc failed");
+
+    set->psls = wc_alloc(a, set_psls_size(new_capacity), 1);
+    CHECK_FATAL(!set->psls, "resize psls alloc failed");
+    memset(set->psls, 0, set_psls_size(new_capacity));
 
     set->capacity = new_capacity;
     set->size     = 0;
@@ -441,13 +476,11 @@ static void set_resize(HashSet* set, u64 new_capacity)
         memcpy(STAGE_ELM(set), old_elm, set->elm_size);
 
         LOOKUP_RES res;
-        u8             out_psl;
-        u64            slot = set_lookup(set, STAGE_ELM(set), &res, &out_psl);
+        u8         out_psl;
+        u64        slot = set_lookup(set, STAGE_ELM(set), &res, &out_psl);
         set_insert(set, STAGE_ELM(set), out_psl, slot);
     }
 
-    free(old_elms);
-    free(old_psls);
+    wc_free(a, old_elms, set_elms_size(old_cap, set->elm_size), 1);
+    wc_free(a, old_psls, set_psls_size(old_cap), 1);
 }
-
-

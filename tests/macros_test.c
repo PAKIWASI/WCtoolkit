@@ -49,20 +49,20 @@ static const wc_container_ops int_move_ops = { NULL, int_move, int_del };
  */
 static void test_set_insert_move_compiles_and_works(void)
 {
-    HashSet* set = HashSet_create(sizeof(int), hash_int, cmp_int, &int_move_ops);
+    HashSet set = HashSet_create(WC_LIBC, sizeof(int), hash_int, cmp_int, &int_move_ops);
 
     int val = 42;
 
-    SET_INSERT_MOVE(set, val);
+    SET_INSERT_MOVE(&set, val);
 
     /* source element must be zeroed after move */
     WC_ASSERT_EQ_INT(val, 0);
 
     /* element must be present in the set */
     int key = 42;
-    WC_ASSERT_TRUE(HashSet_has(set, (u8*)&key));
+    WC_ASSERT_TRUE(HashSet_has(&set, (u8*)&key));
 
-    HashSet_destroy(set);
+    HashSet_destroy(&set);
 }
 
 
@@ -70,83 +70,83 @@ static void test_set_insert_move_compiles_and_works(void)
 
 static void test_Queue_macros(void)
 {
-    Queue* q = QUEUE_CREATE(int, 4);
+    Queue q = QUEUE_CREATE(int, 4);
 
-    QUEUE_PUSH(q, 10);
-    QUEUE_PUSH(q, 20);
-    QUEUE_PUSH(q, 30);
+    QUEUE_PUSH(&q, 10);
+    QUEUE_PUSH(&q, 20);
+    QUEUE_PUSH(&q, 30);
 
-    WC_ASSERT_EQ_INT(QUEUE_PEEK(q, int), 10);
-    WC_ASSERT_EQ_INT(QUEUE_POP(q, int), 10);
-    WC_ASSERT_EQ_INT(QUEUE_POP(q, int), 20);
-    WC_ASSERT_EQ_INT(QUEUE_POP(q, int), 30);
+    WC_ASSERT_EQ_INT(QUEUE_PEEK(&q, int), 10);
+    WC_ASSERT_EQ_INT(QUEUE_POP(&q, int), 10);
+    WC_ASSERT_EQ_INT(QUEUE_POP(&q, int), 20);
+    WC_ASSERT_EQ_INT(QUEUE_POP(&q, int), 30);
 
-    Queue_destroy(q);
+    Queue_destroy(&q);
 }
 
 /* -- Phase 4: STACK macros ------------------------------------------------ */
 
 static void test_Stack_macros(void)
 {
-    Stack* s = STACK_CREATE(int, 4);
+    Stack s = STACK_CREATE(int, 4);
 
-    STACK_PUSH(s, 100);
-    STACK_PUSH(s, 200);
+    STACK_PUSH(&s, 100);
+    STACK_PUSH(&s, 200);
 
-    WC_ASSERT_EQ_INT(STACK_AT(s, int, 0), 100);
-    WC_ASSERT_EQ_INT(STACK_AT(s, int, 1), 200);
+    WC_ASSERT_EQ_INT(STACK_AT(&s, int, 0), 100);
+    WC_ASSERT_EQ_INT(STACK_AT(&s, int, 1), 200);
 
     int sum = 0;
-    STACK_FOREACH(s, int, p) {
+    STACK_FOREACH(&s, int, p) {
         sum += *p;
     }
     WC_ASSERT_EQ_INT(sum, 300);
 
-    WC_ASSERT_EQ_INT(STACK_POP(s, int), 200);
-    WC_ASSERT_EQ_INT(STACK_POP(s, int), 100);
+    WC_ASSERT_EQ_INT(STACK_POP(&s, int), 200);
+    WC_ASSERT_EQ_INT(STACK_POP(&s, int), 100);
 
-    Stack_destroy(s);
+    Stack_destroy(&s);
 }
 
 /* -- Phase 4: MAP_GET and MAP_TRY_GET ------------------------------------- */
 
 static void test_map_get_and_try_get(void)
 {
-    HashMap* m = HashMap_create(sizeof(int), sizeof(int), hash_int, cmp_int, NULL, NULL);
+    HashMap m = HashMap_create(WC_LIBC, sizeof(int), sizeof(int), hash_int, cmp_int, NULL, NULL);
 
     int k1 = 1, v1 = 10;
     int k2 = 2, v2 = 20;
-    HashMap_put(m, (u8*)&k1, (u8*)&v1);
-    HashMap_put(m, (u8*)&k2, (u8*)&v2);
+    HashMap_put(&m, (u8*)&k1, (u8*)&v1);
+    HashMap_put(&m, (u8*)&k2, (u8*)&v2);
 
     /* MAP_GET on hit */
-    WC_ASSERT_EQ_INT(MAP_GET(m, int, k1), 10);
-    WC_ASSERT_EQ_INT(MAP_GET(m, int, k2), 20);
+    WC_ASSERT_EQ_INT(MAP_GET(&m, int, k1), 10);
+    WC_ASSERT_EQ_INT(MAP_GET(&m, int, k2), 20);
 
     /* MAP_TRY_GET */
     int out = 0;
-    b8 hit = MAP_TRY_GET(m, int, k1, &out);
+    b8 hit = MAP_TRY_GET(&m, int, k1, &out);
     WC_ASSERT_TRUE(hit);
     WC_ASSERT_EQ_INT(out, 10);
 
     int miss_k = 999;
-    b8 miss = MAP_TRY_GET(m, int, miss_k, &out);
+    b8 miss = MAP_TRY_GET(&m, int, miss_k, &out);
     WC_ASSERT_FALSE(miss);
 
     /* MAP_FOREACH_KEY / VAL */
     int key_sum = 0;
-    MAP_FOREACH_KEY(m, int, k) {
+    MAP_FOREACH_KEY(&m, int, k) {
         key_sum += *k;
     }
     WC_ASSERT_EQ_INT(key_sum, 3);
 
     int val_sum = 0;
-    MAP_FOREACH_VAL(m, int, v) {
+    MAP_FOREACH_VAL(&m, int, v) {
         val_sum += *v;
     }
     WC_ASSERT_EQ_INT(val_sum, 30);
 
-    HashMap_destroy(m);
+    HashMap_destroy(&m);
 }
 
 /* -- Phase 4: SET_FOREACH and SET_FROM_VEC -------------------------------- */
@@ -158,16 +158,16 @@ static void test_set_foreach_and_from_vec(void)
         GenVec_push(&v, (u8*)&i);
     }
 
-    HashSet* s = SET_FROM_VEC(&v, hash_int, cmp_int);
-    WC_ASSERT_EQ_U64(HashSet_size(s), 3);
+    HashSet s = SET_FROM_VEC(&v, hash_int, cmp_int);
+    WC_ASSERT_EQ_U64(HashSet_size(&s), 3);
 
     int sum = 0;
-    SET_FOREACH(s, int, elm) {
+    SET_FOREACH(&s, int, elm) {
         sum += *elm;
     }
     WC_ASSERT_EQ_INT(sum, 6);
 
-    HashSet_destroy(s);
+    HashSet_destroy(&s);
     GenVec_destroy(&v);
 }
 
@@ -218,8 +218,8 @@ static void test_create_of_String_by_pointer(void)
     GenVec v = VEC_OF(String*, 4);
     WC_ASSERT_EQ_U64(v.data_size, sizeof(String*));
 
-    String* a = String_from_cstr("a");
-    String* b = String_from_cstr("b");
+    String* a = WC_BOX_IN(WC_LIBC, String, String_from_cstr, "a");
+    String* b = WC_BOX_IN(WC_LIBC, String, String_from_cstr, "b");
     // VEC_PUSH copies (via wc_str_ptr_ops' copy_fn, which deep-duplicates
     // the String) — that would leave `a`/`b` themselves un-freed and
     // unowned. VEC_PUSH_MOVE transfers ownership into the vector instead,
@@ -233,18 +233,17 @@ static void test_create_of_String_by_pointer(void)
 
 static void test_map_create_of(void)
 {
-    HashMap* m = MAP_CREATE_OF(int, double);
-    WC_ASSERT_NOT_NULL(m);
+    HashMap m = MAP_CREATE_OF(int, double);
 
     int    k   = 7;
     double val = 3.5;
-    MAP_PUT(m, k, val);
+    MAP_PUT(&m, k, val);
 
     double out = 0;
-    WC_ASSERT_TRUE(MAP_TRY_GET(m, int, k, &out));
+    WC_ASSERT_TRUE(MAP_TRY_GET(&m, int, k, &out));
     WC_ASSERT_TRUE(out == 3.5);
 
-    HashMap_destroy(m);
+    HashMap_destroy(&m);
 }
 
 

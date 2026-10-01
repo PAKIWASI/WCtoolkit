@@ -79,10 +79,9 @@ static void bench_push_cx(void)
 
     u64 t0 = ns_now();
     for (int i = 0; i < PUSH_N; i++) {
-        String s;
-        String_create_stk(&s, "hello");
+        String s = String_from_cstr(WC_LIBC, "hello");
         GenVec_push(&v, (u8*)&s);
-        String_destroy_stk(&s); // push deep-copied it; we own the original
+        String_destroy(&s); // push deep-copied it; we own the original
     }
     u64 t1 = ns_now();
 
@@ -131,10 +130,9 @@ static void bench_clear_cx(void)
     for (int r = 0; r < CLEAR_REP; r++) {
         GenVec v = GenVec_create(WC_LIBC, CLEAR_N, sizeof(String), &wc_str_ops);
         for (int i = 0; i < CLEAR_N; i++) {
-            String s;
-            String_create_stk(&s, "hi");
+            String s = String_from_cstr(WC_LIBC, "hi");
             GenVec_push(&v, (u8*)&s);
-            String_destroy_stk(&s);
+            String_destroy(&s);
         }
         u64 t0 = ns_now();
         GenVec_clear(&v);
@@ -181,10 +179,9 @@ static void bench_destroy_cx(void)
     for (int r = 0; r < DESTROY_REP; r++) {
         GenVec v = GenVec_create(WC_LIBC, DESTROY_N, sizeof(String), &wc_str_ops);
         for (int i = 0; i < DESTROY_N; i++) {
-            String s;
-            String_create_stk(&s, "world");
+            String s = String_from_cstr(WC_LIBC, "world");
             GenVec_push(&v, (u8*)&s);
-            String_destroy_stk(&s);
+            String_destroy(&s);
         }
         u64 t0 = ns_now();
         GenVec_destroy(&v);
@@ -237,10 +234,9 @@ static void bench_vec_copy_cx(void)
 {
     GenVec src = GenVec_create(WC_LIBC, COPY_N, sizeof(String), &wc_str_ops);
     for (int i = 0; i < COPY_N; i++) {
-        String s;
-        String_create_stk(&s, "copy");
+        String s = String_from_cstr(WC_LIBC, "copy");
         GenVec_push(&src, (u8*)&s);
-        String_destroy_stk(&s);
+        String_destroy(&s);
     }
 
     GenVec dest;
@@ -285,8 +281,7 @@ static void bench_init_val_pod(void)
 static void bench_init_val_cx(void)
 {
     // Use a short String so it stays SSO; this tests the copy_fn broadcast.
-    String val;
-    String_create_stk(&val, "init");
+    String val = String_from_cstr(WC_LIBC, "init");
 
     u64 t0 = ns_now();
     for (int r = 0; r < INITVAL_REP; r++) {
@@ -296,7 +291,7 @@ static void bench_init_val_cx(void)
     u64 t1 = ns_now();
 
     bench("init_val CX (2M String) x10", (u64)INITVAL_REP * INITVAL_N, t0, t1);
-    String_destroy_stk(&val);
+    String_destroy(&val);
 }
 
 
@@ -335,10 +330,9 @@ static void bench_remove_range_cx(void)
     for (int r = 0; r < RANGE_REP; r++) {
         GenVec v = GenVec_create(WC_LIBC, RANGE_N, sizeof(String), &wc_str_ops);
         for (int i = 0; i < RANGE_N; i++) {
-            String s;
-            String_create_stk(&s, "range");
+            String s = String_from_cstr(WC_LIBC, "range");
             GenVec_push(&v, (u8*)&s);
-            String_destroy_stk(&s);
+            String_destroy(&s);
         }
         u64 t0 = ns_now();
         GenVec_remove_range(&v, 0, RANGE_N);
@@ -363,73 +357,71 @@ static void bench_remove_range_cx(void)
 static void bench_map_put_pod(void)
 {
     // int -> int map
-    HashMap* map = HashMap_create(sizeof(int), sizeof(int), NULL, NULL, NULL, NULL);
+    HashMap map = HashMap_create(WC_LIBC, sizeof(int), sizeof(int), NULL, NULL, NULL, NULL);
 
     u64 t0 = ns_now();
     for (int i = 0; i < MAP_N; i++) {
-        HashMap_put(map, (u8*)&i, (u8*)&i);
+        HashMap_put(&map, (u8*)&i, (u8*)&i);
     }
     u64 t1 = ns_now();
 
-    WC_ASSERT_EQ_U64(map->size, MAP_N);
+    WC_ASSERT_EQ_U64(map.size, MAP_N);
     bench("HashMap_put POD int->int", MAP_N, t0, t1);
-    HashMap_destroy(map);
+    HashMap_destroy(&map);
 }
 
 static void bench_map_put_cx(void)
 {
     // String -> String map (both key and val have copy/del via wc_str_ops)
-    HashMap* map = HashMap_create(sizeof(String), sizeof(String),
+    HashMap map = HashMap_create(WC_LIBC, sizeof(String), sizeof(String),
                                   wyhash_str, str_cmp, &wc_str_ops, &wc_str_ops);
 
     u64 t0 = ns_now();
     for (int i = 0; i < MAP_N; i++) {
         char buf[32];
         snprintf(buf, sizeof(buf), "key_%d", i);
-        String k, v;
-        String_create_stk(&k, buf);
-        String_create_stk(&v, "val");
-        HashMap_put(map, (u8*)&k, (u8*)&v);
-        String_destroy_stk(&k);
-        String_destroy_stk(&v);
+        String k = String_from_cstr(WC_LIBC, buf);
+        String v = String_from_cstr(WC_LIBC, "val");
+        HashMap_put(&map, (u8*)&k, (u8*)&v);
+        String_destroy(&k);
+        String_destroy(&v);
     }
     u64 t1 = ns_now();
 
     bench("HashMap_put CX String->String", MAP_N, t0, t1);
-    HashMap_destroy(map);
+    HashMap_destroy(&map);
 }
 
 static void bench_map_get_pod(void)
 {
-    HashMap* map = HashMap_create(sizeof(int), sizeof(int), NULL, NULL, NULL, NULL);
-    for (int i = 0; i < MAP_N; i++) HashMap_put(map, (u8*)&i, (u8*)&i);
+    HashMap map = HashMap_create(WC_LIBC, sizeof(int), sizeof(int), NULL, NULL, NULL, NULL);
+    for (int i = 0; i < MAP_N; i++) HashMap_put(&map, (u8*)&i, (u8*)&i);
 
     int out  = 0;
     int hits = 0;
     u64 t0   = ns_now();
     for (int i = 0; i < MAP_N; i++) {
-        hits += HashMap_get(map, (u8*)&i, (u8*)&out);
+        hits += HashMap_get(&map, (u8*)&i, (u8*)&out);
     }
     u64 t1 = ns_now();
 
     WC_ASSERT_EQ_INT(hits, MAP_N);
     bench("HashMap_get POD int->int", MAP_N, t0, t1);
-    HashMap_destroy(map);
+    HashMap_destroy(&map);
 }
 
 static void bench_map_get_cx(void)
 {
-    HashMap* map = HashMap_create(sizeof(String), sizeof(String),
+    HashMap map = HashMap_create(WC_LIBC, sizeof(String), sizeof(String),
                                   wyhash_str, str_cmp, &wc_str_ops, &wc_str_ops);
     for (int i = 0; i < MAP_N; i++) {
         char buf[32];
         snprintf(buf, sizeof(buf), "key_%d", i);
-        String k, v;
-        String_create_stk(&k, buf);
-        String_create_stk(&v, "val");
-        HashMap_put(map, (u8*)&k, (u8*)&v);
-        String_destroy_stk(&k);
-        String_destroy_stk(&v);
+        String k = String_from_cstr(WC_LIBC, buf);
+        String v = String_from_cstr(WC_LIBC, "val");
+        HashMap_put(&map, (u8*)&k, (u8*)&v);
+        String_destroy(&k);
+        String_destroy(&v);
     }
 
     int hits = 0;
@@ -437,17 +429,17 @@ static void bench_map_get_cx(void)
     for (int i = 0; i < MAP_N; i++) {
         char buf[32];
         snprintf(buf, sizeof(buf), "key_%d", i);
-        String k, out;
-        String_create_stk(&k, buf);
-        hits += HashMap_get(map, (u8*)&k, (u8*)&out);
-        String_destroy_stk(&k);
-        String_destroy_stk(&out);
+        String k = String_from_cstr(WC_LIBC, buf);
+        String out = String_create(WC_LIBC);
+        hits += HashMap_get(&map, (u8*)&k, (u8*)&out);
+        String_destroy(&k);
+        String_destroy(&out);
     }
     u64 t1 = ns_now();
 
     WC_ASSERT_EQ_INT(hits, MAP_N);
     bench("HashMap_get CX String->String", MAP_N, t0, t1);
-    HashMap_destroy(map);
+    HashMap_destroy(&map);
 }
 
 
@@ -463,14 +455,14 @@ static void bench_map_clear_pod(void)
     u64 total_ns = 0;
 
     for (int r = 0; r < MCLR_REP; r++) {
-        HashMap* map = HashMap_create(sizeof(int), sizeof(int), NULL, NULL, NULL, NULL);
-        for (int i = 0; i < MCLR_N; i++) HashMap_put(map, (u8*)&i, (u8*)&i);
+        HashMap map = HashMap_create(WC_LIBC, sizeof(int), sizeof(int), NULL, NULL, NULL, NULL);
+        for (int i = 0; i < MCLR_N; i++) HashMap_put(&map, (u8*)&i, (u8*)&i);
 
         u64 t0 = ns_now();
-        HashMap_clear(map);
+        HashMap_clear(&map);
         u64 t1 = ns_now();
         total_ns += t1 - t0;
-        HashMap_destroy(map);
+        HashMap_destroy(&map);
     }
 
     u64 ns_per = total_ns / ((u64)MCLR_REP * MCLR_N);
@@ -484,23 +476,22 @@ static void bench_map_clear_cx(void)
     u64 total_ns = 0;
 
     for (int r = 0; r < MCLR_REP; r++) {
-        HashMap* map = HashMap_create(sizeof(String), sizeof(String),
+        HashMap map = HashMap_create(WC_LIBC, sizeof(String), sizeof(String),
                                       wyhash_str, str_cmp, &wc_str_ops, &wc_str_ops);
         for (int i = 0; i < MCLR_N; i++) {
             char buf[32];
             snprintf(buf, sizeof(buf), "k%d", i);
-            String k, v;
-            String_create_stk(&k, buf);
-            String_create_stk(&v, "v");
-            HashMap_put(map, (u8*)&k, (u8*)&v);
-            String_destroy_stk(&k);
-            String_destroy_stk(&v);
+            String k = String_from_cstr(WC_LIBC, buf);
+            String v = String_from_cstr(WC_LIBC, "v");
+            HashMap_put(&map, (u8*)&k, (u8*)&v);
+            String_destroy(&k);
+            String_destroy(&v);
         }
         u64 t0 = ns_now();
-        HashMap_clear(map);
+        HashMap_clear(&map);
         u64 t1 = ns_now();
         total_ns += t1 - t0;
-        HashMap_destroy(map);
+        HashMap_destroy(&map);
     }
 
     u64 ns_per = total_ns / ((u64)MCLR_REP * MCLR_N);
@@ -536,10 +527,9 @@ static void bench_pop_cx(void)
 {
     GenVec v = GenVec_create(WC_LIBC, POP_N, sizeof(String), &wc_str_ops);
     for (int i = 0; i < POP_N; i++) {
-        String s;
-        String_create_stk(&s, "pop");
+        String s = String_from_cstr(WC_LIBC, "pop");
         GenVec_push(&v, (u8*)&s);
-        String_destroy_stk(&s);
+        String_destroy(&s);
     }
 
     u64 t0 = ns_now();
@@ -660,7 +650,7 @@ static void person_init(Person* p, int i)
 {
     char buf[64];
     person_name_fmt(buf, sizeof(buf), i);
-    String_create_stk(&p->name, buf);
+    p->name = String_from_cstr(WC_LIBC, buf);
 
     p->scores = GenVec_create(WC_LIBC, (u64)PERSON_SCORES_N, sizeof(int), NULL);
     for (int j = 0; j < PERSON_SCORES_N; j++) {
@@ -672,7 +662,7 @@ static void person_init(Person* p, int i)
 static void person_del(u8* elm)
 {
     Person* p = (Person*)elm;
-    String_destroy_stk(&p->name);
+    String_destroy(&p->name);
     GenVec_destroy(&p->scores);
 }
 
@@ -681,11 +671,7 @@ static void person_copy(wc_allocator dst, u8* dest, const u8* src)
     const Person* s = (const Person*)src;
     Person*       d = (Person*)dest;
 
-    // String_copy is safe on raw/uninitialised dest memory (dest is fully
-    // re-initialised, not read first). TRANSITIONAL: String is libc until Phase 4.
-    String_copy(&d->name, &s->name);
-
-    // GenVec_copy returns a fresh vector: raw dest memory is fine.
+    d->name   = String_copy(dst, &s->name);
     d->scores = GenVec_copy(dst, &s->scores);
 }
 
@@ -862,10 +848,9 @@ static void bench_ss_String_sso(void)
     u64  t0 = ns_now();
     for (int i = 0; i < STRSTORE_N; i++) {
         strstore_fmt(buf, sizeof(buf), i);
-        String s;
-        String_create_stk(&s, buf);
+        String s = String_from_cstr(WC_LIBC, buf);
         GenVec_push(&v, (u8*)&s);
-        String_destroy_stk(&s);
+        String_destroy(&s);
     }
     u64 t1 = ns_now();
 

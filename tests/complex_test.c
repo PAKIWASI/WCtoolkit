@@ -20,8 +20,7 @@
 static void test_strval_push_copy_independent(void)
 {
     GenVec v = VEC_OF_STR(4);
-    String  s;
-    String_create_stk(&s, "hello");
+    String  s = String_from_cstr(WC_LIBC, "hello");
 
     VEC_PUSH(&v, s);
     VEC_PUSH(&v, s);
@@ -31,18 +30,18 @@ static void test_strval_push_copy_independent(void)
     WC_ASSERT(String_equals_cstr(VEC_AT_MUT(&v, String, 0), "hello"));
     WC_ASSERT(String_equals_cstr(VEC_AT_MUT(&v, String, 1), "hello"));
 
-    String_destroy_stk(&s);
+    String_destroy(&s);
     GenVec_destroy(&v);
 }
 
 static void test_strval_push_move_nulls_src(void)
 {
-    GenVec  v = VEC_OF_STR(4);
-    String* s = String_from_cstr("world");
-    VEC_PUSH_MOVE(&v, *s); // by-value vec: move the String itself
+    GenVec v = VEC_OF_STR(4);
+    String s = String_from_cstr(WC_LIBC, "world");
+    VEC_PUSH_MOVE(&v, s); // by-value vec: move the String itself
 
-    WC_ASSERT_EQ_U64(s->size, 0); // moved-from String is zeroed
-    String_destroy(s);            // frees the shell only
+    WC_ASSERT_EQ_U64(s.size, 0); // moved-from String is zeroed
+    String_destroy(&s);          // safe on zeroed
     WC_ASSERT(String_equals_cstr(VEC_AT_MUT(&v, String, 0), "world"));
     GenVec_destroy(&v);
 }
@@ -86,7 +85,7 @@ static void test_strval_pop_returns_owned_String(void)
     String popped = VEC_POP(&v, String);
     WC_ASSERT(String_equals_cstr(&popped, "second"));
     WC_ASSERT_EQ_U64(GenVec_size(&v), 1);
-    String_destroy_stk(&popped); /* caller owns it */
+    String_destroy(&popped); /* caller owns it */
     GenVec_destroy(&v);
 }
 
@@ -144,8 +143,8 @@ static void test_strval_triggers_growth(void)
 
 static void test_strptr_push_copy_independent(void)
 {
-    GenVec v  = VEC_OF_STR_PTR(4);
-    String* s  = String_from_cstr("hello");
+    GenVec  v = VEC_OF_STR_PTR(4);
+    String* s = WC_BOX_IN(WC_LIBC, String, String_from_cstr, WC_LIBC, "hello");
 
     VEC_PUSH(&v, s);
     VEC_PUSH(&v, s);
@@ -156,13 +155,14 @@ static void test_strptr_push_copy_independent(void)
     WC_ASSERT(String_equals_cstr(VEC_AT(&v, String*, 1), "hello"));
 
     String_destroy(s);
+    wc_free(WC_LIBC, s, sizeof(String), alignof(String));
     GenVec_destroy(&v);
 }
 
 static void test_strptr_push_move_nulls_src(void)
 {
-    GenVec v  = VEC_OF_STR_PTR(4);
-    String* s  = String_from_cstr("world");
+    GenVec  v = VEC_OF_STR_PTR(4);
+    String* s = WC_BOX_IN(WC_LIBC, String, String_from_cstr, WC_LIBC, "world");
     VEC_PUSH_MOVE(&v, s);
 
     WC_ASSERT_NULL(s);
@@ -173,8 +173,8 @@ static void test_strptr_push_move_nulls_src(void)
 static void test_strptr_address_stable_after_growth(void)
 {
     /* key advantage of Strategy B: address of String doesn't change on realloc */
-    GenVec v    = VEC_OF_STR_PTR(2);
-    String* s    = String_from_cstr("stable");
+    GenVec  v    = VEC_OF_STR_PTR(2);
+    String* s    = WC_BOX_IN(WC_LIBC, String, String_from_cstr, WC_LIBC, "stable");
     VEC_PUSH_MOVE(&v, s);
     String* addr = VEC_AT(&v, String*, 0); /* address of the heap String */
 
@@ -210,8 +210,9 @@ static void test_strptr_replace_slot_pointer(void)
 
     /* VEC_AT_MUT gives String** — we can replace which String the slot points to */
     String** slot        = VEC_AT_MUT(&v, String*, 0);
-    String*  replacement = String_from_cstr("new");
+    String*  replacement = WC_BOX_IN(WC_LIBC, String, String_from_cstr, WC_LIBC, "new");
     String_destroy(*slot);  /* free old String */
+    wc_free(WC_LIBC, *slot, sizeof(String), alignof(String));
     *slot = replacement;    /* put new String* in slot */
 
     WC_ASSERT(String_equals_cstr(VEC_AT(&v, String*, 0), "new"));
@@ -407,88 +408,87 @@ static void test_vecptr_copy_outer(void)
  * Tests the MAP_PUT_INT_STR and vec-as-value patterns.
  * ══════════════════════════════════════════════════════════════════════════ */
 
-static HashMap* int_vec_map(void)
+static HashMap int_vec_map(void)
 {
-    return HashMap_create(sizeof(int), sizeof(GenVec), NULL, NULL, NULL, &wc_vec_ops);
+    return HashMap_create(WC_LIBC, sizeof(int), sizeof(GenVec), NULL, NULL, NULL, &wc_vec_ops);
 }
 
 static void test_map_int_vec_put_move(void)
 {
-    HashMap* m = int_vec_map();
+    HashMap m = int_vec_map();
     GenVec  v = VEC_OF_INT(4);
     for (int i = 0; i < 5; i++) { VEC_PUSH(&v, i); }
 
     int key = 10;
-    HashMap_put_val_move(m, (u8*)&key, (u8*)&v);
+    HashMap_put_val_move(&m, (u8*)&key, (u8*)&v);
     WC_ASSERT_NULL(v.data); // moved-from: zeroed
 
-    GenVec* stored = (GenVec*)HashMap_get_ptr(m, (u8*)&key);
+    GenVec* stored = (GenVec*)HashMap_get_ptr(&m, (u8*)&key);
     WC_ASSERT_NOT_NULL(stored);
     WC_ASSERT_EQ_U64(GenVec_size(stored), 5);
     for (int i = 0; i < 5; i++) {
         WC_ASSERT_EQ_INT(*(int*)GenVec_get_ptr(stored, (u64)i), i);
     }
 
-    HashMap_destroy(m);
+    HashMap_destroy(&m);
 }
 
 static void test_map_int_vec_copy_independence(void)
 {
-    HashMap* m   = int_vec_map();
+    HashMap m   = int_vec_map();
     GenVec  src = VEC_OF_INT(4);
     for (int i = 0; i < 3; i++) { VEC_PUSH(&src, i); }
 
     int key = 1;
-    HashMap_put(m, (u8*)&key, (u8*)&src);
+    HashMap_put(&m, (u8*)&key, (u8*)&src);
 
     /* mutate &src — stored copy must not be affected */
     int x = 999;
     GenVec_replace(&src, 0, (u8*)&x);
 
-    GenVec* stored = (GenVec*)HashMap_get_ptr(m, (u8*)&key);
+    GenVec* stored = (GenVec*)HashMap_get_ptr(&m, (u8*)&key);
     WC_ASSERT_EQ_INT(*(int*)GenVec_get_ptr(stored, 0), 0);
 
     GenVec_destroy(&src);
-    HashMap_destroy(m);
+    HashMap_destroy(&m);
 }
 
 static void test_map_str_str_macro(void)
 {
-    HashMap* m = HashMap_create(
-        sizeof(String), sizeof(String),
+    HashMap m = HashMap_create(
+        WC_LIBC, sizeof(String), sizeof(String),
         wyhash_str, str_cmp, &wc_str_ops, &wc_str_ops);
 
-    MAP_PUT_STR_STR(m, "name",  "Alice");
-    MAP_PUT_STR_STR(m, "city",  "Cairo");
-    MAP_PUT_STR_STR(m, "lang",  "C");
+    MAP_PUT_STR_STR(&m, "name",  "Alice");
+    MAP_PUT_STR_STR(&m, "city",  "Cairo");
+    MAP_PUT_STR_STR(&m, "lang",  "C");
 
-    String probe;
-    String_create_stk(&probe, "city");
-    String* val = (String*)HashMap_get_ptr(m, (u8*)&probe);
+    String probe = String_from_cstr(WC_LIBC, "city");
+    String* val = (String*)HashMap_get_ptr(&m, (u8*)&probe);
     WC_ASSERT_NOT_NULL(val);
     WC_ASSERT(String_equals_cstr(val, "Cairo"));
-    String_destroy_stk(&probe);
+    String_destroy(&probe);
 
-    WC_ASSERT_EQ_U64(HashMap_size(m), 3);
-    HashMap_destroy(m);
+    WC_ASSERT_EQ_U64(HashMap_size(&m), 3);
+    HashMap_destroy(&m);
 }
 
 static void test_map_int_str_macro(void)
 {
-    HashMap* m = HashMap_create(
-        sizeof(int), sizeof(String),
+    HashMap m = HashMap_create(
+        WC_LIBC, sizeof(int), sizeof(String),
         NULL, NULL, NULL, &wc_str_ops);
 
-    MAP_PUT_INT_STR(m, 1, "one");
-    MAP_PUT_INT_STR(m, 2, "two");
-    MAP_PUT_INT_STR(m, 3, "three");
+    MAP_PUT_INT_STR(&m, 1, "one");
+    MAP_PUT_INT_STR(&m, 2, "two");
+    MAP_PUT_INT_STR(&m, 3, "three");
 
     int key = 2;
-    String* val = (String*)HashMap_get_ptr(m, (u8*)&key);
+    String* val = (String*)HashMap_get_ptr(&m, (u8*)&key);
     WC_ASSERT_NOT_NULL(val);
     WC_ASSERT(String_equals_cstr(val, "two"));
-    WC_ASSERT_EQ_U64(HashMap_size(m), 3);
-    HashMap_destroy(m);
+    WC_ASSERT_EQ_U64(HashMap_size(&m), 3);
+    HashMap_destroy(&m);
 }
 
 

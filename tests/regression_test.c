@@ -188,46 +188,46 @@ static void test_golden_queue_hashmap_fixed_seed(void)
     pcg32_rand_seed(42, 54);
 
     // Queue: interleaved push/pop that wraps the circular buffer and resizes.
-    Queue* q     = Queue_create(4, sizeof(u32), NULL);
-    u64    q_sum = 0;
+    Queue q     = Queue_create(WC_LIBC, 4, sizeof(u32), NULL);
+    u64   q_sum = 0;
     for (int i = 0; i < 5000; i++) {
         u32 r = pcg32_rand();
-        if ((r & 3) != 0 || Queue_size(q) == 0) {
-            Queue_push(q, cast(r));
+        if ((r & 3) != 0 || Queue_size(&q) == 0) {
+            Queue_push(&q, cast(r));
         } else {
             u32 out = 0;
-            Queue_pop(q, cast(out));
+            Queue_pop(&q, cast(out));
             q_sum = golden_mix(q_sum, out);
         }
     }
-    while (Queue_size(q) > 0) {
+    while (Queue_size(&q) > 0) {
         u32 out = 0;
-        Queue_pop(q, cast(out));
+        Queue_pop(&q, cast(out));
         q_sum = golden_mix(q_sum, out);
     }
-    Queue_destroy(q);
+    Queue_destroy(&q);
 
     // HashMap: puts, overwrites and deletes over a small key space.
-    HashMap* m = HashMap_create(sizeof(u32), sizeof(u64), NULL, NULL, NULL, NULL);
+    HashMap m = HashMap_create(WC_LIBC, sizeof(u32), sizeof(u64), NULL, NULL, NULL, NULL);
     for (int i = 0; i < 20000; i++) {
         u32 k = pcg32_rand_bounded(3000);
         u64 v = pcg32_rand();
         if (pcg32_rand_bounded(5) == 0) {
-            HashMap_del(m, cast(k), NULL);
+            HashMap_del(&m, cast(k), NULL);
         } else {
-            HashMap_put(m, cast(k), cast(v));
+            HashMap_put(&m, cast(k), cast(v));
         }
     }
     u64 m_sum = 0;
-    for (u64 i = 0; i < HashMap_bucket_count(m); i++) {
-        if (HashMap_bucket_occupied(m, i)) {
-            u32 k = *(const u32*)HashMap_bucket_key_ptr(m, i);
-            u64 v = *(const u64*)HashMap_bucket_val_ptr(m, i);
+    for (u64 i = 0; i < HashMap_bucket_count(&m); i++) {
+        if (HashMap_bucket_occupied(&m, i)) {
+            u32 k = *(const u32*)HashMap_bucket_key_ptr(&m, i);
+            u64 v = *(const u64*)HashMap_bucket_val_ptr(&m, i);
             m_sum += golden_mix(k, v); // sum: independent of bucket order
         }
     }
-    u64 m_size = HashMap_size(m);
-    HashMap_destroy(m);
+    u64 m_size = HashMap_size(&m);
+    HashMap_destroy(&m);
 
     printf("[q=0x%llx m=0x%llx n=%llu] ", (unsigned long long)q_sum, (unsigned long long)m_sum,
            (unsigned long long)m_size);

@@ -29,26 +29,22 @@
 
 */
 
-// TODO: test
-
 typedef struct {
     Queue         q; // circular queue
     wc_compare_fn cmp_fn;
 } PriorityQueue;
 
+_Static_assert(sizeof(PriorityQueue) == 88, "PriorityQueue size mismatch");
 
-// Creation
-PriorityQueue* PriorityQueue_create(u64 n, u32 data_size, const wc_container_ops* ops, wc_compare_fn cmp_fn)
-    __attribute__((nonnull(4)));
+
+// Creation — returns by value; allocator goes into pq->q.arr.alloc
+PriorityQueue PriorityQueue_create(wc_allocator a, u64 n, u32 data_size, const wc_container_ops* ops,
+                                   wc_compare_fn cmp_fn) __attribute__((nonnull(5), warn_unused_result));
 void PriorityQueue_destroy(PriorityQueue* pq) __attribute__((nonnull(1)));
 
-void PriorityQueue_create_stk(PriorityQueue* pq, u64 n, u32 data_size, const wc_container_ops* ops,
-                              wc_compare_fn cmp_fn) __attribute__((nonnull(1, 5)));
-void PriorityQueue_destroy_stk(PriorityQueue* pq) __attribute__((nonnull(1)));
-
-// Build heap from other structures
-PriorityQueue* PriorityQueue_from_vec(GenVec* vec, wc_compare_fn cmp_fn) __attribute__((nonnull(1, 2)));
-void PriorityQueue_from_vec_stk(PriorityQueue* pq, GenVec* vec, wc_compare_fn cmp_fn) __attribute__((nonnull(1, 2, 3)));
+// Build heap from a GenVec; the copy uses allocator `a`
+PriorityQueue PriorityQueue_from_vec(wc_allocator a, const GenVec* vec, wc_compare_fn cmp_fn)
+    __attribute__((nonnull(2, 3), warn_unused_result));
 
 // operations
 

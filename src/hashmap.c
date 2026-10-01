@@ -1,9 +1,9 @@
 #include "hashmap.h"
 #include "common.h"
 #include "map_setup.h"
+#include "wc_allocator.h"
 
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
 
@@ -35,9 +35,10 @@
 #define SWAP_KEY(map)  ((map)->scratch + ALIGN8((map)->key_size) + (map)->val_size)
 #define SWAP_VAL(map)  ((map)->scratch + ALIGN8((map)->key_size) + (map)->val_size + ALIGN8((map)->key_size))
 
-// TRANSITIONAL (until Phase 5): the map/set does not store an allocator yet,
-// so element deep copies (copy_fn) allocate from libc.
-#define MAP_ELEM_ALLOC WC_LIBC
+static inline u64 map_keys_size(u64 cap, u32 key_size) { return cap * (u64)key_size; }
+static inline u64 map_psls_size(u64 cap) { return cap * sizeof(u8); }
+static inline u64 map_vals_size(u64 cap, u32 val_size) { return cap * (u64)val_size; }
+static inline u64 map_scratch_size(u32 key_size, u32 val_size) { return 2 * (ALIGN8(key_size) + (u64)val_size); }
 
 // Move one element into `dest`: move_fn if provided, else memcpy. `src` is left zeroed.
 static inline void move_into(const wc_container_ops* ops, u32 size, u8* dest, u8* src)
@@ -61,8 +62,8 @@ static inline void consume_dup(const wc_container_ops* ops, u32 size, u8* elm)
     memset(elm, 0, size);
 }
 
-#define IS_POD_K(map) (map->key_ops == NULL)
-#define IS_POD_V(map) (map->val_ops == NULL)
+#define IS_POD_K(map) ((map)->key_ops == NULL)
+#define IS_POD_V(map) ((map)->val_ops == NULL)
 
 
 /*
@@ -79,52 +80,46 @@ static void        map_resize(HashMap* map, u64 new_capacity);
 ====================PUBLIC FUNCTIONS====================
 */
 
-void HashMap_create_stk(HashMap* map, u32 key_size, u32 val_size, custom_hash_fn hash_fn, wc_compare_fn cmp_fn, const wc_container_ops* key_ops, const wc_container_ops* val_ops)
+HashMap HashMap_create(wc_allocator a, u32 key_size, u32 val_size, custom_hash_fn hash_fn, wc_compare_fn cmp_fn,
+                       const wc_container_ops* key_ops, const wc_container_ops* val_ops)
 {
     CHECK_FATAL(key_size == 0 || val_size == 0, "key/val size can't be 0");
 
-    map->keys = malloc((u64)HASHMAP_INIT_CAPACITY * key_size);
-    CHECK_FATAL(!map->keys, "keys malloc failed");
-    map->psls = calloc(HASHMAP_INIT_CAPACITY, sizeof(u8));
-    CHECK_FATAL(!map->psls, "psls calloc failed");
-    map->vals = malloc((u64)HASHMAP_INIT_CAPACITY * val_size);
-    CHECK_FATAL(!map->vals, "vals malloc failed");
+    HashMap map;
+    map.alloc    = a;
+    map.size     = 0;
+    map.capacity = HASHMAP_INIT_CAPACITY;
+    map.key_size = key_size;
+    map.val_size = val_size;
 
-    map->scratch = malloc(2 * (ALIGN8(key_size) + val_size));
-    CHECK_FATAL(!map->scratch, "scratch malloc failed");
+    map.keys = (u8*)wc_alloc(a, map_keys_size(map.capacity, key_size), 8);
+    FATAL_IF(!map.keys, "HashMap_create: keys alloc failed");
 
-    map->size     = 0;
-    map->capacity = HASHMAP_INIT_CAPACITY;
-    map->key_size = key_size;
-    map->val_size = val_size;
+    map.psls = (u8*)wc_alloc(a, map_psls_size(map.capacity), 1);
+    FATAL_IF(!map.psls, "HashMap_create: psls alloc failed");
+    memset(map.psls, 0, map_psls_size(map.capacity));
 
-    map->hash_fn = hash_fn ? hash_fn : wyhash;
-    map->cmp_fn  = cmp_fn ? cmp_fn : default_compare;
+    map.vals = (u8*)wc_alloc(a, map_vals_size(map.capacity, val_size), 8);
+    FATAL_IF(!map.vals, "HashMap_create: vals alloc failed");
 
-    map->key_ops = key_ops;
-    map->val_ops = val_ops;
-}
+    map.scratch = (u8*)wc_alloc(a, map_scratch_size(key_size, val_size), 8);
+    FATAL_IF(!map.scratch, "HashMap_create: scratch alloc failed");
 
-HashMap* HashMap_create(u32 key_size, u32 val_size, custom_hash_fn hash_fn, wc_compare_fn cmp_fn,
-                        const wc_container_ops* key_ops, const wc_container_ops* val_ops)
-{
-    HashMap* map = malloc(sizeof(HashMap));
-    CHECK_FATAL(!map, "map malloc failed");
+    map.hash_fn = hash_fn ? hash_fn : wyhash;
+    map.cmp_fn  = cmp_fn ? cmp_fn : default_compare;
 
-    HashMap_create_stk(map, key_size, val_size, hash_fn, cmp_fn, key_ops, val_ops);
+    map.key_ops = key_ops;
+    map.val_ops = val_ops;
 
     return map;
 }
 
-
 void HashMap_destroy(HashMap* map)
 {
-    HashMap_destroy_stk(map);
-    free(map);
-}
+    if (map->capacity == 0) {
+        return;
+    }
 
-void HashMap_destroy_stk(HashMap* map)
-{
     if (!IS_POD_K(map) || !IS_POD_V(map)) {
         wc_delete_fn k_del = IS_POD_K(map) ? NULL : map->key_ops->del_fn;
         wc_delete_fn v_del = IS_POD_V(map) ? NULL : map->val_ops->del_fn;
@@ -143,10 +138,19 @@ void HashMap_destroy_stk(HashMap* map)
         }
     }
 
-    free(map->keys);
-    free(map->psls);
-    free(map->vals);
-    free(map->scratch);
+    wc_allocator a = map->alloc;
+    wc_free(a, map->keys, map_keys_size(map->capacity, map->key_size), 8);
+    wc_free(a, map->psls, map_psls_size(map->capacity), 1);
+    wc_free(a, map->vals, map_vals_size(map->capacity, map->val_size), 8);
+    wc_free(a, map->scratch, map_scratch_size(map->key_size, map->val_size), 8);
+
+    memset(map, 0, sizeof(HashMap));
+}
+
+void HashMap_move(HashMap* dest, HashMap* src)
+{
+    *dest = *src;
+    memset(src, 0, sizeof(HashMap));
 }
 
 
@@ -156,6 +160,8 @@ void HashMap_destroy_stk(HashMap* map)
 // Returns 1 if key existed (updated), 0 if new key inserted.
 b8 HashMap_put(HashMap* map, const u8* key, const u8* val)
 {
+    FATAL_IF(map->capacity == 0, "HashMap mutation on zeroed/moved-from table");
+
     LOOKUP_RES res;
     u8         out_psl;
     u64        slot = map_lookup(map, key, &res, &out_psl);
@@ -170,7 +176,7 @@ b8 HashMap_put(HashMap* map, const u8* key, const u8* val)
             }
             wc_copy_fn v_cp = map->val_ops->copy_fn;
             if (v_cp) {
-                v_cp(MAP_ELEM_ALLOC, GET_VAL(map, slot), val);
+                v_cp(map->alloc, GET_VAL(map, slot), val);
             } else {
                 memcpy(GET_VAL(map, slot), val, map->val_size);
             }
@@ -183,7 +189,7 @@ b8 HashMap_put(HashMap* map, const u8* key, const u8* val)
     } else {
         wc_copy_fn k_cp = map->key_ops->copy_fn;
         if (k_cp) {
-            k_cp(MAP_ELEM_ALLOC, STAGE_KEY(map), key);
+            k_cp(map->alloc, STAGE_KEY(map), key);
         } else {
             memcpy(STAGE_KEY(map), key, map->key_size);
         }
@@ -193,7 +199,7 @@ b8 HashMap_put(HashMap* map, const u8* key, const u8* val)
     } else {
         wc_copy_fn v_cp = map->val_ops->copy_fn;
         if (v_cp) {
-            v_cp(MAP_ELEM_ALLOC, STAGE_VAL(map), val);
+            v_cp(map->alloc, STAGE_VAL(map), val);
         } else {
             memcpy(STAGE_VAL(map), val, map->val_size);
         }
@@ -207,10 +213,12 @@ b8 HashMap_put(HashMap* map, const u8* key, const u8* val)
 
 // Insert or update — MOVE semantics.
 // Ownership: the map takes ownership of *key and *val directly (no copy made).
-// On success both pointers are nulled. Requires move_fn for both key and val.
+// On success both pointers are zeroed. Requires move_fn for both key and val.
 // Returns 1 if key existed (updated), 0 if new key inserted.
 b8 HashMap_put_move(HashMap* map, u8* key, u8* val)
 {
+    FATAL_IF(map->capacity == 0, "HashMap mutation on zeroed/moved-from table");
+
     LOOKUP_RES res;
     u8         out_psl;
     u64        slot = map_lookup(map, key, &res, &out_psl);
@@ -238,10 +246,12 @@ b8 HashMap_put_move(HashMap* map, u8* key, u8* val)
 
 
 // Insert or update — mixed: key is COPIED, val is MOVED.
-// Ownership: map deep-copies the key (caller retains it); map takes ownership of *val (*val nulled).
+// Ownership: map deep-copies the key (caller retains it); map takes ownership of *val (*val zeroed).
 // Returns 1 if key existed (updated), 0 if new key inserted.
 b8 HashMap_put_val_move(HashMap* map, const u8* key, u8* val)
 {
+    FATAL_IF(map->capacity == 0, "HashMap mutation on zeroed/moved-from table");
+
     LOOKUP_RES res;
     u8         out_psl;
     u64        slot = map_lookup(map, key, &res, &out_psl);
@@ -262,7 +272,7 @@ b8 HashMap_put_val_move(HashMap* map, const u8* key, u8* val)
     } else {
         wc_copy_fn k_cp = map->key_ops->copy_fn;
         if (k_cp) {
-            k_cp(MAP_ELEM_ALLOC, STAGE_KEY(map), key);
+            k_cp(map->alloc, STAGE_KEY(map), key);
         } else {
             memcpy(STAGE_KEY(map), key, map->key_size);
         }
@@ -276,10 +286,12 @@ b8 HashMap_put_val_move(HashMap* map, const u8* key, u8* val)
 
 
 // Insert or update — mixed: key is MOVED, val is COPIED.
-// Ownership: map takes ownership of *key (*key nulled); map deep-copies val (caller retains it).
+// Ownership: map takes ownership of *key (*key zeroed); map deep-copies val (caller retains it).
 // Returns 1 if key existed (updated), 0 if new key inserted.
 b8 HashMap_put_key_move(HashMap* map, u8* key, const u8* val)
 {
+    FATAL_IF(map->capacity == 0, "HashMap mutation on zeroed/moved-from table");
+
     LOOKUP_RES res;
     u8         out_psl;
     u64        slot = map_lookup(map, key, &res, &out_psl);
@@ -292,7 +304,7 @@ b8 HashMap_put_key_move(HashMap* map, u8* key, const u8* val)
             }
             wc_copy_fn v_cp = map->val_ops->copy_fn;
             if (v_cp) {
-                v_cp(MAP_ELEM_ALLOC, GET_VAL(map, slot), val);
+                v_cp(map->alloc, GET_VAL(map, slot), val);
             } else {
                 memcpy(GET_VAL(map, slot), val, map->val_size);
             }
@@ -310,7 +322,7 @@ b8 HashMap_put_key_move(HashMap* map, u8* key, const u8* val)
     } else {
         wc_copy_fn v_cp = map->val_ops->copy_fn;
         if (v_cp) {
-            v_cp(MAP_ELEM_ALLOC, STAGE_VAL(map), val);
+            v_cp(map->alloc, STAGE_VAL(map), val);
         } else {
             memcpy(STAGE_VAL(map), val, map->val_size);
         }
@@ -326,6 +338,10 @@ b8 HashMap_put_key_move(HashMap* map, u8* key, const u8* val)
 // Caller owns the copy returned in val and must free it when done.
 b8 HashMap_get(const HashMap* map, const u8* key, u8* val)
 {
+    if (map->capacity == 0) {
+        return 0;
+    }
+
     LOOKUP_RES res;
     u8         out_psl;
     u64        slot = map_lookup(map, key, &res, &out_psl);
@@ -339,7 +355,7 @@ b8 HashMap_get(const HashMap* map, const u8* key, u8* val)
     } else {
         wc_copy_fn v_copy = map->val_ops->copy_fn;
         if (v_copy) {
-            v_copy(MAP_ELEM_ALLOC, val, GET_VAL(map, slot));
+            v_copy(map->alloc, val, GET_VAL(map, slot));
         } else {
             memcpy(val, GET_VAL(map, slot), map->val_size);
         }
@@ -353,6 +369,10 @@ b8 HashMap_get(const HashMap* map, const u8* key, u8* val)
 // Do NOT free the returned pointer — the map owns it.
 const u8* HashMap_get_ptr(const HashMap* map, const u8* key)
 {
+    if (map->capacity == 0) {
+        return NULL;
+    }
+
     LOOKUP_RES res;
     u8         out_psl;
     u64        slot = map_lookup(map, key, &res, &out_psl);
@@ -389,6 +409,8 @@ u8* HashMap_bucket_val_ptr(HashMap* map, u64 i)
 // position as long as they have PSL > 1 (i.e. they are not sitting at their home slot).
 b8 HashMap_del(HashMap* map, const u8* key, u8* out)
 {
+    FATAL_IF(map->capacity == 0, "HashMap mutation on zeroed/moved-from table");
+
     LOOKUP_RES res;
     u8         out_psl;
     u64        slot = map_lookup(map, key, &res, &out_psl);
@@ -445,6 +467,10 @@ b8 HashMap_del(HashMap* map, const u8* key, u8* out)
 // Check if key exists.
 b8 HashMap_has(const HashMap* map, const u8* key)
 {
+    if (map->capacity == 0) {
+        return 0;
+    }
+
     LOOKUP_RES res;
     u8         out_psl;
     map_lookup(map, key, &res, &out_psl);
@@ -456,7 +482,7 @@ b8 HashMap_has(const HashMap* map, const u8* key)
 void HashMap_print(const HashMap* map, wc_print_fn key_print, wc_print_fn val_print)
 {
     printf("\t=========\n");
-    printf("\tSize: %lu / Capacity: %lu\n", map->size, map->capacity);
+    printf("\tSize: %lu / Capacity: %lu\n", (unsigned long)map->size, (unsigned long)map->capacity);
     printf("\t=========\n");
 
     for (u64 i = 0; i < map->capacity; i++) {
@@ -478,6 +504,8 @@ void HashMap_print(const HashMap* map, wc_print_fn key_print, wc_print_fn val_pr
 // Destroys all keys and values via their del_fn callbacks, then zeroes the arrays.
 void HashMap_clear(HashMap* map)
 {
+    FATAL_IF(map->capacity == 0, "HashMap_clear on zeroed/moved-from table");
+
     if (!IS_POD_K(map) || !IS_POD_V(map)) {
         wc_delete_fn k_del = IS_POD_K(map) ? NULL : map->key_ops->del_fn;
         wc_delete_fn v_del = IS_POD_V(map) ? NULL : map->val_ops->del_fn;
@@ -494,37 +522,43 @@ void HashMap_clear(HashMap* map)
         }
     }
 
-    memset(map->psls, 0, map->capacity * sizeof(u8));
+    memset(map->psls, 0, map_psls_size(map->capacity));
     map->size = 0;
 }
 
 
-// TODO: test
-// Deep copy src into dest.
+// Deep copy src into dest using allocator `a`.
 // Ownership: dest gets independently owned copies of all keys and values.
-void HashMap_copy(HashMap* dest, const HashMap* src)
+HashMap HashMap_copy(wc_allocator a, const HashMap* src)
 {
-    if (dest == src) {
-        return;
+    HashMap dest;
+    dest.alloc    = a;
+    dest.size     = src->size;
+    dest.capacity = src->capacity;
+    dest.key_size = src->key_size;
+    dest.val_size = src->val_size;
+    dest.hash_fn  = src->hash_fn;
+    dest.cmp_fn   = src->cmp_fn;
+    dest.key_ops  = src->key_ops;
+    dest.val_ops  = src->val_ops;
+
+    if (src->capacity == 0) {
+        memset(&dest, 0, sizeof(HashMap));
+        return dest;
     }
 
-    dest->keys = malloc(src->capacity * src->key_size);
-    CHECK_FATAL(!dest->keys, "copy keys calloc failed");
-    dest->psls = calloc(src->capacity, sizeof(u8));
-    CHECK_FATAL(!dest->psls, "copy psls calloc failed");
-    dest->vals = malloc(src->capacity * src->val_size);
-    CHECK_FATAL(!dest->vals, "copy vals calloc failed");
-    dest->scratch = malloc(2 * (ALIGN8(src->key_size) + src->val_size));
-    CHECK_FATAL(!dest->scratch, "copy scratch malloc failed");
+    dest.keys = (u8*)wc_alloc(a, map_keys_size(src->capacity, src->key_size), 8);
+    FATAL_IF(!dest.keys, "HashMap_copy: keys alloc failed");
 
-    dest->size     = src->size;
-    dest->capacity = src->capacity;
-    dest->key_size = src->key_size;
-    dest->val_size = src->val_size;
-    dest->hash_fn  = src->hash_fn;
-    dest->cmp_fn   = src->cmp_fn;
-    dest->key_ops  = src->key_ops;
-    dest->val_ops  = src->val_ops;
+    dest.psls = (u8*)wc_alloc(a, map_psls_size(src->capacity), 1);
+    FATAL_IF(!dest.psls, "HashMap_copy: psls alloc failed");
+    memset(dest.psls, 0, map_psls_size(src->capacity));
+
+    dest.vals = (u8*)wc_alloc(a, map_vals_size(src->capacity, src->val_size), 8);
+    FATAL_IF(!dest.vals, "HashMap_copy: vals alloc failed");
+
+    dest.scratch = (u8*)wc_alloc(a, map_scratch_size(src->key_size, src->val_size), 8);
+    FATAL_IF(!dest.scratch, "HashMap_copy: scratch alloc failed");
 
     wc_copy_fn k_cp = IS_POD_K(src) ? NULL : src->key_ops->copy_fn;
     wc_copy_fn v_cp = IS_POD_V(src) ? NULL : src->val_ops->copy_fn;
@@ -535,20 +569,22 @@ void HashMap_copy(HashMap* dest, const HashMap* src)
             continue;
         }
 
-        *GET_PSL(dest, i) = psl;
+        *GET_PSL(&dest, i) = psl;
 
         if (k_cp) {
-            k_cp(MAP_ELEM_ALLOC, GET_KEY(dest, i), GET_KEY(src, i));
+            k_cp(a, GET_KEY(&dest, i), GET_KEY(src, i));
         } else {
-            memcpy(GET_KEY(dest, i), GET_KEY(src, i), src->key_size);
+            memcpy(GET_KEY(&dest, i), GET_KEY(src, i), src->key_size);
         }
 
         if (v_cp) {
-            v_cp(MAP_ELEM_ALLOC, GET_VAL(dest, i), GET_VAL(src, i));
+            v_cp(a, GET_VAL(&dest, i), GET_VAL(src, i));
         } else {
-            memcpy(GET_VAL(dest, i), GET_VAL(src, i), src->val_size);
+            memcpy(GET_VAL(&dest, i), GET_VAL(src, i), src->val_size);
         }
     }
+
+    return dest;
 }
 
 
@@ -566,8 +602,8 @@ static inline void map_maybe_resize(HashMap* map)
 
 static u64 map_lookup(const HashMap* map, const u8* key, LOOKUP_RES* res, u8* out_psl)
 {
-    u64        idx = MAP_IDX(map, key);
-    u8         psl = 1; // stored PSL=1 means real probe distance 0 (home slot)
+    u64           idx = MAP_IDX(map, key);
+    u8            psl = 1; // stored PSL=1 means real probe distance 0 (home slot)
     wc_compare_fn cmp = map->cmp_fn;
 
     for (u64 i = idx;; i = MAP_NEXT(map, i)) {
@@ -597,8 +633,6 @@ static u64 map_lookup(const HashMap* map, const u8* key, LOOKUP_RES* res, u8* ou
         psl++;
     }
 }
-
-
 
 // Insert key/val with the given starting psl at slot idx.
 // key and val are already OWNED by the caller (staged copy or moved pointer).
@@ -661,7 +695,6 @@ static void map_insert(HashMap* map, u8* key, u8* val, u8 psl, u64 idx)
     }
 }
 
-
 // Rehash into a new array of new_capacity (must be power-of-2).
 // Ownership transfers as raw bytes — no copy/del callbacks are invoked.
 // This is safe because the data itself doesn't move, only the slot positions.
@@ -675,22 +708,22 @@ static void map_resize(HashMap* map, u64 new_capacity)
     u8* old_psls = map->psls;
     u8* old_vals = map->vals;
     u64 old_cap  = map->capacity;
+    wc_allocator a = map->alloc;
 
-    // map->keys = calloc(new_capacity, map->key_size);
-    map->keys = malloc(new_capacity * map->key_size);
-    CHECK_FATAL(!map->keys, "resize keys calloc failed");
-    map->psls = calloc(new_capacity, sizeof(u8));
-    CHECK_FATAL(!map->psls, "resize psls calloc failed");
-    // map->vals = calloc(new_capacity, map->val_size);
-    map->vals = malloc(new_capacity * map->val_size);
-    CHECK_FATAL(!map->vals, "resize vals calloc failed");
+    map->keys = (u8*)wc_alloc(a, map_keys_size(new_capacity, map->key_size), 8);
+    FATAL_IF(!map->keys, "map_resize: keys alloc failed");
+
+    map->psls = (u8*)wc_alloc(a, map_psls_size(new_capacity), 1);
+    FATAL_IF(!map->psls, "map_resize: psls alloc failed");
+    memset(map->psls, 0, map_psls_size(new_capacity));
+
+    map->vals = (u8*)wc_alloc(a, map_vals_size(new_capacity, map->val_size), 8);
+    FATAL_IF(!map->vals, "map_resize: vals alloc failed");
 
     map->capacity = new_capacity;
     map->size     = 0;
 
-
     for (u64 i = 0; i < old_cap; i++) {
-
         if (old_psls[i] == BUCKET_EMPTY) {
             continue;
         }
@@ -710,9 +743,7 @@ static void map_resize(HashMap* map, u64 new_capacity)
         map_insert(map, STAGE_KEY(map), STAGE_VAL(map), out_psl, slot);
     }
 
-    free(old_keys);
-    free(old_psls);
-    free(old_vals);
+    wc_free(a, old_keys, map_keys_size(old_cap, map->key_size), 8);
+    wc_free(a, old_psls, map_psls_size(old_cap), 1);
+    wc_free(a, old_vals, map_vals_size(old_cap, map->val_size), 8);
 }
-
-

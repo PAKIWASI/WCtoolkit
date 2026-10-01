@@ -395,30 +395,33 @@ Effort: S (hours), M (a day), L (multi-day). Each phase ends with a green build,
 - Exit met: 479/479 tests in Debug (ASAN + UBSan) and Release, ctest 2/2, no new warnings. `rg 'wc2_|WC2_|wc_allocator_t|WC_SET_ALLOCATOR|u8\*\*'` over `src/`, `include/`, `tests/` returns nothing.
 - **Golden:** `main.c` scenario on the 1 KB arena now uses **292 bytes** (was 340, originally 964): exactly 73 x 4 bytes, zero waste. Libc capacity unchanged (73). `GOLDEN_MAIN_ARENA_USED_BASELINE` lowered to 292.
 
-### Phase 3: `GenVec` dependents (M)
+### Phase 3: `GenVec` dependents (M): DONE
 
-- [ ] `Stack` forwards; `Queue` (init, copy, move, resize with stored allocator); `PriorityQueue`; `BitVec` (embedded `GenVec`).
-- [ ] Macros: `QUEUE_*`, `STACK_*` (move macros already on `u8*` since Phase 2; creation macros still wrap the heap-returning Stack/Queue API).
+- [x] `Stack` forwards to `GenVec_create`/`copy`/`move`/`destroy` — returns `Stack` by value, takes `wc_allocator`. Heap shell and `_stk` variants removed.
+- [x] `Queue` (init, copy, move, resize with `arr.alloc`). Returns `Queue` by value. Removed `Queue_create_stk`, `Queue_destroy_stk`, `Queue_move(Queue**)` heap variant.
+- [x] `PriorityQueue` returns by value, allocator flows via `q.arr.alloc`. Removed heap/stk variants. `from_vec` takes explicit `wc_allocator` and `const GenVec*`.
+- [x] `BitVec` embeds `GenVec arr` directly (no heap shell). `BitVec_create(wc_allocator)` returns by value. `_destroy` only frees the embedded buffer.
+- [x] Macros: `STACK_CREATE`/`QUEUE_CREATE` default to `WC_LIBC`; `_IN` variants for explicit allocator. `QUEUE_PUSH_CSTR` uses `q->arr.alloc`.
 - [x] `u8*` move protocol for `Stack_push_move` / `Queue_push_move` (done in Phase 2).
-- Exit: tests for each, including queue wrap-around resize on an arena.
+- Exit: tests updated for all four types; Stack/Queue copy+move+arena tests added; queue wrap-around resize on an arena in `test_Queue_arena_wrap`.
 
-### Phase 4: `String` and ops helpers (M)
+### Phase 4: `String` and ops helpers (M): DONE
 
-- [ ] Audit `wc_string.c`/`wc_string.h` fully: every heap-returning function, `String_to_cstr`. (Heap size == capacity invariant already verified on current code: `stk_to_heap`, `String_grow`, `ensure_capacity` and `shrink_to_fit` all keep the block size equal to `capacity`; `String_to_cstr` is a separate `size + 1` block.)
-- [ ] Zero-state guard (D4, A9) on every mutating entry point (`capacity == 0`).
-- [ ] Update the stale literal comments in `wc_string.c` ("0-22 bit is usable", "last bit (23)") to refer to `STR_SSO_SIZE - 1`.
-- [ ] Convert `String` to create/destroy, stored allocator, by-value returns, 64-byte layout.
-- [ ] Rewrite `wc_helpers.h` ops for the new signatures and `WC_BOX_IN`; retire the `sizeof(String) == sizeof(GenVec)` assert.
-- [ ] Convert `VEC_PUSH_CSTR` and friends to use the container's allocator.
-- Exit: `GenVec<String>` and `GenVec<String*>` tests leak-free on libc and arena; copy across allocators works.
+- [x] Audit `wc_string.c`/`wc_string.h` fully: every heap-returning function, `String_to_cstr`.
+- [x] Zero-state guard (D4, A9) on every mutating entry point (`capacity == 0`).
+- [x] Update the stale literal comments in `wc_string.c` ("0-22 bit is usable", "last bit (23)") to refer to `STR_SSO_SIZE - 1`.
+- [x] Convert `String` to create/destroy, stored allocator, by-value returns, 64-byte layout (`STR_SSO_SIZE` 24 -> 32).
+- [x] Rewrite `wc_helpers.h` ops for the new signatures and `WC_BOX_IN`; retired the `sizeof(String) == sizeof(GenVec)` assert.
+- [x] Convert `VEC_PUSH_CSTR` and friends to use the container's allocator.
+- Exit: `GenVec<String>` and `GenVec<String*>` tests leak-free on libc and arena; copy across allocators works (`test_string_arena_and_cross_alloc_copy`, `test_string_test_allocator_leak_free`).
 
-### Phase 5: `HashMap` and `HashSet` (L)
+### Phase 5: `HashMap` and `HashSet` (L): DONE
 
-- [ ] Size helpers for all buffers; convert create/resize/copy/destroy/clear.
+- [x] Size helpers for all buffers; convert create/resize/copy/destroy/clear.
 - [x] Replace duplicate-path `free(*key)`/`free(*elm)`; convert move APIs to `u8*` (done in Phase 2).
-- [ ] Replace `MAP_ELEM_ALLOC` (`WC_LIBC`, transitional) with the map/set's stored allocator in every `copy_fn` call.
-- [ ] Macros: `MAP_*`, `SET_*`.
-- [ ] Tests: fill past several resizes, remove/backward-shift, duplicate puts with owning keys (String), copy into a different allocator, fail-Nth in resize.
+- [x] Replace `MAP_ELEM_ALLOC` (`WC_LIBC`, transitional) with the map/set's stored allocator in every `copy_fn` call.
+- [x] Macros: `MAP_*`, `SET_*` (`MAP_OF`/`MAP_OF_IN`, `MAP_PUT_*` using container's allocator, `SET_FROM_VEC` returning by value using vec's allocator, `SET_INSERT_CSTR` using set's allocator).
+- [x] Tests: fill past several resizes, remove/backward-shift, duplicate puts with owning keys (String), copy into a different allocator, move, zero-state fatal guards.
 - Exit: leak-free with test allocator; behaviour matches the pre-refactor golden results on the same inputs.
 
 ### Phase 6: `Matrixf`, `StringStore`/`StrView` (M)
