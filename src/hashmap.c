@@ -35,6 +35,32 @@
 #define SWAP_KEY(map)  ((map)->scratch + ALIGN8((map)->key_size) + (map)->val_size)
 #define SWAP_VAL(map)  ((map)->scratch + ALIGN8((map)->key_size) + (map)->val_size + ALIGN8((map)->key_size))
 
+// TRANSITIONAL (until Phase 5): the map/set does not store an allocator yet,
+// so element deep copies (copy_fn) allocate from libc.
+#define MAP_ELEM_ALLOC WC_LIBC
+
+// Move one element into `dest`: move_fn if provided, else memcpy. `src` is left zeroed.
+static inline void move_into(const wc_container_ops* ops, u32 size, u8* dest, u8* src)
+{
+    wc_move_fn mv = ops ? ops->move_fn : NULL;
+    if (mv) {
+        mv(dest, src);
+    } else {
+        memcpy(dest, src, size);
+    }
+    memset(src, 0, size);
+}
+
+// Destroy an incoming duplicate the container will not keep, and zero it.
+static inline void consume_dup(const wc_container_ops* ops, u32 size, u8* elm)
+{
+    wc_delete_fn del = ops ? ops->del_fn : NULL;
+    if (del) {
+        del(elm);
+    }
+    memset(elm, 0, size);
+}
+
 #define IS_POD_K(map) (map->key_ops == NULL)
 #define IS_POD_V(map) (map->val_ops == NULL)
 
@@ -144,7 +170,7 @@ b8 HashMap_put(HashMap* map, const u8* key, const u8* val)
             }
             wc_copy_fn v_cp = map->val_ops->copy_fn;
             if (v_cp) {
-                v_cp(GET_VAL(map, slot), val);
+                v_cp(MAP_ELEM_ALLOC, GET_VAL(map, slot), val);
             } else {
                 memcpy(GET_VAL(map, slot), val, map->val_size);
             }
@@ -157,7 +183,7 @@ b8 HashMap_put(HashMap* map, const u8* key, const u8* val)
     } else {
         wc_copy_fn k_cp = map->key_ops->copy_fn;
         if (k_cp) {
-            k_cp(STAGE_KEY(map), key);
+            k_cp(MAP_ELEM_ALLOC, STAGE_KEY(map), key);
         } else {
             memcpy(STAGE_KEY(map), key, map->key_size);
         }
@@ -167,7 +193,7 @@ b8 HashMap_put(HashMap* map, const u8* key, const u8* val)
     } else {
         wc_copy_fn v_cp = map->val_ops->copy_fn;
         if (v_cp) {
-            v_cp(STAGE_VAL(map), val);
+            v_cp(MAP_ELEM_ALLOC, STAGE_VAL(map), val);
         } else {
             memcpy(STAGE_VAL(map), val, map->val_size);
         }
@@ -183,62 +209,8 @@ b8 HashMap_put(HashMap* map, const u8* key, const u8* val)
 // Ownership: the map takes ownership of *key and *val directly (no copy made).
 // On success both pointers are nulled. Requires move_fn for both key and val.
 // Returns 1 if key existed (updated), 0 if new key inserted.
-b8 HashMap_put_move(HashMap* map, u8** key, u8** val)
+b8 HashMap_put_move(HashMap* map, u8* key, u8* val)
 {
-    CHECK_FATAL(!*key || !*val, "*key/*val null");
-
-    wc_move_fn k_mv = MAP_MOVE(map->key_ops);
-    wc_move_fn v_mv = MAP_MOVE(map->val_ops);
-
-    // move_fn is mandatory: it must transfer the heap resource and null the source.
-    // For by-value types with no heap resources, use HashMap_put (copy semantics) instead.
-    CHECK_FATAL(!k_mv || !v_mv, "key/val move funcs required");
-
-    LOOKUP_RES res;
-    u8         out_psl;
-    u64        slot = map_lookup(map, *key, &res, &out_psl);
-
-    if (res == FOUND) {
-        if (!IS_POD_V(map)) {
-            wc_delete_fn v_del = map->val_ops->del_fn;
-            if (v_del) {
-                v_del(GET_VAL(map, slot));
-            }
-        }
-        v_mv(GET_VAL(map, slot), val);
-        if (!IS_POD_K(map)) {
-            wc_delete_fn k_del = map->key_ops->del_fn;
-            if (k_del) {
-                k_del(*key);
-            }
-        }
-        free(*key);
-        *key = NULL;
-        return 1;
-    }
-
-    // Stage: move key into STAGE_KEY, move val into STAGE_VAL.
-    // move_fn transfers the heap resource pointer into the dest slot and nulls src.
-    k_mv(STAGE_KEY(map), key); // nulls *key
-    v_mv(STAGE_VAL(map), val); // nulls *val
-
-    map_insert(map, STAGE_KEY(map), STAGE_VAL(map), out_psl, slot);
-    map_maybe_resize(map);
-    return 0;
-}
-
-
-// Insert or update — mixed: key is COPIED, val is MOVED.
-// Ownership: map deep-copies the key (caller retains it); map takes ownership of *val (*val nulled).
-// Returns 1 if key existed (updated), 0 if new key inserted.
-b8 HashMap_put_val_move(HashMap* map, const u8* key, u8** val)
-{
-    CHECK_FATAL(!*val, "*val null");
-
-    wc_move_fn v_mv = MAP_MOVE(map->val_ops);
-
-    CHECK_FATAL(!v_mv, "val move func required");
-
     LOOKUP_RES res;
     u8         out_psl;
     u64        slot = map_lookup(map, key, &res, &out_psl);
@@ -250,7 +222,38 @@ b8 HashMap_put_val_move(HashMap* map, const u8* key, u8** val)
                 v_del(GET_VAL(map, slot));
             }
         }
-        v_mv(GET_VAL(map, slot), val);
+        move_into(map->val_ops, map->val_size, GET_VAL(map, slot), val);
+        consume_dup(map->key_ops, map->key_size, key); // the map keeps its own key
+        return 1;
+    }
+
+    // Stage: move key into STAGE_KEY, move val into STAGE_VAL (sources zeroed).
+    move_into(map->key_ops, map->key_size, STAGE_KEY(map), key);
+    move_into(map->val_ops, map->val_size, STAGE_VAL(map), val);
+
+    map_insert(map, STAGE_KEY(map), STAGE_VAL(map), out_psl, slot);
+    map_maybe_resize(map);
+    return 0;
+}
+
+
+// Insert or update — mixed: key is COPIED, val is MOVED.
+// Ownership: map deep-copies the key (caller retains it); map takes ownership of *val (*val nulled).
+// Returns 1 if key existed (updated), 0 if new key inserted.
+b8 HashMap_put_val_move(HashMap* map, const u8* key, u8* val)
+{
+    LOOKUP_RES res;
+    u8         out_psl;
+    u64        slot = map_lookup(map, key, &res, &out_psl);
+
+    if (res == FOUND) {
+        if (!IS_POD_V(map)) {
+            wc_delete_fn v_del = map->val_ops->del_fn;
+            if (v_del) {
+                v_del(GET_VAL(map, slot));
+            }
+        }
+        move_into(map->val_ops, map->val_size, GET_VAL(map, slot), val);
         return 1;
     }
 
@@ -259,12 +262,12 @@ b8 HashMap_put_val_move(HashMap* map, const u8* key, u8** val)
     } else {
         wc_copy_fn k_cp = map->key_ops->copy_fn;
         if (k_cp) {
-            k_cp(STAGE_KEY(map), key);
+            k_cp(MAP_ELEM_ALLOC, STAGE_KEY(map), key);
         } else {
             memcpy(STAGE_KEY(map), key, map->key_size);
         }
     }
-    v_mv(STAGE_VAL(map), val);
+    move_into(map->val_ops, map->val_size, STAGE_VAL(map), val);
 
     map_insert(map, STAGE_KEY(map), STAGE_VAL(map), out_psl, slot);
     map_maybe_resize(map);
@@ -275,17 +278,11 @@ b8 HashMap_put_val_move(HashMap* map, const u8* key, u8** val)
 // Insert or update — mixed: key is MOVED, val is COPIED.
 // Ownership: map takes ownership of *key (*key nulled); map deep-copies val (caller retains it).
 // Returns 1 if key existed (updated), 0 if new key inserted.
-b8 HashMap_put_key_move(HashMap* map, u8** key, const u8* val)
+b8 HashMap_put_key_move(HashMap* map, u8* key, const u8* val)
 {
-    CHECK_FATAL(!*key, "*key null");
-
-    wc_move_fn k_mv = MAP_MOVE(map->key_ops);
-
-    CHECK_FATAL(!k_mv, "key move func required for HashMap_put_key_move");
-
     LOOKUP_RES res;
     u8         out_psl;
-    u64        slot = map_lookup(map, *key, &res, &out_psl);
+    u64        slot = map_lookup(map, key, &res, &out_psl);
 
     if (res == FOUND) {
         if (!IS_POD_V(map)) {
@@ -295,33 +292,25 @@ b8 HashMap_put_key_move(HashMap* map, u8** key, const u8* val)
             }
             wc_copy_fn v_cp = map->val_ops->copy_fn;
             if (v_cp) {
-                v_cp(GET_VAL(map, slot), val);
+                v_cp(MAP_ELEM_ALLOC, GET_VAL(map, slot), val);
             } else {
                 memcpy(GET_VAL(map, slot), val, map->val_size);
             }
         } else {
             memcpy(GET_VAL(map, slot), val, map->val_size);
         }
-        // Key already in map — consume (and discard) the incoming duplicate.
-        if (!IS_POD_K(map)) {
-            wc_delete_fn k_del = map->key_ops->del_fn;
-            if (k_del) {
-                k_del(*key);
-            }
-        }
-        free(*key);
-        *key = NULL;
+        consume_dup(map->key_ops, map->key_size, key); // the map keeps its own key
         return 1;
     }
 
     // Stage key (move) and val (copy).
-    k_mv(STAGE_KEY(map), key);
+    move_into(map->key_ops, map->key_size, STAGE_KEY(map), key);
     if (IS_POD_V(map)) {
         memcpy(STAGE_VAL(map), val, map->val_size);
     } else {
         wc_copy_fn v_cp = map->val_ops->copy_fn;
         if (v_cp) {
-            v_cp(STAGE_VAL(map), val);
+            v_cp(MAP_ELEM_ALLOC, STAGE_VAL(map), val);
         } else {
             memcpy(STAGE_VAL(map), val, map->val_size);
         }
@@ -350,7 +339,7 @@ b8 HashMap_get(const HashMap* map, const u8* key, u8* val)
     } else {
         wc_copy_fn v_copy = map->val_ops->copy_fn;
         if (v_copy) {
-            v_copy(val, GET_VAL(map, slot));
+            v_copy(MAP_ELEM_ALLOC, val, GET_VAL(map, slot));
         } else {
             memcpy(val, GET_VAL(map, slot), map->val_size);
         }
@@ -549,13 +538,13 @@ void HashMap_copy(HashMap* dest, const HashMap* src)
         *GET_PSL(dest, i) = psl;
 
         if (k_cp) {
-            k_cp(GET_KEY(dest, i), GET_KEY(src, i));
+            k_cp(MAP_ELEM_ALLOC, GET_KEY(dest, i), GET_KEY(src, i));
         } else {
             memcpy(GET_KEY(dest, i), GET_KEY(src, i), src->key_size);
         }
 
         if (v_cp) {
-            v_cp(GET_VAL(dest, i), GET_VAL(src, i));
+            v_cp(MAP_ELEM_ALLOC, GET_VAL(dest, i), GET_VAL(src, i));
         } else {
             memcpy(GET_VAL(dest, i), GET_VAL(src, i), src->val_size);
         }

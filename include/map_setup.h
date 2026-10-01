@@ -93,7 +93,7 @@ static inline u64 fnv1a_hash(const u8* bytes, u64 size)
     return hash;
 }
 
-static inline int default_compare(const u8* a, const u8* b, u64 size)
+static inline int default_compare(const void* a, const void* b, u64 size)
 {
     return memcmp(a, b, size);
 }

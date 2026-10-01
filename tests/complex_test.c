@@ -19,117 +19,118 @@
 
 static void test_strval_push_copy_independent(void)
 {
-    GenVec* v = VEC_OF_STR(4);
+    GenVec v = VEC_OF_STR(4);
     String  s;
     String_create_stk(&s, "hello");
 
-    VEC_PUSH(v, s);
-    VEC_PUSH(v, s);
+    VEC_PUSH(&v, s);
+    VEC_PUSH(&v, s);
 
     /* mutate source — stored copies must be independent */
     String_append_cstr(&s, "_MUTATED");
-    WC_ASSERT(String_equals_cstr(VEC_AT_MUT(v, String, 0), "hello"));
-    WC_ASSERT(String_equals_cstr(VEC_AT_MUT(v, String, 1), "hello"));
+    WC_ASSERT(String_equals_cstr(VEC_AT_MUT(&v, String, 0), "hello"));
+    WC_ASSERT(String_equals_cstr(VEC_AT_MUT(&v, String, 1), "hello"));
 
     String_destroy_stk(&s);
-    GenVec_destroy(v);
+    GenVec_destroy(&v);
 }
 
 static void test_strval_push_move_nulls_src(void)
 {
-    GenVec* v  = VEC_OF_STR(4);
-    String* s  = String_from_cstr("world");
-    VEC_PUSH_MOVE(v, s);
+    GenVec  v = VEC_OF_STR(4);
+    String* s = String_from_cstr("world");
+    VEC_PUSH_MOVE(&v, *s); // by-value vec: move the String itself
 
-    WC_ASSERT_NULL(s);
-    WC_ASSERT(String_equals_cstr(VEC_AT_MUT(v, String, 0), "world"));
-    GenVec_destroy(v);
+    WC_ASSERT_EQ_U64(s->size, 0); // moved-from String is zeroed
+    String_destroy(s);            // frees the shell only
+    WC_ASSERT(String_equals_cstr(VEC_AT_MUT(&v, String, 0), "world"));
+    GenVec_destroy(&v);
 }
 
 static void test_strval_push_cstr(void)
 {
-    GenVec* v = VEC_OF_STR(4);
-    VEC_PUSH_CSTR(v, "alpha");
-    VEC_PUSH_CSTR(v, "beta");
-    VEC_PUSH_CSTR(v, "gamma");
+    GenVec v = VEC_OF_STR(4);
+    VEC_PUSH_CSTR(&v, "alpha");
+    VEC_PUSH_CSTR(&v, "beta");
+    VEC_PUSH_CSTR(&v, "gamma");
 
-    WC_ASSERT_EQ_U64(GenVec_size(v), 3);
-    WC_ASSERT(String_equals_cstr(VEC_AT_MUT(v, String, 0), "alpha"));
-    WC_ASSERT(String_equals_cstr(VEC_AT_MUT(v, String, 1), "beta"));
-    WC_ASSERT(String_equals_cstr(VEC_AT_MUT(v, String, 2), "gamma"));
-    GenVec_destroy(v);
+    WC_ASSERT_EQ_U64(GenVec_size(&v), 3);
+    WC_ASSERT(String_equals_cstr(VEC_AT_MUT(&v, String, 0), "alpha"));
+    WC_ASSERT(String_equals_cstr(VEC_AT_MUT(&v, String, 1), "beta"));
+    WC_ASSERT(String_equals_cstr(VEC_AT_MUT(&v, String, 2), "gamma"));
+    GenVec_destroy(&v);
 }
 
 static void test_strval_foreach_mutates_in_place(void)
 {
-    GenVec* v = VEC_OF_STR(4);
-    VEC_PUSH_CSTR(v, "one");
-    VEC_PUSH_CSTR(v, "two");
+    GenVec v = VEC_OF_STR(4);
+    VEC_PUSH_CSTR(&v, "one");
+    VEC_PUSH_CSTR(&v, "two");
 
-    VEC_FOREACH(v, String, s) {
+    VEC_FOREACH(&v, String, s) {
         String_append_char(s, '!');
     }
 
-    WC_ASSERT(String_equals_cstr(VEC_AT_MUT(v, String, 0), "one!"));
-    WC_ASSERT(String_equals_cstr(VEC_AT_MUT(v, String, 1), "two!"));
-    GenVec_destroy(v);
+    WC_ASSERT(String_equals_cstr(VEC_AT_MUT(&v, String, 0), "one!"));
+    WC_ASSERT(String_equals_cstr(VEC_AT_MUT(&v, String, 1), "two!"));
+    GenVec_destroy(&v);
 }
 
 static void test_strval_pop_returns_owned_String(void)
 {
-    GenVec* v = VEC_OF_STR(4);
-    VEC_PUSH_CSTR(v, "first");
-    VEC_PUSH_CSTR(v, "second");
+    GenVec v = VEC_OF_STR(4);
+    VEC_PUSH_CSTR(&v, "first");
+    VEC_PUSH_CSTR(&v, "second");
 
     /* VEC_POP copies element out via copy_fn, then del_fn cleans slot */
-    String popped = VEC_POP(v, String);
+    String popped = VEC_POP(&v, String);
     WC_ASSERT(String_equals_cstr(&popped, "second"));
-    WC_ASSERT_EQ_U64(GenVec_size(v), 1);
+    WC_ASSERT_EQ_U64(GenVec_size(&v), 1);
     String_destroy_stk(&popped); /* caller owns it */
-    GenVec_destroy(v);
+    GenVec_destroy(&v);
 }
 
 static void test_strval_at_mut_modifies_in_place(void)
 {
-    GenVec* v = VEC_OF_STR(4);
-    VEC_PUSH_CSTR(v, "hello");
+    GenVec v = VEC_OF_STR(4);
+    VEC_PUSH_CSTR(&v, "hello");
 
-    String* slot = VEC_AT_MUT(v, String, 0);
+    String* slot = VEC_AT_MUT(&v, String, 0);
     String_append_cstr(slot, "_world");
-    WC_ASSERT(String_equals_cstr(VEC_AT_MUT(v, String, 0), "hello_world"));
-    GenVec_destroy(v);
+    WC_ASSERT(String_equals_cstr(VEC_AT_MUT(&v, String, 0), "hello_world"));
+    GenVec_destroy(&v);
 }
 
 static void test_strval_copy_vec(void)
 {
-    GenVec* src = VEC_OF_STR(4);
-    VEC_PUSH_CSTR(src, "a");
-    VEC_PUSH_CSTR(src, "b");
+    GenVec src = VEC_OF_STR(4);
+    VEC_PUSH_CSTR(&src, "a");
+    VEC_PUSH_CSTR(&src, "b");
 
     GenVec dest;
-    GenVec_create_stk(&dest, 0, sizeof(String), &wc_str_ops);
-    GenVec_copy(&dest, src);
+    dest = GenVec_create(WC_LIBC, 0, sizeof(String), &wc_str_ops);
+    dest = GenVec_copy(WC_LIBC, &src);
 
-    /* modifying src must not affect dest */
-    String_append_cstr(VEC_AT_MUT(src, String, 0), "_mutated");
+    /* modifying &src must not affect dest */
+    String_append_cstr(VEC_AT_MUT(&src, String, 0), "_mutated");
     WC_ASSERT(String_equals_cstr(VEC_AT_MUT(&dest, String, 0), "a"));
 
-    GenVec_destroy(src);
-    GenVec_destroy_stk(&dest);
+    GenVec_destroy(&src);
+    GenVec_destroy(&dest);
 }
 
 static void test_strval_triggers_growth(void)
 {
-    GenVec* v = VEC_OF_STR(2);
+    GenVec v = VEC_OF_STR(2);
     for (int i = 0; i < 20; i++) {
-        VEC_PUSH_CSTR(v, "x");
+        VEC_PUSH_CSTR(&v, "x");
     }
-    WC_ASSERT_EQ_U64(GenVec_size(v), 20);
+    WC_ASSERT_EQ_U64(GenVec_size(&v), 20);
     /* all elements must survive multiple reallocations */
-    VEC_FOREACH(v, String, s) {
+    VEC_FOREACH(&v, String, s) {
         WC_ASSERT(String_equals_cstr(s, "x"));
     }
-    GenVec_destroy(v);
+    GenVec_destroy(&v);
 }
 
 
@@ -143,78 +144,78 @@ static void test_strval_triggers_growth(void)
 
 static void test_strptr_push_copy_independent(void)
 {
-    GenVec* v  = VEC_OF_STR_PTR(4);
+    GenVec v  = VEC_OF_STR_PTR(4);
     String* s  = String_from_cstr("hello");
 
-    VEC_PUSH(v, s);
-    VEC_PUSH(v, s);
+    VEC_PUSH(&v, s);
+    VEC_PUSH(&v, s);
 
     /* mutate source — copies in vec must be independent */
     String_append_cstr(s, "_MUTATED");
-    WC_ASSERT(String_equals_cstr(VEC_AT(v, String*, 0), "hello"));
-    WC_ASSERT(String_equals_cstr(VEC_AT(v, String*, 1), "hello"));
+    WC_ASSERT(String_equals_cstr(VEC_AT(&v, String*, 0), "hello"));
+    WC_ASSERT(String_equals_cstr(VEC_AT(&v, String*, 1), "hello"));
 
     String_destroy(s);
-    GenVec_destroy(v);
+    GenVec_destroy(&v);
 }
 
 static void test_strptr_push_move_nulls_src(void)
 {
-    GenVec* v  = VEC_OF_STR_PTR(4);
+    GenVec v  = VEC_OF_STR_PTR(4);
     String* s  = String_from_cstr("world");
-    VEC_PUSH_MOVE(v, s);
+    VEC_PUSH_MOVE(&v, s);
 
     WC_ASSERT_NULL(s);
-    WC_ASSERT(String_equals_cstr(VEC_AT(v, String*, 0), "world"));
-    GenVec_destroy(v);
+    WC_ASSERT(String_equals_cstr(VEC_AT(&v, String*, 0), "world"));
+    GenVec_destroy(&v);
 }
 
 static void test_strptr_address_stable_after_growth(void)
 {
     /* key advantage of Strategy B: address of String doesn't change on realloc */
-    GenVec* v    = VEC_OF_STR_PTR(2);
+    GenVec v    = VEC_OF_STR_PTR(2);
     String* s    = String_from_cstr("stable");
-    VEC_PUSH_MOVE(v, s);
-    String* addr = VEC_AT(v, String*, 0); /* address of the heap String */
+    VEC_PUSH_MOVE(&v, s);
+    String* addr = VEC_AT(&v, String*, 0); /* address of the heap String */
 
     /* force many reallocations */
     for (int i = 0; i < 30; i++) {
-        VEC_PUSH_CSTR(v, "filler");
+        VEC_PUSH_CSTR(&v, "filler");
     }
 
-    WC_ASSERT_TRUE(VEC_AT(v, String*, 0) == addr); /* same address */
+    WC_ASSERT_TRUE(VEC_AT(&v, String*, 0) == addr); /* same address */
     WC_ASSERT(String_equals_cstr(addr, "stable"));
-    GenVec_destroy(v);
+    GenVec_destroy(&v);
 }
 
 static void test_strptr_foreach_dereference(void)
 {
-    GenVec* v = VEC_OF_STR_PTR(4);
-    VEC_PUSH_CSTR(v, "one");
-    VEC_PUSH_CSTR(v, "two");
+    GenVec v = VEC_OF_STR_PTR(4);
+    VEC_PUSH_CSTR(&v, "one");
+    VEC_PUSH_CSTR(&v, "two");
 
-    VEC_FOREACH(v, String*, sp) {   /* sp is String** */
+    VEC_FOREACH(&v, String*, sp) {   /* sp is String** */
         String_append_char(*sp, '!');
     }
 
-    WC_ASSERT(String_equals_cstr(VEC_AT(v, String*, 0), "one!"));
-    WC_ASSERT(String_equals_cstr(VEC_AT(v, String*, 1), "two!"));
-    GenVec_destroy(v);
+    WC_ASSERT(String_equals_cstr(VEC_AT(&v, String*, 0), "one!"));
+    WC_ASSERT(String_equals_cstr(VEC_AT(&v, String*, 1), "two!"));
+    GenVec_destroy(&v);
 }
 
 static void test_strptr_replace_slot_pointer(void)
 {
-    GenVec* v = VEC_OF_STR_PTR(4);
-    VEC_PUSH_CSTR(v, "old");
+    GenVec v = VEC_OF_STR_PTR(4);
+    VEC_PUSH_CSTR(&v, "old");
 
     /* VEC_AT_MUT gives String** — we can replace which String the slot points to */
-    String** slot        = VEC_AT_MUT(v, String*, 0);
+    String** slot        = VEC_AT_MUT(&v, String*, 0);
     String*  replacement = String_from_cstr("new");
     String_destroy(*slot);  /* free old String */
     *slot = replacement;    /* put new String* in slot */
 
-    WC_ASSERT(String_equals_cstr(VEC_AT(v, String*, 0), "new"));
-    GenVec_destroy(v);
+    WC_ASSERT(String_equals_cstr(VEC_AT(&v, String*, 0), "new"));
+    GenVec_destroy(&v);
 }
 
 
@@ -223,184 +224,180 @@ static void test_strptr_replace_slot_pointer(void)
  *
  * Outer slot IS the inner GenVec struct (56 bytes).
  * Inner vec's data buffer lives on the heap.
- * vec_copy:  malloc new data buffer, memcpy or element-copy.
- * vec_move:  memcpy fields, free(*src) [container only], *src = NULL.
- * vec_del:   GenVec_destroy_stk [frees data buffer only, not slot].
+ * vec_copy:  GenVec_copy into the outer container's allocator.
+ * vec_move:  memcpy fields, zero the source.
+ * vec_del:   GenVec_destroy [frees data buffer only, not slot].
  * ══════════════════════════════════════════════════════════════════════════ */
 
 static void test_vecval_push_move(void)
 {
-    GenVec* outer = VEC_OF_VEC(4);
+    GenVec outer = VEC_OF_VEC(4);
 
-    GenVec* inner = VEC_OF_INT(8);
-    for (int i = 0; i < 5; i++) { VEC_PUSH(inner, i); }
+    GenVec inner = VEC_OF_INT(8);
+    for (int i = 0; i < 5; i++) { VEC_PUSH(&inner, i); }
 
-    VEC_PUSH_VEC(outer, inner); /* inner nulled, data lives in outer slot */
-    WC_ASSERT_NULL(inner);
-    WC_ASSERT_EQ_U64(GenVec_size(outer), 1);
+    VEC_PUSH_VEC(&outer, inner); /* inner zeroed, data lives in the outer slot */
+    WC_ASSERT_NULL(inner.data);
+    WC_ASSERT_EQ_U64(GenVec_size(&outer), 1);
 
-    GenVec* slot = VEC_AT_MUT(outer, GenVec, 0);
+    GenVec* slot = VEC_AT_MUT(&outer, GenVec, 0);
     WC_ASSERT_EQ_U64(GenVec_size(slot), 5);
     for (int i = 0; i < 5; i++) {
         WC_ASSERT_EQ_INT(*(int*)GenVec_get_ptr(slot, (u64)i), i);
     }
 
-    GenVec_destroy(outer);
+    GenVec_destroy(&outer);
 }
 
 static void test_vecval_push_copy_independent(void)
 {
-    GenVec* outer = VEC_OF_VEC(4);
+    GenVec outer = VEC_OF_VEC(4);
 
-    GenVec* inner = VEC_OF_INT(4);
-    for (int i = 0; i < 3; i++) { VEC_PUSH(inner, i); }
+    GenVec inner = VEC_OF_INT(4);
+    for (int i = 0; i < 3; i++) { VEC_PUSH(&inner, i); }
 
     /* push by copy — inner stays valid */
-    GenVec_push(outer, (u8*)inner);
-    WC_ASSERT_NOT_NULL(inner);
+    GenVec_push(&outer, (u8*)&inner);
 
     /* mutate original — stored copy must be independent */
     int x = 999;
-    GenVec_replace(inner, 0, (u8*)&x);
+    GenVec_replace(&inner, 0, (u8*)&x);
 
-    GenVec* slot = VEC_AT_MUT(outer, GenVec, 0);
+    GenVec* slot = VEC_AT_MUT(&outer, GenVec, 0);
     WC_ASSERT_EQ_INT(*(int*)GenVec_get_ptr(slot, 0), 0); /* copy untouched */
 
-    GenVec_destroy(inner);
-    GenVec_destroy(outer);
+    GenVec_destroy(&inner);
+    GenVec_destroy(&outer);
 }
 
 static void test_vecval_multiple_inner_vecs(void)
 {
-    GenVec* outer = VEC_OF_VEC(4);
+    GenVec outer = VEC_OF_VEC(4);
 
     for (int row = 0; row < 4; row++) {
-        GenVec* inner = VEC_OF_INT(4);
+        GenVec inner = VEC_OF_INT(4);
         for (int col = 0; col < (row + 1); col++) {
             int v = (row * 10) + col;
-            VEC_PUSH(inner, v);
+            VEC_PUSH(&inner, v);
         }
-        VEC_PUSH_VEC(outer, inner);
+        VEC_PUSH_VEC(&outer, inner);
     }
 
-    WC_ASSERT_EQ_U64(GenVec_size(outer), 4);
+    WC_ASSERT_EQ_U64(GenVec_size(&outer), 4);
     for (int row = 0; row < 4; row++) {
-        GenVec* slot = VEC_AT_MUT(outer, GenVec, (u64)row);
+        GenVec* slot = VEC_AT_MUT(&outer, GenVec, (u64)row);
         WC_ASSERT_EQ_U64(GenVec_size(slot), (u64)(row + 1));
         for (int col = 0; col < (row + 1); col++) {
             WC_ASSERT_EQ_INT(*(int*)GenVec_get_ptr(slot, (u64)col), (row * 10) + col);
         }
     }
 
-    GenVec_destroy(outer);
+    GenVec_destroy(&outer);
 }
 
 static void test_vecval_copy_outer(void)
 {
-    GenVec* src = VEC_OF_VEC(4);
+    GenVec src = VEC_OF_VEC(4);
     for (int row = 0; row < 3; row++) {
-        GenVec* inner = VEC_OF_INT(4);
-        for (int i = 0; i < 3; i++) { VEC_PUSH(inner, i); }
-        VEC_PUSH_VEC(src, inner);
+        GenVec inner = VEC_OF_INT(4);
+        for (int i = 0; i < 3; i++) { VEC_PUSH(&inner, i); }
+        VEC_PUSH_VEC(&src, inner);
     }
 
-    GenVec dest;
-    GenVec_create_stk(&dest, 0, sizeof(GenVec), &wc_vec_ops);
-    GenVec_copy(&dest, src);
+    GenVec dest = GenVec_copy(WC_LIBC, &src);
 
     /* modify src inner — dest must be independent */
-    GenVec* src_slot  = VEC_AT_MUT(src, GenVec, 0);
+    GenVec* src_slot  = VEC_AT_MUT(&src, GenVec, 0);
     int     x         = 777;
     GenVec_replace(src_slot, 0, (u8*)&x);
 
     GenVec* dest_slot = VEC_AT_MUT(&dest, GenVec, 0);
     WC_ASSERT_EQ_INT(*(int*)GenVec_get_ptr(dest_slot, 0), 0);
 
-    GenVec_destroy(src);
-    GenVec_destroy_stk(&dest);
+    GenVec_destroy(&src);
+    GenVec_destroy(&dest);
 }
 
 static void test_vecval_triggers_growth(void)
 {
-    GenVec* outer = VEC_OF_VEC(2);
+    GenVec outer = VEC_OF_VEC(2);
 
     for (int i = 0; i < 20; i++) {
-        GenVec* inner = VEC_OF_INT(2);
+        GenVec inner = VEC_OF_INT(2);
         int v = i;
-        VEC_PUSH(inner, v);
-        VEC_PUSH_VEC(outer, inner);
+        VEC_PUSH(&inner, v);
+        VEC_PUSH_VEC(&outer, inner);
     }
 
-    WC_ASSERT_EQ_U64(GenVec_size(outer), 20);
+    WC_ASSERT_EQ_U64(GenVec_size(&outer), 20);
     for (int i = 0; i < 20; i++) {
-        GenVec* slot = VEC_AT_MUT(outer, GenVec, (u64)i);
+        GenVec* slot = VEC_AT_MUT(&outer, GenVec, (u64)i);
         WC_ASSERT_EQ_INT(*(int*)GenVec_get_ptr(slot, 0), i);
     }
 
-    GenVec_destroy(outer);
+    GenVec_destroy(&outer);
 }
 
 
 /* ══════════════════════════════════════════════════════════════════════════
  * SECTION 4 — Vec<GenVec*> by POINTER  (vec of int vec pointers)
  *
- * Slot holds GenVec* (8 bytes). Inner vec fully on heap.
+ * Slot holds GenVec* (8 bytes). The inner vec's shell and data come from the
+ * same allocator (WC_BOX_IN), so vec_del_ptr can free the shell with it.
  * Stable addresses across outer vec growth.
  * ══════════════════════════════════════════════════════════════════════════ */
 
 static void test_vecptr_push_move_nulls_src(void)
 {
-    GenVec* outer = VEC_OF_VEC_PTR(4);
-    GenVec* inner = VEC_OF_INT(4);
+    GenVec  outer = VEC_OF_VEC_PTR(4);
+    GenVec* inner = WC_BOX_IN(WC_LIBC, GenVec, GenVec_create, 4, sizeof(int), NULL);
     VEC_PUSH(inner, 42);
 
-    VEC_PUSH_VEC_PTR(outer, inner);
+    VEC_PUSH_VEC_PTR(&outer, inner);
     WC_ASSERT_NULL(inner);
 
-    GenVec* stored = VEC_AT(outer, GenVec*, 0);
+    GenVec* stored = VEC_AT(&outer, GenVec*, 0);
     WC_ASSERT_EQ_INT(*(int*)GenVec_get_ptr(stored, 0), 42);
-    GenVec_destroy(outer);
+    GenVec_destroy(&outer);
 }
 
 static void test_vecptr_address_stable_after_growth(void)
 {
-    GenVec* outer = VEC_OF_VEC_PTR(2);
-    GenVec* inner = VEC_OF_INT(4);
+    GenVec  outer = VEC_OF_VEC_PTR(2);
+    GenVec* inner = WC_BOX_IN(WC_LIBC, GenVec, GenVec_create, 4, sizeof(int), NULL);
     VEC_PUSH(inner, 99);
-    VEC_PUSH_VEC_PTR(outer, inner);
+    VEC_PUSH_VEC_PTR(&outer, inner);
 
-    GenVec* addr = VEC_AT(outer, GenVec*, 0); /* address of inner vec */
+    GenVec* addr = VEC_AT(&outer, GenVec*, 0); /* address of the inner vec */
 
     for (int i = 0; i < 30; i++) {
-        GenVec* filler = VEC_OF_INT(1);
+        GenVec* filler = WC_BOX_IN(WC_LIBC, GenVec, GenVec_create, 1, sizeof(int), NULL);
         VEC_PUSH(filler, i);
-        VEC_PUSH_VEC_PTR(outer, filler);
+        VEC_PUSH_VEC_PTR(&outer, filler);
     }
 
-    WC_ASSERT_TRUE(VEC_AT(outer, GenVec*, 0) == addr);
+    WC_ASSERT_TRUE(VEC_AT(&outer, GenVec*, 0) == addr);
     WC_ASSERT_EQ_INT(*(int*)GenVec_get_ptr(addr, 0), 99);
-    GenVec_destroy(outer);
+    GenVec_destroy(&outer);
 }
 
 static void test_vecptr_copy_outer(void)
 {
-    GenVec* src   = VEC_OF_VEC_PTR(4);
-    GenVec* inner = VEC_OF_INT(4);
-    int v = 5;
+    GenVec  src   = VEC_OF_VEC_PTR(4);
+    GenVec* inner = WC_BOX_IN(WC_LIBC, GenVec, GenVec_create, 4, sizeof(int), NULL);
+    int     v     = 5;
     VEC_PUSH(inner, v);
-    VEC_PUSH_VEC_PTR(src, inner);
+    VEC_PUSH_VEC_PTR(&src, inner);
 
-    GenVec dest;
-    GenVec_create_stk(&dest, 0, sizeof(GenVec*), &wc_vec_ptr_ops);
-    GenVec_copy(&dest, src);
+    GenVec dest = GenVec_copy(WC_LIBC, &src);
 
     /* modify src inner — dest copy must be independent */
     int x = 123;
-    GenVec_replace(VEC_AT(src, GenVec*, 0), 0, (u8*)&x);
+    GenVec_replace(VEC_AT(&src, GenVec*, 0), 0, (u8*)&x);
     WC_ASSERT_EQ_INT(*(int*)GenVec_get_ptr(VEC_AT(&dest, GenVec*, 0), 0), 5);
 
-    GenVec_destroy(src);
-    GenVec_destroy_stk(&dest);
+    GenVec_destroy(&src);
+    GenVec_destroy(&dest);
 }
 
 
@@ -418,12 +415,12 @@ static HashMap* int_vec_map(void)
 static void test_map_int_vec_put_move(void)
 {
     HashMap* m = int_vec_map();
-    GenVec*  v = VEC_OF_INT(4);
-    for (int i = 0; i < 5; i++) { VEC_PUSH(v, i); }
+    GenVec  v = VEC_OF_INT(4);
+    for (int i = 0; i < 5; i++) { VEC_PUSH(&v, i); }
 
     int key = 10;
-    HashMap_put_val_move(m, (u8*)&key, (u8**)&v);
-    WC_ASSERT_NULL(v);
+    HashMap_put_val_move(m, (u8*)&key, (u8*)&v);
+    WC_ASSERT_NULL(v.data); // moved-from: zeroed
 
     GenVec* stored = (GenVec*)HashMap_get_ptr(m, (u8*)&key);
     WC_ASSERT_NOT_NULL(stored);
@@ -438,20 +435,20 @@ static void test_map_int_vec_put_move(void)
 static void test_map_int_vec_copy_independence(void)
 {
     HashMap* m   = int_vec_map();
-    GenVec*  src = VEC_OF_INT(4);
-    for (int i = 0; i < 3; i++) { VEC_PUSH(src, i); }
+    GenVec  src = VEC_OF_INT(4);
+    for (int i = 0; i < 3; i++) { VEC_PUSH(&src, i); }
 
     int key = 1;
-    HashMap_put(m, (u8*)&key, (u8*)src);
+    HashMap_put(m, (u8*)&key, (u8*)&src);
 
-    /* mutate src — stored copy must not be affected */
+    /* mutate &src — stored copy must not be affected */
     int x = 999;
-    GenVec_replace(src, 0, (u8*)&x);
+    GenVec_replace(&src, 0, (u8*)&x);
 
     GenVec* stored = (GenVec*)HashMap_get_ptr(m, (u8*)&key);
     WC_ASSERT_EQ_INT(*(int*)GenVec_get_ptr(stored, 0), 0);
 
-    GenVec_destroy(src);
+    GenVec_destroy(&src);
     HashMap_destroy(m);
 }
 
@@ -502,38 +499,38 @@ static void test_map_int_str_macro(void)
 
 static void test_strategy_a_b_same_content(void)
 {
-    GenVec* by_val = VEC_OF_STR(4);
-    GenVec* by_ptr = VEC_OF_STR_PTR(4);
+    GenVec by_val = VEC_OF_STR(4);
+    GenVec by_ptr = VEC_OF_STR_PTR(4);
 
     const char* words[] = {"hello", "world", "foo", "bar"};
     for (int i = 0; i < 4; i++) {
-        VEC_PUSH_CSTR(by_val, words[i]);
-        VEC_PUSH_CSTR(by_ptr, words[i]);
+        VEC_PUSH_CSTR(&by_val, words[i]);
+        VEC_PUSH_CSTR(&by_ptr, words[i]);
     }
 
     for (int i = 0; i < 4; i++) {
-        String* a = VEC_AT_MUT(by_val, String,  (u64)i);
-        String* b = VEC_AT    (by_ptr, String*, (u64)i);
+        String* a = VEC_AT_MUT(&by_val, String,  (u64)i);
+        String* b = VEC_AT    (&by_ptr, String*, (u64)i);
         WC_ASSERT(String_equals(a, b));
     }
 
-    GenVec_destroy(by_val);
-    GenVec_destroy(by_ptr);
+    GenVec_destroy(&by_val);
+    GenVec_destroy(&by_ptr);
 }
 
 static void test_strategy_b_pointer_outlives_growth(void)
 {
-    GenVec* v   = VEC_OF_STR_PTR(2);
-    VEC_PUSH_CSTR(v, "anchor");
-    String* anchor = VEC_AT(v, String*, 0);
+    GenVec v   = VEC_OF_STR_PTR(2);
+    VEC_PUSH_CSTR(&v, "anchor");
+    String* anchor = VEC_AT(&v, String*, 0);
 
     /* force 10x growth */
-    for (int i = 0; i < 60; i++) { VEC_PUSH_CSTR(v, "x"); }
+    for (int i = 0; i < 60; i++) { VEC_PUSH_CSTR(&v, "x"); }
 
     /* anchor still points to the same heap String, content intact */
-    WC_ASSERT_TRUE(VEC_AT(v, String*, 0) == anchor);
+    WC_ASSERT_TRUE(VEC_AT(&v, String*, 0) == anchor);
     WC_ASSERT(String_equals_cstr(anchor, "anchor"));
-    GenVec_destroy(v);
+    GenVec_destroy(&v);
 }
 
 

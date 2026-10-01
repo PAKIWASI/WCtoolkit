@@ -4,7 +4,6 @@
 #include "wc_test_allocator.h"
 
 #include <stdint.h>
-#include <string.h>
 
 // These tests hand stack buffers to allocators on purpose (wc_borrowed, foreign
 // pointer detection). The pointer never reaches libc, but GCC cannot prove the
@@ -20,47 +19,47 @@ static void test_libc_is_zero_initialised_allocator(void)
 {
     wc_allocator z;
     memset(&z, 0, sizeof(z));
-    WC_ASSERT(wc2_is_libc(z));
-    WC_ASSERT(wc2_is_libc(WC_LIBC));
-    WC_ASSERT_FALSE(wc2_is_libc(wc_borrowed));
+    WC_ASSERT(wc_is_libc(z));
+    WC_ASSERT(wc_is_libc(WC_LIBC));
+    WC_ASSERT_FALSE(wc_is_libc(wc_borrowed));
 }
 
 static void test_libc_alloc_realloc_free(void)
 {
-    u8* p = wc2_alloc(WC_LIBC, 10, 1);
+    u8* p = wc_alloc(WC_LIBC, 10, 1);
     WC_ASSERT_NOT_NULL(p);
     if (!p) {
         return;
     }
     memcpy(p, "abcdefghij", 10);
-    p = wc2_realloc(WC_LIBC, p, 10, 1000, 1);
+    p = wc_realloc(WC_LIBC, p, 10, 1000, 1);
     if (!p) {
         WC_ASSERT_NOT_NULL(p);
         return;
     }
     WC_ASSERT(memcmp(p, "abcdefghij", 10) == 0);
-    wc2_free(WC_LIBC, p, 1000, 1);
+    wc_free(WC_LIBC, p, 1000, 1);
 }
 
 static void test_libc_over_aligned(void)
 {
     const size_t aligns[] = {32, 64, 256, 4096};
     for (u64 i = 0; i < sizeof(aligns) / sizeof(aligns[0]); i++) {
-        u8* p = wc2_alloc(WC_LIBC, 100, aligns[i]);
+        u8* p = wc_alloc(WC_LIBC, 100, aligns[i]);
         WC_ASSERT_NOT_NULL(p);
         if (!p) {
             return;
         }
         WC_ASSERT_EQ_U64((uintptr_t)p % aligns[i], 0);
         memset(p, 1, 100);
-        p = wc2_realloc(WC_LIBC, p, 100, 5000, aligns[i]); // realloc keeps over-alignment
+        p = wc_realloc(WC_LIBC, p, 100, 5000, aligns[i]); // realloc keeps over-alignment
         if (!p) {
             WC_ASSERT_NOT_NULL(p);
             return;
         }
         WC_ASSERT_EQ_U64((uintptr_t)p % aligns[i], 0);
         WC_ASSERT_EQ_INT(p[99], 1);
-        wc2_free(WC_LIBC, p, 5000, aligns[i]);
+        wc_free(WC_LIBC, p, 5000, aligns[i]);
     }
 }
 
@@ -70,10 +69,10 @@ static void test_libc_over_aligned(void)
 static void test_zero_size_never_reaches_backend(void)
 {
     wc_test_alloc ta;
-    wc_test_alloc_init2(&ta, WC_LIBC);
-    wc_allocator a = wc_test_alloc_allocator2(&ta);
+    wc_test_alloc_init(&ta, WC_LIBC);
+    wc_allocator a = wc_test_alloc_allocator(&ta);
 
-    WC_ASSERT_NULL(wc2_alloc(a, 0, 8));
+    WC_ASSERT_NULL(wc_alloc(a, 0, 8));
     WC_ASSERT_EQ_U64(ta.n_attempts, 0);
     WC_ASSERT_EQ_U64(wc_test_alloc_destroy(&ta), 0);
 }
@@ -81,18 +80,18 @@ static void test_zero_size_never_reaches_backend(void)
 static void test_realloc_null_is_alloc_and_zero_is_free(void)
 {
     wc_test_alloc ta;
-    wc_test_alloc_init2(&ta, WC_LIBC);
-    wc_allocator a = wc_test_alloc_allocator2(&ta);
+    wc_test_alloc_init(&ta, WC_LIBC);
+    wc_allocator a = wc_test_alloc_allocator(&ta);
 
-    u8* p = wc2_realloc(a, NULL, 0, 32, 8);
+    u8* p = wc_realloc(a, NULL, 0, 32, 8);
     WC_ASSERT_NOT_NULL(p);
     WC_ASSERT_EQ_U64(ta.n_alloc, 1);
 
-    WC_ASSERT_NULL(wc2_realloc(a, p, 32, 0, 8));
+    WC_ASSERT_NULL(wc_realloc(a, p, 32, 0, 8));
     WC_ASSERT_EQ_U64(ta.n_free, 1);
     WC_ASSERT_EQ_U64(ta.live_blocks, 0);
 
-    wc2_free(a, NULL, 0, 8); // NULL free: no backend call
+    wc_free(a, NULL, 0, 8); // NULL free: no backend call
     WC_ASSERT_EQ_U64(ta.n_errors, 0);
     WC_ASSERT_EQ_U64(wc_test_alloc_destroy(&ta), 0);
 }
@@ -101,11 +100,11 @@ static void test_small_alignment_passes_through(void)
 {
     // D7: wrappers no longer raise align to WC_MAX_ALIGN
     wc_test_alloc ta;
-    wc_test_alloc_init2(&ta, WC_LIBC);
-    wc_allocator a = wc_test_alloc_allocator2(&ta);
+    wc_test_alloc_init(&ta, WC_LIBC);
+    wc_allocator a = wc_test_alloc_allocator(&ta);
 
-    u8* p = wc2_alloc(a, 12, 4);
-    wc2_free(a, p, 12, 4); // must match exactly: 4, not 16
+    u8* p = wc_alloc(a, 12, 4);
+    wc_free(a, p, 12, 4); // must match exactly: 4, not 16
     WC_ASSERT_EQ_U64(ta.n_errors, 0);
     WC_ASSERT_EQ_U64(wc_test_alloc_destroy(&ta), 0);
 }
@@ -113,16 +112,16 @@ static void test_small_alignment_passes_through(void)
 static void test_typed_macros_and_overflow(void)
 {
     wc_test_alloc ta;
-    wc_test_alloc_init2(&ta, WC_LIBC);
-    wc_allocator a = wc_test_alloc_allocator2(&ta);
+    wc_test_alloc_init(&ta, WC_LIBC);
+    wc_allocator a = wc_test_alloc_allocator(&ta);
 
-    u64* v = WC2_NEW_N(a, u64, 8);
+    u64* v = WC_NEW_N(a, u64, 8);
     WC_ASSERT_NOT_NULL(v);
     if (!v) {
         return;
     }
     v[7] = 42;
-    v    = WC2_REALLOC_N(a, u64, v, 8, 16); // this is the A5 shape, now well-formed
+    v    = WC_REALLOC_N(a, u64, v, 8, 16); // this is the A5 shape, now well-formed
     if (!v) {
         WC_ASSERT_NOT_NULL(v);
         return;
@@ -130,14 +129,14 @@ static void test_typed_macros_and_overflow(void)
     WC_ASSERT_EQ_U64(v[7], 42);
 
     // overflowing count fails cleanly and leaves v alive (no wrap to a small size)
-    WC_ASSERT_NULL(WC2_REALLOC_N(a, u64, v, 16, SIZE_MAX / 4));
+    WC_ASSERT_NULL(WC_REALLOC_N(a, u64, v, 16, SIZE_MAX / 4));
     WC_ASSERT(wc_test_alloc_owns(&ta, v));
-    WC_ASSERT_NULL(WC2_NEW_N(a, u64, SIZE_MAX / 2));
+    WC_ASSERT_NULL(WC_NEW_N(a, u64, SIZE_MAX / 2));
 
-    WC2_DELETE_N(a, u64, v, 16);
+    WC_DELETE_N(a, u64, v, 16);
 
-    int* one = WC2_NEW(a, int);
-    WC2_DELETE(a, int, one);
+    int* one = WC_NEW(a, int);
+    WC_DELETE(a, int, one);
 
     WC_ASSERT_EQ_U64(ta.n_errors, 0);
     WC_ASSERT_EQ_U64(wc_test_alloc_destroy(&ta), 0);
@@ -157,15 +156,15 @@ static const wc_alloc_vtable noreal_vt = {.alloc = noreal_alloc, .realloc = NULL
 static void test_missing_realloc_is_emulated(void)
 {
     wc_test_alloc ta;
-    wc_test_alloc_init2(&ta, WC_LIBC);
+    wc_test_alloc_init(&ta, WC_LIBC);
     wc_allocator a = {.vt = &noreal_vt, .ctx = &ta};
 
-    u8* p = wc2_alloc(a, 16, 8);
+    u8* p = wc_alloc(a, 16, 8);
     memcpy(p, "0123456789abcdef", 16);
-    u8* q = wc2_realloc(a, p, 16, 64, 8);
+    u8* q = wc_realloc(a, p, 16, 64, 8);
     WC_ASSERT(memcmp(q, "0123456789abcdef", 16) == 0);
     WC_ASSERT_EQ_U64(ta.n_free, 1); // old block freed with its exact size
-    wc2_free(a, q, 64, 8);
+    wc_free(a, q, 64, 8);
 
     WC_ASSERT_EQ_U64(ta.n_errors, 0);
     WC_ASSERT_EQ_U64(wc_test_alloc_destroy(&ta), 0);
@@ -177,10 +176,10 @@ static void test_missing_realloc_is_emulated(void)
 static void test_borrowed_never_allocates_or_frees(void)
 {
     u8 buf[32] = {1, 2, 3};
-    WC_ASSERT_NULL(wc2_alloc(wc_borrowed, 16, 8));
-    WC_ASSERT_NULL(wc2_realloc(wc_borrowed, buf, 32, 64, 8)); // growth fails
+    WC_ASSERT_NULL(wc_alloc(wc_borrowed, 16, 8));
+    WC_ASSERT_NULL(wc_realloc(wc_borrowed, buf, 32, 64, 8)); // growth fails
     WC_ASSERT_EQ_INT(buf[2], 3);                              // buffer untouched
-    wc2_free(wc_borrowed, buf, 32, 8);                        // no-op (ASAN would catch a real free)
+    wc_free(wc_borrowed, buf, 32, 8);                        // no-op (ASAN would catch a real free)
     WC_ASSERT_EQ_INT(buf[0], 1);
 }
 
@@ -189,14 +188,14 @@ static void test_borrowed_never_allocates_or_frees(void)
 
 static void test_align_for_size(void)
 {
-    WC_ASSERT_EQ_U64(wc2_align_for_size(1), 1);
-    WC_ASSERT_EQ_U64(wc2_align_for_size(3), 1);
-    WC_ASSERT_EQ_U64(wc2_align_for_size(4), 4);
-    WC_ASSERT_EQ_U64(wc2_align_for_size(12), 4);
-    WC_ASSERT_EQ_U64(wc2_align_for_size(24), 8);
-    WC_ASSERT_EQ_U64(wc2_align_for_size(40), 8);
-    WC_ASSERT_EQ_U64(wc2_align_for_size(64), WC_MAX_ALIGN);
-    WC_ASSERT_EQ_U64(wc2_align_for_size(sizeof(long double)), alignof(long double));
+    WC_ASSERT_EQ_U64(wc_align_for_size(1), 1);
+    WC_ASSERT_EQ_U64(wc_align_for_size(3), 1);
+    WC_ASSERT_EQ_U64(wc_align_for_size(4), 4);
+    WC_ASSERT_EQ_U64(wc_align_for_size(12), 4);
+    WC_ASSERT_EQ_U64(wc_align_for_size(24), 8);
+    WC_ASSERT_EQ_U64(wc_align_for_size(40), 8);
+    WC_ASSERT_EQ_U64(wc_align_for_size(64), WC_MAX_ALIGN);
+    WC_ASSERT_EQ_U64(wc_align_for_size(sizeof(long double)), alignof(long double));
 }
 
 static void test_same(void)
@@ -204,9 +203,9 @@ static void test_same(void)
     int x = 0, y = 0;
     wc_allocator a = {.vt = &noreal_vt, .ctx = &x};
     wc_allocator b = {.vt = &noreal_vt, .ctx = &y};
-    WC_ASSERT(wc2_same(a, a));
-    WC_ASSERT_FALSE(wc2_same(a, b));
-    WC_ASSERT(wc2_same(WC_LIBC, WC_LIBC));
+    WC_ASSERT(wc_same(a, a));
+    WC_ASSERT_FALSE(wc_same(a, b));
+    WC_ASSERT(wc_same(WC_LIBC, WC_LIBC));
 }
 
 
@@ -214,7 +213,7 @@ static void test_same(void)
 
 void allocator_core_suite(void)
 {
-    WC_SUITE("Allocator core (wc2_)");
+    WC_SUITE("Allocator core (wc_)");
 
     WC_RUN(test_libc_is_zero_initialised_allocator);
     WC_RUN(test_libc_alloc_realloc_free);

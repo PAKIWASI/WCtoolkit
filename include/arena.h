@@ -27,13 +27,13 @@ typedef struct Arena {
     u64                 idx;       // next free offset
     u64                 floor;     // in-place realloc/free never touch blocks below this
     const struct Arena* self;      // == this arena while live; NULL after destroy
-    b8                  owns_base; // 0 for Arena_create_buf
+    b8                  owns_base; // 0 for Arena_create_buf // TODO: remove this non-owning bullshit
 } Arena;
 
 _Static_assert(sizeof(Arena) == 64, "Arena is one cache line");
 
 
-// Tweakable settings
+// Tweakable settings // TODO: isnt this the same as the alignment def in wc_allocator.h?
 #ifndef ARENA_DEFAULT_ALIGNMENT
 #define ARENA_DEFAULT_ALIGNMENT (sizeof(void*)) // 8 bytes
 #endif
@@ -86,9 +86,6 @@ static inline __attribute__((nonnull(1))) u64 Arena_remaining(const Arena* arena
 // free, everything else is bump + copy.
 wc_allocator Arena_allocator(Arena* arena) __attribute__((nonnull(1)));
 
-// TRANSITIONAL (plan D11): the same backend as the old `wc_allocator_t`, so the
-// old global API (WC_SET_ALLOCATOR) can use it until Phase 2 exit. Deleted then.
-wc_allocator_t Arena_allocator_legacy(Arena* arena) __attribute__((nonnull(1)));
 
 
 // Scratch scopes
@@ -150,7 +147,7 @@ ARENA_SCRATCH(&arena) {
 // typed allocation
 #define ARENA_ALLOC(arena, T) ((T*)Arena_alloc_aligned((arena), sizeof(T), alignof(T)))
 
-#define ARENA_ALLOC_N(arena, T, n) ((T*)Arena_alloc_aligned((arena), wc2_mul((n), sizeof(T)), alignof(T)))
+#define ARENA_ALLOC_N(arena, T, n) ((T*)Arena_alloc_aligned((arena), wc_mul((n), sizeof(T)), alignof(T)))
 
 // common for structs
 #define ARENA_ALLOC_ZERO(arena, T)                      \
@@ -176,7 +173,6 @@ ARENA_SCRATCH(&arena) {
         }                                          \
         _dst;                                      \
     })
-
 
 
 #endif // ARENA_H

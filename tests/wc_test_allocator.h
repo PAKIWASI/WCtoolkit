@@ -24,15 +24,17 @@
  *                in library code must stop the test run immediately.
  *   WC_TA_RECORD count the error and continue: used to test the checker itself.
  *
- * Two views of the same checker (TRANSITIONAL until Phase 2 exit, plan D11):
- *   wc_test_alloc_allocator(ta)  -> old `wc_allocator_t` (for the global API)
- *   wc_test_alloc_allocator2(ta) -> new `wc_allocator`   (for wc2_* / containers)
- * Backing: wc_test_alloc_init(ta, old*) or wc_test_alloc_init2(ta, new).
+ * Usage:
+ *   wc_test_alloc ta;
+ *   wc_test_alloc_init(&ta, WC_LIBC);               // or any backing allocator
+ *   GenVec v = GenVec_create(wc_test_alloc_allocator(&ta), 4, sizeof(int), NULL);
+ *   ...
+ *   GenVec_destroy(&v);
+ *   assert(wc_test_alloc_destroy(&ta) == 0);         // leak report
  */
 
 #include "common.h"
 #include "wc_allocator.h"
-#include <stddef.h>
 
 #define WC_TA_FILL   0xBE
 #define WC_TA_POISON 0xDD
@@ -49,9 +51,7 @@ typedef struct {
 } wc_ta_block;
 
 typedef struct {
-    wc_allocator_t backing;  // old-API backing (used when !use_backing2)
-    wc_allocator   backing2; // new-API backing (used when use_backing2)
-    b8             use_backing2;
+    wc_allocator backing; // where memory really comes from
 
     // live-block table (open addressing, libc-backed, never uses `backing`)
     wc_ta_block* blocks;
@@ -78,18 +78,14 @@ typedef struct {
 } wc_test_alloc;
 
 
-// backing == NULL means libc (never the global, which may point at this allocator)
-void wc_test_alloc_init(wc_test_alloc* ta, const wc_allocator_t* backing);
-
-// Same, with a new-API backing allocator (WC_LIBC, Arena_allocator(&a), ...).
-void wc_test_alloc_init2(wc_test_alloc* ta, wc_allocator backing);
+// backing: WC_LIBC, Arena_allocator(&a), ...
+void wc_test_alloc_init(wc_test_alloc* ta, wc_allocator backing);
 
 // Returns the number of leaked blocks (0 = clean) and prints a report of each.
 // Releases leaked blocks through the backing allocator so ASAN stays quiet.
 u64 wc_test_alloc_destroy(wc_test_alloc* ta);
 
-wc_allocator_t wc_test_alloc_allocator(wc_test_alloc* ta);
-wc_allocator   wc_test_alloc_allocator2(wc_test_alloc* ta);
+wc_allocator wc_test_alloc_allocator(wc_test_alloc* ta);
 
 static inline void wc_test_alloc_fail_at(wc_test_alloc* ta, u64 n, b8 sticky)
 {
@@ -100,7 +96,7 @@ static inline void wc_test_alloc_fail_at(wc_test_alloc* ta, u64 n, b8 sticky)
 // Is `p` a live block of this allocator?
 b8 wc_test_alloc_owns(const wc_test_alloc* ta, const void* p);
 
-// The three callbacks (exposed so a Phase 1 vtable can reuse them)
+// The three callbacks (exposed so tests can build custom vtables around them)
 void* wc_test_alloc_cb_alloc(void* ctx, size_t size, size_t align);
 void* wc_test_alloc_cb_realloc(void* ctx, void* p, size_t old_size, size_t new_size, size_t align);
 void  wc_test_alloc_cb_free(void* ctx, void* p, size_t size, size_t align);

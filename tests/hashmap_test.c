@@ -368,7 +368,8 @@ static void test_clear_frees_String_vals(void)
     HashMap* m = int_str_map();
     for (int i = 0; i < 5; i++) {
         String* v = String_from_cstr("owned");
-        HashMap_put_val_move(m, (u8*)&i, (u8**)&v);
+        HashMap_put_val_move(m, (u8*)&i, (u8*)v);
+        String_destroy(v); // moved-from: zeroed, frees the shell only
     }
     HashMap_clear(m);
     WC_ASSERT_EQ_U64(HashMap_size(m), 0);
@@ -376,7 +377,8 @@ static void test_clear_frees_String_vals(void)
     // Map must still be usable after clearing owned-resource entries
     int k = 99;
     String* v = String_from_cstr("after_clear");
-    HashMap_put_val_move(m, (u8*)&k, (u8**)&v);
+    HashMap_put_val_move(m, (u8*)&k, (u8*)v);
+    String_destroy(v); // moved-from: zeroed, frees the shell only
     WC_ASSERT_TRUE(HashMap_has(m, (u8*)&k));
     HashMap_destroy(m);
 }
@@ -627,9 +629,9 @@ static void test_str_val_move(void)
     HashMap* m   = int_str_map();
     int      k   = 2;
     String*  src = String_from_cstr("moved");
-    HashMap_put_val_move(m, (u8*)&k, (u8**)&src);
+    HashMap_put_val_move(m, (u8*)&k, (u8*)src);
+    String_destroy(src); // moved-from: zeroed, frees the shell only
 
-    WC_ASSERT_NULL(src);
     String* stored = (String*)HashMap_get_ptr(m, (u8*)&k);
     WC_ASSERT_TRUE(String_equals_cstr(stored, "moved"));
     HashMap_destroy(m);
@@ -657,8 +659,8 @@ static void test_str_val_move_updates_existing(void)
     MAP_PUT_INT_STR(m, k, "old");
 
     String* v = String_from_cstr("new");
-    HashMap_put_val_move(m, (u8*)&k, (u8**)&v);
-    WC_ASSERT_NULL(v);
+    HashMap_put_val_move(m, (u8*)&k, (u8*)v);
+    String_destroy(v); // moved-from: zeroed, frees the shell only
 
     String* stored = (String*)HashMap_get_ptr(m, (u8*)&k);
     WC_ASSERT_TRUE(String_equals_cstr(stored, "new"));
@@ -690,7 +692,8 @@ static void test_str_val_many_inserts_and_gets(void)
     for (int i = 0; i < 60; i++) {
         snprintf(buf, sizeof(buf), "value_%d", i);
         String* v = String_from_cstr(buf);
-        HashMap_put_val_move(m, (u8*)&i, (u8**)&v);
+        HashMap_put_val_move(m, (u8*)&i, (u8*)v);
+        String_destroy(v); // moved-from: zeroed, frees the shell only
     }
     WC_ASSERT_EQ_U64(HashMap_size(m), 60);
     for (int i = 0; i < 60; i++) {
@@ -712,10 +715,10 @@ static void test_str_key_lookup(void)
     HashMap* m  = str_str_map();
     String*  k1 = String_from_cstr("name");
     String*  v1 = String_from_cstr("Alice");
-    HashMap_put_move(m, (u8**)&k1, (u8**)&v1);
+    HashMap_put_move(m, (u8*)k1, (u8*)v1);
+    String_destroy(k1); // moved-from: zeroed, frees the shell only
+    String_destroy(v1); // moved-from: zeroed, frees the shell only
 
-    WC_ASSERT_NULL(k1);
-    WC_ASSERT_NULL(v1);
 
     String key;
     String_create_stk(&key, "name");
@@ -775,8 +778,8 @@ static void test_str_key_put_key_move(void)
     String   v;
     String_create_stk(&v, "cat");
 
-    HashMap_put_key_move(m, (u8**)&k, (u8*)&v);
-    WC_ASSERT_NULL(k);
+    HashMap_put_key_move(m, (u8*)k, (u8*)&v);
+    String_destroy(k); // moved-from: zeroed, frees the shell only
 
     String lookup;
     String_create_stk(&lookup, "animal");

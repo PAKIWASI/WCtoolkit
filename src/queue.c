@@ -58,7 +58,7 @@ Queue* Queue_create(u64 n, u32 data_size, const wc_container_ops* ops)
     Queue* q = malloc(sizeof(Queue));
     CHECK_FATAL(!q, "Queue malloc failed");
 
-    GenVec_create_stk(&q->arr, n, data_size, ops);
+    q->arr = GenVec_create(WC_LIBC, n, data_size, ops); // TRANSITIONAL: libc until Phase 3
 
     q->head = 0;
     q->tail = 0;
@@ -74,7 +74,7 @@ Queue* Queue_create_val(u64 n, const u8* val, u32 data_size, const wc_container_
     Queue* q = malloc(sizeof(Queue));
     CHECK_FATAL(!q, "Queue malloc failed");
 
-    GenVec_create_val_stk(&q->arr, n, val, data_size, ops);
+    q->arr = GenVec_create_val(WC_LIBC, n, val, data_size, ops);
 
     q->head = 0;
     q->tail = n % GenVec_capacity(&q->arr);
@@ -88,7 +88,7 @@ void Queue_create_stk(Queue* q, u64 n, u32 data_size, const wc_container_ops* op
 {
     CHECK_FATAL(n == 0 || data_size == 0, "n/data_size can't be 0");
 
-    GenVec_create_stk(&q->arr, n, data_size, ops);
+    q->arr = GenVec_create(WC_LIBC, n, data_size, ops);
 
     q->head = 0;
     q->tail = 0;
@@ -97,13 +97,13 @@ void Queue_create_stk(Queue* q, u64 n, u32 data_size, const wc_container_ops* op
 
 void Queue_destroy(Queue* q)
 {
-    GenVec_destroy_stk(&q->arr);
+    GenVec_destroy(&q->arr);
     free(q);
 }
 
 void Queue_destroy_stk(Queue* q)
 {
-    GenVec_destroy_stk(&q->arr);
+    GenVec_destroy(&q->arr);
 }
 
 void Queue_clear(Queue* q)
@@ -151,10 +151,8 @@ void Queue_push(Queue* q, const u8* x)
     TAIL_UPDATE(q);
 }
 
-void Queue_push_move(Queue* q, u8** x)
+void Queue_push_move(Queue* q, u8* x)
 {
-    CHECK_FATAL(!*x, "*x is null");
-
     Q_MAYBE_GROW(q);
 
     if (q->tail >= GenVec_size(&q->arr)) {
@@ -247,7 +245,7 @@ void Queue_print(Queue* q, wc_print_fn print)
 
 void Queue_copy(Queue* dest, const Queue* src)
 {
-    GenVec_copy(&dest->arr, &src->arr);
+    dest->arr = GenVec_copy(src->arr.alloc, &src->arr); // TRANSITIONAL: Phase 3 takes an allocator
     dest->head = src->head;
     dest->tail = src->tail;
     dest->size = src->size;
@@ -294,8 +292,7 @@ static void Queue_shrink(Queue* q)
 static void Queue_compact(Queue* q, u64 new_capacity)
 {
     // Share the same ops pointer
-    GenVec new_arr;
-    GenVec_create_stk(&new_arr, new_capacity, q->arr.data_size, q->arr.ops);
+    GenVec new_arr = GenVec_create(q->arr.alloc, new_capacity, q->arr.data_size, q->arr.ops);
 
     u64 h = q->head;
     for (u64 i = 0; i < q->size; i++, h = REAL_IDX(q, h + 1)) {
@@ -303,7 +300,7 @@ static void Queue_compact(Queue* q, u64 new_capacity)
         GenVec_push(&new_arr, elm);
     }
 
-    GenVec_destroy_stk(&q->arr);
+    GenVec_destroy(&q->arr);
     q->arr = new_arr;
 
     q->head = 0;

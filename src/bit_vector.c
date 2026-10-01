@@ -1,6 +1,7 @@
 #include "bit_vector.h"
 #include "common.h"
 #include "gen_vector.h"
+#include "wc_allocator.h"
 #include "wc_errno.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -13,7 +14,8 @@ BitVec* BitVec_create(void)
     CHECK_FATAL(!bvec, "bvec init failed");
 
     // u8 is POD — no ops needed
-    bvec->arr = GenVec_create(0, sizeof(u8), NULL);
+    // TRANSITIONAL: heap GenVec shell, libc storage
+    bvec->arr = WC_BOX_IN(WC_LIBC, GenVec, GenVec_create, 0, sizeof(u8), NULL);
 
     bvec->size = 0;
 
@@ -23,7 +25,7 @@ BitVec* BitVec_create(void)
 void BitVec_destroy(BitVec* bvec)
 {
     GenVec_destroy(bvec->arr);
-
+    WC_DELETE(WC_LIBC, GenVec, bvec->arr); // shell came from WC_BOX_IN(WC_LIBC, ...)
     free(bvec);
 }
 

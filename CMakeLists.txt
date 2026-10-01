@@ -77,6 +77,10 @@ set(WC_WARN_FLAGS
     -Wno-unused-parameter
     -Wold-style-definition
     -Wimplicit-fallthrough
+    # Migration safety (plan 3.3): stale call sites must be errors, not warnings.
+    -Werror=incompatible-pointer-types
+    -Werror=implicit-function-declaration
+    -Werror=int-conversion
 )
 
 if(WC_WARNINGS_AS_ERRORS)
@@ -142,6 +146,7 @@ add_executable(tests
     tests/test_allocator_test.c
     tests/allocator_core_test.c
     tests/chain_arena_test.c
+    tests/gen_vector_alloc_test.c
     tests/regression_test.c
     ${LIB_SOURCES}
 )

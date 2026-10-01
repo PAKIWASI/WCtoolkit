@@ -52,9 +52,9 @@ void HashSet_destroy_stk(HashSet* set) __attribute__((nonnull(1)));
 // Returns 1 if already existed (no-op), 0 if newly inserted.
 b8 HashSet_insert(HashSet* set, const u8* elm) __attribute__((nonnull(1, 2)));
 
-// Insert element — MOVE semantics (elm is nulled on insert, or freed if duplicate).
+// Insert element, MOVE semantics: *elm is moved in (or destroyed if already present) and zeroed.
 // Returns 1 if already existed (elm freed), 0 if newly inserted.
-b8 HashSet_insert_move(HashSet* set, u8** elm) __attribute__((nonnull(1, 2)));
+b8 HashSet_insert_move(HashSet* set, u8* elm) __attribute__((nonnull(1, 2)));
 
 // Returns 1 if found, 0 if not.
 b8 HashSet_has(const HashSet* set, const u8* elm) __attribute__((nonnull(1, 2)));

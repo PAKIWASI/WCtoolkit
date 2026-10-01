@@ -58,37 +58,37 @@ static u64 bench(const char* label, u64 n_ops, u64 start, u64 end)
 
 static void bench_push_pod(void)
 {
-    GenVec* v = GenVec_create(PUSH_N, sizeof(int), NULL);
+    GenVec v = GenVec_create(WC_LIBC, PUSH_N, sizeof(int), NULL);
     int val   = 42;
 
     u64 t0 = ns_now();
     for (int i = 0; i < PUSH_N; i++) {
-        GenVec_push(v, (u8*)&val);
+        GenVec_push(&v, (u8*)&val);
     }
     u64 t1 = ns_now();
 
-    WC_ASSERT_EQ_U64(v->size, PUSH_N);
+    WC_ASSERT_EQ_U64(v.size, PUSH_N);
     bench("push POD (int)", PUSH_N, t0, t1);
-    GenVec_destroy(v);
+    GenVec_destroy(&v);
 }
 
 static void bench_push_cx(void)
 {
     // Each element is a String by value (SSO path for short Strings).
-    GenVec* v = GenVec_create(PUSH_N, sizeof(String), &wc_str_ops);
+    GenVec v = GenVec_create(WC_LIBC, PUSH_N, sizeof(String), &wc_str_ops);
 
     u64 t0 = ns_now();
     for (int i = 0; i < PUSH_N; i++) {
         String s;
         String_create_stk(&s, "hello");
-        GenVec_push(v, (u8*)&s);
+        GenVec_push(&v, (u8*)&s);
         String_destroy_stk(&s); // push deep-copied it; we own the original
     }
     u64 t1 = ns_now();
 
-    WC_ASSERT_EQ_U64(v->size, PUSH_N);
+    WC_ASSERT_EQ_U64(v.size, PUSH_N);
     bench("push CX (String, copy)", PUSH_N, t0, t1);
-    GenVec_destroy(v);
+    GenVec_destroy(&v);
 }
 
 
@@ -106,15 +106,15 @@ static void bench_clear_pod(void)
     int val      = 7;
 
     for (int r = 0; r < CLEAR_REP; r++) {
-        GenVec* v = GenVec_create(CLEAR_N, sizeof(int), NULL);
-        for (int i = 0; i < CLEAR_N; i++) { GenVec_push(v, (u8*)&val);
+        GenVec v = GenVec_create(WC_LIBC, CLEAR_N, sizeof(int), NULL);
+        for (int i = 0; i < CLEAR_N; i++) { GenVec_push(&v, (u8*)&val);
 }
 
         u64 t0 = ns_now();
-        GenVec_clear(v);
+        GenVec_clear(&v);
         u64 t1 = ns_now();
         total_ns += t1 - t0;
-        GenVec_destroy(v);
+        GenVec_destroy(&v);
     }
 
     u64 ns_per = total_ns / ((u64)CLEAR_REP * CLEAR_N);
@@ -129,18 +129,18 @@ static void bench_clear_cx(void)
     u64 total_ns = 0;
 
     for (int r = 0; r < CLEAR_REP; r++) {
-        GenVec* v = GenVec_create(CLEAR_N, sizeof(String), &wc_str_ops);
+        GenVec v = GenVec_create(WC_LIBC, CLEAR_N, sizeof(String), &wc_str_ops);
         for (int i = 0; i < CLEAR_N; i++) {
             String s;
             String_create_stk(&s, "hi");
-            GenVec_push(v, (u8*)&s);
+            GenVec_push(&v, (u8*)&s);
             String_destroy_stk(&s);
         }
         u64 t0 = ns_now();
-        GenVec_clear(v);
+        GenVec_clear(&v);
         u64 t1 = ns_now();
         total_ns += t1 - t0;
-        GenVec_destroy(v);
+        GenVec_destroy(&v);
     }
 
     u64 ns_per = total_ns / ((u64)CLEAR_REP * CLEAR_N);
@@ -159,10 +159,10 @@ static void bench_destroy_pod(void)
     int val = 1;
 
     for (int r = 0; r < DESTROY_REP; r++) {
-        GenVec* v = GenVec_create(DESTROY_N, sizeof(int), NULL);
-        for (int i = 0; i < DESTROY_N; i++) GenVec_push(v, (u8*)&val);
+        GenVec v = GenVec_create(WC_LIBC, DESTROY_N, sizeof(int), NULL);
+        for (int i = 0; i < DESTROY_N; i++) GenVec_push(&v, (u8*)&val);
         u64 t0 = ns_now();
-        GenVec_destroy(v);
+        GenVec_destroy(&v);
         u64 t1 = ns_now();
         total_ns += t1 - t0;
     }
@@ -179,15 +179,15 @@ static void bench_destroy_cx(void)
     u64 total_ns = 0;
 
     for (int r = 0; r < DESTROY_REP; r++) {
-        GenVec* v = GenVec_create(DESTROY_N, sizeof(String), &wc_str_ops);
+        GenVec v = GenVec_create(WC_LIBC, DESTROY_N, sizeof(String), &wc_str_ops);
         for (int i = 0; i < DESTROY_N; i++) {
             String s;
             String_create_stk(&s, "world");
-            GenVec_push(v, (u8*)&s);
+            GenVec_push(&v, (u8*)&s);
             String_destroy_stk(&s);
         }
         u64 t0 = ns_now();
-        GenVec_destroy(v);
+        GenVec_destroy(&v);
         u64 t1 = ns_now();
         total_ns += t1 - t0;
     }
@@ -209,9 +209,9 @@ static void bench_destroy_cx(void)
 
 static void bench_vec_copy_pod(void)
 {
-    GenVec* src = GenVec_create(COPY_N, sizeof(int), NULL);
+    GenVec src = GenVec_create(WC_LIBC, COPY_N, sizeof(int), NULL);
     int val = 99;
-    for (int i = 0; i < COPY_N; i++) GenVec_push(src, (u8*)&val);
+    for (int i = 0; i < COPY_N; i++) GenVec_push(&src, (u8*)&val);
 
     GenVec dest;
     memset(&dest, 0, sizeof(dest));
@@ -221,25 +221,25 @@ static void bench_vec_copy_pod(void)
     for (int r = 0; r < COPY_REP; r++) {
         // GenVec_copy expects dest to be raw/empty (it overwrites without
         // freeing) — release the previous rep's buffer first or it leaks.
-        if (r > 0) GenVec_destroy_stk(&dest);
-        GenVec_copy(&dest, src);
+        if (r > 0) GenVec_destroy(&dest);
+        dest = GenVec_copy(WC_LIBC, &src);
     }
     u64 t1 = ns_now();
 
     WC_ASSERT_EQ_U64(dest.size, COPY_N);
     bench("GenVec_copy POD (1M ints) x20", (u64)COPY_REP * COPY_N, t0, t1);
 
-    GenVec_destroy_stk(&dest);
-    GenVec_destroy(src);
+    GenVec_destroy(&dest);
+    GenVec_destroy(&src);
 }
 
 static void bench_vec_copy_cx(void)
 {
-    GenVec* src = GenVec_create(COPY_N, sizeof(String), &wc_str_ops);
+    GenVec src = GenVec_create(WC_LIBC, COPY_N, sizeof(String), &wc_str_ops);
     for (int i = 0; i < COPY_N; i++) {
         String s;
         String_create_stk(&s, "copy");
-        GenVec_push(src, (u8*)&s);
+        GenVec_push(&src, (u8*)&s);
         String_destroy_stk(&s);
     }
 
@@ -251,15 +251,15 @@ static void bench_vec_copy_cx(void)
     u64 t0 = ns_now();
     for (int r = 0; r < COPY_REP; r++) {
         // Same as the POD case: dest must be released before each re-copy.
-        if (r > 0) GenVec_destroy_stk(&dest);
-        GenVec_copy(&dest, src);
+        if (r > 0) GenVec_destroy(&dest);
+        dest = GenVec_copy(WC_LIBC, &src);
     }
     u64 t1 = ns_now();
 
     bench("GenVec_copy CX (1M String) x20", (u64)COPY_REP * COPY_N, t0, t1);
 
-    GenVec_destroy_stk(&dest);
-    GenVec_destroy(src);
+    GenVec_destroy(&dest);
+    GenVec_destroy(&src);
 }
 
 
@@ -275,8 +275,8 @@ static void bench_init_val_pod(void)
     int val = 42;
     u64 t0  = ns_now();
     for (int r = 0; r < INITVAL_REP; r++) {
-        GenVec* v = GenVec_create_val(INITVAL_N, (u8*)&val, sizeof(int), NULL);
-        GenVec_destroy(v);
+        GenVec v = GenVec_create_val(WC_LIBC, INITVAL_N, (u8*)&val, sizeof(int), NULL);
+        GenVec_destroy(&v);
     }
     u64 t1 = ns_now();
     bench("init_val POD (2M ints) x10", (u64)INITVAL_REP * INITVAL_N, t0, t1);
@@ -290,8 +290,8 @@ static void bench_init_val_cx(void)
 
     u64 t0 = ns_now();
     for (int r = 0; r < INITVAL_REP; r++) {
-        GenVec* v = GenVec_create_val(INITVAL_N, (u8*)&val, sizeof(String), &wc_str_ops);
-        GenVec_destroy(v);
+        GenVec v = GenVec_create_val(WC_LIBC, INITVAL_N, (u8*)&val, sizeof(String), &wc_str_ops);
+        GenVec_destroy(&v);
     }
     u64 t1 = ns_now();
 
@@ -313,13 +313,13 @@ static void bench_remove_range_pod(void)
     int val = 5;
 
     for (int r = 0; r < RANGE_REP; r++) {
-        GenVec* v = GenVec_create(RANGE_N, sizeof(int), NULL);
-        for (int i = 0; i < RANGE_N; i++) GenVec_push(v, (u8*)&val);
+        GenVec v = GenVec_create(WC_LIBC, RANGE_N, sizeof(int), NULL);
+        for (int i = 0; i < RANGE_N; i++) GenVec_push(&v, (u8*)&val);
         u64 t0 = ns_now();
-        GenVec_remove_range(v, 0, RANGE_N);
+        GenVec_remove_range(&v, 0, RANGE_N);
         u64 t1 = ns_now();
         total_ns += t1 - t0;
-        GenVec_destroy(v);
+        GenVec_destroy(&v);
     }
 
     u64 ns_per = total_ns / ((u64)RANGE_REP * RANGE_N);
@@ -333,18 +333,18 @@ static void bench_remove_range_cx(void)
     u64 total_ns = 0;
 
     for (int r = 0; r < RANGE_REP; r++) {
-        GenVec* v = GenVec_create(RANGE_N, sizeof(String), &wc_str_ops);
+        GenVec v = GenVec_create(WC_LIBC, RANGE_N, sizeof(String), &wc_str_ops);
         for (int i = 0; i < RANGE_N; i++) {
             String s;
             String_create_stk(&s, "range");
-            GenVec_push(v, (u8*)&s);
+            GenVec_push(&v, (u8*)&s);
             String_destroy_stk(&s);
         }
         u64 t0 = ns_now();
-        GenVec_remove_range(v, 0, RANGE_N);
+        GenVec_remove_range(&v, 0, RANGE_N);
         u64 t1 = ns_now();
         total_ns += t1 - t0;
-        GenVec_destroy(v);
+        GenVec_destroy(&v);
     }
 
     u64 ns_per = total_ns / ((u64)RANGE_REP * RANGE_N);
@@ -518,37 +518,37 @@ static void bench_map_clear_cx(void)
 
 static void bench_pop_pod(void)
 {
-    GenVec* v = GenVec_create(POP_N, sizeof(int), NULL);
+    GenVec v = GenVec_create(WC_LIBC, POP_N, sizeof(int), NULL);
     int val   = 1;
-    for (int i = 0; i < POP_N; i++) GenVec_push(v, (u8*)&val);
+    for (int i = 0; i < POP_N; i++) GenVec_push(&v, (u8*)&val);
 
     int out = 0;
     u64 t0  = ns_now();
-    for (int i = 0; i < POP_N; i++) GenVec_pop(v, (u8*)&out);
+    for (int i = 0; i < POP_N; i++) GenVec_pop(&v, (u8*)&out);
     u64 t1 = ns_now();
 
-    WC_ASSERT_EQ_U64(v->size, 0);
+    WC_ASSERT_EQ_U64(v.size, 0);
     bench("pop POD (int)", POP_N, t0, t1);
-    GenVec_destroy(v);
+    GenVec_destroy(&v);
 }
 
 static void bench_pop_cx(void)
 {
-    GenVec* v = GenVec_create(POP_N, sizeof(String), &wc_str_ops);
+    GenVec v = GenVec_create(WC_LIBC, POP_N, sizeof(String), &wc_str_ops);
     for (int i = 0; i < POP_N; i++) {
         String s;
         String_create_stk(&s, "pop");
-        GenVec_push(v, (u8*)&s);
+        GenVec_push(&v, (u8*)&s);
         String_destroy_stk(&s);
     }
 
     u64 t0 = ns_now();
-    for (int i = 0; i < POP_N; i++) GenVec_pop(v, NULL);
+    for (int i = 0; i < POP_N; i++) GenVec_pop(&v, NULL);
     u64 t1 = ns_now();
 
-    WC_ASSERT_EQ_U64(v->size, 0);
+    WC_ASSERT_EQ_U64(v.size, 0);
     bench("pop CX (String, del)", POP_N, t0, t1);
-    GenVec_destroy(v);
+    GenVec_destroy(&v);
 }
 
 
@@ -662,7 +662,7 @@ static void person_init(Person* p, int i)
     person_name_fmt(buf, sizeof(buf), i);
     String_create_stk(&p->name, buf);
 
-    GenVec_create_stk(&p->scores, (u64)PERSON_SCORES_N, sizeof(int), NULL);
+    p->scores = GenVec_create(WC_LIBC, (u64)PERSON_SCORES_N, sizeof(int), NULL);
     for (int j = 0; j < PERSON_SCORES_N; j++) {
         int v = i + j;
         GenVec_push(&p->scores, (u8*)&v);
@@ -673,39 +673,33 @@ static void person_del(u8* elm)
 {
     Person* p = (Person*)elm;
     String_destroy_stk(&p->name);
-    GenVec_destroy_stk(&p->scores);
+    GenVec_destroy(&p->scores);
 }
 
-static void person_copy(u8* dest, const u8* src)
+static void person_copy(wc_allocator dst, u8* dest, const u8* src)
 {
     const Person* s = (const Person*)src;
     Person*       d = (Person*)dest;
 
     // String_copy is safe on raw/uninitialised dest memory (dest is fully
-    // re-initialised, not read first).
+    // re-initialised, not read first). TRANSITIONAL: String is libc until Phase 4.
     String_copy(&d->name, &s->name);
 
-    // GenVec_copy is NOT safe on raw dest — it assumes dest is already a
-    // live, valid GenVec and destroys its old contents first. Bring dest
-    // into a valid empty state so that destroy is a safe no-op, matching
-    // the idiom the toolkit's own wc_vec_ops.copy_fn effectively achieves.
-    GenVec_create_stk(&d->scores, 0, sizeof(int), NULL);
-    GenVec_copy(&d->scores, &s->scores);
+    // GenVec_copy returns a fresh vector: raw dest memory is fine.
+    d->scores = GenVec_copy(dst, &s->scores);
 }
 
-static void person_move(u8* dest, u8** src)
+static void person_move(u8* dest, u8* src)
 {
-    Person* s = *(Person**)src;
-    memcpy(dest, s, sizeof(Person)); // shell only — name/scores buffers just change owner
-    free(s);
-    *src = NULL;
+    memcpy(dest, src, sizeof(Person)); // name/scores buffers just change owner
+    memset(src, 0, sizeof(Person));
 }
 
 static const wc_container_ops person_ops = { person_copy, person_move, person_del };
 
 static void bench_complex_push_copy(void)
 {
-    GenVec* v = GenVec_create((u64)PERSON_N, sizeof(Person), &person_ops);
+    GenVec v = GenVec_create(WC_LIBC, (u64)PERSON_N, sizeof(Person), &person_ops);
 
     // Build every source Person up front — this construction cost (String
     // heap alloc + GenVec growth) is identical in the move benchmark below,
@@ -717,43 +711,41 @@ static void bench_complex_push_copy(void)
 
     u64 t0 = ns_now();
     for (int i = 0; i < PERSON_N; i++) {
-        GenVec_push(v, (u8*)&pool[i]); // copy path: deep-copies name + scores
+        GenVec_push(&v, (u8*)&pool[i]); // copy path: deep-copies name + scores
     }
     u64 t1 = ns_now();
 
-    WC_ASSERT_EQ_U64(v->size, (u64)PERSON_N);
+    WC_ASSERT_EQ_U64(v.size, (u64)PERSON_N);
     bench("push complex (copy: String+GenVec)", PERSON_N, t0, t1);
 
     for (int i = 0; i < PERSON_N; i++) person_del((u8*)&pool[i]);
     free(pool);
-    GenVec_destroy(v);
+    GenVec_destroy(&v);
 }
 
 static void bench_complex_push_move(void)
 {
-    GenVec* v = GenVec_create((u64)PERSON_N, sizeof(Person), &person_ops);
+    GenVec v = GenVec_create(WC_LIBC, (u64)PERSON_N, sizeof(Person), &person_ops);
 
-    // Same construction cost as the copy benchmark, just heap-shelled and
-    // pre-built outside the timed region for the same reason.
-    Person** pool = malloc((u64)PERSON_N * sizeof(Person*));
+    // Same construction cost as the copy benchmark, pre-built outside the
+    // timed region for the same reason.
+    Person* pool = malloc((u64)PERSON_N * sizeof(Person));
     CHECK_FATAL(!pool, "malloc failed");
     for (int i = 0; i < PERSON_N; i++) {
-        pool[i] = malloc(sizeof(Person));
-        CHECK_FATAL(!pool[i], "malloc failed");
-        person_init(pool[i], i);
+        person_init(&pool[i], i);
     }
 
     u64 t0 = ns_now();
     for (int i = 0; i < PERSON_N; i++) {
-        GenVec_push_move(v, (u8**)&pool[i]); // move path: O(1) shell relocation
+        GenVec_push_move(&v, (u8*)&pool[i]); // move path: O(1) relocation, source zeroed
     }
     u64 t1 = ns_now();
 
-    WC_ASSERT_EQ_U64(v->size, (u64)PERSON_N);
+    WC_ASSERT_EQ_U64(v.size, (u64)PERSON_N);
     bench("push complex (move: String+GenVec)", PERSON_N, t0, t1);
 
-    free(pool); // each pool[i] already freed+nulled by person_move
-    GenVec_destroy(v);
+    free(pool); // every pool[i] was moved out and zeroed
+    GenVec_destroy(&v);
 }
 
 void suite_complex_owned_type(void)
@@ -864,7 +856,7 @@ static void bench_ss_malloc(void)
 
 static void bench_ss_String_sso(void)
 {
-    GenVec* v = GenVec_create(STRSTORE_N, sizeof(String), &wc_str_ops);
+    GenVec v = GenVec_create(WC_LIBC, STRSTORE_N, sizeof(String), &wc_str_ops);
 
     char buf[64];
     u64  t0 = ns_now();
@@ -872,13 +864,13 @@ static void bench_ss_String_sso(void)
         strstore_fmt(buf, sizeof(buf), i);
         String s;
         String_create_stk(&s, buf);
-        GenVec_push(v, (u8*)&s);
+        GenVec_push(&v, (u8*)&s);
         String_destroy_stk(&s);
     }
     u64 t1 = ns_now();
 
     bench("String (SSO) create + push+copy", STRSTORE_N, t0, t1);
-    GenVec_destroy(v);
+    GenVec_destroy(&v);
 }
 
 void suite_String_storage(void)

@@ -29,7 +29,7 @@ void Queue_copy(Queue* dest, const Queue* src) __attribute__((nonnull(1, 2)));
 void Queue_move(Queue* dest, Queue** src) __attribute__((nonnull(1, 2)));
 
 void      Queue_push(Queue* q, const u8* x) __attribute__((nonnull(1, 2)));
-void      Queue_push_move(Queue* q, u8** x) __attribute__((nonnull(1, 2)));
+void      Queue_push_move(Queue* q, u8* x) __attribute__((nonnull(1, 2))); // *x is moved in and zeroed
 void      Queue_pop(Queue* q, u8* out) __attribute__((nonnull(1)));
 void      Queue_pop_back(Queue* q, u8* out) __attribute__((nonnull(1)));
 void      Queue_peek(Queue* q, u8* peek) __attribute__((nonnull(1, 2)));

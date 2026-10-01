@@ -29,10 +29,8 @@ void Arena_create(Arena* arena, wc_allocator backing, u64 capacity)
         capacity = ARENA_DEFAULT_SIZE;
     }
 
-    u8* base = wc2_alloc(backing, capacity, ARENA_BASE_ALIGN);
-    if (!base) {
-        FATAL("Arena base allocation of %llu bytes failed", (unsigned long long)capacity); // D5: unconditional
-    }
+    u8* base = wc_alloc(backing, capacity, ARENA_BASE_ALIGN);
+    CHECK_FATAL(!base, "Arena base allocation of %llu bytes failed", (unsigned long long)capacity); // D5: unconditional
 
     *arena = (Arena){
         .backing   = backing,
@@ -69,7 +67,7 @@ void Arena_destroy(Arena* arena)
 
     if (arena->owns_base) {
         wc_allocator backing = arena->backing; // read before zeroing
-        wc2_free(backing, arena->base, arena->size, ARENA_BASE_ALIGN);
+        wc_free(backing, arena->base, arena->size, ARENA_BASE_ALIGN);
     }
     memset(arena, 0, sizeof(*arena));
 }
@@ -178,16 +176,4 @@ wc_allocator Arena_allocator(Arena* arena)
 {
     ARENA_CHECK_LIVE(arena);
     return (wc_allocator){.vt = &arena_vt, .ctx = arena};
-}
-
-wc_allocator_t Arena_allocator_legacy(Arena* arena)
-{
-    ARENA_CHECK_LIVE(arena);
-    // Same callbacks: the old fat struct has identical signatures.
-    return (wc_allocator_t){
-        .alloc   = arena_vt_alloc,
-        .realloc = arena_vt_realloc,
-        .free    = arena_vt_free,
-        .ctx     = arena,
-    };
 }

@@ -2,6 +2,7 @@
 #include "common.h"
 #include "gen_vector.h"
 #include "queue.h"
+#include "wc_allocator.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -61,7 +62,7 @@ PriorityQueue* PriorityQueue_from_vec(GenVec* vec, wc_compare_fn cmp_fn)
 
 void PriorityQueue_from_vec_stk(PriorityQueue* pq, GenVec* vec, wc_compare_fn cmp_fn)
 {
-    GenVec_copy(&pq->q.arr, vec); // deep copy all elements
+    pq->q.arr = GenVec_copy(WC_LIBC, vec); // deep copy all elements (TRANSITIONAL: libc until Phase 3)
 
     // A freshly-copied GenVec has no wraparound yet, so head starts at 0 and
     // tail/size follow the same convention Queue_create_val uses.

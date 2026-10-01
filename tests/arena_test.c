@@ -100,10 +100,10 @@ static void test_reset(void)
 static void test_region_comes_from_backing(void)
 {
     wc_test_alloc ta;
-    wc_test_alloc_init2(&ta, WC_LIBC);
+    wc_test_alloc_init(&ta, WC_LIBC);
 
     Arena a;
-    Arena_create(&a, wc_test_alloc_allocator2(&ta), 1000);
+    Arena_create(&a, wc_test_alloc_allocator(&ta), 1000);
     WC_ASSERT_EQ_U64(ta.live_blocks, 1);
     WC_ASSERT_EQ_U64(ta.live_bytes, 1000);
     WC_ASSERT(wc_test_alloc_owns(&ta, a.base));
@@ -272,14 +272,14 @@ static void test_realloc_last_block_grows_in_place(void)
     Arena_create(&a, WC_LIBC, nKB(1));
     wc_allocator al = Arena_allocator(&a);
 
-    u8* p = wc2_alloc(al, 16, 8);
+    u8* p = wc_alloc(al, 16, 8);
     memset(p, 'x', 16);
-    u8* q = wc2_realloc(al, p, 16, 400, 8);
+    u8* q = wc_realloc(al, p, 16, 400, 8);
     WC_ASSERT(q == p);
     WC_ASSERT_EQ_U64(Arena_used(&a), (u64)(p - a.base) + 400);
     WC_ASSERT_EQ_INT(q[15], 'x');
 
-    q = wc2_realloc(al, q, 400, 32, 8); // shrink in place
+    q = wc_realloc(al, q, 400, 32, 8); // shrink in place
     WC_ASSERT(q == p);
     WC_ASSERT_EQ_U64(Arena_used(&a), (u64)(p - a.base) + 32);
     Arena_destroy(&a);
@@ -291,16 +291,16 @@ static void test_realloc_non_last_block_copies(void)
     Arena_create(&a, WC_LIBC, nKB(1));
     wc_allocator al = Arena_allocator(&a);
 
-    u8* p = wc2_alloc(al, 16, 8);
+    u8* p = wc_alloc(al, 16, 8);
     memcpy(p, "0123456789abcdef", 16);
-    u8* other = wc2_alloc(al, 8, 8); // p is no longer on top
+    u8* other = wc_alloc(al, 8, 8); // p is no longer on top
     (void)other;
 
-    u8* q = wc2_realloc(al, p, 16, 64, 8);
+    u8* q = wc_realloc(al, p, 16, 64, 8);
     WC_ASSERT(q != p);
     WC_ASSERT(memcmp(q, "0123456789abcdef", 16) == 0);
 
-    u8* s = wc2_realloc(al, other, 8, 4, 8); // shrinking a non-top block keeps it
+    u8* s = wc_realloc(al, other, 8, 4, 8); // shrinking a non-top block keeps it
     WC_ASSERT(s == other);
     Arena_destroy(&a);
 }
@@ -311,10 +311,10 @@ static void test_realloc_too_big_fails_and_keeps_block(void)
     Arena_create(&a, WC_LIBC, 128);
     wc_allocator al = Arena_allocator(&a);
 
-    u8* p = wc2_alloc(al, 64, 8);
+    u8* p = wc_alloc(al, 64, 8);
     memset(p, 7, 64);
     u64 used = Arena_used(&a);
-    WC_ASSERT_NULL(wc2_realloc(al, p, 64, 4096, 8));
+    WC_ASSERT_NULL(wc_realloc(al, p, 64, 4096, 8));
     WC_ASSERT_EQ_U64(Arena_used(&a), used);
     WC_ASSERT_EQ_INT(p[63], 7);
     Arena_destroy(&a);
@@ -326,14 +326,14 @@ static void test_free_rewinds_only_last_block(void)
     Arena_create(&a, WC_LIBC, nKB(1));
     wc_allocator al = Arena_allocator(&a);
 
-    u8* p1 = wc2_alloc(al, 32, 8);
-    u8* p2 = wc2_alloc(al, 32, 8);
+    u8* p1 = wc_alloc(al, 32, 8);
+    u8* p2 = wc_alloc(al, 32, 8);
     u64 top = Arena_used(&a);
 
-    wc2_free(al, p1, 32, 8); // not on top: no-op
+    wc_free(al, p1, 32, 8); // not on top: no-op
     WC_ASSERT_EQ_U64(Arena_used(&a), top);
 
-    wc2_free(al, p2, 32, 8); // on top: rewinds
+    wc_free(al, p2, 32, 8); // on top: rewinds
     WC_ASSERT_EQ_U64(Arena_used(&a), (u64)(p2 - a.base));
     Arena_destroy(&a);
 }
@@ -398,9 +398,9 @@ static void grow_outer_block_inside_scratch(void)
     Arena a;
     Arena_create(&a, WC_LIBC, nKB(4));
     wc_allocator al  = Arena_allocator(&a);
-    u8*          vec = wc2_alloc(al, 64, 8);
+    u8*          vec = wc_alloc(al, 64, 8);
     ARENA_SCRATCH(&a) {
-        vec = wc2_realloc(al, vec, 64, 512, 8);
+        vec = wc_realloc(al, vec, 64, 512, 8);
     }
     (void)vec;
     Arena_destroy(&a);
@@ -415,8 +415,8 @@ static void grow_inner_block_inside_scratch(void)
     Arena_create(&a, WC_LIBC, nKB(4));
     wc_allocator al = Arena_allocator(&a);
     ARENA_SCRATCH(&a) {
-        u8* vec = wc2_alloc(al, 64, 8);
-        vec     = wc2_realloc(al, vec, 64, 512, 8);
+        u8* vec = wc_alloc(al, 64, 8);
+        vec     = wc_realloc(al, vec, 64, 512, 8);
         (void)vec;
     }
     Arena_destroy(&a);
@@ -431,11 +431,11 @@ static void test_floor_grow_outer_block_inside_scratch(void)
     Arena a;
     Arena_create(&a, WC_LIBC, nKB(4));
     wc_allocator al   = Arena_allocator(&a);
-    u8*          keep = wc2_alloc(al, 64, 8);
+    u8*          keep = wc_alloc(al, 64, 8);
     memset(keep, 'K', 64);
     u64 mark = Arena_used(&a);
     ARENA_SCRATCH(&a) {
-        u8* grown = wc2_realloc(al, keep, 64, 512, 8);
+        u8* grown = wc_realloc(al, keep, 64, 512, 8);
         WC_ASSERT(grown != keep); // copied, never extended past the mark
     }
     WC_ASSERT_EQ_U64(Arena_used(&a), mark);
@@ -452,10 +452,10 @@ static void test_floor_shrink_outer_block_inside_scratch(void)
     Arena a;
     Arena_create(&a, WC_LIBC, nKB(4));
     wc_allocator al   = Arena_allocator(&a);
-    u8*          keep = wc2_alloc(al, 64, 8);
+    u8*          keep = wc_alloc(al, 64, 8);
     u64          mark = Arena_used(&a);
     ARENA_SCRATCH(&a) {
-        WC_ASSERT(wc2_realloc(al, keep, 64, 16, 8) == keep);
+        WC_ASSERT(wc_realloc(al, keep, 64, 16, 8) == keep);
         WC_ASSERT_EQ_U64(Arena_used(&a), mark); // not rewound below the mark
     }
     Arena_destroy(&a);
@@ -468,15 +468,15 @@ static void test_floor_free_inside_scratch_does_not_rewind_below_mark(void)
     Arena_create(&a, WC_LIBC, nKB(4));
     wc_allocator al = Arena_allocator(&a);
 
-    u8* outer = wc2_alloc(al, 64, 8);
+    u8* outer = wc_alloc(al, 64, 8);
     u64 mark  = Arena_used(&a);
 
     ARENA_SCRATCH(&a) {
-        wc2_free(al, outer, 64, 8); // below the floor: no-op
+        wc_free(al, outer, 64, 8); // below the floor: no-op
         WC_ASSERT_EQ_U64(Arena_used(&a), mark);
 
-        u8* t = wc2_alloc(al, 16, 8); // on top and above the floor: rewinds
-        wc2_free(al, t, 16, 8);
+        u8* t = wc_alloc(al, 16, 8); // on top and above the floor: rewinds
+        wc_free(al, t, 16, 8);
         WC_ASSERT_EQ_U64(Arena_used(&a), (u64)(t - a.base));
     }
     WC_ASSERT_EQ_U64(Arena_used(&a), mark);
@@ -504,8 +504,8 @@ static void test_floor_nested_scopes(void)
 
     // in-place growth works again once the scopes are gone
     wc_allocator al = Arena_allocator(&a);
-    u8*          p  = wc2_alloc(al, 8, 8);
-    WC_ASSERT(wc2_realloc(al, p, 8, 64, 8) == p);
+    u8*          p  = wc_alloc(al, 8, 8);
+    WC_ASSERT(wc_realloc(al, p, 8, 64, 8) == p);
     Arena_destroy(&a);
 }
 
@@ -518,8 +518,8 @@ static void test_floor_allows_in_place_above_mark(void)
     Arena_alloc(&a, 40);
 
     ARENA_SCRATCH(&a) {
-        u8* p = wc2_alloc(al, 16, 8);
-        WC_ASSERT(wc2_realloc(al, p, 16, 256, 8) == p);
+        u8* p = wc_alloc(al, 16, 8);
+        WC_ASSERT(wc_realloc(al, p, 16, 256, 8) == p);
     }
     Arena_destroy(&a);
 }

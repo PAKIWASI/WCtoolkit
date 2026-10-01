@@ -2,25 +2,28 @@
 #define GEN_VECTOR_H
 
 #include "common.h"
+#include "wc_allocator.h"
 
 
 /*          TLDR
  * GenVec is a value-based generic vector.
  * Elements are stored inline and managed via user-supplied
- * copy/move/destructor callbacks.
+ * copy/move/destructor callbacks (a shared wc_container_ops vtable).
  *
- * This avoids pointer ownership ambiguity and improves cache locality.
+ * The vector is a VALUE: create returns it, destroy never frees the struct.
+ * It stores the allocator it was created with and uses it for every
+ * allocation, reallocation and free (plan 3.3).
  *
- * Callbacks are grouped into a shared GenVec_ops struct (vtable).
- * Define one static ops instance per type and share it across all
- * vectors of that type —  improves cache locality when many vectors of the same type exist.
+ *   GenVec v = GenVec_create(WC_LIBC, 8, sizeof(int), NULL);        // libc
+ *   GenVec w = GenVec_create(Arena_allocator(&arena), 8, sizeof(int), NULL);
+ *   GenVec_push(&v, (u8*)&x);
+ *   GenVec_destroy(&v);                                             // v is zeroed
  *
- * Example:
- *   static const GenVec_ops String_ops = { str_copy, str_move, str_del };
- *   GenVec* vec = GenVec_create(8, sizeof(String), &String_ops);
+ * Moves take a pointer to the source ELEMENT and leave it zeroed:
+ *   String s = ...;  GenVec_push_move(&v, (u8*)&s);                 // s is zeroed
  *
- * For POD types (int, float, flat structs) pass NULL for ops:
- *   GenVec* vec = GenVec_create(8, sizeof(int), NULL);
+ * Zero state: a zeroed GenVec (moved-from or destroyed) may only be destroyed
+ * or re-created. Growing or inserting into it is a FATAL in every build (D4).
  */
 
 
@@ -38,16 +41,19 @@ typedef struct {
     // Pointer to shared type-ops vtable (or NULL for POD types)
     const wc_container_ops* ops;
 
-    u64 size;      // Number of elements currently in vector
-    u64 capacity;  // Total allocated capacity (in elements)
-    u32 data_size; // Size of each element in bytes
+    u64 size;     // Number of elements currently in vector
+    u64 capacity; // Total allocated capacity (in elements)
+
+    wc_allocator alloc; // every data allocation goes through this (16 B, by value)
+
+    u32 data_size; // Size of each element in bytes (0 = zero state)
 
     // Cache: 1 if ops==NULL (POD fast path)
     b8 is_pod;
 } GenVec;
 
-// 8 8 8 8 4 1 '3'  = 40 bytes
-_Static_assert(sizeof(GenVec) == 40, "GenVec layout drifted from expected 40 bytes");
+// 8 8 8 8 16 4 1 '3'  = 56 bytes
+_Static_assert(sizeof(GenVec) == 56, "GenVec layout drifted from expected 56 bytes");
 
 
 // Convenience: access ops callbacks safely
@@ -60,40 +66,28 @@ _Static_assert(sizeof(GenVec) == 40, "GenVec layout drifted from expected 40 byt
 // Memory Management
 // ===========================
 
-// Initialize vector with capacity n.
-// ops: pointer to a shared GenVec_ops vtable, or NULL for POD types.
-GenVec* GenVec_create(u64 n, u32 data_size, const wc_container_ops* ops) __attribute__((warn_unused_result));
+// Vector with capacity n, storage from `alloc`.
+// ops: pointer to a shared wc_container_ops vtable, or NULL for POD types.
+GenVec GenVec_create(wc_allocator alloc, u64 n, u32 data_size, const wc_container_ops* ops)
+    __attribute__((warn_unused_result));
 
-// Initialize vector on Stack (struct on Stack, data on heap).
-void GenVec_create_stk(GenVec* vec, u64 n, u32 data_size, const wc_container_ops* ops) __attribute__((nonnull(1)));
+// Vector of size n with every element a copy of val.
+GenVec GenVec_create_val(wc_allocator alloc, u64 n, const u8* val, u32 data_size, const wc_container_ops* ops)
+    __attribute__((nonnull(3), warn_unused_result));
 
-// Initialize vector of size n with all elements set to val.
-GenVec* GenVec_create_val(u64 n, const u8* val, u32 data_size, const wc_container_ops* ops)
-    __attribute__((nonnull(2), warn_unused_result));
+// Vector over caller-owned storage of n elements (size 0, capacity n).
+// Uses wc_borrowed: it can never grow (growth is a FATAL) and destroy frees nothing.
+GenVec GenVec_create_buf(u8* buf, u64 n, u32 data_size, const wc_container_ops* ops)
+    __attribute__((nonnull(1), warn_unused_result));
 
-void GenVec_create_val_stk(GenVec* vec, u64 n, const u8* val, u32 data_size, const wc_container_ops* ops)
-    __attribute__((nonnull(1, 3)));
-
-GenVec* GenVec_create_arr(u64 n, u32 data_size, const wc_container_ops* ops, u8* arr)
-    __attribute__((nonnull(4), warn_unused_result));
-
-// Vector COMPLETELY on Stack (can't grow in size).
-// You provide a Stack-allocated array which becomes the internal array.
-// should only use if you need GenVec operations on C array
-// WARNING: crashes when size == capacity and you try to push.
-void GenVec_create_stk_arr(GenVec* vec, u64 n, u8* arr, u32 data_size, const wc_container_ops* ops)
-    __attribute__((nonnull(1, 3)));
-
-// Destroy heap-allocated vector and clean up all elements.
+// Delete every element, free the storage through the stored allocator and
+// zero the struct. Never frees the struct itself. Safe on a zeroed vector.
 void GenVec_destroy(GenVec* vec) __attribute__((nonnull(1)));
-
-// Destroy Stack-allocated vector (cleans up data, but not vec itself).
-void GenVec_destroy_stk(GenVec* vec) __attribute__((nonnull(1)));
 
 // Remove all elements (calls del_fn on each), keep capacity.
 void GenVec_clear(GenVec* vec) __attribute__((nonnull(1)));
 
-// Remove all elements and free memory, shrink capacity to 0.
+// Remove all elements and free the storage; capacity 0, allocator kept.
 void GenVec_reset(GenVec* vec) __attribute__((nonnull(1)));
 
 // Ensure vector has at least new_capacity space (never shrinks).
@@ -113,10 +107,11 @@ void GenVec_shrink_to_fit(GenVec* vec) __attribute__((nonnull(1)));
 // Append element to end (makes deep copy if copy_fn provided).
 void GenVec_push(GenVec* vec, const u8* data) __attribute__((nonnull(1, 2)));
 
-// Append element to end, transfer ownership (nulls original pointer).
-void GenVec_push_move(GenVec* vec, u8** data) __attribute__((nonnull(1, 2)));
+// Append element to end, transfer ownership: *data is moved in and zeroed.
+void GenVec_push_move(GenVec* vec, u8* data) __attribute__((nonnull(1, 2)));
 
-// Remove element from end. If popped is provided, copies element before deletion.
+// Remove element from end. If popped is provided, copies element before deletion
+// (owned resources of the copy come from the vector's allocator).
 // Note: del_fn is called regardless to clean up owned resources.
 void GenVec_pop(GenVec* vec, u8* popped) __attribute__((nonnull(1)));
 
@@ -150,20 +145,20 @@ static inline __attribute__((nonnull(1))) u8* GenVec_get_ptr_mut_unsafe(GenVec* 
 // Replace element at index i with data (cleans up old element).
 void GenVec_replace(GenVec* vec, u64 i, const u8* data) __attribute__((nonnull(1, 3)));
 
-// Replace element at index i, transfer ownership (cleans up old element).
-void GenVec_replace_move(GenVec* vec, u64 i, u8** data) __attribute__((nonnull(1, 3)));
+// Replace element at index i, transfer ownership (cleans up old element, zeroes *data).
+void GenVec_replace_move(GenVec* vec, u64 i, u8* data) __attribute__((nonnull(1, 3)));
 
 // Insert element at index i, shifting elements right.
 void GenVec_insert(GenVec* vec, u64 i, const u8* data) __attribute__((nonnull(1, 3)));
 
-// Insert element at index i with ownership transfer, shifting elements right.
-void GenVec_insert_move(GenVec* vec, u64 i, u8** data) __attribute__((nonnull(1, 3)));
+// Insert element at index i with ownership transfer (zeroes *data), shifting elements right.
+void GenVec_insert_move(GenVec* vec, u64 i, u8* data) __attribute__((nonnull(1, 3)));
 
 // Insert num_data elements from data array into vec at index i.
 void GenVec_insert_multi(GenVec* vec, u64 i, const u8* data, u64 num_data) __attribute__((nonnull(1, 3)));
 
-// Insert (move) num_data elements from data starting at index i.
-void GenVec_insert_multi_move(GenVec* vec, u64 i, u8** data, u64 num_data) __attribute__((nonnull(1, 3)));
+// Insert (move) num_data contiguous elements from data at index i; the source range is zeroed.
+void GenVec_insert_multi_move(GenVec* vec, u64 i, u8* data, u64 num_data) __attribute__((nonnull(1, 3)));
 
 // Remove element at index i, optionally copy to out, shift elements left.
 void GenVec_remove(GenVec* vec, u64 i, u8* out) __attribute__((nonnull(1)));
@@ -183,7 +178,8 @@ const u8* GenVec_back(const GenVec* vec) __attribute__((nonnull(1)));
 // if cmp_fn = NULL, then use memcmp
 u64 GenVec_find(const GenVec* vec, u8* elm, wc_compare_fn cmp_fn) __attribute__((nonnull(1, 2)));
 
-GenVec* GenVec_subarr(const GenVec* vec, u64 start, u64 len) __attribute__((nonnull(1), warn_unused_result));
+// New vector (storage from `alloc`) holding deep copies of [start, start + len).
+GenVec GenVec_subarr(const GenVec* vec, wc_allocator alloc, u64 start, u64 len) __attribute__((nonnull(1), warn_unused_result));
 
 
 // Utility
@@ -192,16 +188,13 @@ GenVec* GenVec_subarr(const GenVec* vec, u64 start, u64 len) __attribute__((nonn
 // Print all elements using provided print function.
 void GenVec_print(const GenVec* vec, wc_print_fn fn) __attribute__((nonnull(1, 2)));
 
-// Deep copy src vector into dest.
-// REQUIRES: dest must be uninitialized (or already destroyed/reset) before calling.
-// This does NOT clean up any existing dest->data / elements, it overwrites
-// dest's fields directly. Calling this on an already-populated dest leaks
-// its old buffer and skips del_fn on its old elements.
-void GenVec_copy(GenVec* dest, const GenVec* src) __attribute__((nonnull(1, 2)));
+// Deep copy of src whose storage (and every element's owned resources, via
+// copy_fn) comes from `alloc`. Never inherits src's allocator (A7).
+GenVec GenVec_copy(wc_allocator alloc, const GenVec* src) __attribute__((nonnull(2), warn_unused_result));
 
-// Transfer ownership from src to dest.
-// Note: src must be heap-allocated.
-void GenVec_move(GenVec* dest, GenVec** src) __attribute__((nonnull(1, 2)));
+// Transfer everything from src to dest; src is left zeroed.
+// dest must be uninitialised or destroyed (its old contents are overwritten, not freed).
+void GenVec_move(GenVec* dest, GenVec* src) __attribute__((nonnull(1, 2)));
 
 
 // Get number of elements in vector.

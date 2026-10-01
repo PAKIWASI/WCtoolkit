@@ -13,6 +13,7 @@
 
 // LOGGING/ERRORS
 
+#include <stdalign.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -86,7 +87,7 @@ wc_fatal_report(const char* file, int line, const char* func, const char* fmt, .
 
 #define MALLOC(size, cap, name)                \
     ({                                         \
-        void* _mlcd = malloc((size) * (cap));      \
+        void* _mlcd = malloc((size) * (cap));  \
         CHECK_FATAL(!_mlcd, "\"" #name "\""    \
                             " malloc failed"); \
         _mlcd;                                 \
@@ -108,11 +109,19 @@ typedef uint64_t u64;
 
 
 // GENERIC FUNCTIONS
-typedef void (*wc_copy_fn)(u8* dest, const u8* src);
-typedef void (*wc_move_fn)(u8* dest, u8** src);
-typedef void (*wc_delete_fn)(u8* key);
+#include "wc_allocator.h"
+
+// Deep-copy `src` INTO `dest`, allocating any owned resources from `dst`.
+// `dest` is uninitialised raw slot memory (plan 3.3).
+typedef void (*wc_copy_fn)(wc_allocator dst, u8* dest, const u8* src);
+// Transfer ownership: `dest` takes over everything `src` owned; `src` is left
+// ZEROED (safe to destroy, not usable). Containers do memcpy + zero when NULL.
+typedef void (*wc_move_fn)(u8* dest, u8* src);
+// Release owned resources of the element (not the slot). Elements that own
+// memory store their own allocator, so no allocator argument is needed.
+typedef void (*wc_delete_fn)(u8* elm);
 typedef void (*wc_print_fn)(const u8* elm);
-typedef int  (*wc_compare_fn)(const u8* a, const u8* b, u64 size);
+typedef int (*wc_compare_fn)(const void* a, const void* b, u64 size);
 
 
 // Vtable: one instance shared across all vectors of the same type.
@@ -123,6 +132,20 @@ typedef struct {
     wc_move_fn   move_fn; // Transfer ownership and null original (or NULL)
     wc_delete_fn del_fn;  // Cleanup function for owned resources (or NULL)
 } wc_container_ops;
+
+
+// Heap-box a value-returning constructor through allocator A:
+//   GenVec* v = WC_BOX_IN(A, GenVec, GenVec_create, 8, sizeof(int), NULL);
+// Invariant: the shell comes from the same allocator the child stores, so a
+// by-pointer delete can free the shell with the child's own allocator.
+#define WC_BOX_IN(A, T, init_fn, ...)                                      \
+    ({                                                                     \
+        wc_allocator _wbx_a = (A);                                         \
+        T*           _wbx_p = (T*)wc_alloc(_wbx_a, sizeof(T), alignof(T)); \
+        CHECK_FATAL(!_wbx_p, "WC_BOX_IN(" #T "): allocation failed");      \
+        *_wbx_p = init_fn(_wbx_a, __VA_ARGS__);                            \
+        _wbx_p;                                                            \
+    })
 
 
 // CASTING

@@ -27,12 +27,11 @@ static int cmp_int(const u8* a, const u8* b, u64 size)
 
 /* -- Phase 1-D: SET_INSERT_MOVE ------------------------------------------- */
 
-/* move: copy the int value into the set slot, free the heap source, null it */
-static void int_move(u8* dest, u8** src)
+/* move: transfer the int into the set slot, leave the source zeroed */
+static void int_move(u8* dest, u8* src)
 {
-    memcpy(dest, *src, sizeof(int));
-    free(*src);
-    *src = NULL;
+    memcpy(dest, src, sizeof(int));
+    memset(src, 0, sizeof(int));
 }
 
 /* del: the set stores the int by value; nothing extra to free */
@@ -52,13 +51,12 @@ static void test_set_insert_move_compiles_and_works(void)
 {
     HashSet* set = HashSet_create(sizeof(int), hash_int, cmp_int, &int_move_ops);
 
-    int* val = malloc(sizeof(int));
-    *val = 42;
+    int val = 42;
 
     SET_INSERT_MOVE(set, val);
 
-    /* source pointer must be nulled after move */
-    WC_ASSERT_NULL(val);
+    /* source element must be zeroed after move */
+    WC_ASSERT_EQ_INT(val, 0);
 
     /* element must be present in the set */
     int key = 42;
@@ -155,12 +153,12 @@ static void test_map_get_and_try_get(void)
 
 static void test_set_foreach_and_from_vec(void)
 {
-    GenVec* v = GenVec_create(4, sizeof(int), NULL);
+    GenVec v = GenVec_create(WC_LIBC, 4, sizeof(int), NULL);
     for (int i = 1; i <= 3; i++) {
-        GenVec_push(v, (u8*)&i);
+        GenVec_push(&v, (u8*)&i);
     }
 
-    HashSet* s = SET_FROM_VEC(v, hash_int, cmp_int);
+    HashSet* s = SET_FROM_VEC(&v, hash_int, cmp_int);
     WC_ASSERT_EQ_U64(HashSet_size(s), 3);
 
     int sum = 0;
@@ -170,7 +168,7 @@ static void test_set_foreach_and_from_vec(void)
     WC_ASSERT_EQ_INT(sum, 6);
 
     HashSet_destroy(s);
-    GenVec_destroy(v);
+    GenVec_destroy(&v);
 }
 
 
@@ -186,42 +184,39 @@ static void test_set_foreach_and_from_vec(void)
 //     WC_RUN(test_set_foreach_and_from_vec);
 // }
 
-/* -- Phase 6: WC_OPS / VEC_CREATE_OF — ops picked from T ------------------- */
+/* -- Phase 6: WC_OPS / VEC_OF — ops picked from T ------------------- */
 
 static void test_create_of_pod_uses_null_ops(void)
 {
-    GenVec* v = VEC_CREATE_OF(int, 8);
-    WC_ASSERT_NOT_NULL(v);
+    GenVec v = VEC_OF(int, 8);
 
     int x = 42;
-    GenVec_push(v, (u8*)&x);
-    WC_ASSERT_EQ_INT(VEC_AT(v, int, 0), 42);
+    GenVec_push(&v, (u8*)&x);
+    WC_ASSERT_EQ_INT(VEC_AT(&v, int, 0), 42);
 
-    GenVec_destroy(v);
+    GenVec_destroy(&v);
 }
 
 static void test_create_of_String_by_value(void)
 {
     /* sizeof(String) bytes per slot; wc_str_ops supplies the del_fn that frees
      * the heap str on destroy. */
-    GenVec* v = VEC_CREATE_OF(String, 4);
-    WC_ASSERT_NOT_NULL(v);
-    WC_ASSERT_EQ_U64(v->data_size, sizeof(String));
+    GenVec v = VEC_OF(String, 4);
+    WC_ASSERT_EQ_U64(v.data_size, sizeof(String));
 
-    VEC_PUSH_CSTR(v, "hello");
-    VEC_PUSH_CSTR(v, "world");
-    WC_ASSERT_EQ_U64(v->size, 2);
+    VEC_PUSH_CSTR(&v, "hello");
+    VEC_PUSH_CSTR(&v, "world");
+    WC_ASSERT_EQ_U64(v.size, 2);
 
-    GenVec_destroy(v);
+    GenVec_destroy(&v);
 }
 
 static void test_create_of_String_by_pointer(void)
 {
     /* String* slots (8 bytes); wc_str_ptr_ops frees each heap String on
      * destroy. */
-    GenVec* v = VEC_CREATE_OF(String*, 4);
-    WC_ASSERT_NOT_NULL(v);
-    WC_ASSERT_EQ_U64(v->data_size, sizeof(String*));
+    GenVec v = VEC_OF(String*, 4);
+    WC_ASSERT_EQ_U64(v.data_size, sizeof(String*));
 
     String* a = String_from_cstr("a");
     String* b = String_from_cstr("b");
@@ -229,11 +224,11 @@ static void test_create_of_String_by_pointer(void)
     // the String) — that would leave `a`/`b` themselves un-freed and
     // unowned. VEC_PUSH_MOVE transfers ownership into the vector instead,
     // matching the "frees each heap String on destroy" intent above.
-    VEC_PUSH_MOVE(v, a);
-    VEC_PUSH_MOVE(v, b);
-    WC_ASSERT_EQ_U64(v->size, 2);
+    VEC_PUSH_MOVE(&v, a);
+    VEC_PUSH_MOVE(&v, b);
+    WC_ASSERT_EQ_U64(v.size, 2);
 
-    GenVec_destroy(v);
+    GenVec_destroy(&v);
 }
 
 static void test_map_create_of(void)
@@ -259,31 +254,31 @@ static void test_vec_at_asserts_elem_size_passes_correct_t(void)
 {
     /* The assert fires only on mismatch, so VEC_AT with the right T must run
      * the check and still return the element. */
-    GenVec* v = GenVec_create(4, sizeof(int), NULL);
+    GenVec v = GenVec_create(WC_LIBC, 4, sizeof(int), NULL);
     for (int i = 1; i <= 3; i++) {
-        GenVec_push(v, (u8*)&i);
+        GenVec_push(&v, (u8*)&i);
     }
 
-    int sum = VEC_AT(v, int, 0) + VEC_AT(v, int, 1) + VEC_AT(v, int, 2);
+    int sum = VEC_AT(&v, int, 0) + VEC_AT(&v, int, 1) + VEC_AT(&v, int, 2);
     WC_ASSERT_EQ_INT(sum, 6);
 
-    *VEC_AT_MUT(v, int, 0) = 10;
-    WC_ASSERT_EQ_INT(VEC_AT(v, int, 0), 10);
+    *VEC_AT_MUT(&v, int, 0) = 10;
+    WC_ASSERT_EQ_INT(VEC_AT(&v, int, 0), 10);
 
-    GenVec_destroy(v);
+    GenVec_destroy(&v);
 }
 
 static void test_vec_front_back_assert_elem_size(void)
 {
-    GenVec* v = GenVec_create(4, sizeof(int), NULL);
+    GenVec v = GenVec_create(WC_LIBC, 4, sizeof(int), NULL);
     for (int i = 1; i <= 3; i++) {
-        GenVec_push(v, (u8*)&i);
+        GenVec_push(&v, (u8*)&i);
     }
 
-    WC_ASSERT_EQ_INT(VEC_FRONT(v, int), 1);
-    WC_ASSERT_EQ_INT(VEC_BACK(v, int), 3);
+    WC_ASSERT_EQ_INT(VEC_FRONT(&v, int), 1);
+    WC_ASSERT_EQ_INT(VEC_BACK(&v, int), 3);
 
-    GenVec_destroy(v);
+    GenVec_destroy(&v);
 }
 
 
@@ -291,16 +286,16 @@ static void test_vec_front_back_assert_elem_size(void)
 
 static void test_vec_foreach_if_else_prefix(void)
 {
-    GenVec* v = GenVec_create(4, sizeof(int), NULL);
+    GenVec v = GenVec_create(WC_LIBC, 4, sizeof(int), NULL);
     for (int i = 1; i <= 3; i++) {
-        GenVec_push(v, (u8*)&i);
+        GenVec_push(&v, (u8*)&i);
     }
 
     int count = 0;
     // leading if/else must still compile: the foreach is a plain for loop with
     // no dangling-statement traps
-    if (v->size > 0) {
-        VEC_FOREACH(v, int, p) {
+    if (v.size > 0) {
+        VEC_FOREACH(&v, int, p) {
             count++;
         }
     } else {
@@ -309,7 +304,7 @@ static void test_vec_foreach_if_else_prefix(void)
 
     WC_ASSERT_EQ_INT(count, 3);
 
-    GenVec_destroy(v);
+    GenVec_destroy(&v);
 }
 
 
@@ -317,19 +312,19 @@ static void test_vec_foreach_if_else_prefix(void)
 
 static void test_genvec_unsafe_getters_in_range(void)
 {
-    GenVec* v = GenVec_create(4, sizeof(int), NULL);
+    GenVec v = GenVec_create(WC_LIBC, 4, sizeof(int), NULL);
     for (int i = 1; i <= 3; i++) {
-        GenVec_push(v, (u8*)&i);
+        GenVec_push(&v, (u8*)&i);
     }
 
-    const u8* cp = GenVec_get_ptr_unsafe(v, 1);
+    const u8* cp = GenVec_get_ptr_unsafe(&v, 1);
     WC_ASSERT_EQ_INT(*(const int*)cp, 2);
 
-    u8* mp = GenVec_get_ptr_mut_unsafe(v, 2);
+    u8* mp = GenVec_get_ptr_mut_unsafe(&v, 2);
     *(int*)mp = 30;
-    WC_ASSERT_EQ_INT(VEC_AT(v, int, 2), 30);
+    WC_ASSERT_EQ_INT(VEC_AT(&v, int, 2), 30);
 
-    GenVec_destroy(v);
+    GenVec_destroy(&v);
 }
 
 

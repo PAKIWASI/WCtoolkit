@@ -1,8 +1,5 @@
 #include "wc_test_allocator.h"
-#include "common.h"
-#include "wc_allocator.h"
 
-#include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -113,20 +110,16 @@ static void ta_untrack(wc_test_alloc* ta, wc_ta_block* b)
 }
 
 
-// Backing dispatch (old or new API)
+// Backing
 
 static inline void* ta_b_alloc(wc_test_alloc* ta, size_t size, size_t align)
 {
-    return ta->use_backing2 ? wc2_alloc(ta->backing2, size, align) : wc_alloc_ex(&ta->backing, size, align);
+    return wc_alloc(ta->backing, size, align);
 }
 
 static inline void ta_b_free(wc_test_alloc* ta, void* p, size_t size, size_t align)
 {
-    if (ta->use_backing2) {
-        wc2_free(ta->backing2, p, size, align);
-    } else {
-        wc_free_ex(&ta->backing, p, size, align);
-    }
+    wc_free(ta->backing, p, size, align);
 }
 
 
@@ -254,22 +247,15 @@ void wc_test_alloc_cb_free(void* ctx, void* p, size_t size, size_t align)
 
 // Lifecycle
 
-void wc_test_alloc_init(wc_test_alloc* ta, const wc_allocator_t* backing)
+void wc_test_alloc_init(wc_test_alloc* ta, wc_allocator backing)
 {
     memset(ta, 0, sizeof(*ta));
-    ta->backing = backing ? *backing : wc_libc_allocator;
+    ta->backing = backing;
     ta->cap     = WC_TA_INIT_CAP;
     ta->blocks  = calloc(ta->cap, sizeof(wc_ta_block));
     if (!ta->blocks) {
         FATAL("wc_test_alloc: table calloc failed");
     }
-}
-
-void wc_test_alloc_init2(wc_test_alloc* ta, wc_allocator backing)
-{
-    wc_test_alloc_init(ta, NULL);
-    ta->backing2     = backing;
-    ta->use_backing2 = 1;
 }
 
 u64 wc_test_alloc_destroy(wc_test_alloc* ta)
@@ -296,23 +282,13 @@ u64 wc_test_alloc_destroy(wc_test_alloc* ta)
     return leaks;
 }
 
-wc_allocator_t wc_test_alloc_allocator(wc_test_alloc* ta)
-{
-    return (wc_allocator_t){
-        .alloc   = wc_test_alloc_cb_alloc,
-        .realloc = wc_test_alloc_cb_realloc,
-        .free    = wc_test_alloc_cb_free,
-        .ctx     = ta,
-    };
-}
-
 static const wc_alloc_vtable wc_test_alloc_vt = {
     .alloc   = wc_test_alloc_cb_alloc,
     .realloc = wc_test_alloc_cb_realloc,
     .free    = wc_test_alloc_cb_free,
 };
 
-wc_allocator wc_test_alloc_allocator2(wc_test_alloc* ta)
+wc_allocator wc_test_alloc_allocator(wc_test_alloc* ta)
 {
     return (wc_allocator){.vt = &wc_test_alloc_vt, .ctx = ta};
 }

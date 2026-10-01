@@ -6,6 +6,9 @@
 #include <string.h>
 
 
+// TRANSITIONAL (until Phase 5): element deep copies allocate from libc.
+#define MAP_ELEM_ALLOC WC_LIBC
+
 #define GET_ELM(set, i) ((set)->elms + ((u64)(set)->elm_size * (i)))
 #define GET_PSL(set, i) ((set)->psls + (i))
 
@@ -117,7 +120,7 @@ b8 HashSet_insert(HashSet* set, const u8* elm)
     // Stage a deep copy into scratch before calling set_insert.
     // set_insert only does raw memcpy moves between slots — it never calls copy/del.
     if (e_cp) {
-        e_cp(STAGE_ELM(set), elm);
+        e_cp(MAP_ELEM_ALLOC, STAGE_ELM(set), elm);
     } else {
         memcpy(STAGE_ELM(set), elm, set->elm_size);
     }
@@ -130,31 +133,31 @@ b8 HashSet_insert(HashSet* set, const u8* elm)
 
 // Insert element — MOVE semantics (elm is nulled on insert, or freed if duplicate).
 // Returns 1 if already existed (elm freed), 0 if newly inserted.
-b8 HashSet_insert_move(HashSet* set, u8** elm)
+b8 HashSet_insert_move(HashSet* set, u8* elm)
 {
-    CHECK_FATAL(!*elm, "*elm null");
-
     wc_move_fn   e_mv  = SET_MOVE(set->ops);
     wc_delete_fn e_del = SET_DEL(set->ops);
 
-    CHECK_FATAL(!e_mv, "elm move func required");
-
     LOOKUP_RES res;
-    u8             out_psl;
-    u64            slot = set_lookup(set, *elm, &res, &out_psl);
+    u8         out_psl;
+    u64        slot = set_lookup(set, elm, &res, &out_psl);
 
     if (res == FOUND) {
-        // Already exists — consume (destroy) the incoming duplicate.
+        // Already exists: consume (destroy) the incoming duplicate, leave it zeroed.
         if (e_del) {
-            e_del(*elm);
+            e_del(elm);
         }
-        free(*elm);
-        *elm = NULL;
+        memset(elm, 0, set->elm_size);
         return 1;
     }
 
-    // Stage: move elm into STAGE_ELM — transfers heap resource, nulls *elm.
-    e_mv(STAGE_ELM(set), elm);
+    // Stage: move elm into STAGE_ELM (move_fn or memcpy), source zeroed.
+    if (e_mv) {
+        e_mv(STAGE_ELM(set), elm);
+    } else {
+        memcpy(STAGE_ELM(set), elm, set->elm_size);
+    }
+    memset(elm, 0, set->elm_size);
 
     set_insert(set, STAGE_ELM(set), out_psl, slot);
     set_maybe_resize(set);
@@ -307,7 +310,7 @@ void HashSet_copy(HashSet* dest, const HashSet* src)
         *GET_PSL(dest, i) = psl;
 
         if (e_cp) {
-            e_cp(GET_ELM(dest, i), GET_ELM(src, i));
+            e_cp(MAP_ELEM_ALLOC, GET_ELM(dest, i), GET_ELM(src, i));
         } else {
             memcpy(GET_ELM(dest, i), GET_ELM(src, i), src->elm_size);
         }

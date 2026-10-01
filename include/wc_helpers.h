@@ -20,36 +20,28 @@
  * ------------------------------------------
  *
  * BY VALUE  (slot holds the full struct, sizeof(T) bytes)
- *   copy_fn(u8* dest, const u8* src)
+ *   copy_fn(wc_allocator dst, u8* dest, const u8* src)
  *     dest  — raw bytes of the slot (uninitialised — treat as blank)
- *     src   — raw bytes of the source element
- *     job   — deep-copy all owned resources into dest; DO NOT free dest first.
- *             If delegating to a function that calls destroy internally (e.g.
- *             String_copy), you MUST first init dest to a valid empty state.
+ *     job   — deep-copy src into dest, allocating owned resources from `dst`
+ *             (the container's allocator). DO NOT free dest first.
  *
- *   move_fn(u8* dest, u8** src)
- *     dest  — raw bytes of the slot (uninitialised)
- *     *src  — heap pointer to the source T
- *     job   — memcpy the struct fields, free(*src), *src = NULL
- *             The data ptr moves; only the container struct is freed.
+ *   move_fn(u8* dest, u8* src)
+ *     job   — dest takes over everything src owned; leave src ZEROED.
+ *             For plain structs this is memcpy + memset(0), which is also
+ *             what containers do when move_fn is NULL.
  *
  *   del_fn(u8* elm)
- *     elm   — raw bytes of the slot
- *     job   — free owned resources (e.g. data buffer) but NOT elm itself
- *             → call String_destroy_stk / GenVec_destroy_stk etc.
+ *     job   — free owned resources (with the element's OWN stored allocator)
+ *             but NOT elm itself → GenVec_destroy, String_destroy_stk, ...
  *
  * BY POINTER  (slot holds T*, sizeof(T*) = 8 bytes)
- *   copy_fn(u8* dest, const u8* src)
- *     *(T**)src  is the source pointer
- *     *(T**)dest must be set to a newly heap-allocated deep copy
+ *   copy_fn: *(T**)dest = a new shell from `dst` holding a deep copy (WC_BOX_IN)
+ *   move_fn: *(T**)dest = *(T**)src;  *(T**)src = NULL;
+ *   del_fn : destroy the pointee, then free the shell with the pointee's own
+ *            allocator (shell allocator == child allocator, plan D6)
  *
- *   move_fn(u8* dest, u8** src)
- *     *(T**)dest = *(T**)src;  *src = NULL;
- *
- *   del_fn(u8* elm)
- *     *(T**)elm  is the pointer stored in the slot
- *     job — fully destroy the heap object
- *           → call String_destroy / GenVec_destroy etc.
+ * TRANSITIONAL (until Phase 4): String does not store an allocator yet, so the
+ * String callbacks ignore `dst` and use libc, exactly as String itself does.
  */
 
 #include "wc_string.h"
@@ -59,7 +51,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-_Static_assert(sizeof(String) == sizeof(GenVec), "String and GenVec sizes must match for value-storage helpers");
 
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -67,12 +58,13 @@ _Static_assert(sizeof(String) == sizeof(GenVec), "String and GenVec sizes must m
  *
  * String is SSO-based (no data_size / data fields).
  * str_copy  — delegates to String_copy()  (handles SSO vs heap correctly)
- * str_move  — memcpy the struct shell, free the source container
+ * str_move  — memcpy the struct, zero the source
  * str_del   — delegates to String_destroy_stk() (frees heap buf if any)
  * ══════════════════════════════════════════════════════════════════════════ */
 
-static inline void str_copy(u8* dest, const u8* src)
+static inline void str_copy(wc_allocator dst, u8* dest, const u8* src)
 {
+    (void)dst; // TRANSITIONAL: String allocates from libc until Phase 4
     String*       d = (String*)dest;
     const String* s = (const String*)src;
     memcpy(d, s, sizeof(String));
@@ -87,13 +79,12 @@ static inline void str_copy(u8* dest, const u8* src)
     memcpy(d->heap, s->heap, s->capacity);
 }
 
-static inline void str_move(u8* dest, u8** src)
+static inline void str_move(u8* dest, u8* src)
 {
-    // *src is a heap-allocated String* — move its contents into the slot,
-    // then free the shell. Works for both SSO (copies stk[]) and heap mode.
-    memcpy(dest, *src, sizeof(String));
-    free(*src); // TODO: String is by value so why do we free here??
-    *src = NULL;
+    // Works for both SSO (copies stk[]) and heap mode (the heap pointer moves).
+    // A zeroed String reads as heap mode with heap == NULL: destroy-safe.
+    memcpy(dest, src, sizeof(String));
+    memset(src, 0, sizeof(String));
 }
 
 static inline void str_del(u8* elm)
@@ -115,15 +106,16 @@ static inline void str_print(const u8* elm)
  * str_del_ptr  — delegates to String_destroy() (frees buf + struct)
  * ══════════════════════════════════════════════════════════════════════════ */
 
-static inline void str_copy_ptr(u8* dest, const u8* src)
+static inline void str_copy_ptr(wc_allocator dst, u8* dest, const u8* src)
 {
+    (void)dst; // TRANSITIONAL: heap String shells come from libc until Phase 4
     *(String**)dest = String_from_String(*(const String**)src);
 }
 
-static inline void str_move_ptr(u8* dest, u8** src)
+static inline void str_move_ptr(u8* dest, u8* src)
 {
     *(String**)dest = *(String**)src;
-    *src            = NULL;
+    *(String**)src  = NULL;
 }
 
 static inline void str_del_ptr(u8* elm)
@@ -153,21 +145,19 @@ static inline int str_cmp_ptr(const u8* a, const u8* b, u64 size)
  * 3.  GENVEC BY VALUE  (vec of vecs)
  * ══════════════════════════════════════════════════════════════════════════ */
 
-static inline void vec_copy(u8* dest, const u8* src)
+static inline void vec_copy(wc_allocator dst, u8* dest, const u8* src)
 {
-    GenVec_copy((GenVec*)dest, (const GenVec*)src);
+    *(GenVec*)dest = GenVec_copy(dst, (const GenVec*)src); // inner vec follows the outer container
 }
 
-static inline void vec_move(u8* dest, u8** src)
+static inline void vec_move(u8* dest, u8* src)
 {
-    memcpy(dest, *src, sizeof(GenVec));  // transfer all fields (incl. data ptr and ops ptr)
-    free(*src);                          // free container struct only
-    *src = NULL;
+    GenVec_move((GenVec*)dest, (GenVec*)src); // memcpy + zero src
 }
 
 static inline void vec_del(u8* elm)
 {
-    GenVec_destroy_stk((GenVec*)elm);    // free data buffer, NOT the slot
+    GenVec_destroy((GenVec*)elm); // frees data with the inner vec's own allocator, NOT the slot
 }
 
 static inline void vec_print_int(const u8* elm)
@@ -186,23 +176,27 @@ static inline void vec_print_int(const u8* elm)
  * 4.  GENVEC BY POINTER  (slot holds GenVec*)
  * ══════════════════════════════════════════════════════════════════════════ */
 
-static inline void vec_copy_ptr(u8* dest, const u8* src)
+static inline void vec_copy_ptr(wc_allocator dst, u8* dest, const u8* src)
 {
-    GenVec* d = malloc(sizeof(GenVec));
-    CHECK_FATAL(!d, "malloc failed");
-    GenVec_copy(d, *(const GenVec**)src);
-    *(GenVec**)dest = d;
+    // shell and contents both from dst: the shell allocator equals the child's (D6)
+    *(GenVec**)dest = WC_BOX_IN(dst, GenVec, GenVec_copy, *(const GenVec* const*)src);
 }
 
-static inline void vec_move_ptr(u8* dest, u8** src)
+static inline void vec_move_ptr(u8* dest, u8* src)
 {
     *(GenVec**)dest = *(GenVec**)src;
-    *src            = NULL;
+    *(GenVec**)src  = NULL;
 }
 
 static inline void vec_del_ptr(u8* elm)
 {
-    GenVec_destroy(*(GenVec**)elm);
+    GenVec* v = *(GenVec**)elm;
+    if (!v) {
+        return;
+    }
+    wc_allocator a = v->alloc; // read before destroy zeroes it
+    GenVec_destroy(v);
+    wc_free(a, v, sizeof(GenVec), alignof(GenVec));
 }
 
 static inline void vec_print_int_ptr(const u8* elm)
@@ -218,7 +212,7 @@ static inline void vec_print_int_ptr(const u8* elm)
  * No per-instance overhead — all vectors of the same type share the pointer.
  *
  * Usage:
- *   GenVec* v = GenVec_create(8, sizeof(String), &wc_str_ops);
+ *   GenVec v = GenVec_create(WC_LIBC, 8, sizeof(String), &wc_str_ops);
  *   HashMap* m = HashMap_create(..., &wc_str_ops, &wc_str_ops);
  * ══════════════════════════════════════════════════════════════════════════ */
 

@@ -11,20 +11,20 @@
 int main(void)
 {
     Arena a;
-    Arena_create(&a, WC_LIBC, nKB(1));            // region comes from libc
-    WC_SET_ALLOCATOR(Arena_allocator_legacy(&a)); // global -> arena (transitional, D11)
+    Arena_create(&a, WC_LIBC, nKB(1)); // region comes from libc
 
-    GenVec* v = VEC_CREATE_OF(int, 5);
+    // the vector's storage comes from the arena: no global allocator
+    GenVec v = VEC_OF_IN(Arena_allocator(&a), int, 5);
 
     for (int i = 0; i < 70; i++) {
-        VEC_PUSH(v, i);
+        VEC_PUSH(&v, i);
     }
 
-    GenVec_print(v, wc_print_int); putchar('\n');
+    GenVec_print(&v, wc_print_int); putchar('\n');
 
     print_hex(a.base, nKB(1), 32);
 
-    WC_SET_ALLOCATOR((wc_libc_allocator));
+    GenVec_destroy(&v); // last block of the arena: rewinds it
     Arena_destroy(&a);
     return 0;
 }

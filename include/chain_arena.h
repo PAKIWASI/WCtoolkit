@@ -33,9 +33,9 @@
 typedef struct ChainArenaNode {
     struct ChainArenaNode* prev;
     struct ChainArenaNode* next;
-    u64                    cap;  // usable bytes in data[]
-    u64                    used; // bytes consumed in data[]
-    u8                     data[];
+    u64                    cap;    // usable bytes in data[]
+    u64                    used;   // bytes consumed in data[]
+    u8                     data[]; // TODO: fuck this bullshit and get the previous in
 } ChainArenaNode;
 
 typedef struct ChainArena {
@@ -115,16 +115,16 @@ static inline void wc_chain_arena_scratch_cleanup(ChainArenaScratch* s)
 
 // Typed allocation macros
 #define CHAIN_ARENA_ALLOC(arena, T)      ((T*)ChainArena_alloc_aligned((arena), sizeof(T), alignof(T)))
-#define CHAIN_ARENA_ALLOC_N(arena, T, n) ((T*)ChainArena_alloc_aligned((arena), wc2_mul((n), sizeof(T)), alignof(T)))
+#define CHAIN_ARENA_ALLOC_N(arena, T, n) ((T*)ChainArena_alloc_aligned((arena), wc_mul((n), sizeof(T)), alignof(T)))
 #define CHAIN_ARENA_ALLOC_ZERO(arena, T)                  \
     ({                                                    \
-        (T)* _caz = CHAIN_ARENA_ALLOC(arena, T);            \
+        (T)* _caz = CHAIN_ARENA_ALLOC(arena, T);          \
         _caz ? (T*)memset(_caz, 0, sizeof(T)) : (T*)NULL; \
     })
 #define CHAIN_ARENA_ALLOC_ZERO_N(arena, T, n)                     \
     ({                                                            \
         u64 _cazn = (u64)(n);                                     \
-        (T)*  _caz  = CHAIN_ARENA_ALLOC_N(arena, T, _cazn);         \
+        (T)* _caz = CHAIN_ARENA_ALLOC_N(arena, T, _cazn);         \
         _caz ? (T*)memset(_caz, 0, sizeof(T) * _cazn) : (T*)NULL; \
     })
 

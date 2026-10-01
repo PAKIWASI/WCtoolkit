@@ -1,12 +1,9 @@
 #include "wc_allocator.h"
 #include <stddef.h>
 
-_Thread_local wc_allocator_t wc_default_allocator = WC_DEFAULT_ALLOCATOR;
-
-const wc_allocator_t wc_libc_allocator = { 0 };
 
 
-/* wc_borrowed: non-owning allocator */
+/* wc_borrowed: non-owning allocator (plan 3.2) */
 
 static void* wc_borrowed_alloc(void* ctx, size_t size, size_t align)
 {

@@ -8,6 +8,7 @@ void Arena_suite(void);
 void ChainArena_suite(void);
 void allocator_core_suite(void);
 void gen_vector_suite(void);
+void gen_vector_alloc_suite(void);
 void HashMap_suite(void);
 void HashSet_suite(void);
 void Stack_suite(void);
@@ -36,6 +37,8 @@ int main(void)
     ChainArena_suite();
 
     gen_vector_suite();
+
+    gen_vector_alloc_suite();
 
     bit_vector_suite();
 

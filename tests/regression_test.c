@@ -86,7 +86,7 @@ static void test_A3_chain_arena_oversize_request(void)
     u8* p = NULL;
     u64 n = 0;
     for (u64 cap = 64; cap <= nKB(64); cap *= 2) { // GenVec-style doubling past a node
-        p = wc2_realloc(al, p, n, cap, 8);
+        p = wc_realloc(al, p, n, cap, 8);
         WC_ASSERT_NOT_NULL(p);
         memset(p + n, (int)(cap & 0xFF), cap - n);
         n = cap;
@@ -106,7 +106,7 @@ static void test_A4_arena_grows_last_block_in_place(void)
     u8* p = NULL;
     u64 n = 0;
     for (u64 cap = 8; cap <= 512; cap *= 2) {
-        u8* q = wc2_realloc(al, p, n, cap, 8);
+        u8* q = wc_realloc(al, p, n, cap, 8);
         WC_ASSERT(p == NULL || q == p); // never moves: it is always the last block
         p = q;
         n = cap;
@@ -122,35 +122,35 @@ static void test_A4_arena_grows_last_block_in_place(void)
 
 /* ── Golden scenarios (behaviour to preserve through the refactor) ───────── */
 
-// Baseline measured on the pre-refactor code (Phase 0). The refactor must keep
-// the contents identical and must not use MORE arena bytes; Phase 2's exit
-// criterion (in-place realloc, size-derived alignment) is to go below it.
-#define GOLDEN_MAIN_ARENA_USED_BASELINE 340
+// Baseline history: 964 bytes before the refactor (Phase 0), 340 after
+// in-place arena realloc (Phase 1), 292 after Phase 2 (no heap shell in the
+// arena, 4-byte alignment for int: exactly 73 x 4 bytes, zero waste).
+// The contents must stay identical and the arena must never use MORE than the
+// current baseline; lower it when a change improves it.
+#define GOLDEN_MAIN_ARENA_USED_BASELINE 292
 
-// src/main.c scenario: 70 pushes of int into a vector, global allocator = 1 KB arena.
+// src/main.c scenario: 70 pushes of int into a vector whose storage is a 1 KB arena.
 static void test_golden_main_70_push(void)
 {
-    Arena          arena;
-    Arena_create(&arena, WC_LIBC, nKB(1));
-    Arena*         a     = &arena;
-    wc_allocator_t saved = wc_default_allocator;
-    WC_SET_ALLOCATOR(Arena_allocator_legacy(a));
+    Arena a;
+    Arena_create(&a, WC_LIBC, nKB(1));
 
-    GenVec* v = VEC_CREATE_OF(int, 5);
+    GenVec v = VEC_OF_IN(Arena_allocator(&a), int, 5);
     for (int i = 0; i < 70; i++) {
-        VEC_PUSH(v, i);
+        VEC_PUSH(&v, i);
     }
 
-    WC_ASSERT_EQ_U64(GenVec_size(v), 70);
+    WC_ASSERT_EQ_U64(GenVec_size(&v), 70);
     for (int i = 0; i < 70; i++) {
-        WC_ASSERT_EQ_INT(*(const int*)GenVec_get_ptr(v, (u64)i), i);
+        WC_ASSERT_EQ_INT(*(const int*)GenVec_get_ptr(&v, (u64)i), i);
     }
-    u64 used = Arena_used(a);
+    u64 used = Arena_used(&a);
     WC_ASSERT(used <= GOLDEN_MAIN_ARENA_USED_BASELINE);
     printf("[arena used %llu / baseline %d] ", (unsigned long long)used, GOLDEN_MAIN_ARENA_USED_BASELINE);
 
-    WC_SET_ALLOCATOR(saved);
-    Arena_destroy(a); // arena memory: nothing else to free
+    GenVec_destroy(&v);
+    WC_ASSERT_EQ_U64(Arena_used(&a), 0); // the vector was the only block: freed by rewinding
+    Arena_destroy(&a);
 }
 
 // Same 70 pushes on libc: exact contents and final capacity.
@@ -158,16 +158,16 @@ static void test_golden_main_70_push(void)
 
 static void test_golden_main_70_push_libc(void)
 {
-    GenVec* v = VEC_CREATE_OF(int, 5);
+    GenVec v = VEC_OF(int, 5);
     for (int i = 0; i < 70; i++) {
-        VEC_PUSH(v, i);
+        VEC_PUSH(&v, i);
     }
-    WC_ASSERT_EQ_U64(GenVec_size(v), 70);
-    WC_ASSERT_EQ_U64(GenVec_capacity(v), GOLDEN_MAIN_LIBC_CAPACITY);
+    WC_ASSERT_EQ_U64(GenVec_size(&v), 70);
+    WC_ASSERT_EQ_U64(GenVec_capacity(&v), GOLDEN_MAIN_LIBC_CAPACITY);
     for (int i = 0; i < 70; i++) {
-        WC_ASSERT_EQ_INT(*(const int*)GenVec_get_ptr(v, (u64)i), i);
+        WC_ASSERT_EQ_INT(*(const int*)GenVec_get_ptr(&v, (u64)i), i);
     }
-    GenVec_destroy(v);
+    GenVec_destroy(&v);
 }
 
 static inline u64 golden_mix(u64 h, u64 x)

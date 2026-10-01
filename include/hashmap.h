@@ -64,15 +64,16 @@ void HashMap_destroy_stk(HashMap* map) __attribute__((nonnull(1)));
 // Returns 1 if key existed (updated), 0 if new key inserted.
 b8 HashMap_put(HashMap* map, const u8* key, const u8* val) __attribute__((nonnull(1, 2, 3)));
 
-// Insert or update — MOVE semantics (key and val are u8**, both nulled).
+// Insert or update, MOVE semantics: key and val point at the caller's elements, both left zeroed
+// (a duplicate key is destroyed; the map keeps its own). move_fn optional (memcpy + zero).
 // Returns 1 if key existed (updated), 0 if new key inserted.
-b8 HashMap_put_move(HashMap* map, u8** key, u8** val) __attribute__((nonnull(1, 2, 3)));
+b8 HashMap_put_move(HashMap* map, u8* key, u8* val) __attribute__((nonnull(1, 2, 3)));
 
 // Mixed: key copied, val moved.
-b8 HashMap_put_val_move(HashMap* map, const u8* key, u8** val) __attribute__((nonnull(1, 2, 3)));
+b8 HashMap_put_val_move(HashMap* map, const u8* key, u8* val) __attribute__((nonnull(1, 2, 3)));
 
 // Mixed: key moved, val copied.
-b8 HashMap_put_key_move(HashMap* map, u8** key, const u8* val) __attribute__((nonnull(1, 2, 3)));
+b8 HashMap_put_key_move(HashMap* map, u8* key, const u8* val) __attribute__((nonnull(1, 2, 3)));
 
 // Get value for key — copies into val. Returns 1 if found, 0 if not.
 b8 HashMap_get(const HashMap* map, const u8* key, u8* val) __attribute__((nonnull(1, 2, 3)));

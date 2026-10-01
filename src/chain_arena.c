@@ -1,5 +1,6 @@
 #include "chain_arena.h"
 #include "common.h"
+#include "wc_allocator.h"
 #include "wc_errno.h"
 
 #include <stdint.h>
@@ -23,7 +24,7 @@ static ChainArenaNode* node_new(const ChainArena* arena, u64 cap)
     if (cap > (u64)PTRDIFF_MAX - NODE_HEADER) {
         return NULL;
     }
-    ChainArenaNode* n = wc2_alloc(arena->backing, NODE_HEADER + cap, NODE_ALIGN);
+    ChainArenaNode* n = wc_alloc(arena->backing, NODE_HEADER + cap, NODE_ALIGN);
     if (!n) {
         return NULL;
     }
@@ -36,7 +37,7 @@ static ChainArenaNode* node_new(const ChainArena* arena, u64 cap)
 
 static void node_free(const ChainArena* arena, ChainArenaNode* n)
 {
-    wc2_free(arena->backing, n, NODE_HEADER + n->cap, NODE_ALIGN);
+    wc_free(arena->backing, n, NODE_HEADER + n->cap, NODE_ALIGN);
 }
 
 // Free `n` and every node after it.
