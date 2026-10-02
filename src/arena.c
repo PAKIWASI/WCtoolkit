@@ -13,7 +13,7 @@
 
 // Debug-only liveness check: catches use after destroy and use of a copied Arena
 // (a copy's `self` still points at the original).
-#define ARENA_CHECK_LIVE(a) CHECK_FATAL((a)->self != (a), "Arena used after destroy, or copied/moved after create")
+#define ARENA_CHECK_LIVE(a) WC_ASSERT((a)->self == (a), "Arena used after destroy, or copied/moved after create")
 
 
 static inline b8 is_pow2(u64 x)
@@ -46,7 +46,7 @@ void Arena_create(Arena* arena, wc_allocator backing, u64 capacity)
 
 void Arena_create_buf(Arena* arena, u8* buf, u64 size)
 {
-    CHECK_FATAL(size == 0, "size can't be zero");
+    WC_ASSERT(size != 0, "size can't be zero");
 
     *arena = (Arena){
         .backing   = wc_borrowed,
@@ -91,8 +91,8 @@ u8* Arena_alloc(Arena* arena, u64 size)
 u8* Arena_alloc_aligned(Arena* arena, u64 size, u64 align)
 {
     ARENA_CHECK_LIVE(arena);
-    CHECK_FATAL(size == 0, "can't have allocation of size = 0");
-    CHECK_FATAL(!is_pow2(align), "alignment must be a power of two");
+    WC_ASSERT(size != 0, "can't have allocation of size = 0");
+    WC_ASSERT(is_pow2(align), "alignment must be a power of two");
 
     // Align the ADDRESS, not the offset (A2): the base itself may be unaligned.
     uintptr_t base    = (uintptr_t)arena->base;
@@ -132,7 +132,7 @@ static void* arena_vt_realloc(void* ctx, void* ptr, size_t old_size, size_t new_
     // live in scratch memory and dangle at scope end. The floor (D10) keeps the
     // arena's own invariant (nothing below the mark moves or resizes in place);
     // this check makes the caller's bug loud in debug builds.
-    CHECK_FATAL(new_size > old_size && p < arena->base + arena->floor,
+    WC_ASSERT(new_size <= old_size || p >= arena->base + arena->floor,
                 "growing a block allocated before the current scratch scope (it would dangle at scope end)");
 
     // p keeps its alignment when it stays in place: no re-alignment needed.

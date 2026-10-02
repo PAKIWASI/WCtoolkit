@@ -17,19 +17,19 @@
 
 // Grow if full.
 // D4: capacity == 0 means zeroed / moved-from; mutation is fatal.
-#define MAYBE_GROW_STR(s)                               \
-    do {                                                \
-        FATAL_IF((s)->capacity == 0,                    \
+#define MAYBE_GROW_STR(s)                                        \
+    ({                                                           \
+        FATAL_IF((s)->capacity == 0,                             \
                  "String mutation on zeroed/moved-from String"); \
-        if ((s)->size >= (s)->capacity) {               \
-            if (IS_SSO(s)) {                            \
-                (s)->stk[STR_SSO_SIZE - 1] = '\0';      \
-                stk_to_heap(s);                         \
-            } else {                                    \
-                String_grow(s);                         \
-            }                                           \
-        }                                               \
-    } while (0)
+        if (WC_UNLIKELY((s)->size >= (s)->capacity)) {           \
+            if (IS_SSO(s)) {                                     \
+                (s)->stk[STR_SSO_SIZE - 1] = '\0';               \
+                stk_to_heap(s);                                  \
+            } else {                                             \
+                String_grow(s);                                  \
+            }                                                    \
+        }                                                        \
+    })
 
 
 
@@ -192,7 +192,7 @@ char* String_to_cstr(wc_allocator a, const String* s)
 
 void String_to_cstr_buf(const String* str, char* buff, u64 n)
 {
-    CHECK_FATAL(n < str->size + 1, "buffer not enough");
+    WC_ASSERT(n >= str->size + 1, "buffer not enough");
 
     if (str->size > 0) {
         memcpy(buff, GET_STR(str), str->size);
@@ -265,7 +265,7 @@ void String_append_String_move(String* s, String* other)
 
 char String_pop_char(String* s)
 {
-    CHECK_FATAL(s->size == 0, "cannot pop from empty String");
+    WC_ASSERT(s->size != 0, "cannot pop from empty String");
 
     char c = GET_STR_CHAR(s, --s->size);
     return c;
@@ -273,7 +273,7 @@ char String_pop_char(String* s)
 
 void String_insert_char(String* s, u64 i, char c)
 {
-    CHECK_FATAL(i > s->size, "index out of bounds");
+    WC_ASSERT(i <= s->size, "index out of bounds");
 
     MAYBE_GROW_STR(s);
 
@@ -288,7 +288,7 @@ void String_insert_char(String* s, u64 i, char c)
 
 void String_insert_cstr(String* s, u64 i, const char* cstr)
 {
-    CHECK_FATAL(i > s->size, "index out of bounds");
+    WC_ASSERT(i <= s->size, "index out of bounds");
 
     u64 len = cstr_len(cstr);
     if (len == 0) {
@@ -308,13 +308,13 @@ void String_insert_cstr(String* s, u64 i, const char* cstr)
 
 void String_insert_String(String* s, u64 i, const String* other)
 {
-    CHECK_FATAL(i > s->size, "index out of bounds");
+    WC_ASSERT(i <= s->size, "index out of bounds");
 
     if (other->size == 0) {
         return;
     }
 
-    CHECK_WARN_RET(s == other, , "can't insert aliasing(same) Strings");
+    WARN_IF_RET(s == other, , "can't insert aliasing(same) Strings");
 
     u64 len = other->size;
     ensure_capacity(s, s->size + len);
@@ -329,7 +329,7 @@ void String_insert_String(String* s, u64 i, const String* other)
 
 void String_remove_char(String* s, u64 i)
 {
-    CHECK_FATAL(i >= s->size, "index out of bounds");
+    WC_ASSERT(i < s->size, "index out of bounds");
 
     char* buf = GET_STR(s);
     for (u64 j = i; j < s->size - 1; j++) {
@@ -348,7 +348,7 @@ void String_remove_char(String* s, u64 i)
 
 void String_remove_range(String* s, u64 start, u64 len)
 {
-    CHECK_FATAL(start >= s->size, "start out of bounds");
+    WC_ASSERT(start < s->size, "start out of bounds");
 
     if (len == 0) {
         return;
@@ -437,7 +437,7 @@ u64 String_find_cstr(const String* s, const char* substr)
 
 String String_substr(wc_allocator a, const String* s, u64 start, u64 length)
 {
-    CHECK_FATAL(start >= s->size, "start out of bounds");
+    WC_ASSERT(start < s->size, "start out of bounds");
 
     if (start + length > s->size) {
         length = s->size - start;

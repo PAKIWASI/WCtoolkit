@@ -20,12 +20,10 @@
  * whose element size doesn't match sizeof(T) — i.e. the wrong T was passed.
  * The container never knows T, so this lives in the macro layer.
  */
-#define WC_ASSERT_ELEM_SIZE(vec, T)                                                                     \
-    do {                                                                                                \
-        CHECK_FATAL((vec)->data_size != sizeof(T),                                                      \
-                    "element size mismatch: " #vec " (data_size=%u), macro given " #T " (sizeof=%llu)", \
-                    (unsigned)(vec)->data_size, (unsigned long long)sizeof(T));                         \
-    } while (0)
+#define WC_ASSERT_ELEM_SIZE(vec, T)                                                               \
+    WC_ASSERT((vec)->data_size == sizeof(T),                                                      \
+              "element size mismatch: " #vec " (data_size=%u), macro given " #T " (sizeof=%llu)", \
+              (unsigned)(vec)->data_size, (unsigned long long)sizeof(T))
 
 
 /* WC_OPS — pick the right container_ops for T at compile time.
@@ -87,16 +85,16 @@
  * CONTENT: hashing the raw String struct (pointer, capacity, allocator) makes
  * every lookup miss. NULL = wyhash / memcmp over the key bytes (POD keys).
  * GenVec keys have no content hash: pass explicit functions to HashMap_create. */
-#define WC_HASH_FN(K)                                \
-    _Generic((K*)0,                                  \
-        String*: (custom_hash_fn)wyhash_str,         \
-        String * *: (custom_hash_fn)wyhash_str_ptr,  \
+#define WC_HASH_FN(K)                               \
+    _Generic((K*)0,                                 \
+        String*: (custom_hash_fn)wyhash_str,        \
+        String * *: (custom_hash_fn)wyhash_str_ptr, \
         default: (custom_hash_fn)NULL)
 
-#define WC_CMP_FN(K)                                 \
-    _Generic((K*)0,                                  \
-        String*: (wc_compare_fn)str_cmp,             \
-        String * *: (wc_compare_fn)str_cmp_ptr,      \
+#define WC_CMP_FN(K)                            \
+    _Generic((K*)0,                             \
+        String*: (wc_compare_fn)str_cmp,        \
+        String * *: (wc_compare_fn)str_cmp_ptr, \
         default: (wc_compare_fn)NULL)
 
 #define MAP_OF_IN(A, K, V) \
@@ -113,13 +111,13 @@
 Usage:
     GenVec v = VEC_FROM_ARR(int, 4, ((int[4]){1,2,3,4}));
 */
-#define VEC_FROM_ARR_IN(A, T, n, arr)                        \
-    ({                                                       \
+#define VEC_FROM_ARR_IN(A, T, n, arr)                           \
+    ({                                                          \
         GenVec _vfa = GenVec_create((A), (n), sizeof(T), NULL); \
-        for (u64 _i = 0; _i < (u64)(n); _i++) {              \
-            GenVec_push(&_vfa, (const u8*)&(arr)[_i]);       \
-        }                                                    \
-        _vfa;                                                \
+        for (u64 _i = 0; _i < (u64)(n); _i++) {                 \
+            GenVec_push(&_vfa, (const u8*)&(arr)[_i]);          \
+        }                                                       \
+        _vfa;                                                   \
     })
 #define VEC_FROM_ARR(T, n, arr) VEC_FROM_ARR_IN(WC_LIBC, T, n, arr)
 
@@ -137,28 +135,28 @@ Usage:
 // The source is left zeroed (a pointer source becomes NULL).
 //   String s = ...;       VEC_PUSH_MOVE(&v, s);        // by-value vec
 //   String* p = ...;      VEC_PUSH_MOVE(&v, p);        // by-pointer vec, p == NULL after
-#define VEC_PUSH_MOVE(vec, lval)                        \
-    ({                                                  \
-        WC_ASSERT_ELEM_SIZE((vec), typeof(lval));       \
-        GenVec_push_move((vec), (u8*)&(lval));          \
+#define VEC_PUSH_MOVE(vec, lval)                  \
+    ({                                            \
+        WC_ASSERT_ELEM_SIZE((vec), typeof(lval)); \
+        GenVec_push_move((vec), (u8*)&(lval));    \
     })
 
 // VEC_PUSH_CSTR — build a String from a C string and move it into a String
 // vector, by value (wc_str_ops) or by pointer (wc_str_ptr_ops).
 // Uses the container's own allocator so strings follow their vector.
 #define VEC_PUSH_CSTR(vec, cstr)                                                        \
-    do {                                                                                 \
-        if ((vec)->data_size == sizeof(String)) {                                        \
-            /* by value: build on the vec's allocator, move the struct in */             \
+    ({                                                                                  \
+        if ((vec)->data_size == sizeof(String)) {                                       \
+            /* by value: build on the vec's allocator, move the struct in */            \
             String _wpc_s = String_from_cstr((vec)->alloc, (cstr));                     \
             GenVec_push_move((vec), (u8*)&_wpc_s); /* _wpc_s zeroed by move */          \
-        } else {                                                                         \
-            /* by pointer: box the String in the vec's allocator */                      \
-            WC_ASSERT_ELEM_SIZE((vec), String*);                                         \
-            String* _wpc_p = WC_BOX_IN((vec)->alloc, String, String_from_cstr, (cstr));  \
+        } else {                                                                        \
+            /* by pointer: box the String in the vec's allocator */                     \
+            WC_ASSERT_ELEM_SIZE((vec), String*);                                        \
+            String* _wpc_p = WC_BOX_IN((vec)->alloc, String, String_from_cstr, (cstr)); \
             GenVec_push_move((vec), (u8*)&_wpc_p); /* slot owns the pointer */          \
-        }                                                                                \
-    } while (0)
+        }                                                                               \
+    })
 
 
 // Access
@@ -247,34 +245,34 @@ Usage:
  * MAP_PUT_INT_STR(map, int_key, cstr_literal)
  * Map must have int key, String val, created with &wc_str_ops for val.
  */
-#define MAP_PUT_INT_STR(map, k, cstr_val)                                      \
-    ({                                                                          \
-        String _v = String_from_cstr((map)->alloc, (cstr_val));                 \
-        b8 _r = HashMap_put_val_move((map), (u8*)&(int){(k)}, (u8*)&_v);       \
-        _r;                                                                     \
+#define MAP_PUT_INT_STR(map, k, cstr_val)                                \
+    ({                                                                   \
+        String _v = String_from_cstr((map)->alloc, (cstr_val));          \
+        b8 _r = HashMap_put_val_move((map), (u8*)&(int){(k)}, (u8*)&_v); \
+        _r;                                                              \
     })
 
 /*
  * MAP_PUT_STR_INT(map, cstr_key, int_val)
  * Map must use &wc_str_ops for key.
  */
-#define MAP_PUT_STR_INT(map, cstr_key, int_val)                                \
-    ({                                                                          \
-        String _k = String_from_cstr((map)->alloc, (cstr_key));                 \
-        b8 _r = HashMap_put_key_move((map), (u8*)&_k, (u8*)&(int){int_val});   \
-        _r;                                                                     \
+#define MAP_PUT_STR_INT(map, cstr_key, int_val)                              \
+    ({                                                                       \
+        String _k = String_from_cstr((map)->alloc, (cstr_key));              \
+        b8 _r = HashMap_put_key_move((map), (u8*)&_k, (u8*)&(int){int_val}); \
+        _r;                                                                  \
     })
 
 /*
  * MAP_PUT_STR_STR(map, cstr_key, cstr_val)
  * Map must use &wc_str_ops for both key and val.
  */
-#define MAP_PUT_STR_STR(map, cstr_key, cstr_val)                               \
-    ({                                                                          \
-        String _k = String_from_cstr((map)->alloc, (cstr_key));                 \
-        String _v = String_from_cstr((map)->alloc, (cstr_val));                 \
-        b8 _r = HashMap_put_move((map), (u8*)&_k, (u8*)&_v);                   \
-        _r;                                                                     \
+#define MAP_PUT_STR_STR(map, cstr_key, cstr_val)                \
+    ({                                                          \
+        String _k = String_from_cstr((map)->alloc, (cstr_key)); \
+        String _v = String_from_cstr((map)->alloc, (cstr_val)); \
+        b8 _r = HashMap_put_move((map), (u8*)&_k, (u8*)&_v);    \
+        _r;                                                     \
     })
 
 
@@ -292,15 +290,15 @@ Usage:
 
 #define MAP_PUT_MOVE(map, klval, vlval) HashMap_put_move((map), (u8*)&(klval), (u8*)&(vlval))
 
-#define MAP_PUT_KEY_MOVE(map, klval, val)                          \
-    ({                                                             \
-        typeof(val) _mv = (val);                                   \
+#define MAP_PUT_KEY_MOVE(map, klval, val)                            \
+    ({                                                               \
+        typeof(val) _mv = (val);                                     \
         HashMap_put_key_move((map), (u8*)&(klval), (const u8*)&_mv); \
     })
 
-#define MAP_PUT_VAL_MOVE(map, key, vlval)                          \
-    ({                                                             \
-        typeof(key) _mk = (key);                                   \
+#define MAP_PUT_VAL_MOVE(map, key, vlval)                            \
+    ({                                                               \
+        typeof(key) _mk = (key);                                     \
         HashMap_put_val_move((map), (const u8*)&_mk, (u8*)&(vlval)); \
     })
 
@@ -308,16 +306,16 @@ Usage:
 // Get
 
 // V - Type of the value. Asserts key is present.
-#define MAP_GET(map, V, key)                                                                     \
-    ({                                                                                           \
-        V           _out;                                                                        \
-        typeof(key) _mk = (key);                                                                 \
-        memset(&_out, 0, sizeof(_out));                                                          \
-        /* the lookup must stay OUTSIDE CHECK_FATAL: it compiles to nothing under NDEBUG */      \
-        b8 _found = HashMap_get((map), (const u8*)&_mk, (u8*)&_out);                             \
-        CHECK_FATAL(!_found, "MAP_GET: key not found");                                          \
-        (void)_found;                                                                            \
-        _out;                                                                                    \
+#define MAP_GET(map, V, key)                                                                \
+    ({                                                                                      \
+        V           _out;                                                                   \
+        typeof(key) _mk = (key);                                                            \
+        memset(&_out, 0, sizeof(_out));                                                     \
+        /* the lookup must stay OUTSIDE WC_ASSERT: it is not evaluated under NDEBUG */    \
+        b8 _found = HashMap_get((map), (const u8*)&_mk, (u8*)&_out);                        \
+        WC_ASSERT(_found, "MAP_GET: key not found");                                        \
+        (void)_found;                                                                       \
+        _out;                                                                               \
     })
 
 // Returns b8 (1 if found, 0 if not). Writes *out_ptr on hit.
@@ -344,13 +342,13 @@ Usage:
 
 // Hashset shorthands
 
-#define SET_FROM_VEC(vec, hash_fn, cmp_fn)                                                    \
-    ({                                                                                         \
+#define SET_FROM_VEC(vec, hash_fn, cmp_fn)                                                          \
+    ({                                                                                              \
         HashSet _set = HashSet_create((vec)->alloc, (vec)->data_size, hash_fn, cmp_fn, (vec)->ops); \
-        for (u64 i = 0, _n = GenVec_size(vec); i < _n; i++) {                                  \
-            HashSet_insert(&_set, GenVec_get_ptr((vec), i));                                   \
-        }                                                                                      \
-        _set;                                                                                  \
+        for (u64 i = 0, _n = GenVec_size(vec); i < _n; i++) {                                       \
+            HashSet_insert(&_set, GenVec_get_ptr((vec), i));                                        \
+        }                                                                                           \
+        _set;                                                                                       \
     })
 
 #define SET_INSERT(set, elm)                  \
@@ -362,11 +360,11 @@ Usage:
 // lval is left zeroed (moved in, or destroyed if already present)
 #define SET_INSERT_MOVE(set, lval) HashSet_insert_move((set), (u8*)&(lval))
 
-#define SET_INSERT_CSTR(set, cstr)                              \
-    ({                                                          \
-        String _s = String_from_cstr((set)->alloc, (cstr));     \
-        b8 _r = HashSet_insert_move((set), (u8*)&_s);           \
-        _r;                                                     \
+#define SET_INSERT_CSTR(set, cstr)                          \
+    ({                                                      \
+        String _s = String_from_cstr((set)->alloc, (cstr)); \
+        b8 _r = HashSet_insert_move((set), (u8*)&_s);       \
+        _r;                                                 \
     })
 
 
@@ -406,11 +404,11 @@ Usage:
 
 #define QUEUE_PUSH_MOVE(q, lval) Queue_push_move((q), (u8*)&(lval))
 
-#define QUEUE_PUSH_CSTR(q, cstr)                              \
-    do {                                                       \
+#define QUEUE_PUSH_CSTR(q, cstr)                               \
+    ({                                                         \
         String _qp_s = String_from_cstr((q)->arr.alloc, cstr); \
-        Queue_push_move((q), (u8*)&_qp_s);                    \
-    } while (0)
+        Queue_push_move((q), (u8*)&_qp_s);                     \
+    })
 
 #define QUEUE_POP(q, T)                \
     ({                                 \

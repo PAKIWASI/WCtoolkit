@@ -26,23 +26,23 @@ static void test_ta_counts_and_bytes(void)
 
     u8* p = wc_alloc(a, 100, 16);
     u8* q = wc_alloc(a, 50, 16);
-    WC_ASSERT_EQ_U64(ta.n_alloc, 2);
-    WC_ASSERT_EQ_U64(ta.live_blocks, 2);
-    WC_ASSERT_EQ_U64(ta.live_bytes, 150);
-    WC_ASSERT(wc_test_alloc_owns(&ta, p));
+    WC_EXPECT_EQ_U64(ta.n_alloc, 2);
+    WC_EXPECT_EQ_U64(ta.live_blocks, 2);
+    WC_EXPECT_EQ_U64(ta.live_bytes, 150);
+    WC_EXPECT(wc_test_alloc_owns(&ta, p));
 
     p = wc_realloc(a, p, 100, 300, 16);
-    WC_ASSERT_EQ_U64(ta.n_realloc, 1);
-    WC_ASSERT_EQ_U64(ta.live_bytes, 350);
-    WC_ASSERT_EQ_U64(ta.peak_bytes, 350);
+    WC_EXPECT_EQ_U64(ta.n_realloc, 1);
+    WC_EXPECT_EQ_U64(ta.live_bytes, 350);
+    WC_EXPECT_EQ_U64(ta.peak_bytes, 350);
 
     wc_free(a, p, 300, 16);
     wc_free(a, q, 50, 16);
-    WC_ASSERT_EQ_U64(ta.n_free, 2);
-    WC_ASSERT_EQ_U64(ta.live_bytes, 0);
-    WC_ASSERT_EQ_U64(ta.peak_bytes, 350);
-    WC_ASSERT_EQ_U64(ta.n_errors, 0);
-    WC_ASSERT_EQ_U64(wc_test_alloc_destroy(&ta), 0);
+    WC_EXPECT_EQ_U64(ta.n_free, 2);
+    WC_EXPECT_EQ_U64(ta.live_bytes, 0);
+    WC_EXPECT_EQ_U64(ta.peak_bytes, 350);
+    WC_EXPECT_EQ_U64(ta.n_errors, 0);
+    WC_EXPECT_EQ_U64(wc_test_alloc_destroy(&ta), 0);
 }
 
 static void test_ta_fill_and_realloc_preserves(void)
@@ -52,18 +52,18 @@ static void test_ta_fill_and_realloc_preserves(void)
     wc_allocator a = wc_test_alloc_allocator(&ta);
 
     u8* p = wc_alloc(a, 8, 16);
-    WC_ASSERT_EQ_INT(p[0], WC_TA_FILL);
-    WC_ASSERT_EQ_INT(p[7], WC_TA_FILL);
+    WC_EXPECT_EQ_INT(p[0], WC_TA_FILL);
+    WC_EXPECT_EQ_INT(p[7], WC_TA_FILL);
 
     memcpy(p, "abcdefgh", 8);
     u8* q = wc_realloc(a, p, 8, 16, 16);
-    WC_ASSERT(q != p); // always moves, so stale-pointer bugs surface
-    WC_ASSERT(memcmp(q, "abcdefgh", 8) == 0);
-    WC_ASSERT_EQ_INT(q[15], WC_TA_FILL);
-    WC_ASSERT_FALSE(wc_test_alloc_owns(&ta, p));
+    WC_EXPECT(q != p); // always moves, so stale-pointer bugs surface
+    WC_EXPECT(memcmp(q, "abcdefgh", 8) == 0);
+    WC_EXPECT_EQ_INT(q[15], WC_TA_FILL);
+    WC_EXPECT_FALSE(wc_test_alloc_owns(&ta, p));
 
     wc_free(a, q, 16, 16);
-    WC_ASSERT_EQ_U64(wc_test_alloc_destroy(&ta), 0);
+    WC_EXPECT_EQ_U64(wc_test_alloc_destroy(&ta), 0);
 }
 
 static void test_ta_detects_leak(void)
@@ -75,7 +75,7 @@ static void test_ta_detects_leak(void)
     (void)wc_alloc(a, 32, 16);
     (void)wc_alloc(a, 64, 16);
     fprintf(stderr, "    (expected leak report follows)\n");
-    WC_ASSERT_EQ_U64(wc_test_alloc_destroy(&ta), 2); // also releases them
+    WC_EXPECT_EQ_U64(wc_test_alloc_destroy(&ta), 2); // also releases them
 }
 
 static void test_ta_detects_double_free(void)
@@ -88,9 +88,9 @@ static void test_ta_detects_double_free(void)
     u8* p = wc_alloc(a, 32, 16);
     wc_free(a, p, 32, 16);
     wc_free(a, p, 32, 16); // second free: must be caught, must not reach libc
-    WC_ASSERT_EQ_U64(ta.n_errors, 1);
-    WC_ASSERT_EQ_U64(ta.n_free, 1);
-    WC_ASSERT_EQ_U64(wc_test_alloc_destroy(&ta), 0);
+    WC_EXPECT_EQ_U64(ta.n_errors, 1);
+    WC_EXPECT_EQ_U64(ta.n_free, 1);
+    WC_EXPECT_EQ_U64(wc_test_alloc_destroy(&ta), 0);
 }
 
 static void test_ta_detects_foreign_pointer(void)
@@ -102,11 +102,11 @@ static void test_ta_detects_foreign_pointer(void)
 
     u8 stack_buf[32];
     wc_free(a, stack_buf, 32, 16);
-    WC_ASSERT_EQ_U64(ta.n_errors, 1);
+    WC_EXPECT_EQ_U64(ta.n_errors, 1);
 
-    WC_ASSERT_NULL(wc_realloc(a, stack_buf, 32, 64, 16));
-    WC_ASSERT_EQ_U64(ta.n_errors, 2);
-    WC_ASSERT_EQ_U64(wc_test_alloc_destroy(&ta), 0);
+    WC_EXPECT_NULL(wc_realloc(a, stack_buf, 32, 64, 16));
+    WC_EXPECT_EQ_U64(ta.n_errors, 2);
+    WC_EXPECT_EQ_U64(wc_test_alloc_destroy(&ta), 0);
 }
 
 static void test_ta_detects_size_and_align_mismatch(void)
@@ -119,19 +119,19 @@ static void test_ta_detects_size_and_align_mismatch(void)
     u8* p = wc_alloc(a, 40, 16);
 
     wc_free(a, p, 48, 16); // wrong size
-    WC_ASSERT_EQ_U64(ta.n_errors, 1);
-    WC_ASSERT(wc_test_alloc_owns(&ta, p)); // rejected free leaves the block live
+    WC_EXPECT_EQ_U64(ta.n_errors, 1);
+    WC_EXPECT(wc_test_alloc_owns(&ta, p)); // rejected free leaves the block live
 
     wc_free(a, p, 40, 32); // wrong align
-    WC_ASSERT_EQ_U64(ta.n_errors, 2);
+    WC_EXPECT_EQ_U64(ta.n_errors, 2);
 
-    WC_ASSERT_NULL(wc_realloc(a, p, 41, 80, 16)); // wrong old size
-    WC_ASSERT_EQ_U64(ta.n_errors, 3);
-    WC_ASSERT(wc_test_alloc_owns(&ta, p));
+    WC_EXPECT_NULL(wc_realloc(a, p, 41, 80, 16)); // wrong old size
+    WC_EXPECT_EQ_U64(ta.n_errors, 3);
+    WC_EXPECT(wc_test_alloc_owns(&ta, p));
 
     wc_free(a, p, 40, 16);
-    WC_ASSERT_EQ_U64(ta.n_errors, 3);
-    WC_ASSERT_EQ_U64(wc_test_alloc_destroy(&ta), 0);
+    WC_EXPECT_EQ_U64(ta.n_errors, 3);
+    WC_EXPECT_EQ_U64(wc_test_alloc_destroy(&ta), 0);
 }
 
 static void test_ta_detects_zero_size(void)
@@ -142,9 +142,9 @@ static void test_ta_detects_zero_size(void)
 
     // The wc_alloc wrapper never forwards size 0 (see allocator_core_test);
     // call the backend directly to check the checker still flags it.
-    WC_ASSERT_NULL(wc_test_alloc_cb_alloc(&ta, 0, 16));
-    WC_ASSERT_EQ_U64(ta.n_errors, 1);
-    WC_ASSERT_EQ_U64(wc_test_alloc_destroy(&ta), 0);
+    WC_EXPECT_NULL(wc_test_alloc_cb_alloc(&ta, 0, 16));
+    WC_EXPECT_EQ_U64(ta.n_errors, 1);
+    WC_EXPECT_EQ_U64(wc_test_alloc_destroy(&ta), 0);
 }
 
 static void test_ta_fail_nth(void)
@@ -157,18 +157,18 @@ static void test_ta_fail_nth(void)
     u8* p1 = wc_alloc(a, 8, 16);
     u8* p2 = wc_alloc(a, 8, 16); // 2nd attempt fails
     u8* p3 = wc_realloc(a, p1, 8, 16, 16);
-    WC_ASSERT_NOT_NULL(p1);
-    WC_ASSERT_NULL(p2);
-    WC_ASSERT_NOT_NULL(p3);
+    WC_EXPECT_NOT_NULL(p1);
+    WC_EXPECT_NULL(p2);
+    WC_EXPECT_NOT_NULL(p3);
 
     wc_test_alloc_fail_at(&ta, 4, 1); // sticky from the 4th attempt on
-    WC_ASSERT_NULL(wc_realloc(a, p3, 16, 32, 16));
-    WC_ASSERT(wc_test_alloc_owns(&ta, p3)); // failed realloc leaves p valid
-    WC_ASSERT_NULL(wc_alloc(a, 8, 16));
+    WC_EXPECT_NULL(wc_realloc(a, p3, 16, 32, 16));
+    WC_EXPECT(wc_test_alloc_owns(&ta, p3)); // failed realloc leaves p valid
+    WC_EXPECT_NULL(wc_alloc(a, 8, 16));
 
     wc_free(a, p3, 16, 16);
-    WC_ASSERT_EQ_U64(ta.n_errors, 0);
-    WC_ASSERT_EQ_U64(wc_test_alloc_destroy(&ta), 0);
+    WC_EXPECT_EQ_U64(ta.n_errors, 0);
+    WC_EXPECT_EQ_U64(wc_test_alloc_destroy(&ta), 0);
 }
 
 static void test_ta_table_survives_churn(void)
@@ -191,9 +191,9 @@ static void test_ta_table_survives_churn(void)
             wc_free(a, ptrs[i], 1 + (i % 97), 16);
         }
     }
-    WC_ASSERT_EQ_U64(ta.live_blocks, 0);
-    WC_ASSERT_EQ_U64(ta.n_errors, 0);
-    WC_ASSERT_EQ_U64(wc_test_alloc_destroy(&ta), 0);
+    WC_EXPECT_EQ_U64(ta.live_blocks, 0);
+    WC_EXPECT_EQ_U64(ta.n_errors, 0);
+    WC_EXPECT_EQ_U64(wc_test_alloc_destroy(&ta), 0);
 }
 
 static void test_ta_over_arena_backing(void)
@@ -207,27 +207,27 @@ static void test_ta_over_arena_backing(void)
     wc_allocator a = wc_test_alloc_allocator(&ta);
 
     u8* p = wc_alloc(a, 24, 16);
-    WC_ASSERT_NOT_NULL(p);
-    WC_ASSERT(p >= arena.base && p < arena.base + arena.size);
+    WC_EXPECT_NOT_NULL(p);
+    WC_EXPECT(p >= arena.base && p < arena.base + arena.size);
     wc_free(a, p, 24, 16);
 
-    WC_ASSERT_EQ_U64(ta.n_errors, 0);
-    WC_ASSERT_EQ_U64(wc_test_alloc_destroy(&ta), 0);
+    WC_EXPECT_EQ_U64(ta.n_errors, 0);
+    WC_EXPECT_EQ_U64(wc_test_alloc_destroy(&ta), 0);
     Arena_destroy(&arena);
 }
 
 
 /* ── GenVec through the test allocator (explicit allocator, no global) ──── */
 
-#define WITH_TEST_ALLOC(ta_name, al_name, body)               \
-    do {                                                      \
-        wc_test_alloc ta_name;                                \
-        wc_test_alloc_init(&ta_name, WC_LIBC);                \
+#define WITH_TEST_ALLOC(ta_name, al_name, body)                   \
+    ({                                                            \
+        wc_test_alloc ta_name;                                    \
+        wc_test_alloc_init(&ta_name, WC_LIBC);                    \
         wc_allocator al_name = wc_test_alloc_allocator(&ta_name); \
-        body;                                                 \
-        WC_ASSERT_EQ_U64(ta_name.n_errors, 0);                \
-        WC_ASSERT_EQ_U64(wc_test_alloc_destroy(&ta_name), 0); \
-    } while (0)
+        body;                                                     \
+        WC_EXPECT_EQ_U64(ta_name.n_errors, 0);                    \
+        WC_EXPECT_EQ_U64(wc_test_alloc_destroy(&ta_name), 0);     \
+    })
 
 static void test_genvec_lifecycle_is_leak_free(void)
 {
@@ -241,10 +241,10 @@ static void test_genvec_lifecycle_is_leak_free(void)
             GenVec_pop(&v, NULL);
         }
         GenVec_shrink_to_fit(&v);
-        WC_ASSERT_EQ_U64(GenVec_size(&v), 100);
-        WC_ASSERT_EQ_INT(*(const int*)GenVec_get_ptr(&v, 99), 99);
+        WC_EXPECT_EQ_U64(GenVec_size(&v), 100);
+        WC_EXPECT_EQ_INT(*(const int*)GenVec_get_ptr(&v, 99), 99);
         GenVec_destroy(&v);
-        WC_ASSERT(ta.n_realloc > 0);
+        WC_EXPECT(ta.n_realloc > 0);
     });
 }
 
@@ -257,14 +257,14 @@ static void test_genvec_copy_move_reset_are_leak_free(void)
         }
 
         GenVec b = GenVec_copy(al, &a);
-        WC_ASSERT_EQ_U64(GenVec_size(&b), 50);
+        WC_EXPECT_EQ_U64(GenVec_size(&b), 50);
 
         GenVec c;
         GenVec_move(&c, &a); // a is zeroed
-        WC_ASSERT_NULL(a.data);
+        WC_EXPECT_NULL(a.data);
 
         GenVec_reset(&c);
-        WC_ASSERT_EQ_U64(GenVec_capacity(&c), 0);
+        WC_EXPECT_EQ_U64(GenVec_capacity(&c), 0);
         u64 x = 7;
         GenVec_push(&c, cast(x)); // grows from 0 after reset, same allocator
 

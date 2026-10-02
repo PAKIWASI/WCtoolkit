@@ -65,7 +65,7 @@ void PriorityQueue_push(PriorityQueue* pq, u8* data)
 
 void PriorityQueue_pop(PriorityQueue* pq, u8* popped)
 {
-    CHECK_FATAL(Queue_empty(&pq->q), "queue is empty");
+    WC_ASSERT(!Queue_empty(&pq->q), "queue is empty");
 
     // Standard heap-extract, adapted for circular storage
     // logical index 0 (== q.head) is the root we want to return.
@@ -87,8 +87,8 @@ void PriorityQueue_pop(PriorityQueue* pq, u8* popped)
 
 void PriorityQueue_remove(PriorityQueue* pq, u64 idx, u8* out)
 {
-    CHECK_FATAL(Queue_empty(&pq->q), "queue is empty");
-    CHECK_FATAL(idx >= pq->q.size, "idx out of range");
+    WC_ASSERT(!Queue_empty(&pq->q), "queue is empty");
+    WC_ASSERT(idx < pq->q.size, "idx out of range");
 
     // swap the element to remove with the last one
     Queue_swap(&pq->q, idx, pq->q.size - 1);

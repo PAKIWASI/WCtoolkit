@@ -113,7 +113,7 @@ __attribute__((nonnull(1))) static inline void String_clear(String* str)
 
 __attribute__((nonnull(1))) static inline char String_char_at(const String* str, u64 i)
 {
-    CHECK_FATAL(i >= str->size, "index out of bounds");
+    WC_ASSERT(i < str->size, "index out of bounds");
     return ((str->stk[STR_SSO_SIZE - 1] != '\0') ? (str)->stk : (str)->heap)[i];
 }
 
@@ -124,7 +124,7 @@ __attribute__((nonnull(1))) static inline char String_char_at_unsafe(const Strin
 
 __attribute__((nonnull(1))) static inline void String_set_char(String* str, u64 i, char c)
 {
-    CHECK_FATAL(i >= str->size, "index out of bounds");
+    WC_ASSERT(i < str->size, "index out of bounds");
     ((str->stk[STR_SSO_SIZE - 1] != '\0') ? str->stk : str->heap)[i] = c;
 }
 

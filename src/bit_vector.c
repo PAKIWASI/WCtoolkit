@@ -45,7 +45,7 @@ void BitVec_set(BitVec* bvec, u64 i)
 // Clear bit i (set to 0)
 void BitVec_clear(BitVec* bvec, u64 i)
 {
-    CHECK_FATAL(i >= bvec->size, "index out of bounds");
+    WC_ASSERT(i < bvec->size, "index out of bounds");
 
     u64 byte_index = i / 8;
     u64 bit_index  = i % 8;
@@ -57,7 +57,7 @@ void BitVec_clear(BitVec* bvec, u64 i)
 // Test bit i (returns 1 or 0)
 u8 BitVec_test(const BitVec* bvec, u64 i)
 {
-    CHECK_FATAL(i >= bvec->size, "index out of bounds");
+    WC_ASSERT(i < bvec->size, "index out of bounds");
 
     u64 byte_index = i / 8;
     u64 bit_index  = i % 8;
@@ -68,7 +68,7 @@ u8 BitVec_test(const BitVec* bvec, u64 i)
 // Toggle bit i
 void BitVec_toggle(BitVec* bvec, u64 i)
 {
-    CHECK_FATAL(i >= bvec->size, "index out of bounds");
+    WC_ASSERT(i < bvec->size, "index out of bounds");
 
     u64 byte_index = i / 8;
     u64 bit_index  = i % 8;
@@ -96,7 +96,7 @@ void BitVec_pop(BitVec* bvec)
 
 void BitVec_print(BitVec* bvec, u64 byteI)
 {
-    CHECK_FATAL(byteI >= bvec->arr.size, "index out of bounds");
+    WC_ASSERT(byteI < bvec->arr.size, "index out of bounds");
 
     u8 bits_to_print = 8;
     if (byteI == bvec->arr.size - 1) {

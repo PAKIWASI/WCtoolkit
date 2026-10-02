@@ -149,6 +149,7 @@ add_executable(tests
     tests/chain_arena_test.c
     tests/gen_vector_alloc_test.c
     tests/regression_test.c
+    tests/diag_test.c
     ${LIB_SOURCES}
 )
 target_include_directories(tests PRIVATE include tests)

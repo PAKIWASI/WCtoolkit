@@ -15,7 +15,7 @@
 _Static_assert(CHAIN_ARENA_NODE_SIZE > sizeof(ChainArenaNode) + 64, "CHAIN_ARENA_NODE_SIZE too small");
 
 #define CHAIN_CHECK_LIVE(a) \
-    CHECK_FATAL((a)->self != (a), "ChainArena used after destroy, or copied/moved after create")
+    WC_ASSERT((a)->self == (a), "ChainArena used after destroy, or copied/moved after create")
 
 
 // Node helpers
@@ -154,8 +154,8 @@ void ChainArena_clear(ChainArena* arena)
 u8* ChainArena_alloc_aligned(ChainArena* arena, u64 size, u64 align)
 {
     CHAIN_CHECK_LIVE(arena);
-    CHECK_FATAL(size == 0, "allocation size must be > 0");
-    CHECK_FATAL(align == 0 || (align & (align - 1)) != 0, "alignment must be a power of two");
+    WC_ASSERT(size != 0, "allocation size must be > 0");
+    WC_ASSERT(align != 0 && (align & (align - 1)) == 0, "alignment must be a power of two");
 
     ChainArenaNode* node = arena->tail;
     u64             off  = node_fit(node, size, align);
@@ -208,7 +208,7 @@ static void* chain_vt_realloc(void* ctx, void* ptr, size_t old_size, size_t new_
 
     // Same rule as Arena: growing a block that predates the innermost scratch
     // scope would leave it dangling (or truncated) at scope end.
-    CHECK_FATAL(new_size > old_size && is_below_floor(arena, p),
+    WC_ASSERT(new_size <= old_size || !is_below_floor(arena, p),
                 "growing a block allocated before the current scratch scope (it would dangle at scope end)");
 
     if (is_top(arena, p, old_size)) {

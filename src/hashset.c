@@ -53,7 +53,7 @@ static inline void set_maybe_resize(HashSet* set);
 HashSet HashSet_create(wc_allocator a, u32 elm_size, custom_hash_fn hash_fn,
                        wc_compare_fn cmp_fn, const wc_container_ops* ops)
 {
-    CHECK_FATAL(elm_size == 0, "elm_size can't be 0");
+    WC_ASSERT(elm_size != 0, "elm_size can't be 0");
 
     HashSet set;
 
@@ -253,13 +253,13 @@ const u8* HashSet_get_ptr(const HashSet* set, const u8* elm)
 
 b8 HashSet_bucket_occupied(const HashSet* set, u64 i)
 {
-    CHECK_FATAL(i >= set->capacity, "index out of bounds");
+    WC_ASSERT(i < set->capacity, "index out of bounds");
     return *GET_PSL(set, i) != BUCKET_EMPTY;
 }
 
 const u8* HashSet_bucket_elm_ptr(const HashSet* set, u64 i)
 {
-    CHECK_FATAL(i >= set->capacity, "index out of bounds");
+    WC_ASSERT(i < set->capacity, "index out of bounds");
     return GET_ELM(set, i);
 }
 

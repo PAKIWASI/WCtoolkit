@@ -25,12 +25,12 @@ static void test_A1_arena_alloc_past_end_returns_null(void)
     Arena arena;
     Arena_create_buf(&arena, buf, sizeof(buf));
 
-    WC_ASSERT_NOT_NULL(Arena_alloc(&arena, 1)); // idx 0 -> 1
-    WC_ASSERT_NOT_NULL(Arena_alloc(&arena, 4)); // aligned to 8, idx -> 12
+    WC_EXPECT_NOT_NULL(Arena_alloc(&arena, 1)); // idx 0 -> 1
+    WC_EXPECT_NOT_NULL(Arena_alloc(&arena, 4)); // aligned to 8, idx -> 12
 
     u8* p = Arena_alloc(&arena, 1); // aligned_idx = 16 > size 13
-    WC_ASSERT_NULL(p);
-    WC_ASSERT(p == NULL || p < buf + sizeof(buf));
+    WC_EXPECT_NULL(p);
+    WC_EXPECT(p == NULL || p < buf + sizeof(buf));
 }
 
 // A1 (aligned variant)
@@ -40,9 +40,9 @@ static void test_A1_arena_alloc_aligned_past_end_returns_null(void)
     Arena arena;
     Arena_create_buf(&arena, buf, sizeof(buf));
 
-    WC_ASSERT_NOT_NULL(Arena_alloc_aligned(&arena, 17, 1)); // idx -> 17
+    WC_EXPECT_NOT_NULL(Arena_alloc_aligned(&arena, 17, 1)); // idx -> 17
     u8* p = Arena_alloc_aligned(&arena, 1, 32);              // aligned_idx = 32 > 20
-    WC_ASSERT_NULL(p);
+    WC_EXPECT_NULL(p);
 }
 
 // A2: alignment is applied to the OFFSET, not the ADDRESS.
@@ -54,10 +54,10 @@ static void test_A2_arena_aligns_address_not_offset(void)
 
     u8* p16 = Arena_alloc_aligned(&arena, 8, 16);
     u8* p64 = Arena_alloc_aligned(&arena, 8, 64);
-    WC_ASSERT_NOT_NULL(p16);
-    WC_ASSERT_NOT_NULL(p64);
-    WC_ASSERT_EQ_U64((uintptr_t)p16 % 16, 0);
-    WC_ASSERT_EQ_U64((uintptr_t)p64 % 64, 0);
+    WC_EXPECT_NOT_NULL(p16);
+    WC_EXPECT_NOT_NULL(p64);
+    WC_EXPECT_EQ_U64((uintptr_t)p16 % 16, 0);
+    WC_EXPECT_EQ_U64((uintptr_t)p64 % 64, 0);
 }
 
 // A2 (ChainArena): blocks start 8 bytes into a malloc'd node (after `u64 used`),
@@ -69,8 +69,8 @@ static void test_A2_chain_arena_aligns_address(void)
 
     u8* p16 = ChainArena_alloc_aligned(&ca, 8, 16);
     u8* p64 = ChainArena_alloc_aligned(&ca, 8, 64);
-    WC_ASSERT_EQ_U64((uintptr_t)p16 % 16, 0);
-    WC_ASSERT_EQ_U64((uintptr_t)p64 % 64, 0);
+    WC_EXPECT_EQ_U64((uintptr_t)p16 % 16, 0);
+    WC_EXPECT_EQ_U64((uintptr_t)p64 % 64, 0);
 
     ChainArena_destroy(&ca);
 }
@@ -87,11 +87,11 @@ static void test_A3_chain_arena_oversize_request(void)
     u64 n = 0;
     for (u64 cap = 64; cap <= nKB(64); cap *= 2) { // GenVec-style doubling past a node
         p = wc_realloc(al, p, n, cap, 8);
-        WC_ASSERT_NOT_NULL(p);
+        WC_EXPECT_NOT_NULL(p);
         memset(p + n, (int)(cap & 0xFF), cap - n);
         n = cap;
     }
-    WC_ASSERT_EQ_INT(p[nKB(64) - 1], (int)(nKB(64) & 0xFF));
+    WC_EXPECT_EQ_INT(p[nKB(64) - 1], (int)(nKB(64) & 0xFF));
     ChainArena_destroy(&ca);
 }
 
@@ -107,11 +107,11 @@ static void test_A4_arena_grows_last_block_in_place(void)
     u64 n = 0;
     for (u64 cap = 8; cap <= 512; cap *= 2) {
         u8* q = wc_realloc(al, p, n, cap, 8);
-        WC_ASSERT(p == NULL || q == p); // never moves: it is always the last block
+        WC_EXPECT(p == NULL || q == p); // never moves: it is always the last block
         p = q;
         n = cap;
     }
-    WC_ASSERT_EQ_U64(Arena_used(&a), 512); // no dead blocks
+    WC_EXPECT_EQ_U64(Arena_used(&a), 512); // no dead blocks
     Arena_destroy(&a);
 }
 
@@ -140,16 +140,16 @@ static void test_golden_main_70_push(void)
         VEC_PUSH(&v, i);
     }
 
-    WC_ASSERT_EQ_U64(GenVec_size(&v), 70);
+    WC_EXPECT_EQ_U64(GenVec_size(&v), 70);
     for (int i = 0; i < 70; i++) {
-        WC_ASSERT_EQ_INT(*(const int*)GenVec_get_ptr(&v, (u64)i), i);
+        WC_EXPECT_EQ_INT(*(const int*)GenVec_get_ptr(&v, (u64)i), i);
     }
     u64 used = Arena_used(&a);
-    WC_ASSERT(used <= GOLDEN_MAIN_ARENA_USED_BASELINE);
+    WC_EXPECT(used <= GOLDEN_MAIN_ARENA_USED_BASELINE);
     printf("[arena used %llu / baseline %d] ", (unsigned long long)used, GOLDEN_MAIN_ARENA_USED_BASELINE);
 
     GenVec_destroy(&v);
-    WC_ASSERT_EQ_U64(Arena_used(&a), 0); // the vector was the only block: freed by rewinding
+    WC_EXPECT_EQ_U64(Arena_used(&a), 0); // the vector was the only block: freed by rewinding
     Arena_destroy(&a);
 }
 
@@ -162,10 +162,10 @@ static void test_golden_main_70_push_libc(void)
     for (int i = 0; i < 70; i++) {
         VEC_PUSH(&v, i);
     }
-    WC_ASSERT_EQ_U64(GenVec_size(&v), 70);
-    WC_ASSERT_EQ_U64(GenVec_capacity(&v), GOLDEN_MAIN_LIBC_CAPACITY);
+    WC_EXPECT_EQ_U64(GenVec_size(&v), 70);
+    WC_EXPECT_EQ_U64(GenVec_capacity(&v), GOLDEN_MAIN_LIBC_CAPACITY);
     for (int i = 0; i < 70; i++) {
-        WC_ASSERT_EQ_INT(*(const int*)GenVec_get_ptr(&v, (u64)i), i);
+        WC_EXPECT_EQ_INT(*(const int*)GenVec_get_ptr(&v, (u64)i), i);
     }
     GenVec_destroy(&v);
 }
@@ -231,9 +231,9 @@ static void test_golden_queue_hashmap_fixed_seed(void)
 
     printf("[q=0x%llx m=0x%llx n=%llu] ", (unsigned long long)q_sum, (unsigned long long)m_sum,
            (unsigned long long)m_size);
-    WC_ASSERT_EQ_U64(q_sum, GOLDEN_QUEUE_CHECKSUM);
-    WC_ASSERT_EQ_U64(m_sum, GOLDEN_MAP_CHECKSUM);
-    WC_ASSERT_EQ_U64(m_size, GOLDEN_MAP_SIZE);
+    WC_EXPECT_EQ_U64(q_sum, GOLDEN_QUEUE_CHECKSUM);
+    WC_EXPECT_EQ_U64(m_sum, GOLDEN_MAP_CHECKSUM);
+    WC_EXPECT_EQ_U64(m_size, GOLDEN_MAP_SIZE);
 }
 
 

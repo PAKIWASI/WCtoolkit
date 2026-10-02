@@ -14,8 +14,8 @@
  *   static void test_append(void) {
  *       String* s = String_from_cstr("hello");
  *       String_append_cstr(s, " world");
- *       WC_ASSERT_EQ_INT(String_len(s), 11);
- *       WC_ASSERT(String_equals_cstr(s, "hello world"));
+ *       WC_EXPECT_EQ_INT(String_len(s), 11);
+ *       WC_EXPECT(String_equals_cstr(s, "hello world"));
  *       String_destroy(s);
  *   }
  *
@@ -31,16 +31,18 @@
  *       WC_REPORT();
  *   }
  *
- * ASSERT MACROS
+ * EXPECT MACROS
  * -------------
- *   WC_ASSERT(cond)             — generic condition
- *   WC_ASSERT_EQ_INT(a, b)      — integer equality, prints values on fail
- *   WC_ASSERT_EQ_U64(a, b)      — u64 equality
- *   WC_ASSERT_EQ_STR(a, b)      — cstr equality (strcmp)
- *   WC_ASSERT_NULL(p)           — pointer is NULL
- *   WC_ASSERT_NOT_NULL(p)       — pointer is not NULL
- *   WC_ASSERT_TRUE(cond)        — alias for WC_ASSERT
- *   WC_ASSERT_FALSE(cond)       — asserts condition is false
+ * Non-fatal: a failure is counted and the test keeps running. (WC_ASSERT is
+ * the library's debug-only aborting invariant check; see common.h.)
+ *   WC_EXPECT(cond)             — generic condition
+ *   WC_EXPECT_EQ_INT(a, b)      — integer equality, prints values on fail
+ *   WC_EXPECT_EQ_U64(a, b)      — u64 equality
+ *   WC_EXPECT_EQ_STR(a, b)      — cstr equality (strcmp)
+ *   WC_EXPECT_NULL(p)           — pointer is NULL
+ *   WC_EXPECT_NOT_NULL(p)       — pointer is not NULL
+ *   WC_EXPECT_TRUE(cond)        — alias for WC_EXPECT
+ *   WC_EXPECT_FALSE(cond)       — expects condition is false
  *
  * RULES
  * -----
@@ -80,76 +82,73 @@ extern int wc_test_failed;
 // Core assert 
 
 // All asserts funnel through this so failure tracking is in one place
-#define WC_ASSERT_CORE(cond, msg)                         \
-    do {                                                  \
-        if (!(cond)) {                                    \
-            fprintf(stderr,                               \
-                    "    " WC_RED "FAIL" WC_RESET " %s\n" \
-                    "         at %s:%d\n",                \
-                    (msg), __FILE__, __LINE__);           \
-            wc_test_failed++;                             \
-        }                                                 \
-    } while (0)
+static inline void wc_expect_failed(const char* msg, const char* file, int line)
+{
+    fprintf(stderr, "    " WC_RED "FAIL" WC_RESET " %s\n         at %s:%d\n", msg, file, line);
+    wc_test_failed++;
+}
+
+#define WC_EXPECT_CORE(cond, msg) ((void)((cond) || (wc_expect_failed((msg), __FILE__, __LINE__), 0)))
 
 
 // Public assert macros
 
-#define WC_ASSERT(cond) WC_ASSERT_CORE((cond), #cond)
+#define WC_EXPECT(cond) WC_EXPECT_CORE((cond), #cond)
 
-#define WC_ASSERT_TRUE(cond) WC_ASSERT_CORE((cond), #cond " is true")
+#define WC_EXPECT_TRUE(cond) WC_EXPECT_CORE((cond), #cond " is true")
 
-#define WC_ASSERT_FALSE(cond) WC_ASSERT_CORE(!(cond), #cond " is false")
+#define WC_EXPECT_FALSE(cond) WC_EXPECT_CORE(!(cond), #cond " is false")
 
-#define WC_ASSERT_NULL(p) WC_ASSERT_CORE((p) == NULL, #p " == NULL")
+#define WC_EXPECT_NULL(p) WC_EXPECT_CORE((p) == NULL, #p " == NULL")
 
-#define WC_ASSERT_NOT_NULL(p) WC_ASSERT_CORE((p) != NULL, #p " != NULL")
+#define WC_EXPECT_NOT_NULL(p) WC_EXPECT_CORE((p) != NULL, #p " != NULL")
 
 // Integer — prints actual vs expected on failure
-#define WC_ASSERT_EQ_INT(a, b)                                                                \
-    do {                                                                                      \
-        long long _a = (long long)(a);                                                        \
-        long long _b = (long long)(b);                                                        \
-        if (_a != _b) {                                                                       \
-            char _msg[256];                                                                   \
+#define WC_EXPECT_EQ_INT(a, b)                                                                   \
+    ({                                                                                           \
+        long long _a = (long long)(a);                                                           \
+        long long _b = (long long)(b);                                                           \
+        if (_a != _b) {                                                                          \
+            char _msg[256];                                                                      \
             snprintf(_msg, sizeof(_msg), "%s == %s  (got %lld, expected %lld)", #a, #b, _a, _b); \
-            WC_ASSERT_CORE(0, _msg);                                                          \
-        }                                                                                     \
-    } while (0)
+            WC_EXPECT_CORE(0, _msg);                                                             \
+        }                                                                                        \
+    })
 
-#define WC_ASSERT_NEQ_INT(a, b)                                                 \
-    do {                                                                        \
-        long long _a = (long long)(a);                                          \
-        long long _b = (long long)(b);                                          \
-        if (_a == _b) {                                                         \
-            char _msg[256];                                                     \
+#define WC_EXPECT_NEQ_INT(a, b)                                                    \
+    ({                                                                             \
+        long long _a = (long long)(a);                                             \
+        long long _b = (long long)(b);                                             \
+        if (_a == _b) {                                                            \
+            char _msg[256];                                                        \
             snprintf(_msg, sizeof(_msg), "%s != %s  (both are %lld)", #a, #b, _a); \
-            (void)_b;                                                           \
-            WC_ASSERT_CORE(0, _msg);                                            \
-        }                                                                       \
-    } while (0)
+            (void)_b;                                                              \
+            WC_EXPECT_CORE(0, _msg);                                               \
+        }                                                                          \
+    })
 
-#define WC_ASSERT_EQ_U64(a, b)                                                                \
-    do {                                                                                      \
-        unsigned long long _a = (unsigned long long)(a);                                      \
-        unsigned long long _b = (unsigned long long)(b);                                      \
-        if (_a != _b) {                                                                       \
-            char _msg[256];                                                                   \
+#define WC_EXPECT_EQ_U64(a, b)                                                                   \
+    ({                                                                                           \
+        unsigned long long _a = (unsigned long long)(a);                                         \
+        unsigned long long _b = (unsigned long long)(b);                                         \
+        if (_a != _b) {                                                                          \
+            char _msg[256];                                                                      \
             snprintf(_msg, sizeof(_msg), "%s == %s  (got %llu, expected %llu)", #a, #b, _a, _b); \
-            WC_ASSERT_CORE(0, _msg);                                                          \
-        }                                                                                     \
-    } while (0)
+            WC_EXPECT_CORE(0, _msg);                                                             \
+        }                                                                                        \
+    })
 
 // C-String equality
-#define WC_ASSERT_EQ_STR(a, b)                                                                    \
-    do {                                                                                          \
-        const char* _a = (const char*)(a);                                                        \
-        const char* _b = (const char*)(b);                                                        \
-        if (strcmp(_a, _b) != 0) {                                                                \
-            char _msg[256];                                                                       \
+#define WC_EXPECT_EQ_STR(a, b)                                                                       \
+    ({                                                                                               \
+        const char* _a = (const char*)(a);                                                           \
+        const char* _b = (const char*)(b);                                                           \
+        if (strcmp(_a, _b) != 0) {                                                                   \
+            char _msg[256];                                                                          \
             snprintf(_msg, sizeof(_msg), "%s == %s  (got \"%s\", expected \"%s\")", #a, #b, _a, _b); \
-            WC_ASSERT_CORE(0, _msg);                                                              \
-        }                                                                                         \
-    } while (0)
+            WC_EXPECT_CORE(0, _msg);                                                                 \
+        }                                                                                            \
+    })
 
 
 // Suite and runner macros 
@@ -162,21 +161,31 @@ extern int wc_test_failed;
  * Run a single test function. Tracks pass/fail per test, not per assert,
  * so you see "test_foo ... FAIL (2 assertion(s))" rather than a wall of lines.
  */
-#define WC_RUN(fn)                                                                 \
-    do {                                                                           \
-        wc_test_failed = 0;                                                        \
-        wc_total++;                                                                \
-        printf("  %-48s", #fn);                                                    \
-        fflush(stdout);                                                            \
-        fn();                                                                      \
-        if (wc_test_failed == 0) {                                                 \
-            printf(WC_GREEN "OK" WC_RESET "\n");                                   \
-            wc_passed++;                                                           \
-        } else {                                                                   \
-            printf(WC_RED "FAIL" WC_RESET " (%d assertion(s))\n", wc_test_failed); \
-            wc_failed++;                                                           \
-        }                                                                          \
-    } while (0)
+static inline void wc_run(void (*fn)(void), const char* name, int expect_fail)
+{
+    wc_test_failed = 0;
+    wc_total++;
+    printf("  %-48s", name);
+    fflush(stdout);
+    fn();
+    if (!expect_fail) {
+        if (wc_test_failed == 0) {
+            printf(WC_GREEN "OK" WC_RESET "\n");
+            wc_passed++;
+        } else {
+            printf(WC_RED "FAIL" WC_RESET " (%d assertion(s))\n", wc_test_failed);
+            wc_failed++;
+        }
+    } else if (wc_test_failed != 0) {
+        printf(WC_YELLOW "XFAIL" WC_RESET " (known defect, %d assertion(s))\n", wc_test_failed);
+        wc_passed++;
+    } else {
+        printf(WC_RED "XPASS" WC_RESET " (defect fixed: switch to WC_RUN)\n");
+        wc_failed++;
+    }
+}
+
+#define WC_RUN(fn) wc_run((fn), #fn, 0)
 
 /*
  * WC_RUN_XFAIL(fn)
@@ -186,21 +195,7 @@ extern int wc_test_failed;
  * the call to WC_RUN so the test guards the fix from now on.
  * Assertion output is still printed so the failure mode stays visible.
  */
-#define WC_RUN_XFAIL(fn)                                                                      \
-    do {                                                                                      \
-        wc_test_failed = 0;                                                                   \
-        wc_total++;                                                                           \
-        printf("  %-48s", #fn);                                                               \
-        fflush(stdout);                                                                       \
-        fn();                                                                                 \
-        if (wc_test_failed != 0) {                                                            \
-            printf(WC_YELLOW "XFAIL" WC_RESET " (known defect, %d assertion(s))\n", wc_test_failed); \
-            wc_passed++;                                                                      \
-        } else {                                                                              \
-            printf(WC_RED "XPASS" WC_RESET " (defect fixed: switch to WC_RUN)\n");           \
-            wc_failed++;                                                                      \
-        }                                                                                     \
-    } while (0)
+#define WC_RUN_XFAIL(fn) wc_run((fn), #fn, 1)
 
 /*
  * WC_REPORT()

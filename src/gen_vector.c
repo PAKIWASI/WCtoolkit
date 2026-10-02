@@ -19,23 +19,16 @@
 // get total size in bytes for i elements
 #define GET_SCALED(vec, i) ((u64)(i) * ((vec)->data_size))
 
-#define MAYBE_GROW(vec)                                 \
-    do {                                                \
-        if (!vec->data || vec->size >= vec->capacity) { \
-            GenVec_grow(vec);                           \
-        }                                               \
-    } while (0)
+// Growth is amortized: rare by construction, so the hint is known-correct.
+#define MAYBE_GROW(vec) \
+    ((void)(WC_UNLIKELY(!(vec)->data || (vec)->size >= (vec)->capacity) && (GenVec_grow(vec), 0)))
 
 // smallest safe alignment for this element size
 #define DATA_ALIGN(vec) wc_align_for_size((vec)->data_size)
 
 // a zeroed vector (moved-from / destroyed) must never allocate
-#define ZERO_GUARD(vec)                                                                         \
-    do {                                                                                        \
-        if (__builtin_expect((vec)->data_size == 0, 0)) {                                       \
-            FATAL("GenVec is in the zero state (moved-from or destroyed): re-create it first"); \
-        }                                                                                       \
-    } while (0)
+#define ZERO_GUARD(vec) \
+    FATAL_IF((vec)->data_size == 0, "GenVec is in the zero state (moved-from or destroyed): re-create it first")
 
 // Move one element: move_fn if provided, else memcpy. The source is always left zeroed.
 static inline void move_elm(const GenVec* vec, u8* dest, u8* src)
@@ -66,14 +59,14 @@ static void GenVec_grow(GenVec* vec);
 
 // API Implementation
 
-#define ALLOC_OR_DIE(a, n, data_size)                                                                               \
-    ({                                                                                                              \
-        u8* data = NULL;                                                                                            \
-        if ((n) != 0) {                                                                                             \
-            data = wc_alloc(a, wc_mul(n, data_size), wc_align_for_size(data_size));                                 \
-            FATAL_IF(!data, "GenVec: allocation of %llu x %u bytes failed", (unsigned long long)(n), data_size);    \
-        }                                                                                                           \
-        data;                                                                                                       \
+#define ALLOC_OR_DIE(a, n, data_size)                                                                            \
+    ({                                                                                                           \
+        u8* data = NULL;                                                                                         \
+        if ((n) != 0) {                                                                                          \
+            data = wc_alloc(a, wc_mul(n, data_size), wc_align_for_size(data_size));                              \
+            FATAL_IF(!data, "GenVec: allocation of %llu x %u bytes failed", (unsigned long long)(n), data_size); \
+        }                                                                                                        \
+        data;                                                                                                    \
     })
 
 
@@ -95,7 +88,7 @@ GenVec GenVec_create(wc_allocator alloc, u64 n, u32 data_size, const wc_containe
 
 GenVec GenVec_create_val(wc_allocator alloc, u64 n, const u8* val, u32 data_size, const wc_container_ops* ops)
 {
-    CHECK_FATAL(n == 0, "cant init with val if n = 0");
+    WC_ASSERT(n != 0, "cant init with val if n = 0");
 
     GenVec  v   = GenVec_create(alloc, n, data_size, ops);
     GenVec* vec = &v;
@@ -203,7 +196,7 @@ void GenVec_reserve(GenVec* vec, u64 new_capacity)
 
 void GenVec_reserve_val(GenVec* vec, u64 new_capacity, const u8* val)
 {
-    CHECK_FATAL(new_capacity < vec->size, "new_capacity must be >= current size");
+    WC_ASSERT(new_capacity >= vec->size, "new_capacity must be >= current size");
 
     GenVec_reserve(vec, new_capacity);
 
@@ -300,7 +293,7 @@ void GenVec_pop(GenVec* vec, u8* popped)
 
 void GenVec_swap_pop(GenVec* vec, u64 i, u8* out)
 {
-    CHECK_FATAL(i >= vec->size, "index out of bounds");
+    WC_ASSERT(i < vec->size, "index out of bounds");
 
     if (out) {
         if (vec->is_pod) {
@@ -330,7 +323,7 @@ void GenVec_swap_pop(GenVec* vec, u64 i, u8* out)
 
 void GenVec_swap(GenVec* vec, u64 i, u64 j)
 {
-    CHECK_FATAL(i >= vec->size || j >= vec->size, "index out of bounds");
+    WC_ASSERT(i < vec->size && j < vec->size, "index out of bounds");
 
     if (i == j) {
         return;
@@ -352,7 +345,7 @@ void GenVec_swap(GenVec* vec, u64 i, u64 j)
 
 void GenVec_get(const GenVec* vec, u64 i, u8* out)
 {
-    CHECK_FATAL(i >= vec->size, "index out of bounds");
+    WC_ASSERT(i < vec->size, "index out of bounds");
 
     if (vec->is_pod) {
         memcpy(out, GET_PTR(vec, i), vec->data_size);
@@ -368,13 +361,13 @@ void GenVec_get(const GenVec* vec, u64 i, u8* out)
 
 const u8* GenVec_get_ptr(const GenVec* vec, u64 i)
 {
-    CHECK_FATAL(i >= vec->size, "index out of bounds");
+    WC_ASSERT(i < vec->size, "index out of bounds");
     return GET_PTR(vec, i);
 }
 
 u8* GenVec_get_ptr_mut(GenVec* vec, u64 i)
 {
-    CHECK_FATAL(i >= vec->size, "index out of bounds");
+    WC_ASSERT(i < vec->size, "index out of bounds");
     return GET_PTR(vec, i);
 }
 
@@ -386,7 +379,7 @@ const u8* GenVec_get_ptr_unsafe(const GenVec* vec, u64 i)
 
 void GenVec_replace(GenVec* vec, u64 i, const u8* data)
 {
-    CHECK_FATAL(i >= vec->size, "index out of bounds");
+    WC_ASSERT(i < vec->size, "index out of bounds");
 
     u8* to_replace = GET_PTR(vec, i);
 
@@ -408,7 +401,7 @@ void GenVec_replace(GenVec* vec, u64 i, const u8* data)
 
 void GenVec_replace_move(GenVec* vec, u64 i, u8* data)
 {
-    CHECK_FATAL(i >= vec->size, "index out of bounds");
+    WC_ASSERT(i < vec->size, "index out of bounds");
 
     u8* to_replace = GET_PTR(vec, i);
 
@@ -424,7 +417,7 @@ void GenVec_replace_move(GenVec* vec, u64 i, u8* data)
 
 void GenVec_insert(GenVec* vec, u64 i, const u8* data)
 {
-    CHECK_FATAL(i > vec->size, "index out of bounds");
+    WC_ASSERT(i <= vec->size, "index out of bounds");
 
     u64 elements_to_shift = vec->size - i;
 
@@ -451,7 +444,7 @@ void GenVec_insert(GenVec* vec, u64 i, const u8* data)
 
 void GenVec_insert_move(GenVec* vec, u64 i, u8* data)
 {
-    CHECK_FATAL(i > vec->size, "index out of bounds");
+    WC_ASSERT(i <= vec->size, "index out of bounds");
 
     u64 elements_to_shift = vec->size - i;
 
@@ -469,7 +462,7 @@ void GenVec_insert_move(GenVec* vec, u64 i, u8* data)
 
 void GenVec_insert_multi(GenVec* vec, u64 i, const u8* data, u64 num_data)
 {
-    CHECK_FATAL(num_data == 0 || i > vec->size, "num_data can't be 0 / index out of bounds");
+    WC_ASSERT(num_data != 0 && i <= vec->size, "num_data can't be 0 / index out of bounds");
 
     u64 elements_to_shift = vec->size - i;
 
@@ -499,7 +492,7 @@ void GenVec_insert_multi(GenVec* vec, u64 i, const u8* data, u64 num_data)
 
 void GenVec_insert_multi_move(GenVec* vec, u64 i, u8* data, u64 num_data)
 {
-    CHECK_FATAL(num_data == 0 || i > vec->size, "num_data can't be 0 / index out of bounds");
+    WC_ASSERT(num_data != 0 && i <= vec->size, "num_data can't be 0 / index out of bounds");
 
     u64 elements_to_shift = vec->size - i;
 
@@ -520,7 +513,7 @@ void GenVec_insert_multi_move(GenVec* vec, u64 i, u8* data, u64 num_data)
 
 void GenVec_remove(GenVec* vec, u64 i, u8* out)
 {
-    CHECK_FATAL(i >= vec->size, "index out of bounds");
+    WC_ASSERT(i < vec->size, "index out of bounds");
 
     if (out) {
         if (vec->is_pod) {
@@ -558,7 +551,7 @@ void GenVec_remove_range(GenVec* vec, u64 start, u64 len)
     if (len == 0) {
         return;
     }
-    CHECK_FATAL(start >= vec->size, "start out of range");
+    WC_ASSERT(start < vec->size, "start out of range");
 
     if (len > vec->size - start) {
         len = vec->size - start;
@@ -612,7 +605,7 @@ u64 GenVec_find(const GenVec* vec, u8* elm, wc_compare_fn cmp_fn)
 
 GenVec GenVec_subarr(const GenVec* vec, wc_allocator alloc, u64 start, u64 len)
 {
-    CHECK_FATAL(start >= vec->size, "out of bounds");
+    WC_ASSERT(start < vec->size, "out of bounds");
 
     if (len > vec->size - start) {
         len = vec->size - start;

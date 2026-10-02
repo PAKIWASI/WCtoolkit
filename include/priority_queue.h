@@ -63,7 +63,7 @@ void PriorityQueue_pop(PriorityQueue* pq, u8* popped) __attribute__((nonnull(1, 
 // get the element at the logical index `idx` of the tree, maintain heap property
 static inline const u8* __attribute__((nonnull(1))) PriorityQueue_get(PriorityQueue* pq, u64 idx)
 {
-    CHECK_FATAL(idx >= pq->q.size, "idx out of range");
+    WC_ASSERT(idx < pq->q.size, "idx out of range");
     return Queue_get(&pq->q, idx);
 }
 

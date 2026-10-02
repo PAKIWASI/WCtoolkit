@@ -34,19 +34,19 @@ static int is_zeroed(const Matrixf* m)
 static void test_create(void)
 {
     Matrixf m = matrix_create(WC_LIBC, 3, 4);
-    WC_ASSERT_NOT_NULL(m.data);
-    WC_ASSERT_EQ_U64(m.m, 3);
-    WC_ASSERT_EQ_U64(m.n, 4);
+    WC_EXPECT_NOT_NULL(m.data);
+    WC_EXPECT_EQ_U64(m.m, 3);
+    WC_EXPECT_EQ_U64(m.n, 4);
     matrix_destroy(&m);
-    WC_ASSERT_TRUE(is_zeroed(&m));
+    WC_EXPECT_TRUE(is_zeroed(&m));
 }
 
 static void test_create_arr(void)
 {
     float   arr[6] = {1, 2, 3, 4, 5, 6};
     Matrixf m      = matrix_create_arr(WC_LIBC, 2, 3, arr);
-    WC_ASSERT(memcmp(m.data, arr, sizeof(arr)) == 0); // bit-identical
-    WC_ASSERT_TRUE(m.data != arr);                    // owns a copy
+    WC_EXPECT(memcmp(m.data, arr, sizeof(arr)) == 0); // bit-identical
+    WC_EXPECT_TRUE(m.data != arr);                    // owns a copy
     matrix_destroy(&m);
 }
 
@@ -54,23 +54,23 @@ static void test_create_buf_borrows(void)
 {
     float   data[6] = {0};
     Matrixf m       = matrix_create_buf(2, 3, data);
-    WC_ASSERT_EQ_U64(m.m, 2);
-    WC_ASSERT_EQ_U64(m.n, 3);
-    WC_ASSERT_TRUE(m.data == data); // must point at the provided array
+    WC_EXPECT_EQ_U64(m.m, 2);
+    WC_EXPECT_EQ_U64(m.n, 3);
+    WC_EXPECT_TRUE(m.data == data); // must point at the provided array
     matrix_destroy(&m);             // frees nothing (wc_borrowed): ASAN would flag a stack free
-    WC_ASSERT_TRUE(is_zeroed(&m));
+    WC_EXPECT_TRUE(is_zeroed(&m));
 }
 
 static void test_macros(void)
 {
     Matrixf a = MATRIX(2, 2);
-    WC_ASSERT_EQ_U64(a.m * a.n, 4);
+    WC_EXPECT_EQ_U64(a.m * a.n, 4);
     matrix_destroy(&a);
 
     Arena arena;
     Arena_create(&arena, WC_LIBC, nKB(1));
     Matrixf b = MATRIX_IN(Arena_allocator(&arena), 3, 3);
-    WC_ASSERT_TRUE((u8*)b.data >= arena.base && (u8*)b.data < arena.base + arena.size);
+    WC_EXPECT_TRUE((u8*)b.data >= arena.base && (u8*)b.data < arena.base + arena.size);
     matrix_destroy(&b);
     Arena_destroy(&arena);
 }
@@ -81,7 +81,7 @@ static void test_destroy_zeroed_is_safe(void)
     memset(&z, 0, sizeof(z));
     matrix_destroy(&z);
     matrix_destroy(&z); // idempotent
-    WC_ASSERT_TRUE(is_zeroed(&z));
+    WC_EXPECT_TRUE(is_zeroed(&z));
 }
 
 
@@ -92,8 +92,8 @@ static void test_set_elm(void)
     float   d[4] = {0};
     Matrixf m    = matrix_create_buf(2, 2, d);
     matrix_set_elm(&m, 7.0f, 1, 0);
-    WC_ASSERT(fabsf(matrix_get_elm(&m, 1, 0) - 7.0f) < FLOAT_EPS);
-    WC_ASSERT(fabsf(d[2] - 7.0f) < FLOAT_EPS); // row-major, written through to the buffer
+    WC_EXPECT(fabsf(matrix_get_elm(&m, 1, 0) - 7.0f) < FLOAT_EPS);
+    WC_EXPECT(fabsf(d[2] - 7.0f) < FLOAT_EPS); // row-major, written through to the buffer
 }
 
 static void test_set_val_arr(void)
@@ -101,7 +101,7 @@ static void test_set_val_arr(void)
     Matrixf m      = matrix_create(WC_LIBC, 2, 2);
     float   src[4] = {1, 2, 3, 4};
     matrix_set_val_arr(&m, 4, src);
-    WC_ASSERT(mat_eq(&m, src, FLOAT_EPS));
+    WC_EXPECT(mat_eq(&m, src, FLOAT_EPS));
     matrix_destroy(&m);
 }
 
@@ -112,10 +112,10 @@ static void test_copy_is_independent(void)
 {
     Matrixf src  = matrix_create_arr(WC_LIBC, 2, 2, (float[]){1, 2, 3, 4});
     Matrixf dest = matrix_copy(WC_LIBC, &src);
-    WC_ASSERT_TRUE(dest.data != src.data);
-    WC_ASSERT(mat_eq(&dest, src.data, FLOAT_EPS));
+    WC_EXPECT_TRUE(dest.data != src.data);
+    WC_EXPECT(mat_eq(&dest, src.data, FLOAT_EPS));
     src.data[0] = 99.0f;
-    WC_ASSERT(fabsf(dest.data[0] - 1.0f) < FLOAT_EPS);
+    WC_EXPECT(fabsf(dest.data[0] - 1.0f) < FLOAT_EPS);
     matrix_destroy(&src);
     matrix_destroy(&dest);
 }
@@ -127,10 +127,10 @@ static void test_copy_across_allocators(void)
     Arena_create(&arena, WC_LIBC, nKB(1));
     Matrixf src  = matrix_create_arr(Arena_allocator(&arena), 2, 2, (float[]){1, 2, 3, 4});
     Matrixf dest = matrix_copy(WC_LIBC, &src);
-    WC_ASSERT_TRUE(dest.alloc.vt == NULL); // libc
+    WC_EXPECT_TRUE(dest.alloc.vt == NULL); // libc
     Arena_destroy(&arena);                 // src's memory gone; dest must survive
     float expected[] = {1, 2, 3, 4};
-    WC_ASSERT(mat_eq(&dest, expected, FLOAT_EPS));
+    WC_EXPECT(mat_eq(&dest, expected, FLOAT_EPS));
     matrix_destroy(&dest);
 }
 
@@ -139,8 +139,8 @@ static void test_copy_from_buf(void)
     float   d[4] = {5, 6, 7, 8};
     Matrixf b    = matrix_create_buf(2, 2, d);
     Matrixf c    = matrix_copy(WC_LIBC, &b); // borrowed source, owning copy
-    WC_ASSERT_TRUE(c.data != d);
-    WC_ASSERT(mat_eq(&c, d, FLOAT_EPS));
+    WC_EXPECT_TRUE(c.data != d);
+    WC_EXPECT(mat_eq(&c, d, FLOAT_EPS));
     matrix_destroy(&c);
 }
 
@@ -150,8 +150,8 @@ static void test_move_zeroes_src(void)
     float*  data = src.data;
     Matrixf dest;
     matrix_move(&dest, &src);
-    WC_ASSERT_TRUE(dest.data == data); // storage transferred, not copied
-    WC_ASSERT_TRUE(is_zeroed(&src));
+    WC_EXPECT_TRUE(dest.data == data); // storage transferred, not copied
+    WC_EXPECT_TRUE(is_zeroed(&src));
     matrix_destroy(&src); // zero-safe
     matrix_destroy(&dest);
 }
@@ -167,7 +167,7 @@ static void test_add(void)
     Matrixf out   = matrix_create_buf(2, 2, od);
     matrix_add(&out, &a, &b);
     float expected[] = {6, 8, 10, 12};
-    WC_ASSERT(mat_eq(&out, expected, FLOAT_EPS));
+    WC_EXPECT(mat_eq(&out, expected, FLOAT_EPS));
     matrix_destroy(&a);
     matrix_destroy(&b);
 }
@@ -180,7 +180,7 @@ static void test_sub(void)
     Matrixf out   = matrix_create_buf(2, 2, od);
     matrix_sub(&out, &a, &b);
     float expected[] = {4, 4, 4, 4};
-    WC_ASSERT(mat_eq(&out, expected, FLOAT_EPS));
+    WC_EXPECT(mat_eq(&out, expected, FLOAT_EPS));
     matrix_destroy(&a);
     matrix_destroy(&b);
 }
@@ -193,7 +193,7 @@ static void test_sub_self(void)
     Matrixf out   = matrix_create_buf(2, 2, od);
     matrix_sub(&out, &a, &a);
     float expected[] = {0, 0, 0, 0};
-    WC_ASSERT(mat_eq(&out, expected, FLOAT_EPS));
+    WC_EXPECT(mat_eq(&out, expected, FLOAT_EPS));
     matrix_destroy(&a);
 }
 
@@ -202,7 +202,7 @@ static void test_scale(void)
     Matrixf m = matrix_create_arr(WC_LIBC, 2, 2, (float[]){1, 2, 3, 4});
     matrix_scale(&m, 3.0f);
     float expected[] = {3, 6, 9, 12};
-    WC_ASSERT(mat_eq(&m, expected, FLOAT_EPS));
+    WC_EXPECT(mat_eq(&m, expected, FLOAT_EPS));
     matrix_destroy(&m);
 }
 
@@ -218,7 +218,7 @@ static void test_xply_2x2(void)
     Matrixf out   = matrix_create_buf(2, 2, od);
     matrix_xply(&out, &a, &b);
     float expected[] = {19, 22, 43, 50};
-    WC_ASSERT(mat_eq(&out, expected, FLOAT_EPS));
+    WC_EXPECT(mat_eq(&out, expected, FLOAT_EPS));
     matrix_destroy(&a);
     matrix_destroy(&b);
 }
@@ -234,7 +234,7 @@ static void test_xply_rect(void)
     // row0: 1*7+2*9+3*11=58, 1*8+2*10+3*12=64
     // row1: 4*7+5*9+6*11=139, 4*8+5*10+6*12=154
     float expected[] = {58, 64, 139, 154};
-    WC_ASSERT(mat_eq(&out, expected, FLOAT_EPS));
+    WC_EXPECT(mat_eq(&out, expected, FLOAT_EPS));
     matrix_destroy(&a);
     matrix_destroy(&b);
 }
@@ -246,7 +246,7 @@ static void test_xply_2_matches_xply(void)
     Matrixf o = matrix_create(WC_LIBC, 2, 2);
     matrix_xply_2(&o, &a, &b); // uses an internal borrowed transpose buffer
     float expected[] = {58, 64, 139, 154};
-    WC_ASSERT(mat_eq(&o, expected, FLOAT_EPS));
+    WC_EXPECT(mat_eq(&o, expected, FLOAT_EPS));
     matrix_destroy(&a);
     matrix_destroy(&b);
     matrix_destroy(&o);
@@ -260,7 +260,7 @@ static void test_xply_identity(void)
     float   od[4] = {0};
     Matrixf out   = matrix_create_buf(2, 2, od);
     matrix_xply(&out, &a, &I);
-    WC_ASSERT(mat_eq(&out, a.data, FLOAT_EPS));
+    WC_EXPECT(mat_eq(&out, a.data, FLOAT_EPS));
     matrix_destroy(&a);
     matrix_destroy(&I);
 }
@@ -276,7 +276,7 @@ static void test_transpose_square(void)
     Matrixf out   = matrix_create_buf(2, 2, od);
     matrix_T(&out, &m);
     float expected[] = {1, 3, 2, 4};
-    WC_ASSERT(mat_eq(&out, expected, FLOAT_EPS));
+    WC_EXPECT(mat_eq(&out, expected, FLOAT_EPS));
     matrix_destroy(&m);
 }
 
@@ -288,7 +288,7 @@ static void test_transpose_rect(void)
     Matrixf out   = matrix_create_buf(3, 2, od);
     matrix_T(&out, &m);
     float expected[] = {1, 4, 2, 5, 3, 6};
-    WC_ASSERT(mat_eq(&out, expected, FLOAT_EPS));
+    WC_EXPECT(mat_eq(&out, expected, FLOAT_EPS));
     matrix_destroy(&m);
 }
 
@@ -301,7 +301,7 @@ static void test_double_transpose(void)
     Matrixf t2     = matrix_create_buf(2, 3, t2d);
     matrix_T(&t1, &a);
     matrix_T(&t2, &t1);
-    WC_ASSERT(mat_eq(&t2, a.data, FLOAT_EPS));
+    WC_EXPECT(mat_eq(&t2, a.data, FLOAT_EPS));
     matrix_destroy(&a);
 }
 
@@ -319,7 +319,7 @@ static void test_lu_reconstruct(void)
 
     matrix_LU_Decomp(&L, &U, &m);
     matrix_xply(&prod, &L, &U);
-    WC_ASSERT(mat_eq(&prod, m.data, FLOAT_EPS));
+    WC_EXPECT(mat_eq(&prod, m.data, FLOAT_EPS));
     matrix_destroy(&m);
 }
 
@@ -328,7 +328,7 @@ static void test_det_known(void)
     // det([[1,2],[3,4]]) = 1*4 - 2*3 = -2
     Matrixf m = matrix_create_arr(WC_LIBC, 2, 2, (float[]){1, 2, 3, 4});
     float   d = matrix_det(&m);
-    WC_ASSERT(fabsf(d - (-2.0f)) < FLOAT_EPS);
+    WC_EXPECT(fabsf(d - (-2.0f)) < FLOAT_EPS);
     matrix_destroy(&m);
 }
 
@@ -337,14 +337,14 @@ static void test_det_3x3(void)
     // det([[3,2,4],[2,0,2],[4,2,3]]) = 3*(0-4) - 2*(6-8) + 4*(4-0) = -12+4+16 = 8
     Matrixf m = matrix_create_arr(WC_LIBC, 3, 3, (float[]){3, 2, 4, 2, 0, 2, 4, 2, 3});
     float   d = matrix_det(&m);
-    WC_ASSERT(fabsf(d - 8.0f) < FLOAT_EPS);
+    WC_EXPECT(fabsf(d - 8.0f) < FLOAT_EPS);
     matrix_destroy(&m);
 }
 
 static void test_det_identity(void)
 {
     Matrixf I = matrix_create_arr(WC_LIBC, 3, 3, (float[]){1, 0, 0, 0, 1, 0, 0, 0, 1});
-    WC_ASSERT(fabsf(matrix_det(&I) - 1.0f) < FLOAT_EPS);
+    WC_EXPECT(fabsf(matrix_det(&I) - 1.0f) < FLOAT_EPS);
     matrix_destroy(&I);
 }
 
@@ -358,10 +358,10 @@ static void test_arena_backed(void)
     wc_allocator al = Arena_allocator(&arena);
     Matrixf      m  = matrix_create_arr(al, 2, 2, (float[]){1, 2, 3, 4});
     float        expected[] = {1, 2, 3, 4};
-    WC_ASSERT(mat_eq(&m, expected, FLOAT_EPS));
+    WC_EXPECT(mat_eq(&m, expected, FLOAT_EPS));
     u64 used = arena.idx;
     matrix_destroy(&m); // last block: rewinds the arena
-    WC_ASSERT_TRUE(arena.idx < used);
+    WC_EXPECT_TRUE(arena.idx < used);
     Arena_destroy(&arena);
 }
 
@@ -382,7 +382,7 @@ static void test_arena_scratch_temporaries(void)
 
     // t1 and t2 memory reclaimed; result still holds correct values
     float expected[] = {5, 6, 7, 8};
-    WC_ASSERT(mat_eq(&result, expected, FLOAT_EPS));
+    WC_EXPECT(mat_eq(&result, expected, FLOAT_EPS));
     Arena_destroy(&arena);
 }
 
@@ -396,14 +396,14 @@ static void test_test_allocator_leak_free(void)
     Matrixf b = matrix_copy(al, &a);
     Matrixf c;
     matrix_move(&c, &b);
-    WC_ASSERT(fabsf(matrix_det(&c) - 8.0f) < FLOAT_EPS);
-    WC_ASSERT_EQ_U64(ta.live_blocks, 2);
+    WC_EXPECT(fabsf(matrix_det(&c) - 8.0f) < FLOAT_EPS);
+    WC_EXPECT_EQ_U64(ta.live_blocks, 2);
 
     matrix_destroy(&a);
     matrix_destroy(&b); // moved-from: no-op
     matrix_destroy(&c);
-    WC_ASSERT_EQ_U64(ta.n_errors, 0); // free sizes/aligns matched their allocs
-    WC_ASSERT_EQ_U64(wc_test_alloc_destroy(&ta), 0);
+    WC_EXPECT_EQ_U64(ta.n_errors, 0); // free sizes/aligns matched their allocs
+    WC_EXPECT_EQ_U64(wc_test_alloc_destroy(&ta), 0);
 }
 
 
@@ -448,11 +448,11 @@ static void create_fails_on_exhausted_arena(void)
 
 static void test_zero_state_and_oom_die(void)
 {
-    WC_ASSERT_DIES(scale_after_move);
-    WC_ASSERT_DIES(set_after_destroy);
-    WC_ASSERT_DIES(create_zero_dims);
-    WC_ASSERT_DIES(copy_of_zeroed);
-    WC_ASSERT_DIES(create_fails_on_exhausted_arena);
+    WC_EXPECT_DIES(scale_after_move);
+    WC_EXPECT_DIES(set_after_destroy);
+    WC_EXPECT_DIES(create_zero_dims);
+    WC_EXPECT_DIES(copy_of_zeroed);
+    WC_EXPECT_DIES(create_fails_on_exhausted_arena);
 }
 
 

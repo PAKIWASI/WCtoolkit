@@ -58,7 +58,7 @@ static inline __attribute__((nonnull(1))) u64 Queue_capacity(const Queue* q)
 // converts the element at the logical `idx` position. Circular queue nuance is handeled
 static inline __attribute__((nonnull(1))) const u8* Queue_get(Queue* q, u64 idx)
 {
-    CHECK_FATAL(idx >= q->size, "Queue_get: idx out of bounds");
+    WC_ASSERT(idx < q->size, "Queue_get: idx out of bounds");
     return GenVec_get_ptr_unsafe(&q->arr, (q->head + idx) % q->arr.capacity);
 }
 

@@ -132,7 +132,7 @@ const u8* GenVec_get_ptr(const GenVec* vec, u64 i) __attribute__((nonnull(1)));
 // Note: Pointer invalidated by push/insert/remove operations.
 u8* GenVec_get_ptr_mut(GenVec* vec, u64 i) __attribute__((nonnull(1)));
 
-// UNCHECKED variants — same as above but with the bounds CHECK_FATAL elided.
+// UNCHECKED variants: same as above but with the bounds WC_ASSERT elided.
 // Preconditions are NOT validated: caller must guarantee i < vec->size.
 // Use on hot paths where the check is provably redundant (macros, internal loops).
 const u8* GenVec_get_ptr_unsafe(const GenVec* vec, u64 i) __attribute__((nonnull(1)));

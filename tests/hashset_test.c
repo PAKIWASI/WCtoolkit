@@ -32,9 +32,9 @@ static void test_insert_and_has(void)
 {
     HashSet s = int_set();
     int x = 42;
-    WC_ASSERT_FALSE(HashSet_has(&s, (u8*)&x));
+    WC_EXPECT_FALSE(HashSet_has(&s, (u8*)&x));
     HashSet_insert(&s, (u8*)&x);
-    WC_ASSERT_TRUE(HashSet_has(&s, (u8*)&x));
+    WC_EXPECT_TRUE(HashSet_has(&s, (u8*)&x));
     HashSet_destroy(&s);
 }
 
@@ -44,8 +44,8 @@ static void test_insert_returns_existed(void)
     int x = 5;
     b8 first  = HashSet_insert(&s, (u8*)&x);
     b8 second = HashSet_insert(&s, (u8*)&x);
-    WC_ASSERT_FALSE(first);  // new insert
-    WC_ASSERT_TRUE(second);  // already existed
+    WC_EXPECT_FALSE(first);  // new insert
+    WC_EXPECT_TRUE(second);  // already existed
     HashSet_destroy(&s);
 }
 
@@ -56,7 +56,7 @@ static void test_insert_duplicate_no_growth(void)
     HashSet_insert(&s, (u8*)&x);
     HashSet_insert(&s, (u8*)&x);
     HashSet_insert(&s, (u8*)&x);
-    WC_ASSERT_EQ_U64(HashSet_size(&s), 1);
+    WC_EXPECT_EQ_U64(HashSet_size(&s), 1);
     HashSet_destroy(&s);
 }
 
@@ -64,7 +64,7 @@ static void test_has_missing_returns_false(void)
 {
     HashSet s = int_set();
     int x = 999;
-    WC_ASSERT_FALSE(HashSet_has(&s, (u8*)&x));
+    WC_EXPECT_FALSE(HashSet_has(&s, (u8*)&x));
     HashSet_destroy(&s);
 }
 
@@ -73,9 +73,9 @@ static void test_remove(void)
     HashSet s = int_set();
     int x = 7;
     HashSet_insert(&s, (u8*)&x);
-    WC_ASSERT_TRUE(HashSet_remove(&s, (u8*)&x));
-    WC_ASSERT_FALSE(HashSet_has(&s, (u8*)&x));
-    WC_ASSERT_EQ_U64(HashSet_size(&s), 0);
+    WC_EXPECT_TRUE(HashSet_remove(&s, (u8*)&x));
+    WC_EXPECT_FALSE(HashSet_has(&s, (u8*)&x));
+    WC_EXPECT_EQ_U64(HashSet_size(&s), 0);
     HashSet_destroy(&s);
 }
 
@@ -83,7 +83,7 @@ static void test_remove_missing_returns_false(void)
 {
     HashSet s = int_set();
     int x = 999;
-    WC_ASSERT_FALSE(HashSet_remove(&s, (u8*)&x));
+    WC_EXPECT_FALSE(HashSet_remove(&s, (u8*)&x));
     HashSet_destroy(&s);
 }
 
@@ -91,22 +91,22 @@ static void test_remove_on_empty_set(void)
 {
     HashSet s = int_set();
     int x = 1;
-    WC_ASSERT_FALSE(HashSet_remove(&s, (u8*)&x));
-    WC_ASSERT_EQ_U64(HashSet_size(&s), 0);
+    WC_EXPECT_FALSE(HashSet_remove(&s, (u8*)&x));
+    WC_EXPECT_EQ_U64(HashSet_size(&s), 0);
     HashSet_destroy(&s);
 }
 
 static void test_size_and_empty(void)
 {
     HashSet s = int_set();
-    WC_ASSERT_EQ_U64(HashSet_size(&s), 0);
-    WC_ASSERT_TRUE(HashSet_empty(&s));
+    WC_EXPECT_EQ_U64(HashSet_size(&s), 0);
+    WC_EXPECT_TRUE(HashSet_empty(&s));
 
     for (int i = 0; i < 10; i++) {
         HashSet_insert(&s, (u8*)&i);
     }
-    WC_ASSERT_EQ_U64(HashSet_size(&s), 10);
-    WC_ASSERT_FALSE(HashSet_empty(&s));
+    WC_EXPECT_EQ_U64(HashSet_size(&s), 10);
+    WC_EXPECT_FALSE(HashSet_empty(&s));
     HashSet_destroy(&s);
 }
 
@@ -116,7 +116,7 @@ static void test_size_tracks_inserts(void)
     for (int i = 0; i < 20; i++) {
         HashSet_insert(&s, (u8*)&i);
     }
-    WC_ASSERT_EQ_U64(HashSet_size(&s), 20);
+    WC_EXPECT_EQ_U64(HashSet_size(&s), 20);
     HashSet_destroy(&s);
 }
 
@@ -126,9 +126,9 @@ static void test_resize_preserves_membership(void)
     for (int i = 0; i < 50; i++) {
         HashSet_insert(&s, (u8*)&i);
     }
-    WC_ASSERT_EQ_U64(HashSet_size(&s), 50);
+    WC_EXPECT_EQ_U64(HashSet_size(&s), 50);
     for (int i = 0; i < 50; i++) {
-        WC_ASSERT_TRUE(HashSet_has(&s, (u8*)&i));
+        WC_EXPECT_TRUE(HashSet_has(&s, (u8*)&i));
     }
     HashSet_destroy(&s);
 }
@@ -144,10 +144,10 @@ static void test_remove_correctness_after_many_removes(void)
     for (int i = 0; i < 48; i++) {
         HashSet_remove(&s, (u8*)&i);
     }
-    WC_ASSERT_EQ_U64(HashSet_size(&s), 2);
+    WC_EXPECT_EQ_U64(HashSet_size(&s), 2);
 
     for (int i = 48; i < 50; i++) {
-        WC_ASSERT_TRUE(HashSet_has(&s, (u8*)&i));
+        WC_EXPECT_TRUE(HashSet_has(&s, (u8*)&i));
     }
     HashSet_destroy(&s);
 }
@@ -164,11 +164,11 @@ static void test_remove_reinsert(void)
     int x = 42;
     HashSet_insert(&s, (u8*)&x);
     HashSet_remove(&s, (u8*)&x);
-    WC_ASSERT_FALSE(HashSet_has(&s, (u8*)&x));
+    WC_EXPECT_FALSE(HashSet_has(&s, (u8*)&x));
 
     HashSet_insert(&s, (u8*)&x);
-    WC_ASSERT_TRUE(HashSet_has(&s, (u8*)&x));
-    WC_ASSERT_EQ_U64(HashSet_size(&s), 1);
+    WC_EXPECT_TRUE(HashSet_has(&s, (u8*)&x));
+    WC_EXPECT_EQ_U64(HashSet_size(&s), 1);
     HashSet_destroy(&s);
 }
 
@@ -188,7 +188,7 @@ static void test_remove_mid_chain(void)
         if (i == mid) {
             continue;
         }
-        WC_ASSERT_TRUE(HashSet_has(&s, (u8*)&i));
+        WC_EXPECT_TRUE(HashSet_has(&s, (u8*)&i));
     }
     HashSet_destroy(&s);
 }
@@ -200,9 +200,9 @@ static void test_remove_reinsert_cycle(void)
     int x = 7;
     for (int cycle = 0; cycle < 20; cycle++) {
         HashSet_insert(&s, (u8*)&x);
-        WC_ASSERT_TRUE(HashSet_has(&s, (u8*)&x));
+        WC_EXPECT_TRUE(HashSet_has(&s, (u8*)&x));
         HashSet_remove(&s, (u8*)&x);
-        WC_ASSERT_EQ_U64(HashSet_size(&s), 0);
+        WC_EXPECT_EQ_U64(HashSet_size(&s), 0);
     }
     HashSet_destroy(&s);
 }
@@ -216,10 +216,10 @@ static void test_remove_first_in_chain(void)
     }
     int head = 0;
     HashSet_remove(&s, (u8*)&head);
-    WC_ASSERT_FALSE(HashSet_has(&s, (u8*)&head));
+    WC_EXPECT_FALSE(HashSet_has(&s, (u8*)&head));
 
     for (int i = 1; i < 15; i++) {
-        WC_ASSERT_TRUE(HashSet_has(&s, (u8*)&i));
+        WC_EXPECT_TRUE(HashSet_has(&s, (u8*)&i));
     }
     HashSet_destroy(&s);
 }
@@ -234,15 +234,15 @@ static void test_remove_all_then_reinsert(void)
     for (int i = 0; i < 20; i++) {
         HashSet_remove(&s, (u8*)&i);
     }
-    WC_ASSERT_EQ_U64(HashSet_size(&s), 0);
-    WC_ASSERT_TRUE(HashSet_empty(&s));
+    WC_EXPECT_EQ_U64(HashSet_size(&s), 0);
+    WC_EXPECT_TRUE(HashSet_empty(&s));
 
     for (int i = 0; i < 20; i++) {
         HashSet_insert(&s, (u8*)&i);
     }
-    WC_ASSERT_EQ_U64(HashSet_size(&s), 20);
+    WC_EXPECT_EQ_U64(HashSet_size(&s), 20);
     for (int i = 0; i < 20; i++) {
-        WC_ASSERT_TRUE(HashSet_has(&s, (u8*)&i));
+        WC_EXPECT_TRUE(HashSet_has(&s, (u8*)&i));
     }
     HashSet_destroy(&s);
 }
@@ -261,11 +261,11 @@ static void test_clear_empties_set(void)
     u64 cap_before = HashSet_capacity(&s);
     HashSet_clear(&s);
 
-    WC_ASSERT_EQ_U64(HashSet_size(&s), 0);
-    WC_ASSERT_TRUE(HashSet_empty(&s));
-    WC_ASSERT_EQ_U64(HashSet_capacity(&s), cap_before); // capacity unchanged
+    WC_EXPECT_EQ_U64(HashSet_size(&s), 0);
+    WC_EXPECT_TRUE(HashSet_empty(&s));
+    WC_EXPECT_EQ_U64(HashSet_capacity(&s), cap_before); // capacity unchanged
     for (int i = 0; i < 10; i++) {
-        WC_ASSERT_FALSE(HashSet_has(&s, (u8*)&i));
+        WC_EXPECT_FALSE(HashSet_has(&s, (u8*)&i));
     }
     HashSet_destroy(&s);
 }
@@ -281,9 +281,9 @@ static void test_clear_then_reuse(void)
     for (int i = 100; i < 110; i++) {
         HashSet_insert(&s, (u8*)&i);
     }
-    WC_ASSERT_EQ_U64(HashSet_size(&s), 10);
+    WC_EXPECT_EQ_U64(HashSet_size(&s), 10);
     for (int i = 100; i < 110; i++) {
-        WC_ASSERT_TRUE(HashSet_has(&s, (u8*)&i));
+        WC_EXPECT_TRUE(HashSet_has(&s, (u8*)&i));
     }
     HashSet_destroy(&s);
 }
@@ -300,13 +300,13 @@ static void test_clear_frees_String_elms(void)
         String_destroy(&v); // safe on zeroed
     }
     HashSet_clear(&s);
-    WC_ASSERT_EQ_U64(HashSet_size(&s), 0);
+    WC_EXPECT_EQ_U64(HashSet_size(&s), 0);
 
     // Set must still be usable after clearing owned-resource entries
     String v = String_from_cstr(WC_LIBC, "after_clear");
     HashSet_insert_move(&s, (u8*)&v);
     String_destroy(&v); // safe on zeroed
-    WC_ASSERT_EQ_U64(HashSet_size(&s), 1);
+    WC_EXPECT_EQ_U64(HashSet_size(&s), 1);
     HashSet_destroy(&s);
 }
 
@@ -315,7 +315,7 @@ static void test_clear_empty_set(void)
     // clear on an already-empty set must be a safe no-op
     HashSet s = int_set();
     HashSet_clear(&s);
-    WC_ASSERT_EQ_U64(HashSet_size(&s), 0);
+    WC_EXPECT_EQ_U64(HashSet_size(&s), 0);
     HashSet_destroy(&s);
 }
 
@@ -332,10 +332,10 @@ static void test_copy_int_set(void)
     }
 
     HashSet dest = HashSet_copy(WC_LIBC, &src);
-    WC_ASSERT_EQ_U64(HashSet_size(&dest), HashSet_size(&src));
+    WC_EXPECT_EQ_U64(HashSet_size(&dest), HashSet_size(&src));
 
     for (int i = 0; i < 10; i++) {
-        WC_ASSERT_TRUE(HashSet_has(&dest, (u8*)&i));
+        WC_EXPECT_TRUE(HashSet_has(&dest, (u8*)&i));
     }
 
     HashSet_destroy(&src);
@@ -354,9 +354,9 @@ static void test_copy_independence(void)
     int y = 99;
     HashSet_insert(&dest, (u8*)&y);
 
-    WC_ASSERT_FALSE(HashSet_has(&src,  (u8*)&y)); // src unaffected
-    WC_ASSERT_TRUE(HashSet_has(&dest, (u8*)&x)); // dest has original
-    WC_ASSERT_TRUE(HashSet_has(&dest, (u8*)&y)); // dest has new
+    WC_EXPECT_FALSE(HashSet_has(&src,  (u8*)&y)); // src unaffected
+    WC_EXPECT_TRUE(HashSet_has(&dest, (u8*)&x)); // dest has original
+    WC_EXPECT_TRUE(HashSet_has(&dest, (u8*)&y)); // dest has new
 
     HashSet_destroy(&src);
     HashSet_destroy(&dest);
@@ -374,12 +374,12 @@ static void test_copy_str_set(void)
     }
 
     HashSet dest = HashSet_copy(WC_LIBC, &src);
-    WC_ASSERT_EQ_U64(HashSet_size(&dest), 3);
+    WC_EXPECT_EQ_U64(HashSet_size(&dest), 3);
 
     HashSet_destroy(&src); // src gone — dest must still be intact
 
     String probe = String_from_cstr(WC_LIBC, "beta");
-    WC_ASSERT_TRUE(HashSet_has(&dest, (u8*)&probe));
+    WC_EXPECT_TRUE(HashSet_has(&dest, (u8*)&probe));
     String_destroy(&probe);
 
     HashSet_destroy(&dest);
@@ -390,8 +390,8 @@ static void test_copy_empty_set(void)
     HashSet src = int_set();
 
     HashSet dest = HashSet_copy(WC_LIBC, &src);
-    WC_ASSERT_EQ_U64(HashSet_size(&dest), 0);
-    WC_ASSERT_EQ_U64(HashSet_capacity(&dest), HashSet_capacity(&src));
+    WC_EXPECT_EQ_U64(HashSet_size(&dest), 0);
+    WC_EXPECT_EQ_U64(HashSet_capacity(&dest), HashSet_capacity(&src));
 
     HashSet_destroy(&src);
     HashSet_destroy(&dest);
@@ -407,8 +407,8 @@ static void test_copy_then_remove_src_elm(void)
     HashSet dest = HashSet_copy(WC_LIBC, &src);
 
     HashSet_remove(&src, (u8*)&x);
-    WC_ASSERT_FALSE(HashSet_has(&src,  (u8*)&x));
-    WC_ASSERT_TRUE(HashSet_has(&dest, (u8*)&x));
+    WC_EXPECT_FALSE(HashSet_has(&src,  (u8*)&x));
+    WC_EXPECT_TRUE(HashSet_has(&dest, (u8*)&x));
 
     HashSet_destroy(&src);
     HashSet_destroy(&dest);
@@ -424,11 +424,11 @@ static void test_str_insert_move_nulls_ptr(void)
     HashSet s  = str_set();
     String   s1 = String_from_cstr(WC_LIBC, "hello");
     HashSet_insert_move(&s, (u8*)&s1);
-    WC_ASSERT_EQ_U64(s1.size, 0); // ownership transferred: source zeroed
+    WC_EXPECT_EQ_U64(s1.size, 0); // ownership transferred: source zeroed
     String_destroy(&s1);          // safe on zeroed
 
     String probe = String_from_cstr(WC_LIBC, "hello");
-    WC_ASSERT_TRUE(HashSet_has(&s, (u8*)&probe));
+    WC_EXPECT_TRUE(HashSet_has(&s, (u8*)&probe));
     String_destroy(&probe);
     HashSet_destroy(&s);
 }
@@ -440,7 +440,7 @@ static void test_str_insert_copy_leaves_src_valid(void)
     String   s1 = String_from_cstr(WC_LIBC, "world");
     HashSet_insert(&s, (u8*)&s1);
 
-    WC_ASSERT_TRUE(String_equals_cstr(&s1, "world"));
+    WC_EXPECT_TRUE(String_equals_cstr(&s1, "world"));
     String_destroy(&s1);
     HashSet_destroy(&s);
 }
@@ -454,7 +454,7 @@ static void test_str_insert_copy_independence(void)
     String_append_cstr(&sv, "_mutated");
 
     String probe = String_from_cstr(WC_LIBC, "original");
-    WC_ASSERT_TRUE(HashSet_has(&s, (u8*)&probe));
+    WC_EXPECT_TRUE(HashSet_has(&s, (u8*)&probe));
     String_destroy(&probe);
 
     String_destroy(&sv);
@@ -465,7 +465,7 @@ static void test_str_has_miss(void)
 {
     HashSet s = str_set();
     String probe = String_from_cstr(WC_LIBC, "missing");
-    WC_ASSERT_FALSE(HashSet_has(&s, (u8*)&probe));
+    WC_EXPECT_FALSE(HashSet_has(&s, (u8*)&probe));
     String_destroy(&probe);
     HashSet_destroy(&s);
 }
@@ -476,9 +476,9 @@ static void test_str_no_duplicates(void)
     String   sv = String_from_cstr(WC_LIBC, "dup");
     b8 first  = HashSet_insert(&s, (u8*)&sv);
     b8 second = HashSet_insert(&s, (u8*)&sv);
-    WC_ASSERT_FALSE(first);
-    WC_ASSERT_TRUE(second);
-    WC_ASSERT_EQ_U64(HashSet_size(&s), 1);
+    WC_EXPECT_FALSE(first);
+    WC_EXPECT_TRUE(second);
+    WC_EXPECT_EQ_U64(HashSet_size(&s), 1);
     String_destroy(&sv);
     HashSet_destroy(&s);
 }
@@ -492,11 +492,11 @@ static void test_str_insert_move_duplicate_frees_elm(void)
 
     String dup = String_from_cstr(WC_LIBC, "dup");
     b8 existed = HashSet_insert_move(&s, (u8*)&dup);
-    WC_ASSERT_TRUE(existed);
-    WC_ASSERT_EQ_U64(dup.size, 0); // duplicate destroyed and zeroed
-    WC_ASSERT_NULL(dup.heap);
+    WC_EXPECT_TRUE(existed);
+    WC_EXPECT_EQ_U64(dup.size, 0); // duplicate destroyed and zeroed
+    WC_EXPECT_NULL(dup.heap);
     String_destroy(&dup);          // safe on zeroed
-    WC_ASSERT_EQ_U64(HashSet_size(&s), 1);
+    WC_EXPECT_EQ_U64(HashSet_size(&s), 1);
 
     String_destroy(&sv);
     HashSet_destroy(&s);
@@ -510,9 +510,9 @@ static void test_str_remove(void)
     String_destroy(&s1); // moved-from: zeroed, safe on zeroed
 
     String probe = String_from_cstr(WC_LIBC, "remove_me");
-    WC_ASSERT_TRUE(HashSet_remove(&s, (u8*)&probe));
-    WC_ASSERT_FALSE(HashSet_has(&s, (u8*)&probe));
-    WC_ASSERT_EQ_U64(HashSet_size(&s), 0);
+    WC_EXPECT_TRUE(HashSet_remove(&s, (u8*)&probe));
+    WC_EXPECT_FALSE(HashSet_has(&s, (u8*)&probe));
+    WC_EXPECT_EQ_U64(HashSet_size(&s), 0);
     String_destroy(&probe);
     HashSet_destroy(&s);
 }
@@ -527,12 +527,12 @@ static void test_str_resize_preserves_membership(void)
         HashSet_insert(&s, (u8*)&sv);
         String_destroy(&sv);
     }
-    WC_ASSERT_EQ_U64(HashSet_size(&s), 40);
+    WC_EXPECT_EQ_U64(HashSet_size(&s), 40);
 
     for (int i = 0; i < 40; i++) {
         snprintf(buf, sizeof(buf), "word%d", i);
         String probe = String_from_cstr(WC_LIBC, buf);
-        WC_ASSERT_TRUE(HashSet_has(&s, (u8*)&probe));
+        WC_EXPECT_TRUE(HashSet_has(&s, (u8*)&probe));
         String_destroy(&probe);
     }
     HashSet_destroy(&s);
@@ -547,8 +547,8 @@ static void test_str_remove_frees_elm(void)
     String_destroy(&sv);
 
     String probe = String_from_cstr(WC_LIBC, "owned");
-    WC_ASSERT_TRUE(HashSet_remove(&s, (u8*)&probe));
-    WC_ASSERT_EQ_U64(HashSet_size(&s), 0);
+    WC_EXPECT_TRUE(HashSet_remove(&s, (u8*)&probe));
+    WC_EXPECT_EQ_U64(HashSet_size(&s), 0);
     String_destroy(&probe);
     HashSet_destroy(&s);
 }
@@ -564,16 +564,16 @@ static void test_str_clear_then_reuse(void)
         String_destroy(&sv);
     }
     HashSet_clear(&s);
-    WC_ASSERT_EQ_U64(HashSet_size(&s), 0);
+    WC_EXPECT_EQ_U64(HashSet_size(&s), 0);
 
     // Usable after clear
     String v = String_from_cstr(WC_LIBC, "fresh");
     HashSet_insert_move(&s, (u8*)&v);
     String_destroy(&v); // moved-from: zeroed, safe destroy
-    WC_ASSERT_EQ_U64(HashSet_size(&s), 1);
+    WC_EXPECT_EQ_U64(HashSet_size(&s), 1);
 
     String probe = String_from_cstr(WC_LIBC, "fresh");
-    WC_ASSERT_TRUE(HashSet_has(&s, (u8*)&probe));
+    WC_EXPECT_TRUE(HashSet_has(&s, (u8*)&probe));
     String_destroy(&probe);
     HashSet_destroy(&s);
 }
@@ -586,11 +586,11 @@ static void test_insert_move_nulls_src(void)
     String   el = String_from_cstr(WC_LIBC, "owned");
     b8 existed  = HashSet_insert_move(&s, (u8*)&el);
     String_destroy(&el); // moved-from: zeroed, safe destroy
-    WC_ASSERT_FALSE(existed);
-    WC_ASSERT_EQ_U64(HashSet_size(&s), 1);
+    WC_EXPECT_FALSE(existed);
+    WC_EXPECT_EQ_U64(HashSet_size(&s), 1);
 
     String k = String_from_cstr(WC_LIBC, "owned");
-    WC_ASSERT_TRUE(HashSet_has(&s, (u8*)&k));
+    WC_EXPECT_TRUE(HashSet_has(&s, (u8*)&k));
     String_destroy(&k);
     HashSet_destroy(&s);
 }
@@ -602,10 +602,10 @@ static void test_insert_move_duplicate_frees_incoming(void)
 
     String el  = String_from_cstr(WC_LIBC, "dup");
     b8 existed = HashSet_insert_move(&s, (u8*)&el);
-    WC_ASSERT_TRUE(existed);         /* already in set */
-    WC_ASSERT_EQ_U64(el.size, 0);    /* incoming consumed and zeroed */
+    WC_EXPECT_TRUE(existed);         /* already in set */
+    WC_EXPECT_EQ_U64(el.size, 0);    /* incoming consumed and zeroed */
     String_destroy(&el);             /* safe on zeroed */
-    WC_ASSERT_EQ_U64(HashSet_size(&s), 1);
+    WC_EXPECT_EQ_U64(HashSet_size(&s), 1);
     HashSet_destroy(&s);
 }
 
@@ -619,12 +619,12 @@ static void test_copy_str_set_deep(void)
     SET_INSERT_CSTR(&src, "beta");
 
     HashSet dest = HashSet_copy(WC_LIBC, &src);
-    WC_ASSERT_EQ_U64(HashSet_size(&dest), 2);
+    WC_EXPECT_EQ_U64(HashSet_size(&dest), 2);
 
     HashSet_destroy(&src); /* src gone — dest must still be intact */
 
     String k = String_from_cstr(WC_LIBC, "alpha");
-    WC_ASSERT_TRUE(HashSet_has(&dest, (u8*)&k));
+    WC_EXPECT_TRUE(HashSet_has(&dest, (u8*)&k));
     String_destroy(&k);
     HashSet_destroy(&dest);
 }
@@ -633,7 +633,7 @@ static void test_clear_empty_set_noop(void)
 {
     HashSet s = HashSet_create(WC_LIBC, sizeof(int), NULL, NULL, NULL);
     HashSet_clear(&s);
-    WC_ASSERT_EQ_U64(HashSet_size(&s), 0);
+    WC_EXPECT_EQ_U64(HashSet_size(&s), 0);
     HashSet_destroy(&s);
 }
 
@@ -650,8 +650,8 @@ static void test_set_foreach_visits_all(void)
         count++;
         sum += *el;
     }
-    WC_ASSERT_EQ_INT(count, 8);
-    WC_ASSERT_EQ_INT(sum, 0+1+2+3+4+5+6+7);
+    WC_EXPECT_EQ_INT(count, 8);
+    WC_EXPECT_EQ_INT(sum, 0+1+2+3+4+5+6+7);
     HashSet_destroy(&s);
 }
 
@@ -660,7 +660,7 @@ static void test_set_foreach_empty(void)
     HashSet s  = HashSet_create(WC_LIBC, sizeof(int), NULL, NULL, NULL);
     int count   = 0;
     SET_FOREACH(&s, int, el) { count++; (void)el; }
-    WC_ASSERT_EQ_INT(count, 0);
+    WC_EXPECT_EQ_INT(count, 0);
     HashSet_destroy(&s);
 }
 
@@ -672,10 +672,10 @@ static void test_set_foreach_after_remove(void)
 
     int count = 0;
     SET_FOREACH(&s, int, el) {
-        WC_ASSERT_TRUE(*el >= 4);
+        WC_EXPECT_TRUE(*el >= 4);
         count++;
     }
-    WC_ASSERT_EQ_INT(count, 4);
+    WC_EXPECT_EQ_INT(count, 4);
     HashSet_destroy(&s);
 }
 
@@ -691,10 +691,10 @@ static void test_hashset_fill_past_several_resizes(void)
     for (int i = 0; i < count; i++) {
         HashSet_insert(&s, (u8*)&i);
     }
-    WC_ASSERT_EQ_U64(HashSet_size(&s), count);
+    WC_EXPECT_EQ_U64(HashSet_size(&s), count);
 
     for (int i = 0; i < count; i++) {
-        WC_ASSERT_TRUE(HashSet_has(&s, (u8*)&i));
+        WC_EXPECT_TRUE(HashSet_has(&s, (u8*)&i));
     }
     HashSet_destroy(&s);
 }
@@ -712,14 +712,14 @@ static void test_hashset_cross_alloc_copy(void)
 
     // Copy from Arena to libc
     HashSet dest = HashSet_copy(WC_LIBC, &src);
-    WC_ASSERT_EQ_U64(HashSet_size(&dest), 20);
+    WC_EXPECT_EQ_U64(HashSet_size(&dest), 20);
 
     // Destroy src and arena, dest must remain valid in libc
     HashSet_destroy(&src);
     Arena_destroy(&a);
 
     for (int i = 0; i < 20; i++) {
-        WC_ASSERT_TRUE(HashSet_has(&dest, (u8*)&i));
+        WC_EXPECT_TRUE(HashSet_has(&dest, (u8*)&i));
     }
     HashSet_destroy(&dest);
 }
@@ -733,9 +733,9 @@ static void test_hashset_move(void)
     HashSet dest;
     HashSet_move(&dest, &src);
 
-    WC_ASSERT_EQ_U64(src.capacity, 0);
-    WC_ASSERT_EQ_U64(HashSet_size(&dest), 1);
-    WC_ASSERT_TRUE(HashSet_has(&dest, (u8*)&x));
+    WC_EXPECT_EQ_U64(src.capacity, 0);
+    WC_EXPECT_EQ_U64(HashSet_size(&dest), 1);
+    WC_EXPECT_TRUE(HashSet_has(&dest, (u8*)&x));
 
     HashSet_destroy(&src);  // safe on zeroed
     HashSet_destroy(&dest);
@@ -752,7 +752,7 @@ static void die_mutating_zero_hashset(void)
 
 static void test_hashset_zero_state_fatal(void)
 {
-    WC_ASSERT_DIES(die_mutating_zero_hashset);
+    WC_EXPECT_DIES(die_mutating_zero_hashset);
 }
 #endif
 

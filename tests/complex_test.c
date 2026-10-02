@@ -27,8 +27,8 @@ static void test_strval_push_copy_independent(void)
 
     /* mutate source — stored copies must be independent */
     String_append_cstr(&s, "_MUTATED");
-    WC_ASSERT(String_equals_cstr(VEC_AT_MUT(&v, String, 0), "hello"));
-    WC_ASSERT(String_equals_cstr(VEC_AT_MUT(&v, String, 1), "hello"));
+    WC_EXPECT(String_equals_cstr(VEC_AT_MUT(&v, String, 0), "hello"));
+    WC_EXPECT(String_equals_cstr(VEC_AT_MUT(&v, String, 1), "hello"));
 
     String_destroy(&s);
     GenVec_destroy(&v);
@@ -40,9 +40,9 @@ static void test_strval_push_move_nulls_src(void)
     String s = String_from_cstr(WC_LIBC, "world");
     VEC_PUSH_MOVE(&v, s); // by-value vec: move the String itself
 
-    WC_ASSERT_EQ_U64(s.size, 0); // moved-from String is zeroed
+    WC_EXPECT_EQ_U64(s.size, 0); // moved-from String is zeroed
     String_destroy(&s);          // safe on zeroed
-    WC_ASSERT(String_equals_cstr(VEC_AT_MUT(&v, String, 0), "world"));
+    WC_EXPECT(String_equals_cstr(VEC_AT_MUT(&v, String, 0), "world"));
     GenVec_destroy(&v);
 }
 
@@ -53,10 +53,10 @@ static void test_strval_push_cstr(void)
     VEC_PUSH_CSTR(&v, "beta");
     VEC_PUSH_CSTR(&v, "gamma");
 
-    WC_ASSERT_EQ_U64(GenVec_size(&v), 3);
-    WC_ASSERT(String_equals_cstr(VEC_AT_MUT(&v, String, 0), "alpha"));
-    WC_ASSERT(String_equals_cstr(VEC_AT_MUT(&v, String, 1), "beta"));
-    WC_ASSERT(String_equals_cstr(VEC_AT_MUT(&v, String, 2), "gamma"));
+    WC_EXPECT_EQ_U64(GenVec_size(&v), 3);
+    WC_EXPECT(String_equals_cstr(VEC_AT_MUT(&v, String, 0), "alpha"));
+    WC_EXPECT(String_equals_cstr(VEC_AT_MUT(&v, String, 1), "beta"));
+    WC_EXPECT(String_equals_cstr(VEC_AT_MUT(&v, String, 2), "gamma"));
     GenVec_destroy(&v);
 }
 
@@ -70,8 +70,8 @@ static void test_strval_foreach_mutates_in_place(void)
         String_append_char(s, '!');
     }
 
-    WC_ASSERT(String_equals_cstr(VEC_AT_MUT(&v, String, 0), "one!"));
-    WC_ASSERT(String_equals_cstr(VEC_AT_MUT(&v, String, 1), "two!"));
+    WC_EXPECT(String_equals_cstr(VEC_AT_MUT(&v, String, 0), "one!"));
+    WC_EXPECT(String_equals_cstr(VEC_AT_MUT(&v, String, 1), "two!"));
     GenVec_destroy(&v);
 }
 
@@ -83,8 +83,8 @@ static void test_strval_pop_returns_owned_String(void)
 
     /* VEC_POP copies element out via copy_fn, then del_fn cleans slot */
     String popped = VEC_POP(&v, String);
-    WC_ASSERT(String_equals_cstr(&popped, "second"));
-    WC_ASSERT_EQ_U64(GenVec_size(&v), 1);
+    WC_EXPECT(String_equals_cstr(&popped, "second"));
+    WC_EXPECT_EQ_U64(GenVec_size(&v), 1);
     String_destroy(&popped); /* caller owns it */
     GenVec_destroy(&v);
 }
@@ -96,7 +96,7 @@ static void test_strval_at_mut_modifies_in_place(void)
 
     String* slot = VEC_AT_MUT(&v, String, 0);
     String_append_cstr(slot, "_world");
-    WC_ASSERT(String_equals_cstr(VEC_AT_MUT(&v, String, 0), "hello_world"));
+    WC_EXPECT(String_equals_cstr(VEC_AT_MUT(&v, String, 0), "hello_world"));
     GenVec_destroy(&v);
 }
 
@@ -112,7 +112,7 @@ static void test_strval_copy_vec(void)
 
     /* modifying &src must not affect dest */
     String_append_cstr(VEC_AT_MUT(&src, String, 0), "_mutated");
-    WC_ASSERT(String_equals_cstr(VEC_AT_MUT(&dest, String, 0), "a"));
+    WC_EXPECT(String_equals_cstr(VEC_AT_MUT(&dest, String, 0), "a"));
 
     GenVec_destroy(&src);
     GenVec_destroy(&dest);
@@ -124,10 +124,10 @@ static void test_strval_triggers_growth(void)
     for (int i = 0; i < 20; i++) {
         VEC_PUSH_CSTR(&v, "x");
     }
-    WC_ASSERT_EQ_U64(GenVec_size(&v), 20);
+    WC_EXPECT_EQ_U64(GenVec_size(&v), 20);
     /* all elements must survive multiple reallocations */
     VEC_FOREACH(&v, String, s) {
-        WC_ASSERT(String_equals_cstr(s, "x"));
+        WC_EXPECT(String_equals_cstr(s, "x"));
     }
     GenVec_destroy(&v);
 }
@@ -151,8 +151,8 @@ static void test_strptr_push_copy_independent(void)
 
     /* mutate source — copies in vec must be independent */
     String_append_cstr(s, "_MUTATED");
-    WC_ASSERT(String_equals_cstr(VEC_AT(&v, String*, 0), "hello"));
-    WC_ASSERT(String_equals_cstr(VEC_AT(&v, String*, 1), "hello"));
+    WC_EXPECT(String_equals_cstr(VEC_AT(&v, String*, 0), "hello"));
+    WC_EXPECT(String_equals_cstr(VEC_AT(&v, String*, 1), "hello"));
 
     String_destroy(s);
     wc_free(WC_LIBC, s, sizeof(String), alignof(String));
@@ -165,8 +165,8 @@ static void test_strptr_push_move_nulls_src(void)
     String* s = WC_BOX_IN(WC_LIBC, String, String_from_cstr, "world");
     VEC_PUSH_MOVE(&v, s);
 
-    WC_ASSERT_NULL(s);
-    WC_ASSERT(String_equals_cstr(VEC_AT(&v, String*, 0), "world"));
+    WC_EXPECT_NULL(s);
+    WC_EXPECT(String_equals_cstr(VEC_AT(&v, String*, 0), "world"));
     GenVec_destroy(&v);
 }
 
@@ -183,8 +183,8 @@ static void test_strptr_address_stable_after_growth(void)
         VEC_PUSH_CSTR(&v, "filler");
     }
 
-    WC_ASSERT_TRUE(VEC_AT(&v, String*, 0) == addr); /* same address */
-    WC_ASSERT(String_equals_cstr(addr, "stable"));
+    WC_EXPECT_TRUE(VEC_AT(&v, String*, 0) == addr); /* same address */
+    WC_EXPECT(String_equals_cstr(addr, "stable"));
     GenVec_destroy(&v);
 }
 
@@ -198,8 +198,8 @@ static void test_strptr_foreach_dereference(void)
         String_append_char(*sp, '!');
     }
 
-    WC_ASSERT(String_equals_cstr(VEC_AT(&v, String*, 0), "one!"));
-    WC_ASSERT(String_equals_cstr(VEC_AT(&v, String*, 1), "two!"));
+    WC_EXPECT(String_equals_cstr(VEC_AT(&v, String*, 0), "one!"));
+    WC_EXPECT(String_equals_cstr(VEC_AT(&v, String*, 1), "two!"));
     GenVec_destroy(&v);
 }
 
@@ -215,7 +215,7 @@ static void test_strptr_replace_slot_pointer(void)
     wc_free(WC_LIBC, *slot, sizeof(String), alignof(String));
     *slot = replacement;    /* put new String* in slot */
 
-    WC_ASSERT(String_equals_cstr(VEC_AT(&v, String*, 0), "new"));
+    WC_EXPECT(String_equals_cstr(VEC_AT(&v, String*, 0), "new"));
     GenVec_destroy(&v);
 }
 
@@ -238,13 +238,13 @@ static void test_vecval_push_move(void)
     for (int i = 0; i < 5; i++) { VEC_PUSH(&inner, i); }
 
     VEC_PUSH_VEC(&outer, inner); /* inner zeroed, data lives in the outer slot */
-    WC_ASSERT_NULL(inner.data);
-    WC_ASSERT_EQ_U64(GenVec_size(&outer), 1);
+    WC_EXPECT_NULL(inner.data);
+    WC_EXPECT_EQ_U64(GenVec_size(&outer), 1);
 
     GenVec* slot = VEC_AT_MUT(&outer, GenVec, 0);
-    WC_ASSERT_EQ_U64(GenVec_size(slot), 5);
+    WC_EXPECT_EQ_U64(GenVec_size(slot), 5);
     for (int i = 0; i < 5; i++) {
-        WC_ASSERT_EQ_INT(*(int*)GenVec_get_ptr(slot, (u64)i), i);
+        WC_EXPECT_EQ_INT(*(int*)GenVec_get_ptr(slot, (u64)i), i);
     }
 
     GenVec_destroy(&outer);
@@ -265,7 +265,7 @@ static void test_vecval_push_copy_independent(void)
     GenVec_replace(&inner, 0, (u8*)&x);
 
     GenVec* slot = VEC_AT_MUT(&outer, GenVec, 0);
-    WC_ASSERT_EQ_INT(*(int*)GenVec_get_ptr(slot, 0), 0); /* copy untouched */
+    WC_EXPECT_EQ_INT(*(int*)GenVec_get_ptr(slot, 0), 0); /* copy untouched */
 
     GenVec_destroy(&inner);
     GenVec_destroy(&outer);
@@ -284,12 +284,12 @@ static void test_vecval_multiple_inner_vecs(void)
         VEC_PUSH_VEC(&outer, inner);
     }
 
-    WC_ASSERT_EQ_U64(GenVec_size(&outer), 4);
+    WC_EXPECT_EQ_U64(GenVec_size(&outer), 4);
     for (int row = 0; row < 4; row++) {
         GenVec* slot = VEC_AT_MUT(&outer, GenVec, (u64)row);
-        WC_ASSERT_EQ_U64(GenVec_size(slot), (u64)(row + 1));
+        WC_EXPECT_EQ_U64(GenVec_size(slot), (u64)(row + 1));
         for (int col = 0; col < (row + 1); col++) {
-            WC_ASSERT_EQ_INT(*(int*)GenVec_get_ptr(slot, (u64)col), (row * 10) + col);
+            WC_EXPECT_EQ_INT(*(int*)GenVec_get_ptr(slot, (u64)col), (row * 10) + col);
         }
     }
 
@@ -313,7 +313,7 @@ static void test_vecval_copy_outer(void)
     GenVec_replace(src_slot, 0, (u8*)&x);
 
     GenVec* dest_slot = VEC_AT_MUT(&dest, GenVec, 0);
-    WC_ASSERT_EQ_INT(*(int*)GenVec_get_ptr(dest_slot, 0), 0);
+    WC_EXPECT_EQ_INT(*(int*)GenVec_get_ptr(dest_slot, 0), 0);
 
     GenVec_destroy(&src);
     GenVec_destroy(&dest);
@@ -330,10 +330,10 @@ static void test_vecval_triggers_growth(void)
         VEC_PUSH_VEC(&outer, inner);
     }
 
-    WC_ASSERT_EQ_U64(GenVec_size(&outer), 20);
+    WC_EXPECT_EQ_U64(GenVec_size(&outer), 20);
     for (int i = 0; i < 20; i++) {
         GenVec* slot = VEC_AT_MUT(&outer, GenVec, (u64)i);
-        WC_ASSERT_EQ_INT(*(int*)GenVec_get_ptr(slot, 0), i);
+        WC_EXPECT_EQ_INT(*(int*)GenVec_get_ptr(slot, 0), i);
     }
 
     GenVec_destroy(&outer);
@@ -355,10 +355,10 @@ static void test_vecptr_push_move_nulls_src(void)
     VEC_PUSH(inner, 42);
 
     VEC_PUSH_VEC_PTR(&outer, inner);
-    WC_ASSERT_NULL(inner);
+    WC_EXPECT_NULL(inner);
 
     GenVec* stored = VEC_AT(&outer, GenVec*, 0);
-    WC_ASSERT_EQ_INT(*(int*)GenVec_get_ptr(stored, 0), 42);
+    WC_EXPECT_EQ_INT(*(int*)GenVec_get_ptr(stored, 0), 42);
     GenVec_destroy(&outer);
 }
 
@@ -377,8 +377,8 @@ static void test_vecptr_address_stable_after_growth(void)
         VEC_PUSH_VEC_PTR(&outer, filler);
     }
 
-    WC_ASSERT_TRUE(VEC_AT(&outer, GenVec*, 0) == addr);
-    WC_ASSERT_EQ_INT(*(int*)GenVec_get_ptr(addr, 0), 99);
+    WC_EXPECT_TRUE(VEC_AT(&outer, GenVec*, 0) == addr);
+    WC_EXPECT_EQ_INT(*(int*)GenVec_get_ptr(addr, 0), 99);
     GenVec_destroy(&outer);
 }
 
@@ -395,7 +395,7 @@ static void test_vecptr_copy_outer(void)
     /* modify src inner — dest copy must be independent */
     int x = 123;
     GenVec_replace(VEC_AT(&src, GenVec*, 0), 0, (u8*)&x);
-    WC_ASSERT_EQ_INT(*(int*)GenVec_get_ptr(VEC_AT(&dest, GenVec*, 0), 0), 5);
+    WC_EXPECT_EQ_INT(*(int*)GenVec_get_ptr(VEC_AT(&dest, GenVec*, 0), 0), 5);
 
     GenVec_destroy(&src);
     GenVec_destroy(&dest);
@@ -421,13 +421,13 @@ static void test_map_int_vec_put_move(void)
 
     int key = 10;
     HashMap_put_val_move(&m, (u8*)&key, (u8*)&v);
-    WC_ASSERT_NULL(v.data); // moved-from: zeroed
+    WC_EXPECT_NULL(v.data); // moved-from: zeroed
 
     GenVec* stored = (GenVec*)HashMap_get_ptr(&m, (u8*)&key);
-    WC_ASSERT_NOT_NULL(stored);
-    WC_ASSERT_EQ_U64(GenVec_size(stored), 5);
+    WC_EXPECT_NOT_NULL(stored);
+    WC_EXPECT_EQ_U64(GenVec_size(stored), 5);
     for (int i = 0; i < 5; i++) {
-        WC_ASSERT_EQ_INT(*(int*)GenVec_get_ptr(stored, (u64)i), i);
+        WC_EXPECT_EQ_INT(*(int*)GenVec_get_ptr(stored, (u64)i), i);
     }
 
     HashMap_destroy(&m);
@@ -447,7 +447,7 @@ static void test_map_int_vec_copy_independence(void)
     GenVec_replace(&src, 0, (u8*)&x);
 
     GenVec* stored = (GenVec*)HashMap_get_ptr(&m, (u8*)&key);
-    WC_ASSERT_EQ_INT(*(int*)GenVec_get_ptr(stored, 0), 0);
+    WC_EXPECT_EQ_INT(*(int*)GenVec_get_ptr(stored, 0), 0);
 
     GenVec_destroy(&src);
     HashMap_destroy(&m);
@@ -465,11 +465,11 @@ static void test_map_str_str_macro(void)
 
     String probe = String_from_cstr(WC_LIBC, "city");
     String* val = (String*)HashMap_get_ptr(&m, (u8*)&probe);
-    WC_ASSERT_NOT_NULL(val);
-    WC_ASSERT(String_equals_cstr(val, "Cairo"));
+    WC_EXPECT_NOT_NULL(val);
+    WC_EXPECT(String_equals_cstr(val, "Cairo"));
     String_destroy(&probe);
 
-    WC_ASSERT_EQ_U64(HashMap_size(&m), 3);
+    WC_EXPECT_EQ_U64(HashMap_size(&m), 3);
     HashMap_destroy(&m);
 }
 
@@ -485,9 +485,9 @@ static void test_map_int_str_macro(void)
 
     int key = 2;
     String* val = (String*)HashMap_get_ptr(&m, (u8*)&key);
-    WC_ASSERT_NOT_NULL(val);
-    WC_ASSERT(String_equals_cstr(val, "two"));
-    WC_ASSERT_EQ_U64(HashMap_size(&m), 3);
+    WC_EXPECT_NOT_NULL(val);
+    WC_EXPECT(String_equals_cstr(val, "two"));
+    WC_EXPECT_EQ_U64(HashMap_size(&m), 3);
     HashMap_destroy(&m);
 }
 
@@ -511,7 +511,7 @@ static void test_strategy_a_b_same_content(void)
     for (int i = 0; i < 4; i++) {
         String* a = VEC_AT_MUT(&by_val, String,  (u64)i);
         String* b = VEC_AT    (&by_ptr, String*, (u64)i);
-        WC_ASSERT(String_equals(a, b));
+        WC_EXPECT(String_equals(a, b));
     }
 
     GenVec_destroy(&by_val);
@@ -528,8 +528,8 @@ static void test_strategy_b_pointer_outlives_growth(void)
     for (int i = 0; i < 60; i++) { VEC_PUSH_CSTR(&v, "x"); }
 
     /* anchor still points to the same heap String, content intact */
-    WC_ASSERT_TRUE(VEC_AT(&v, String*, 0) == anchor);
-    WC_ASSERT(String_equals_cstr(anchor, "anchor"));
+    WC_EXPECT_TRUE(VEC_AT(&v, String*, 0) == anchor);
+    WC_EXPECT(String_equals_cstr(anchor, "anchor"));
     GenVec_destroy(&v);
 }
 

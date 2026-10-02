@@ -50,7 +50,7 @@ void matrix_destroy(Matrixf* mat)
 void matrix_set_val_arr(Matrixf* mat, u64 count, const float* arr)
 {
     MAT_LIVE(mat, "matrix_set_val_arr");
-    CHECK_FATAL(count != MATRIX_TOTAL(mat), "count doesn't match matrix size");
+    WC_ASSERT(count == MATRIX_TOTAL(mat), "count doesn't match matrix size");
 
     memcpy(mat->data, arr, sizeof(float) * count);
 }
@@ -58,8 +58,8 @@ void matrix_set_val_arr(Matrixf* mat, u64 count, const float* arr)
 void matrix_set_val_arr2(Matrixf* mat, u64 m, u64 n, const float** arr2)
 {
     MAT_LIVE(mat, "matrix_set_val_arr2");
-    CHECK_FATAL(!*arr2, "*arr is null");
-    CHECK_FATAL(m != mat->m || n != mat->n,
+    WC_ASSERT(*arr2, "*arr is null");
+    WC_ASSERT(m == mat->m && n == mat->n,
                 "mat dimentions dont match passed arr2");
 
     u64 idx = 0;
@@ -72,14 +72,14 @@ void matrix_set_val_arr2(Matrixf* mat, u64 m, u64 n, const float** arr2)
 void matrix_set_elm(Matrixf* mat, float elm, u64 i, u64 j)
 {
     MAT_LIVE(mat, "matrix_set_elm");
-    CHECK_FATAL(i >= mat->m || j >= mat->n, "index out of bounds");
+    WC_ASSERT(i < mat->m && j < mat->n, "index out of bounds");
 
     mat->data[IDX(mat, i, j)] = elm;
 }
 
 float matrix_get_elm(const Matrixf* mat, u64 i, u64 j)
 {
-    CHECK_FATAL(i >= mat->m || j >= mat->n, "index out of bounds");
+    WC_ASSERT(i < mat->m && j < mat->n, "index out of bounds");
 
     return mat->data[IDX(mat, i, j)];
 }
@@ -87,8 +87,7 @@ float matrix_get_elm(const Matrixf* mat, u64 i, u64 j)
 void matrix_add(Matrixf* restrict out, const Matrixf* restrict a, const Matrixf* restrict b)
 {
     MAT_LIVE(out, "matrix_add");
-    CHECK_FATAL(a->m != b->m || a->n != b->n || a->m != out->m ||
-                    a->n != out->n,
+    WC_ASSERT(a->m == b->m && a->n == b->n && a->m == out->m && a->n == out->n,
                 "a, b, out mat dimentions dont match");
 
     u64 total = MATRIX_TOTAL(a);
@@ -103,8 +102,7 @@ void matrix_sub(Matrixf* restrict out, const Matrixf* restrict a, const Matrixf*
 {
     MAT_LIVE(out, "matrix_sub");
     // FIXED: Added dimension check for 'out' matrix
-    CHECK_FATAL(a->m != b->m || a->n != b->n || a->m != out->m ||
-                    a->n != out->n,
+    WC_ASSERT(a->m == b->m && a->n == b->n && a->m == out->m && a->n == out->n,
                 "a, b, out mat dimentions dont match");
 
     u64 total = MATRIX_TOTAL(a);
@@ -119,9 +117,9 @@ void matrix_sub(Matrixf* restrict out, const Matrixf* restrict a, const Matrixf*
 void matrix_xply(Matrixf* restrict out, const Matrixf* restrict a, const Matrixf* restrict b)
 {
     MAT_LIVE(out, "matrix_xply");
-    CHECK_FATAL(a->n != b->m,
+    WC_ASSERT(a->n == b->m,
                 "incompatible matrix dimensions for multiplication");
-    CHECK_FATAL(out->m != a->m || out->n != b->n,
+    WC_ASSERT(out->m == a->m && out->n == b->n,
                 "output matrix has wrong dimensions");
 
     u64 m = a->m; // rows of A
@@ -166,8 +164,8 @@ void matrix_xply(Matrixf* restrict out, const Matrixf* restrict a, const Matrixf
 void matrix_xply_2(Matrixf* restrict out, const Matrixf* restrict a, const Matrixf* restrict b)
 {
     MAT_LIVE(out, "matrix_xply_2");
-    CHECK_FATAL(a->n != b->m, "incompatible matrix dimensions");
-    CHECK_FATAL(out->m != a->m || out->n != b->n,
+    WC_ASSERT(a->n == b->m, "incompatible matrix dimensions");
+    WC_ASSERT(out->m == a->m && out->n == b->n,
                 "output matrix has wrong dimensions");
 
     u64 m = a->m;
@@ -215,9 +213,9 @@ void matrix_LU_Decomp(Matrixf* restrict L, Matrixf* restrict U, const Matrixf* r
 {
     MAT_LIVE(L, "matrix_LU_Decomp");
     MAT_LIVE(U, "matrix_LU_Decomp");
-    CHECK_FATAL(mat->n != mat->m, "mat is not a square matrix");
-    CHECK_FATAL(L->n != mat->n || L->m != mat->m, "L dimensions don't match");
-    CHECK_FATAL(U->n != mat->n || U->m != mat->m, "U dimensions don't match");
+    WC_ASSERT(mat->n == mat->m, "mat is not a square matrix");
+    WC_ASSERT(L->n == mat->n && L->m == mat->m, "L dimensions don't match");
+    WC_ASSERT(U->n == mat->n && U->m == mat->m, "U dimensions don't match");
 
     const u64 n = mat->n;
 
@@ -248,7 +246,7 @@ void matrix_LU_Decomp(Matrixf* restrict L, Matrixf* restrict U, const Matrixf* r
 
             // Check for zero diagonal in U (would cause division by zero)
             if (U->data[IDX(U, i, i)] == 0) {
-                CHECK_FATAL(1, "Matrix is singular - LU decomposition failed");
+                WC_ASSERT(0, "Matrix is singular - LU decomposition failed");
             }
 
             L->data[IDX(L, k, i)] =
@@ -271,7 +269,7 @@ void matrix_LU_Decomp(Matrixf* restrict L, Matrixf* restrict U, const Matrixf* r
 */
 float matrix_det(const Matrixf* mat)
 {
-    CHECK_FATAL(mat->m != mat->n, "only square matrices have determinant");
+    WC_ASSERT(mat->m == mat->n, "only square matrices have determinant");
 
 
     u64 n = mat->n;
@@ -295,7 +293,7 @@ float matrix_det(const Matrixf* mat)
 void matrix_T(Matrixf* restrict out, const Matrixf* restrict mat)
 {
     MAT_LIVE(out, "matrix_T");
-    CHECK_FATAL(mat->m != out->n || mat->n != out->m,
+    WC_ASSERT(mat->m == out->n && mat->n == out->m,
                 "incompatible matrix dimensions");
 
     // Block size for cache optimization (tune based on cache line size)
@@ -331,7 +329,7 @@ void matrix_scale(Matrixf* restrict mat, float val)
 void matrix_div(Matrixf* restrict mat, float val)
 {
     MAT_LIVE(mat, "matrix_div");
-    CHECK_FATAL(val == 0, "division by zero!");
+    WC_ASSERT(val != 0, "division by zero!");
 
     u64 total = MATRIX_TOTAL(mat);
     for (u64 i = 0; i < total; i++) { mat->data[i] /= val; }

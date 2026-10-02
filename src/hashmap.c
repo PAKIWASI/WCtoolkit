@@ -383,19 +383,19 @@ const u8* HashMap_get_ptr(const HashMap* map, const u8* key)
 
 b8 HashMap_bucket_occupied(const HashMap* map, u64 i)
 {
-    CHECK_FATAL(i >= map->capacity, "index out of bounds");
+    WC_ASSERT(i < map->capacity, "index out of bounds");
     return *GET_PSL(map, i) != BUCKET_EMPTY;
 }
 
 const u8* HashMap_bucket_key_ptr(const HashMap* map, u64 i)
 {
-    CHECK_FATAL(i >= map->capacity, "index out of bounds");
+    WC_ASSERT(i < map->capacity, "index out of bounds");
     return GET_KEY(map, i);
 }
 
 u8* HashMap_bucket_val_ptr(HashMap* map, u64 i)
 {
-    CHECK_FATAL(i >= map->capacity, "index out of bounds");
+    WC_ASSERT(i < map->capacity, "index out of bounds");
     return GET_VAL(map, i);
 }
 

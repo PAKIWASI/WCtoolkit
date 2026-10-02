@@ -26,24 +26,15 @@
         (q)->tail = REAL_IDX((q), (q)->head + (q)->size); \
     }
 
-#define Q_MAYBE_GROW(q)                       \
-    do {                                      \
-        if ((q)->size == (q)->arr.capacity) { \
-            Queue_grow((q));                  \
-        }                                     \
-    } while (0)
+#define Q_MAYBE_GROW(q) ((void)(WC_UNLIKELY((q)->size == (q)->arr.capacity) && (Queue_grow((q)), 0)))
 
-#define Q_MAYBE_SHRINK(q)                                       \
-    do {                                                        \
-        u64 capacity = (q)->arr.capacity;                       \
-        if (capacity <= 4) {                                    \
-            return;                                             \
-        }                                                       \
-        float load_factor = (float)(q)->size / (float)capacity; \
-        if (load_factor < QUEUE_SHRINK_AT) {                    \
-            Queue_shrink((q));                                  \
-        }                                                       \
-    } while (0)
+// Shrink only above the 4-slot floor and below QUEUE_SHRINK_AT load.
+// (The old do/while form hid a `return` that left the caller; both call
+// sites are the last statement of their function, so this is equivalent.)
+#define Q_MAYBE_SHRINK(q)                                                                 \
+    ((void)(WC_UNLIKELY((q)->arr.capacity > 4 &&                                          \
+                        (float)(q)->size / (float)(q)->arr.capacity < QUEUE_SHRINK_AT) && \
+            (Queue_shrink((q)), 0)))
 
 
 static void Queue_grow(Queue* q);
@@ -188,7 +179,7 @@ void Queue_pop_back(Queue* q, u8* out)
 
 void Queue_swap(Queue* q, u64 i, u64 j)
 {
-    CHECK_FATAL(i >= q->size || j >= q->size, "Queue_swap: index out of bounds");
+    WC_ASSERT(i < q->size && j < q->size, "Queue_swap: index out of bounds");
 
     u64 real_i = REAL_IDX(q, q->head + i);
     u64 real_j = REAL_IDX(q, q->head + j);

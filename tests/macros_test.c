@@ -57,11 +57,11 @@ static void test_set_insert_move_compiles_and_works(void)
     SET_INSERT_MOVE(&set, val);
 
     /* source element must be zeroed after move */
-    WC_ASSERT_EQ_INT(val, 0);
+    WC_EXPECT_EQ_INT(val, 0);
 
     /* element must be present in the set */
     int key = 42;
-    WC_ASSERT_TRUE(HashSet_has(&set, (u8*)&key));
+    WC_EXPECT_TRUE(HashSet_has(&set, (u8*)&key));
 
     HashSet_destroy(&set);
 }
@@ -77,10 +77,10 @@ static void test_Queue_macros(void)
     QUEUE_PUSH(&q, 20);
     QUEUE_PUSH(&q, 30);
 
-    WC_ASSERT_EQ_INT(QUEUE_PEEK(&q, int), 10);
-    WC_ASSERT_EQ_INT(QUEUE_POP(&q, int), 10);
-    WC_ASSERT_EQ_INT(QUEUE_POP(&q, int), 20);
-    WC_ASSERT_EQ_INT(QUEUE_POP(&q, int), 30);
+    WC_EXPECT_EQ_INT(QUEUE_PEEK(&q, int), 10);
+    WC_EXPECT_EQ_INT(QUEUE_POP(&q, int), 10);
+    WC_EXPECT_EQ_INT(QUEUE_POP(&q, int), 20);
+    WC_EXPECT_EQ_INT(QUEUE_POP(&q, int), 30);
 
     Queue_destroy(&q);
 }
@@ -94,17 +94,17 @@ static void test_Stack_macros(void)
     STACK_PUSH(&s, 100);
     STACK_PUSH(&s, 200);
 
-    WC_ASSERT_EQ_INT(STACK_AT(&s, int, 0), 100);
-    WC_ASSERT_EQ_INT(STACK_AT(&s, int, 1), 200);
+    WC_EXPECT_EQ_INT(STACK_AT(&s, int, 0), 100);
+    WC_EXPECT_EQ_INT(STACK_AT(&s, int, 1), 200);
 
     int sum = 0;
     STACK_FOREACH(&s, int, p) {
         sum += *p;
     }
-    WC_ASSERT_EQ_INT(sum, 300);
+    WC_EXPECT_EQ_INT(sum, 300);
 
-    WC_ASSERT_EQ_INT(STACK_POP(&s, int), 200);
-    WC_ASSERT_EQ_INT(STACK_POP(&s, int), 100);
+    WC_EXPECT_EQ_INT(STACK_POP(&s, int), 200);
+    WC_EXPECT_EQ_INT(STACK_POP(&s, int), 100);
 
     Stack_destroy(&s);
 }
@@ -121,31 +121,31 @@ static void test_map_get_and_try_get(void)
     HashMap_put(&m, (u8*)&k2, (u8*)&v2);
 
     /* MAP_GET on hit */
-    WC_ASSERT_EQ_INT(MAP_GET(&m, int, k1), 10);
-    WC_ASSERT_EQ_INT(MAP_GET(&m, int, k2), 20);
+    WC_EXPECT_EQ_INT(MAP_GET(&m, int, k1), 10);
+    WC_EXPECT_EQ_INT(MAP_GET(&m, int, k2), 20);
 
     /* MAP_TRY_GET */
     int out = 0;
     b8 hit = MAP_TRY_GET(&m, int, k1, &out);
-    WC_ASSERT_TRUE(hit);
-    WC_ASSERT_EQ_INT(out, 10);
+    WC_EXPECT_TRUE(hit);
+    WC_EXPECT_EQ_INT(out, 10);
 
     int miss_k = 999;
     b8 miss = MAP_TRY_GET(&m, int, miss_k, &out);
-    WC_ASSERT_FALSE(miss);
+    WC_EXPECT_FALSE(miss);
 
     /* MAP_FOREACH_KEY / VAL */
     int key_sum = 0;
     MAP_FOREACH_KEY(&m, int, k) {
         key_sum += *k;
     }
-    WC_ASSERT_EQ_INT(key_sum, 3);
+    WC_EXPECT_EQ_INT(key_sum, 3);
 
     int val_sum = 0;
     MAP_FOREACH_VAL(&m, int, v) {
         val_sum += *v;
     }
-    WC_ASSERT_EQ_INT(val_sum, 30);
+    WC_EXPECT_EQ_INT(val_sum, 30);
 
     HashMap_destroy(&m);
 }
@@ -160,13 +160,13 @@ static void test_set_foreach_and_from_vec(void)
     }
 
     HashSet s = SET_FROM_VEC(&v, hash_int, cmp_int);
-    WC_ASSERT_EQ_U64(HashSet_size(&s), 3);
+    WC_EXPECT_EQ_U64(HashSet_size(&s), 3);
 
     int sum = 0;
     SET_FOREACH(&s, int, elm) {
         sum += *elm;
     }
-    WC_ASSERT_EQ_INT(sum, 6);
+    WC_EXPECT_EQ_INT(sum, 6);
 
     HashSet_destroy(&s);
     GenVec_destroy(&v);
@@ -193,7 +193,7 @@ static void test_create_of_pod_uses_null_ops(void)
 
     int x = 42;
     GenVec_push(&v, (u8*)&x);
-    WC_ASSERT_EQ_INT(VEC_AT(&v, int, 0), 42);
+    WC_EXPECT_EQ_INT(VEC_AT(&v, int, 0), 42);
 
     GenVec_destroy(&v);
 }
@@ -203,11 +203,11 @@ static void test_create_of_String_by_value(void)
     /* sizeof(String) bytes per slot; wc_str_ops supplies the del_fn that frees
      * the heap str on destroy. */
     GenVec v = VEC_OF(String, 4);
-    WC_ASSERT_EQ_U64(v.data_size, sizeof(String));
+    WC_EXPECT_EQ_U64(v.data_size, sizeof(String));
 
     VEC_PUSH_CSTR(&v, "hello");
     VEC_PUSH_CSTR(&v, "world");
-    WC_ASSERT_EQ_U64(v.size, 2);
+    WC_EXPECT_EQ_U64(v.size, 2);
 
     GenVec_destroy(&v);
 }
@@ -217,7 +217,7 @@ static void test_create_of_String_by_pointer(void)
     /* String* slots (8 bytes); wc_str_ptr_ops frees each heap String on
      * destroy. */
     GenVec v = VEC_OF(String*, 4);
-    WC_ASSERT_EQ_U64(v.data_size, sizeof(String*));
+    WC_EXPECT_EQ_U64(v.data_size, sizeof(String*));
 
     String* a = WC_BOX_IN(WC_LIBC, String, String_from_cstr, "a");
     String* b = WC_BOX_IN(WC_LIBC, String, String_from_cstr, "b");
@@ -227,7 +227,7 @@ static void test_create_of_String_by_pointer(void)
     // matching the "frees each heap String on destroy" intent above.
     VEC_PUSH_MOVE(&v, a);
     VEC_PUSH_MOVE(&v, b);
-    WC_ASSERT_EQ_U64(v.size, 2);
+    WC_EXPECT_EQ_U64(v.size, 2);
 
     GenVec_destroy(&v);
 }
@@ -252,10 +252,10 @@ static void test_map_of_string_keys_hash_content(void)
 
     const int* r1 = (const int*)HashMap_get_ptr(&m, (u8*)&q1);
     const int* r2 = (const int*)HashMap_get_ptr(&m, (u8*)&q2);
-    WC_ASSERT_NOT_NULL(r1);
-    WC_ASSERT_NOT_NULL(r2);
-    WC_ASSERT_EQ_INT(*r1, 1);
-    WC_ASSERT_EQ_INT(*r2, 2);
+    WC_EXPECT_NOT_NULL(r1);
+    WC_EXPECT_NOT_NULL(r2);
+    WC_EXPECT_EQ_INT(*r1, 1);
+    WC_EXPECT_EQ_INT(*r2, 2);
 
     String_destroy(&q1);
     String_destroy(&q2);
@@ -271,8 +271,8 @@ static void test_map_create_of(void)
     MAP_PUT(&m, k, val);
 
     double out = 0;
-    WC_ASSERT_TRUE(MAP_TRY_GET(&m, int, k, &out));
-    WC_ASSERT_TRUE(out == 3.5);
+    WC_EXPECT_TRUE(MAP_TRY_GET(&m, int, k, &out));
+    WC_EXPECT_TRUE(out == 3.5);
 
     HashMap_destroy(&m);
 }
@@ -290,10 +290,10 @@ static void test_vec_at_asserts_elem_size_passes_correct_t(void)
     }
 
     int sum = VEC_AT(&v, int, 0) + VEC_AT(&v, int, 1) + VEC_AT(&v, int, 2);
-    WC_ASSERT_EQ_INT(sum, 6);
+    WC_EXPECT_EQ_INT(sum, 6);
 
     *VEC_AT_MUT(&v, int, 0) = 10;
-    WC_ASSERT_EQ_INT(VEC_AT(&v, int, 0), 10);
+    WC_EXPECT_EQ_INT(VEC_AT(&v, int, 0), 10);
 
     GenVec_destroy(&v);
 }
@@ -305,8 +305,8 @@ static void test_vec_front_back_assert_elem_size(void)
         GenVec_push(&v, (u8*)&i);
     }
 
-    WC_ASSERT_EQ_INT(VEC_FRONT(&v, int), 1);
-    WC_ASSERT_EQ_INT(VEC_BACK(&v, int), 3);
+    WC_EXPECT_EQ_INT(VEC_FRONT(&v, int), 1);
+    WC_EXPECT_EQ_INT(VEC_BACK(&v, int), 3);
 
     GenVec_destroy(&v);
 }
@@ -332,7 +332,7 @@ static void test_vec_foreach_if_else_prefix(void)
         count = -1;
     }
 
-    WC_ASSERT_EQ_INT(count, 3);
+    WC_EXPECT_EQ_INT(count, 3);
 
     GenVec_destroy(&v);
 }
@@ -348,11 +348,11 @@ static void test_genvec_unsafe_getters_in_range(void)
     }
 
     const u8* cp = GenVec_get_ptr_unsafe(&v, 1);
-    WC_ASSERT_EQ_INT(*(const int*)cp, 2);
+    WC_EXPECT_EQ_INT(*(const int*)cp, 2);
 
     u8* mp = GenVec_get_ptr_mut_unsafe(&v, 2);
     *(int*)mp = 30;
-    WC_ASSERT_EQ_INT(VEC_AT(&v, int, 2), 30);
+    WC_EXPECT_EQ_INT(VEC_AT(&v, int, 2), 30);
 
     GenVec_destroy(&v);
 }

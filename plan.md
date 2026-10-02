@@ -205,7 +205,7 @@ typedef void (*wc_delete_fn)(u8* elm);                                  // uses 
 
 `del_ptr` reads the child's allocator, calls the child's `destroy`, then frees the shell with that same allocator. Invariant: *a boxed child's shell is always allocated from the allocator the child stores.*
 
-**Errors (D5):** logic errors (bad index, size 0, element-size mismatch) keep `CHECK_FATAL` (debug-only). Resource failures (`alloc`/`realloc` returned NULL) use an unconditional `FATAL`, so release builds never dereference NULL from an exhausted arena (fixes A6).
+**Errors (D5):** logic errors (bad index, size 0, element-size mismatch) use `WC_ASSERT(invariant, ...)` (debug-only; was `CHECK_FATAL(failure, ...)` until the diagnostics overhaul). Resource failures (`alloc`/`realloc` returned NULL) use an unconditional `FATAL`, so release builds never dereference NULL from an exhausted arena (fixes A6).
 
 **Macros**
 

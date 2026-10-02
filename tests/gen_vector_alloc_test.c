@@ -29,10 +29,10 @@ static void workload(GenVec* v)
     GenVec_remove_range(v, 100, 50); // drop 100..149
     GenVec_shrink_to_fit(v);
 
-    WC_ASSERT_EQ_U64(GenVec_size(v), 250);
+    WC_EXPECT_EQ_U64(GenVec_size(v), 250);
     for (u64 i = 0; i < 250; i++) {
         int want = (int)(i < 100 ? i : i + 50);
-        WC_ASSERT_EQ_INT(*(const int*)GenVec_get_ptr(v, i), want);
+        WC_EXPECT_EQ_INT(*(const int*)GenVec_get_ptr(v, i), want);
     }
 }
 
@@ -49,10 +49,10 @@ static void test_workload_test_allocator(void)
     wc_test_alloc_init(&ta, WC_LIBC);
     GenVec v = GenVec_create(wc_test_alloc_allocator(&ta), 2, sizeof(int), NULL);
     workload(&v);
-    WC_ASSERT_EQ_U64(ta.live_blocks, 1);
+    WC_EXPECT_EQ_U64(ta.live_blocks, 1);
     GenVec_destroy(&v);
-    WC_ASSERT_EQ_U64(ta.n_errors, 0);
-    WC_ASSERT_EQ_U64(wc_test_alloc_destroy(&ta), 0);
+    WC_EXPECT_EQ_U64(ta.n_errors, 0);
+    WC_EXPECT_EQ_U64(wc_test_alloc_destroy(&ta), 0);
 }
 
 static void test_workload_arena(void)
@@ -61,9 +61,9 @@ static void test_workload_arena(void)
     Arena_create(&a, WC_LIBC, nKB(8));
     GenVec v = GenVec_create(Arena_allocator(&a), 2, sizeof(int), NULL);
     workload(&v);
-    WC_ASSERT(v.data >= a.base && v.data < a.base + a.size);
+    WC_EXPECT(v.data >= a.base && v.data < a.base + a.size);
     GenVec_destroy(&v);
-    WC_ASSERT_EQ_U64(Arena_used(&a), 0); // sole block: every growth was in place, destroy rewound it
+    WC_EXPECT_EQ_U64(Arena_used(&a), 0); // sole block: every growth was in place, destroy rewound it
     Arena_destroy(&a);
 }
 
@@ -93,7 +93,7 @@ static void test_workload_chain_arena(void)
     GenVec_destroy(&v);
 
     ChainArena_destroy(&ca);
-    WC_ASSERT_EQ_U64(wc_test_alloc_destroy(&ta), 0);
+    WC_EXPECT_EQ_U64(wc_test_alloc_destroy(&ta), 0);
 }
 
 
@@ -106,9 +106,9 @@ static void test_buf_vector_fills_buffer_in_place(void)
     for (int i = 0; i < 8; i++) {
         GenVec_push(&v, cast(i));
     }
-    WC_ASSERT(v.data == (u8*)buf);
-    WC_ASSERT_EQ_INT(buf[7], 7);
-    WC_ASSERT(wc_same(v.alloc, wc_borrowed));
+    WC_EXPECT(v.data == (u8*)buf);
+    WC_EXPECT_EQ_INT(buf[7], 7);
+    WC_EXPECT(wc_same(v.alloc, wc_borrowed));
     GenVec_destroy(&v); // must not free the stack buffer (ASAN would catch it)
 }
 
@@ -123,7 +123,7 @@ static void push_past_borrowed_capacity(void)
 
 static void test_buf_vector_cannot_grow(void)
 {
-    WC_ASSERT_DIES(push_past_borrowed_capacity);
+    WC_EXPECT_DIES(push_past_borrowed_capacity);
 }
 
 
@@ -139,12 +139,12 @@ static void test_copy_arena_to_libc(void)
     }
 
     GenVec dst = GenVec_copy(WC_LIBC, &src);
-    WC_ASSERT(wc_is_libc(dst.alloc)); // never inherits src's allocator
-    WC_ASSERT(dst.data < a.base || dst.data >= a.base + a.size);
+    WC_EXPECT(wc_is_libc(dst.alloc)); // never inherits src's allocator
+    WC_EXPECT(dst.data < a.base || dst.data >= a.base + a.size);
 
     Arena_destroy(&a); // the arena copy is gone; the libc copy must be intact
     for (int i = 0; i < 20; i++) {
-        WC_ASSERT_EQ_INT(*(const int*)GenVec_get_ptr(&dst, (u64)i), i);
+        WC_EXPECT_EQ_INT(*(const int*)GenVec_get_ptr(&dst, (u64)i), i);
     }
     GenVec_destroy(&dst);
 }
@@ -163,7 +163,7 @@ static void test_nested_copy_children_follow_destination(void)
             GenVec_push(&inner, cast(c));
         }
         VEC_PUSH_MOVE(&outer, inner); // inner zeroed
-        WC_ASSERT_NULL(inner.data);
+        WC_EXPECT_NULL(inner.data);
     }
 
     wc_test_alloc ta;
@@ -171,19 +171,19 @@ static void test_nested_copy_children_follow_destination(void)
     wc_allocator dst = wc_test_alloc_allocator(&ta);
 
     GenVec copy = GenVec_copy(dst, &outer);
-    WC_ASSERT(wc_test_alloc_owns(&ta, copy.data));
+    WC_EXPECT(wc_test_alloc_owns(&ta, copy.data));
     for (u64 r = 0; r < 6; r++) {
         const GenVec* in = (const GenVec*)GenVec_get_ptr(&copy, r);
-        WC_ASSERT(wc_same(in->alloc, dst));
-        WC_ASSERT(wc_test_alloc_owns(&ta, in->data));
-        WC_ASSERT_EQ_U64(GenVec_size(in), r + 1);
+        WC_EXPECT(wc_same(in->alloc, dst));
+        WC_EXPECT(wc_test_alloc_owns(&ta, in->data));
+        WC_EXPECT_EQ_U64(GenVec_size(in), r + 1);
     }
 
     GenVec_destroy(&outer);
     Arena_destroy(&a);
     GenVec_destroy(&copy);
-    WC_ASSERT_EQ_U64(ta.n_errors, 0);
-    WC_ASSERT_EQ_U64(wc_test_alloc_destroy(&ta), 0);
+    WC_EXPECT_EQ_U64(ta.n_errors, 0);
+    WC_EXPECT_EQ_U64(wc_test_alloc_destroy(&ta), 0);
 }
 
 // by-pointer children: the shell and the data come from the same allocator (D6)
@@ -197,18 +197,18 @@ static void test_boxed_children_free_with_their_own_allocator(void)
     for (int i = 0; i < 5; i++) {
         GenVec* child = WC_BOX_IN(al, GenVec, GenVec_create, 4, sizeof(int), NULL);
         GenVec_push(child, cast(i));
-        WC_ASSERT(wc_test_alloc_owns(&ta, child));
+        WC_EXPECT(wc_test_alloc_owns(&ta, child));
         VEC_PUSH_MOVE(&outer, child);
-        WC_ASSERT_NULL(child);
+        WC_EXPECT_NULL(child);
     }
 
     GenVec copy = GenVec_copy(al, &outer); // children deep-copied into `al`, shells too
-    WC_ASSERT(wc_test_alloc_owns(&ta, *(GenVec* const*)GenVec_get_ptr(&copy, 0)));
+    WC_EXPECT(wc_test_alloc_owns(&ta, *(GenVec* const*)GenVec_get_ptr(&copy, 0)));
 
     GenVec_destroy(&outer); // vec_del_ptr: shell freed with each child's own allocator
     GenVec_destroy(&copy);
-    WC_ASSERT_EQ_U64(ta.n_errors, 0);
-    WC_ASSERT_EQ_U64(wc_test_alloc_destroy(&ta), 0);
+    WC_EXPECT_EQ_U64(ta.n_errors, 0);
+    WC_EXPECT_EQ_U64(wc_test_alloc_destroy(&ta), 0);
 }
 
 static void test_subarr_into_other_allocator(void)
@@ -221,8 +221,8 @@ static void test_subarr_into_other_allocator(void)
     }
     GenVec sub = GenVec_subarr(&src, WC_LIBC, 2, 3);
     Arena_destroy(&a);
-    WC_ASSERT_EQ_U64(GenVec_size(&sub), 3);
-    WC_ASSERT_EQ_INT(*(const int*)GenVec_get_ptr(&sub, 0), 2);
+    WC_EXPECT_EQ_U64(GenVec_size(&sub), 3);
+    WC_EXPECT_EQ_INT(*(const int*)GenVec_get_ptr(&sub, 0), 2);
     GenVec_destroy(&sub);
 }
 
@@ -232,8 +232,8 @@ static void test_vec_like_uses_same_allocator(void)
     Arena_create(&a, WC_LIBC, nKB(4));
     GenVec v = VEC_OF_IN(Arena_allocator(&a), int, 4);
     GenVec w = VEC_LIKE(&v, u64, 4);
-    WC_ASSERT(wc_same(w.alloc, v.alloc));
-    WC_ASSERT(w.data >= a.base && w.data < a.base + a.size);
+    WC_EXPECT(wc_same(w.alloc, v.alloc));
+    WC_EXPECT(w.data >= a.base && w.data < a.base + a.size);
     GenVec_destroy(&w);
     GenVec_destroy(&v);
     Arena_destroy(&a);
@@ -260,14 +260,14 @@ static void test_storage_alignment_is_size_derived(void)
 
     // wc_test_alloc records the align of every block; destroy must pass it back
     // exactly, and the backing honours it as an address alignment.
-    WC_ASSERT_EQ_U64((uintptr_t)v16.data % 16, 0);
+    WC_EXPECT_EQ_U64((uintptr_t)v16.data % 16, 0);
     GenVec_destroy(&v1);
     GenVec_destroy(&v4);
     GenVec_destroy(&v12);
     GenVec_destroy(&v8);
     GenVec_destroy(&v16);
-    WC_ASSERT_EQ_U64(ta.n_errors, 0);
-    WC_ASSERT_EQ_U64(wc_test_alloc_destroy(&ta), 0);
+    WC_EXPECT_EQ_U64(ta.n_errors, 0);
+    WC_EXPECT_EQ_U64(wc_test_alloc_destroy(&ta), 0);
 }
 
 static void test_arena_packs_small_elements(void)
@@ -277,7 +277,7 @@ static void test_arena_packs_small_elements(void)
     wc_allocator al = Arena_allocator(&a);
     GenVec       b1 = GenVec_create(al, 3, 1, NULL); // 3 bytes
     GenVec       b2 = GenVec_create(al, 5, 1, NULL); // starts right after: no 16-byte padding
-    WC_ASSERT(b2.data == b1.data + 3);
+    WC_EXPECT(b2.data == b1.data + 3);
     GenVec_destroy(&b2);
     GenVec_destroy(&b1);
     Arena_destroy(&a);
@@ -318,24 +318,24 @@ static void create_with_zero_data_size(void)
 
 static void test_zero_state_mutation_dies(void)
 {
-    WC_ASSERT_DIES(push_after_move);
-    WC_ASSERT_DIES(push_after_destroy);
-    WC_ASSERT_DIES(reserve_on_zeroed);
-    WC_ASSERT_DIES(create_with_zero_data_size);
+    WC_EXPECT_DIES(push_after_move);
+    WC_EXPECT_DIES(push_after_destroy);
+    WC_EXPECT_DIES(reserve_on_zeroed);
+    WC_EXPECT_DIES(create_with_zero_data_size);
 }
 
 static void test_zero_state_reads_and_destroy_are_safe(void)
 {
     GenVec z;
     memset(&z, 0, sizeof(z));
-    WC_ASSERT_EQ_U64(GenVec_size(&z), 0);
-    WC_ASSERT_TRUE(GenVec_empty(&z));
+    WC_EXPECT_EQ_U64(GenVec_size(&z), 0);
+    WC_EXPECT_TRUE(GenVec_empty(&z));
     GenVec_clear(&z);
     GenVec_destroy(&z);
     GenVec_destroy(&z);
 
     GenVec c = GenVec_copy(WC_LIBC, &z); // copy of zeroed is zeroed
-    WC_ASSERT_EQ_U64(c.data_size, 0);
+    WC_EXPECT_EQ_U64(c.data_size, 0);
     GenVec_destroy(&c);
 }
 
@@ -384,9 +384,9 @@ static void test_fail_nth_allocation_dies_at_every_site(void)
     wc_test_alloc ta;
     wc_test_alloc_init(&ta, WC_LIBC);
     u64 total = alloc_site_scenario(&ta);
-    WC_ASSERT_EQ_U64(ta.n_errors, 0);
-    WC_ASSERT_EQ_U64(wc_test_alloc_destroy(&ta), 0);
-    WC_ASSERT(total >= 8);
+    WC_EXPECT_EQ_U64(ta.n_errors, 0);
+    WC_EXPECT_EQ_U64(wc_test_alloc_destroy(&ta), 0);
+    WC_EXPECT(total >= 8);
 
     for (g_fail_at = 1; g_fail_at <= total; g_fail_at++) {
         int died = wc_test_dies(run_scenario_failing_at_n);
@@ -394,7 +394,7 @@ static void test_fail_nth_allocation_dies_at_every_site(void)
             printf("\n    allocation %llu of %llu did not abort cleanly ", (unsigned long long)g_fail_at,
                    (unsigned long long)total);
         }
-        WC_ASSERT_EQ_INT(died, 1);
+        WC_EXPECT_EQ_INT(died, 1);
     }
 }
 

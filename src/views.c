@@ -15,7 +15,7 @@ StrView StrView_from_String(String* str)
 
 StrView StrView_from_String_ex(String* str, u64 off, u64 len)
 {
-    CHECK_FATAL(off + len > String_len(str), "invalid range");
+    WC_ASSERT(off + len <= String_len(str), "invalid range");
     return (StrView){.ptr = String_data_ptr(str) + off, .len = len};
 }
 

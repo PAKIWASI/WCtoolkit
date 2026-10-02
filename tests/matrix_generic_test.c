@@ -37,19 +37,19 @@ static void test_generic_create_copy_move_destroy(void)
     double        src[] = {1, 2, 3, 4};
     Matrix_double a     = matrix_create_arr_double(al, 2, 2, src);
     Matrix_double b     = matrix_copy_double(al, &a);
-    WC_ASSERT_TRUE(b.data != a.data);
-    WC_ASSERT(dmat_eq(&b, src));
+    WC_EXPECT_TRUE(b.data != a.data);
+    WC_EXPECT(dmat_eq(&b, src));
 
     Matrix_double c;
     matrix_move_double(&c, &b);
-    WC_ASSERT_NULL(b.data);
-    WC_ASSERT(dmat_eq(&c, src));
+    WC_EXPECT_NULL(b.data);
+    WC_EXPECT(dmat_eq(&c, src));
 
     matrix_destroy_double(&a);
     matrix_destroy_double(&b); // moved-from: no-op
     matrix_destroy_double(&c);
-    WC_ASSERT_EQ_U64(ta.n_errors, 0);
-    WC_ASSERT_EQ_U64(wc_test_alloc_destroy(&ta), 0);
+    WC_EXPECT_EQ_U64(ta.n_errors, 0);
+    WC_EXPECT_EQ_U64(wc_test_alloc_destroy(&ta), 0);
 }
 
 static void test_generic_ops(void)
@@ -60,13 +60,13 @@ static void test_generic_ops(void)
     Matrix_double o = matrix_create_buf_double(2, 2, od);
 
     matrix_xply_double(&o, &a, &b);
-    WC_ASSERT(dmat_eq(&o, (double[]){58, 64, 139, 154}));
+    WC_EXPECT(dmat_eq(&o, (double[]){58, 64, 139, 154}));
     memset(od, 0, sizeof(od));
     matrix_xply_2_double(&o, &a, &b); // libc scratch transpose inside
-    WC_ASSERT(dmat_eq(&o, (double[]){58, 64, 139, 154}));
+    WC_EXPECT(dmat_eq(&o, (double[]){58, 64, 139, 154}));
 
     Matrix_double s = matrix_create_arr_double(WC_LIBC, 3, 3, (double[]){3, 2, 4, 2, 0, 2, 4, 2, 3});
-    WC_ASSERT(fabs(matrix_det_double(&s) - 8.0) < 1e-6);
+    WC_EXPECT(fabs(matrix_det_double(&s) - 8.0) < 1e-6);
 
     matrix_destroy_double(&o); // borrowed: frees nothing
     matrix_destroy_double(&a);
@@ -79,8 +79,8 @@ static void test_generic_on_arena(void)
     Arena arena;
     Arena_create(&arena, WC_LIBC, nKB(1));
     Matrix_double m = matrix_create_double(Arena_allocator(&arena), 4, 4);
-    WC_ASSERT_TRUE((u8*)m.data >= arena.base && (u8*)m.data < arena.base + arena.size);
-    WC_ASSERT_EQ_U64((uintptr_t)m.data % alignof(double), 0);
+    WC_EXPECT_TRUE((u8*)m.data >= arena.base && (u8*)m.data < arena.base + arena.size);
+    WC_EXPECT_EQ_U64((uintptr_t)m.data % alignof(double), 0);
     matrix_destroy_double(&m);
     Arena_destroy(&arena);
 }
@@ -95,7 +95,7 @@ static void generic_scale_after_move(void)
 
 static void test_generic_zero_state_dies(void)
 {
-    WC_ASSERT_DIES(generic_scale_after_move);
+    WC_EXPECT_DIES(generic_scale_after_move);
 }
 
 void matrix_generic_suite(void);

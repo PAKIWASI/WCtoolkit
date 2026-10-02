@@ -2,14 +2,14 @@
 #define WC_TEST_FATAL_H
 
 /*
- * WC_ASSERT_DIES(fn): assert that calling `fn` (void fn(void)) terminates the
+ * WC_EXPECT_DIES(fn): assert that calling `fn` (void fn(void)) terminates the
  * process through FATAL/abort, without taking the test runner down with it.
  *
  * Runs `fn` in a forked child with stderr silenced. "Died" means any non-zero
  * exit status or a signal. (FATAL exits with EXIT_FAILURE; under ASAN the leak
  * checker may change the status at exit, which still counts as died.)
  *
- * POSIX only. Debug-only checks (CHECK_FATAL) vanish under NDEBUG, so guard
+ * POSIX only. Debug-only checks (WC_ASSERT) vanish under NDEBUG, so guard
  * those uses with #ifndef NDEBUG.
  */
 
@@ -47,6 +47,6 @@ static inline int wc_test_dies(void (*fn)(void))
     return WIFEXITED(status) && WEXITSTATUS(status) != 0;
 }
 
-#define WC_ASSERT_DIES(fn) WC_ASSERT_CORE(wc_test_dies(fn) == 1, #fn " terminates via FATAL")
+#define WC_EXPECT_DIES(fn) WC_EXPECT_CORE(wc_test_dies(fn) == 1, #fn " terminates via FATAL")
 
 #endif // WC_TEST_FATAL_H

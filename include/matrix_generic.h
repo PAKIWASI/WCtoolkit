@@ -49,7 +49,7 @@
 #define MATRIX_CREATE_ARR(T)                                                        \
     Matrix_##T matrix_create_arr_##T(wc_allocator a, u64 m, u64 n, const T* arr)    \
     {                                                                               \
-        CHECK_FATAL(!arr, "input arr is null");                                     \
+        WC_ASSERT(arr, "input arr is null");                                        \
         Matrix_##T mat = matrix_create_##T(a, m, n);                                \
         memcpy(mat.data, arr, sizeof(T) * m * n);                                   \
         return mat;                                                                 \
@@ -60,7 +60,7 @@
     Matrix_##T matrix_create_buf_##T(u64 m, u64 n, T* data)                       \
     {                                                                             \
         FATAL_IF(m == 0 || n == 0, "matrix_create_buf_" #T ": dims must be > 0"); \
-        CHECK_FATAL(!data, "data is null");                                       \
+        WC_ASSERT(data, "data is null");                                          \
         return (Matrix_##T){.data = data, .m = m, .n = n, .alloc = wc_borrowed};  \
     }
 
@@ -68,7 +68,7 @@
 #define MATRIX_DESTROY(T)                                                       \
     void matrix_destroy_##T(Matrix_##T* mat)                                    \
     {                                                                           \
-        CHECK_FATAL(!mat, "matrix is null");                                    \
+        WC_ASSERT(mat, "matrix is null");                                       \
         if (mat->data) {                                                        \
             wc_allocator a = mat->alloc;                                        \
             wc_free(a, mat->data, MATRIX_BYTES(T, mat->m, mat->n), alignof(T)); \
@@ -80,7 +80,7 @@
 #define MATRIX_MOVE(T)                                         \
     void matrix_move_##T(Matrix_##T* dest, Matrix_##T* src)    \
     {                                                          \
-        CHECK_FATAL(!dest || !src, "matrix is null");          \
+        WC_ASSERT(dest && src, "matrix is null");              \
         if (dest == src) {                                     \
             return;                                            \
         }                                                      \
@@ -106,9 +106,9 @@
     void matrix_set_val_arr_##T(Matrix_##T* mat, u64 count, const T* arr)           \
     {                                                                               \
         FATAL_IF((mat)->m == 0, "matrix_set_val_arr_" #T " on zeroed/moved-from matrix"); \
-        CHECK_FATAL(!mat, "matrix is null");                                        \
-        CHECK_FATAL(!arr, "arr is null");                                           \
-        CHECK_FATAL(count != MATRIX_TOTAL(mat), "count doesn't match matrix size"); \
+        WC_ASSERT(mat, "matrix is null");                                                 \
+        WC_ASSERT(arr, "arr is null");                                                    \
+        WC_ASSERT(count == MATRIX_TOTAL(mat), "count doesn't match matrix size");   \
         memcpy(mat->data, arr, sizeof(T) * count);                                  \
     }
 
@@ -117,10 +117,10 @@
     void matrix_set_val_arr2_##T(Matrix_##T* mat, u64 m, u64 n, const T** arr2)           \
     {                                                                                     \
         FATAL_IF((mat)->m == 0, "matrix_set_val_arr2_" #T " on zeroed/moved-from matrix"); \
-        CHECK_FATAL(!mat, "matrix is null");                                              \
-        CHECK_FATAL(!arr2, "arr is null");                                                \
-        CHECK_FATAL(!*arr2, "*arr is null");                                              \
-        CHECK_FATAL(m != mat->m || n != mat->n, "mat dimensions dont match passed arr2"); \
+        WC_ASSERT(mat, "matrix is null");                                                  \
+        WC_ASSERT(arr2, "arr is null");                                                    \
+        WC_ASSERT(*arr2, "*arr is null");                                                  \
+        WC_ASSERT(m == mat->m && n == mat->n, "mat dimensions dont match passed arr2");   \
                                                                                           \
         u64 idx = 0;                                                                      \
         for (u64 i = 0; i < m; i++) {                                                     \
@@ -133,8 +133,8 @@
     void matrix_set_elm_##T(Matrix_##T* mat, T elm, u64 i, u64 j)       \
     {                                                                   \
         FATAL_IF((mat)->m == 0, "matrix_set_elm_" #T " on zeroed/moved-from matrix"); \
-        CHECK_FATAL(!mat, "matrix is null");                            \
-        CHECK_FATAL(i >= mat->m || j >= mat->n, "index out of bounds"); \
+        WC_ASSERT(mat, "matrix is null");                                             \
+        WC_ASSERT(i < mat->m && j < mat->n, "index out of bounds");     \
         mat->data[IDX(mat, i, j)] = elm;                                \
     }
 
@@ -146,10 +146,10 @@
     void matrix_add_##T(Matrix_##T* out, const Matrix_##T* a, const Matrix_##T* b)    \
     {                                                                                 \
         FATAL_IF((out)->m == 0, "matrix_add_" #T " on zeroed/moved-from matrix");     \
-        CHECK_FATAL(!out, "out matrix is null");                                      \
-        CHECK_FATAL(!a, "a matrix is null");                                          \
-        CHECK_FATAL(!b, "b matrix is null");                                          \
-        CHECK_FATAL(a->m != b->m || a->n != b->n || a->m != out->m || a->n != out->n, \
+        WC_ASSERT(out, "out matrix is null");                                         \
+        WC_ASSERT(a, "a matrix is null");                                             \
+        WC_ASSERT(b, "b matrix is null");                                             \
+        WC_ASSERT(a->m == b->m && a->n == b->n && a->m == out->m && a->n == out->n,   \
                     "a, b, out mat dimensions don't match");                          \
         u64 total = MATRIX_TOTAL(a);                                                  \
         for (u64 i = 0; i < total; i++) {                                             \
@@ -161,10 +161,10 @@
     void matrix_sub_##T(Matrix_##T* out, const Matrix_##T* a, const Matrix_##T* b)    \
     {                                                                                 \
         FATAL_IF((out)->m == 0, "matrix_sub_" #T " on zeroed/moved-from matrix");     \
-        CHECK_FATAL(!out, "out matrix is null");                                      \
-        CHECK_FATAL(!a, "a matrix is null");                                          \
-        CHECK_FATAL(!b, "b matrix is null");                                          \
-        CHECK_FATAL(a->m != b->m || a->n != b->n || a->m != out->m || a->n != out->n, \
+        WC_ASSERT(out, "out matrix is null");                                         \
+        WC_ASSERT(a, "a matrix is null");                                             \
+        WC_ASSERT(b, "b matrix is null");                                             \
+        WC_ASSERT(a->m == b->m && a->n == b->n && a->m == out->m && a->n == out->n,   \
                     "a, b, out mat dimensions don't match");                          \
         u64 total = MATRIX_TOTAL(a);                                                  \
         for (u64 i = 0; i < total; i++) {                                             \
@@ -176,7 +176,7 @@
     void matrix_scale_##T(Matrix_##T* mat, T val) \
     {                                             \
         FATAL_IF((mat)->m == 0, "matrix_scale_" #T " on zeroed/moved-from matrix"); \
-        CHECK_FATAL(!mat, "matrix is null");      \
+        WC_ASSERT(mat, "matrix is null");                                           \
         u64 total = MATRIX_TOTAL(mat);            \
         for (u64 i = 0; i < total; i++) {         \
             mat->data[i] *= val;                  \
@@ -187,8 +187,8 @@
     void matrix_div_##T(Matrix_##T* mat, T val)     \
     {                                               \
         FATAL_IF((mat)->m == 0, "matrix_div_" #T " on zeroed/moved-from matrix"); \
-        CHECK_FATAL(!mat, "mat is null");           \
-        CHECK_FATAL(val == 0, "division by zero!"); \
+        WC_ASSERT(mat, "mat is null");                                            \
+        WC_ASSERT(val != 0, "division by zero!");   \
         u64 total = MATRIX_TOTAL(mat);              \
         for (u64 i = 0; i < total; i++) {           \
             mat->data[i] /= val;                    \
@@ -203,11 +203,11 @@
     void matrix_xply_##T(Matrix_##T* out, const Matrix_##T* a, const Matrix_##T* b)             \
     {                                                                                           \
         FATAL_IF((out)->m == 0, "matrix_xply_" #T " on zeroed/moved-from matrix");              \
-        CHECK_FATAL(!out, "out matrix is null");                                                \
-        CHECK_FATAL(!a, "a matrix is null");                                                    \
-        CHECK_FATAL(!b, "b matrix is null");                                                    \
-        CHECK_FATAL(a->n != b->m, "incompatible matrix dimensions for multiplication");         \
-        CHECK_FATAL(out->m != a->m || out->n != b->n, "output matrix has wrong dimensions");    \
+        WC_ASSERT(out, "out matrix is null");                                                   \
+        WC_ASSERT(a, "a matrix is null");                                                       \
+        WC_ASSERT(b, "b matrix is null");                                                       \
+        WC_ASSERT(a->n == b->m, "incompatible matrix dimensions for multiplication");           \
+        WC_ASSERT(out->m == a->m && out->n == b->n, "output matrix has wrong dimensions");      \
                                                                                                 \
         u64 m = a->m;                                                                           \
         u64 k = a->n;                                                                           \
@@ -247,11 +247,11 @@
     void matrix_xply_2_##T(Matrix_##T* out, const Matrix_##T* a, const Matrix_##T* b)        \
     {                                                                                        \
         FATAL_IF((out)->m == 0, "matrix_xply_2_" #T " on zeroed/moved-from matrix");         \
-        CHECK_FATAL(!out, "out matrix is null");                                             \
-        CHECK_FATAL(!a, "a matrix is null");                                                 \
-        CHECK_FATAL(!b, "b matrix is null");                                                 \
-        CHECK_FATAL(a->n != b->m, "incompatible matrix dimensions");                         \
-        CHECK_FATAL(out->m != a->m || out->n != b->n, "output matrix has wrong dimensions"); \
+        WC_ASSERT(out, "out matrix is null");                                                \
+        WC_ASSERT(a, "a matrix is null");                                                    \
+        WC_ASSERT(b, "b matrix is null");                                                    \
+        WC_ASSERT(a->n == b->m, "incompatible matrix dimensions");                           \
+        WC_ASSERT(out->m == a->m && out->n == b->n, "output matrix has wrong dimensions");   \
                                                                                              \
         u64 m = a->m;                                                                        \
         u64 k = a->n;                                                                        \
@@ -292,9 +292,9 @@
     void matrix_T_##T(Matrix_##T* out, const Matrix_##T* mat)                                \
     {                                                                                        \
         FATAL_IF((out)->m == 0, "matrix_T_" #T " on zeroed/moved-from matrix");              \
-        CHECK_FATAL(!mat, "mat matrix is null");                                             \
-        CHECK_FATAL(!out, "out matrix is null");                                             \
-        CHECK_FATAL(mat->m != out->n || mat->n != out->m, "incompatible matrix dimensions"); \
+        WC_ASSERT(mat, "mat matrix is null");                                                \
+        WC_ASSERT(out, "out matrix is null");                                                \
+        WC_ASSERT(mat->m == out->n && mat->n == out->m, "incompatible matrix dimensions");   \
                                                                                              \
         const u64 BLOCK_SIZE = 16;                                                           \
                                                                                              \
@@ -320,7 +320,7 @@
 #define MATRIX_COPY(T)                                                         \
     Matrix_##T matrix_copy_##T(wc_allocator a, const Matrix_##T* src)          \
     {                                                                          \
-        CHECK_FATAL(!src, "src matrix is null");                               \
+        WC_ASSERT(src, "src matrix is null");                                  \
         FATAL_IF(src->m == 0, "matrix_copy_" #T " on zeroed/moved-from matrix"); \
         return matrix_create_arr_##T(a, src->m, src->n, src->data);            \
     }
@@ -334,12 +334,12 @@
     {                                                                                       \
         FATAL_IF((L)->m == 0, "matrix_LU_Decomp_" #T " on zeroed/moved-from matrix");       \
         FATAL_IF((U)->m == 0, "matrix_LU_Decomp_" #T " on zeroed/moved-from matrix");       \
-        CHECK_FATAL(!L, "L mat is null");                                                   \
-        CHECK_FATAL(!U, "U mat is null");                                                   \
-        CHECK_FATAL(!mat, "mat is null");                                                   \
-        CHECK_FATAL(mat->n != mat->m, "mat is not a square matrix");                        \
-        CHECK_FATAL(L->n != mat->n || L->m != mat->m, "L dimensions don't match");          \
-        CHECK_FATAL(U->n != mat->n || U->m != mat->m, "U dimensions don't match");          \
+        WC_ASSERT(L, "L mat is null");                                                      \
+        WC_ASSERT(U, "U mat is null");                                                      \
+        WC_ASSERT(mat, "mat is null");                                                      \
+        WC_ASSERT(mat->n == mat->m, "mat is not a square matrix");                          \
+        WC_ASSERT(L->n == mat->n && L->m == mat->m, "L dimensions don't match");            \
+        WC_ASSERT(U->n == mat->n && U->m == mat->m, "U dimensions don't match");            \
                                                                                             \
         const u64 n = mat->n;                                                               \
                                                                                             \
@@ -366,7 +366,7 @@
                 }                                                                           \
                                                                                             \
                 double u_diag = (double)U->data[IDX(U, i, i)];                              \
-                CHECK_FATAL(u_diag == 0, "Matrix is singular - LU decomposition failed");   \
+                WC_ASSERT(u_diag != 0, "Matrix is singular - LU decomposition failed");     \
                                                                                             \
                 L->data[IDX(L, k, i)] = (T)(((double)MATRIX_AT(mat, k, i) - sum) / u_diag); \
             }                                                                               \
@@ -380,8 +380,8 @@
 #define MATRIX_DET(T)                                                           \
     double matrix_det_##T(const Matrix_##T* mat)                                \
     {                                                                           \
-        CHECK_FATAL(!mat, "mat matrix is null");                                \
-        CHECK_FATAL(mat->m != mat->n, "only square matrices have determinant"); \
+        WC_ASSERT(mat, "mat matrix is null");                                   \
+        WC_ASSERT(mat->m == mat->n, "only square matrices have determinant");   \
                                                                                 \
         u64         n = mat->n;                                                 \
         Matrix_##T  L_s = matrix_create_##T(WC_LIBC, n, n); /* scratch */       \
@@ -409,7 +409,7 @@
 #define MATRIX_PRINT(T, fmt)                     \
     void matrix_print_##T(const Matrix_##T* mat) \
     {                                            \
-        CHECK_FATAL(!mat, "matrix is null");     \
+        WC_ASSERT(mat, "matrix is null");        \
         u64 total = mat->m * mat->n;             \
                                                  \
         for (u64 i = 0; i < total; i++) {        \

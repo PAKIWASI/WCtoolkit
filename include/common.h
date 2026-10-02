@@ -28,75 +28,91 @@
 
 
 
-// TODO: warm paths ?
+/* ════════════════════════════════════════════════════════════════════════
+ * DIAGNOSTICS
+ *
+ * Every macro below is an EXPRESSION of type void (no do { } while (0)), so
+ * it composes anywhere: statements, comma expressions, ({ }) blocks, ?:.
+ *
+ *   SURVIVES EVERY BUILD (Debug and Release)
+ *     FATAL(fmt, ...)                 abort with a message
+ *     FATAL_IF(cond, fmt, ...)        abort if cond is TRUE. Absolute failures
+ *                                     only: allocation failed, mutation of a
+ *                                     zeroed (moved-from/destroyed) container.
+ *     WARN(fmt, ...)                  print a warning to stderr, continue
+ *     WARN_IF(cond, fmt, ...)         warn if cond is TRUE, continue
+ *     WARN_IF_RET(cond, ret, fmt, ...) warn and `return ret` if cond is TRUE
+ *                                     (GNU statement expression: it can return)
+ *     LOG(fmt, ...)                   print to stdout
+ *     LOG_IF(cond, fmt, ...)          log if cond is TRUE
+ *
+ *   STRIPPED UNDER NDEBUG (Release)
+ *     WC_ASSERT(cond, fmt, ...)       abort if cond is FALSE. cond is the
+ *                                     INVARIANT (`i < size`), not the failure.
+ *                                     For programmer errors: bounds, API misuse.
+ *                                     Release: cond is NOT evaluated (no side
+ *                                     effects run) but still type-checked.
+ *
+ * The rule: if continuing past the failure would corrupt memory even in a
+ * correct program (an allocator returned NULL), use FATAL_IF. If the failure
+ * means the CALLER has a bug, use WC_ASSERT. Never WC_ASSERT an allocation.
+ *
+ * Branch prediction: failure paths are WC_UNLIKELY, and the reporters are
+ * `cold, noinline` functions defined once in wc_errno.c. The compiler moves
+ * every failure branch (argument setup + call) out of the hot path into
+ * .text.unlikely, so a check costs one compare and one not-taken branch.
+ * ════════════════════════════════════════════════════════════════════════ */
 
-#define WARN(fmt, ...)                                                  \
-    do {                                                                \
-        printf(WC_COLOR_YELLOW "[WARN]"                                 \
-                               " %s:%d:%s(): " fmt "\n" WC_COLOR_RESET, \
-               __FILE__, __LINE__, __func__, ##__VA_ARGS__);            \
-    } while (0)
+#define WC_LIKELY(x)   __builtin_expect(!!(x), 1)
+#define WC_UNLIKELY(x) __builtin_expect(!!(x), 0)
 
-__attribute__((noreturn, format(printf, 4, 5))) static inline void
-wc_fatal_report(const char* file, int line, const char* func, const char* fmt, ...)
-{
-    fprintf(stderr, WC_COLOR_RED "[FATAL] %s:%d:%s(): ", file, line, func);
-    va_list args;
-    va_start(args, fmt);
-    vfprintf(stderr, fmt, args);
-    va_end(args);
-    fprintf(stderr, "\n" WC_COLOR_RESET);
-    exit(EXIT_FAILURE);
-}
+__attribute__((cold, noinline, noreturn, format(printf, 4, 5))) void
+wc_fatal_report(const char* file, int line, const char* func, const char* fmt, ...);
+
+__attribute__((cold, noinline, format(printf, 4, 5))) void
+wc_warn_report(const char* file, int line, const char* func, const char* fmt, ...);
+
+
+/* ── SURVIVES EVERY BUILD ─────────────────────────────────────────────── */
 
 #define FATAL(fmt, ...) wc_fatal_report(__FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__)
 
-#define CHECK_WARN(cond, fmt, ...)                           \
-    do {                                                     \
-        if (__builtin_expect(!!(cond), 0)) {                 \
-            WARN("Check: (%s): " fmt, #cond, ##__VA_ARGS__); \
-        }                                                    \
-    } while (0)
+#define FATAL_IF(cond, fmt, ...) \
+    ((void)(WC_UNLIKELY(cond) && (FATAL("(%s): " fmt, #cond, ##__VA_ARGS__), 0)))
 
-#define CHECK_WARN_RET(cond, ret, fmt, ...)                  \
-    do {                                                     \
-        if (__builtin_expect(!!(cond), 0)) {                 \
-            WARN("Check: (%s): " fmt, #cond, ##__VA_ARGS__); \
-            return ret;                                      \
-        }                                                    \
-    } while (0)
+#define WARN(fmt, ...) wc_warn_report(__FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__)
 
-// RULE (D5): FATAL_IF for allocation failure and zero-state (moved-from /
-// destroyed) mutation. CHECK_FATAL only for bounds and API misuse: it compiles
-// to nothing under NDEBUG, so a CHECK_FATAL on an allocation result means
-// Release builds carry on with a NULL pointer.
-//
-// Unconditional fatal check: stays active under NDEBUG.
-#define FATAL_IF(cond, fmt, ...)                              \
-    do {                                                      \
-        if (__builtin_expect(!!(cond), 0)) {                  \
-            FATAL("Check: (%s): " fmt, #cond, ##__VA_ARGS__); \
-        }                                                     \
-    } while (0)
+#define WARN_IF(cond, fmt, ...) \
+    ((void)(WC_UNLIKELY(cond) && (WARN("(%s): " fmt, #cond, ##__VA_ARGS__), 0)))
 
-// Debug-only check for programmer errors (bounds, misuse). See RULE above.
+#define WARN_IF_RET(cond, ret, fmt, ...)              \
+    ({                                                \
+        if (WC_UNLIKELY(cond)) {                      \
+            WARN("(%s): " fmt, #cond, ##__VA_ARGS__); \
+            return ret;                               \
+        }                                             \
+        (void)0;                                      \
+    })
+
+// No branch hint on LOG_IF: a log condition is not an error path, so there is
+// no direction to predict. Let the hardware predictor or PGO decide.
+#define LOG(fmt, ...) \
+    ((void)printf(WC_COLOR_CYAN "[LOG] %s(): " fmt "\n" WC_COLOR_RESET, __func__, ##__VA_ARGS__))
+
+#define LOG_IF(cond, fmt, ...) ((void)((cond) && (LOG(fmt, ##__VA_ARGS__), 0)))
+
+
+/* ── STRIPPED UNDER NDEBUG ────────────────────────────────────────────── */
+
 #ifdef NDEBUG
-#define CHECK_FATAL(cond, fmt, ...) ((void)0)
+// Not evaluated (sizeof of an int expression), still compiled: a stale field
+// name or type error inside an assert breaks the Release build too, and
+// variables used only in asserts don't trigger unused warnings.
+#define WC_ASSERT(cond, fmt, ...) ((void)sizeof(!(cond)))
 #else
-#define CHECK_FATAL(cond, fmt, ...)                           \
-    do {                                                      \
-        if (__builtin_expect(!!(cond), 0)) {                  \
-            FATAL("Check: (%s): " fmt, #cond, ##__VA_ARGS__); \
-        }                                                     \
-    } while (0)
+#define WC_ASSERT(cond, fmt, ...) \
+    ((void)(WC_LIKELY(cond) || (FATAL("assertion (%s) failed: " fmt, #cond, ##__VA_ARGS__), 0)))
 #endif
-
-#define LOG(fmt, ...)                                             \
-    do {                                                          \
-        printf(WC_COLOR_CYAN "[LOG]"                              \
-                             " : %s(): " fmt "\n" WC_COLOR_RESET, \
-               __func__, ##__VA_ARGS__);                          \
-    } while (0)
 
 
 // token pasting that expands its arguments first (for __COUNTER__/__LINE__ names)

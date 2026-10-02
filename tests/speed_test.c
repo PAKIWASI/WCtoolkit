@@ -47,7 +47,7 @@ static u64 bench(const char* label, u64 n_ops, u64 start, u64 end)
 
 // Sanity-check: POD path should be <= cx path (or within 5% noise)
 #define ASSERT_FASTER_OR_EQUAL(pod_ns, cx_ns) \
-    WC_ASSERT((pod_ns) <= (cx_ns) + ((cx_ns) / 20))
+    WC_EXPECT((pod_ns) <= (cx_ns) + ((cx_ns) / 20))
 
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -67,7 +67,7 @@ static void bench_push_pod(void)
     }
     u64 t1 = ns_now();
 
-    WC_ASSERT_EQ_U64(v.size, PUSH_N);
+    WC_EXPECT_EQ_U64(v.size, PUSH_N);
     bench("push POD (int)", PUSH_N, t0, t1);
     GenVec_destroy(&v);
 }
@@ -85,7 +85,7 @@ static void bench_push_cx(void)
     }
     u64 t1 = ns_now();
 
-    WC_ASSERT_EQ_U64(v.size, PUSH_N);
+    WC_EXPECT_EQ_U64(v.size, PUSH_N);
     bench("push CX (String, copy)", PUSH_N, t0, t1);
     GenVec_destroy(&v);
 }
@@ -223,7 +223,7 @@ static void bench_vec_copy_pod(void)
     }
     u64 t1 = ns_now();
 
-    WC_ASSERT_EQ_U64(dest.size, COPY_N);
+    WC_EXPECT_EQ_U64(dest.size, COPY_N);
     bench("GenVec_copy POD (1M ints) x20", (u64)COPY_REP * COPY_N, t0, t1);
 
     GenVec_destroy(&dest);
@@ -365,7 +365,7 @@ static void bench_map_put_pod(void)
     }
     u64 t1 = ns_now();
 
-    WC_ASSERT_EQ_U64(map.size, MAP_N);
+    WC_EXPECT_EQ_U64(map.size, MAP_N);
     bench("HashMap_put POD int->int", MAP_N, t0, t1);
     HashMap_destroy(&map);
 }
@@ -405,7 +405,7 @@ static void bench_map_get_pod(void)
     }
     u64 t1 = ns_now();
 
-    WC_ASSERT_EQ_INT(hits, MAP_N);
+    WC_EXPECT_EQ_INT(hits, MAP_N);
     bench("HashMap_get POD int->int", MAP_N, t0, t1);
     HashMap_destroy(&map);
 }
@@ -437,7 +437,7 @@ static void bench_map_get_cx(void)
     }
     u64 t1 = ns_now();
 
-    WC_ASSERT_EQ_INT(hits, MAP_N);
+    WC_EXPECT_EQ_INT(hits, MAP_N);
     bench("HashMap_get CX String->String", MAP_N, t0, t1);
     HashMap_destroy(&map);
 }
@@ -518,7 +518,7 @@ static void bench_pop_pod(void)
     for (int i = 0; i < POP_N; i++) GenVec_pop(&v, (u8*)&out);
     u64 t1 = ns_now();
 
-    WC_ASSERT_EQ_U64(v.size, 0);
+    WC_EXPECT_EQ_U64(v.size, 0);
     bench("pop POD (int)", POP_N, t0, t1);
     GenVec_destroy(&v);
 }
@@ -536,7 +536,7 @@ static void bench_pop_cx(void)
     for (int i = 0; i < POP_N; i++) GenVec_pop(&v, NULL);
     u64 t1 = ns_now();
 
-    WC_ASSERT_EQ_U64(v.size, 0);
+    WC_EXPECT_EQ_U64(v.size, 0);
     bench("pop CX (String, del)", POP_N, t0, t1);
     GenVec_destroy(&v);
 }
@@ -692,7 +692,7 @@ static void bench_complex_push_copy(void)
     // so it must NOT be inside the timed region or it drowns out the one
     // thing we're actually comparing: what GenVec_push does with it.
     Person* pool = malloc((u64)PERSON_N * sizeof(Person));
-    CHECK_FATAL(!pool, "malloc failed");
+    FATAL_IF(!pool, "malloc failed");
     for (int i = 0; i < PERSON_N; i++) person_init(&pool[i], i);
 
     u64 t0 = ns_now();
@@ -701,7 +701,7 @@ static void bench_complex_push_copy(void)
     }
     u64 t1 = ns_now();
 
-    WC_ASSERT_EQ_U64(v.size, (u64)PERSON_N);
+    WC_EXPECT_EQ_U64(v.size, (u64)PERSON_N);
     bench("push complex (copy: String+GenVec)", PERSON_N, t0, t1);
 
     for (int i = 0; i < PERSON_N; i++) person_del((u8*)&pool[i]);
@@ -716,7 +716,7 @@ static void bench_complex_push_move(void)
     // Same construction cost as the copy benchmark, pre-built outside the
     // timed region for the same reason.
     Person* pool = malloc((u64)PERSON_N * sizeof(Person));
-    CHECK_FATAL(!pool, "malloc failed");
+    FATAL_IF(!pool, "malloc failed");
     for (int i = 0; i < PERSON_N; i++) {
         person_init(&pool[i], i);
     }
@@ -727,7 +727,7 @@ static void bench_complex_push_move(void)
     }
     u64 t1 = ns_now();
 
-    WC_ASSERT_EQ_U64(v.size, (u64)PERSON_N);
+    WC_EXPECT_EQ_U64(v.size, (u64)PERSON_N);
     bench("push complex (move: String+GenVec)", PERSON_N, t0, t1);
 
     free(pool); // every pool[i] was moved out and zeroed
@@ -819,7 +819,7 @@ static void bench_ss_Arena(void)
 static void bench_ss_malloc(void)
 {
     char** ptrs = malloc(STRSTORE_N * sizeof(char*));
-    CHECK_FATAL(!ptrs, "malloc failed");
+    FATAL_IF(!ptrs, "malloc failed");
 
     char buf[64];
     u64  t0 = ns_now();

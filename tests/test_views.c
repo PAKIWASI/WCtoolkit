@@ -33,10 +33,10 @@ static void test_small_Strings_share_node(void)
     StrView a = StringStore_cstr(&ss, "hello", 5);
     StrView b = StringStore_cstr(&ss, "world", 5);
 
-    WC_ASSERT_TRUE(sv_equals_cstr(a, "hello"));
-    WC_ASSERT_TRUE(sv_equals_cstr(b, "world"));
-    WC_ASSERT_EQ_U64(ss.num, 1); // both fit in the initial node
-    WC_ASSERT_EQ_U64(ss.tail_off, 10);
+    WC_EXPECT_TRUE(sv_equals_cstr(a, "hello"));
+    WC_EXPECT_TRUE(sv_equals_cstr(b, "world"));
+    WC_EXPECT_EQ_U64(ss.num, 1); // both fit in the initial node
+    WC_EXPECT_EQ_U64(ss.tail_off, 10);
 
     StringStore_destroy(&ss);
 }
@@ -53,16 +53,16 @@ static void test_exact_fit_no_new_node(void)
 
     StrView v = StringStore_cstr(&ss, big, StringStore_NODE_SIZE);
 
-    WC_ASSERT_EQ_U64(v.len, StringStore_NODE_SIZE);
-    WC_ASSERT(v.ptr[0] == 'A');
-    WC_ASSERT_EQ_U64(ss.num, 1); // fits exactly, no extra node
-    WC_ASSERT_EQ_U64(ss.tail_off, StringStore_NODE_SIZE);
+    WC_EXPECT_EQ_U64(v.len, StringStore_NODE_SIZE);
+    WC_EXPECT(v.ptr[0] == 'A');
+    WC_EXPECT_EQ_U64(ss.num, 1); // fits exactly, no extra node
+    WC_EXPECT_EQ_U64(ss.tail_off, StringStore_NODE_SIZE);
 
     // next String must go to a fresh node, not overflow the full one
     StrView s = StringStore_cstr(&ss, "hi", 2);
-    WC_ASSERT_TRUE(sv_equals_cstr(s, "hi"));
-    WC_ASSERT(s.ptr != v.ptr);
-    WC_ASSERT_EQ_U64(ss.num, 2);
+    WC_EXPECT_TRUE(sv_equals_cstr(s, "hi"));
+    WC_EXPECT(s.ptr != v.ptr);
+    WC_EXPECT_EQ_U64(ss.num, 2);
 
     StringStore_destroy(&ss);
 }
@@ -80,14 +80,14 @@ static void test_overflow_by_one_goes_to_heap(void)
 
     StrView v = StringStore_cstr(&ss, big, StringStore_NODE_SIZE + 1);
 
-    WC_ASSERT_EQ_U64(v.len, StringStore_NODE_SIZE + 1);
-    WC_ASSERT(v.ptr[0] == 'B');
-    WC_ASSERT(v.ptr[StringStore_NODE_SIZE] == 'B');
-    WC_ASSERT_EQ_U64(ss.num, 3); // initial node + overflow node + fresh tail
+    WC_EXPECT_EQ_U64(v.len, StringStore_NODE_SIZE + 1);
+    WC_EXPECT(v.ptr[0] == 'B');
+    WC_EXPECT(v.ptr[StringStore_NODE_SIZE] == 'B');
+    WC_EXPECT_EQ_U64(ss.num, 3); // initial node + overflow node + fresh tail
     // The overflow node is pushed at the head and owns a heap buffer,
     // so its flag byte is 0 (heap active) and the view points into it.
-    WC_ASSERT(ss.head->buf[StringStore_NODE_SIZE] == 0);
-    WC_ASSERT(v.ptr == ss.head->heap);
+    WC_EXPECT(ss.head->buf[StringStore_NODE_SIZE] == 0);
+    WC_EXPECT(v.ptr == ss.head->heap);
 
     StringStore_destroy(&ss); // must free the heap buffer too
 }
@@ -101,16 +101,16 @@ static void test_overflow_way_past_node(void)
 
     u64   big_len = (StringStore_NODE_SIZE * 3) + 7;
     char* big     = malloc(big_len);
-    WC_ASSERT_NOT_NULL(big);
+    WC_EXPECT_NOT_NULL(big);
     memset(big, 'C', big_len);
 
     StrView v = StringStore_cstr(&ss, big, big_len);
 
-    WC_ASSERT_EQ_U64(v.len, big_len);
-    WC_ASSERT(v.ptr[0] == 'C');
-    WC_ASSERT(v.ptr[big_len - 1] == 'C');
-    WC_ASSERT_EQ_U64(ss.num, 3);
-    WC_ASSERT_EQ_U64(ss.tail_off, 0);
+    WC_EXPECT_EQ_U64(v.len, big_len);
+    WC_EXPECT(v.ptr[0] == 'C');
+    WC_EXPECT(v.ptr[big_len - 1] == 'C');
+    WC_EXPECT_EQ_U64(ss.num, 3);
+    WC_EXPECT_EQ_U64(ss.tail_off, 0);
 
     free(big);
     StringStore_destroy(&ss);
@@ -133,18 +133,18 @@ static void test_multiple_overflows_keep_content(void)
     }
 
     for (int i = 0; i < OVER_N; i++) {
-        WC_ASSERT_EQ_U64(views[i].len, OVER_LEN);
-        WC_ASSERT(views[i].ptr[0] == 'D');
-        WC_ASSERT(views[i].ptr[OVER_LEN - 1] == 'D');
+        WC_EXPECT_EQ_U64(views[i].len, OVER_LEN);
+        WC_EXPECT(views[i].ptr[0] == 'D');
+        WC_EXPECT(views[i].ptr[OVER_LEN - 1] == 'D');
     }
     for (int i = 0; i < OVER_N; i++) {
         for (int j = i + 1; j < OVER_N; j++) {
-            WC_ASSERT(views[i].ptr != views[j].ptr);
+            WC_EXPECT(views[i].ptr != views[j].ptr);
         }
     }
 
     // each overflow adds its own node + a fresh tail
-    WC_ASSERT_EQ_U64(ss.num, 1 + (2 * OVER_N));
+    WC_EXPECT_EQ_U64(ss.num, 1 + (2 * OVER_N));
 
     StringStore_destroy(&ss);
 }
@@ -161,9 +161,9 @@ static void test_small_after_overflow_appends_to_tail(void)
     (void)StringStore_cstr(&ss, big, sizeof(big));
 
     StrView small = StringStore_cstr(&ss, "tail", 4);
-    WC_ASSERT_TRUE(sv_equals_cstr(small, "tail"));
-    WC_ASSERT(small.ptr != ss.head->heap); // in a node buf, not the overflow heap buffer
-    WC_ASSERT_EQ_U64(ss.tail_off, 4);
+    WC_EXPECT_TRUE(sv_equals_cstr(small, "tail"));
+    WC_EXPECT(small.ptr != ss.head->heap); // in a node buf, not the overflow heap buffer
+    WC_EXPECT_EQ_U64(ss.tail_off, 4);
 
     StringStore_destroy(&ss);
 }
@@ -186,7 +186,7 @@ static void test_destroy_mixed_chain(void)
     (void)StringStore_cstr(&ss, big, sizeof(big));
     (void)StringStore_cstr(&ss, "three", 5);
 
-    WC_ASSERT_EQ_U64(ss.num, 5); // 1 + 2 per overflow
+    WC_EXPECT_EQ_U64(ss.num, 5); // 1 + 2 per overflow
 
     StringStore_destroy(&ss);
 }
@@ -198,8 +198,8 @@ static void test_strview_from_String(void)
 {
     String s = String_from_cstr(WC_LIBC, "viewme");
     StrView sv = StrView_from_String(&s);
-    WC_ASSERT_TRUE(sv_equals_cstr(sv, "viewme"));
-    WC_ASSERT_EQ_U64(sv.len, 6);
+    WC_EXPECT_TRUE(sv_equals_cstr(sv, "viewme"));
+    WC_EXPECT_EQ_U64(sv.len, 6);
     String_destroy(&s);
 }
 
@@ -210,8 +210,8 @@ static void test_strview_from_cstr_borrows(void)
 {
     const char* text = "borrowed";
     StrView     sv   = StrView_from_cstr(text, 3);
-    WC_ASSERT_TRUE(sv.ptr == text);
-    WC_ASSERT_TRUE(sv_equals_cstr(sv, "bor"));
+    WC_EXPECT_TRUE(sv.ptr == text);
+    WC_EXPECT_TRUE(sv_equals_cstr(sv, "bor"));
 }
 
 static void test_strview_copy_cstr_terminates_and_frees(void)
@@ -223,13 +223,13 @@ static void test_strview_copy_cstr_terminates_and_frees(void)
     // clen shorter than the string: the old Arena path copied clen + 1 bytes
     // and left cstr[clen] ('l') where the terminator should be
     StrView sv = StrView_copy_cstr(al, "hello", 3);
-    WC_ASSERT_TRUE(sv_equals_cstr(sv, "hel"));
-    WC_ASSERT(sv.ptr[3] == '\0');
-    WC_ASSERT_EQ_U64(ta.live_blocks, 1);
+    WC_EXPECT_TRUE(sv_equals_cstr(sv, "hel"));
+    WC_EXPECT(sv.ptr[3] == '\0');
+    WC_EXPECT_EQ_U64(ta.live_blocks, 1);
 
     StrView_free_copy(al, sv);
-    WC_ASSERT_EQ_U64(ta.n_errors, 0); // size/align matched the alloc
-    WC_ASSERT_EQ_U64(wc_test_alloc_destroy(&ta), 0);
+    WC_EXPECT_EQ_U64(ta.n_errors, 0); // size/align matched the alloc
+    WC_EXPECT_EQ_U64(wc_test_alloc_destroy(&ta), 0);
 }
 
 static void test_strview_copy_cstr_on_arena(void)
@@ -237,8 +237,8 @@ static void test_strview_copy_cstr_on_arena(void)
     Arena arena;
     Arena_create(&arena, WC_LIBC, 256);
     StrView sv = StrView_copy_cstr(Arena_allocator(&arena), "arena", 5);
-    WC_ASSERT_TRUE((const u8*)sv.ptr >= arena.base && (const u8*)sv.ptr < arena.base + arena.size);
-    WC_ASSERT_TRUE(sv_equals_cstr(sv, "arena"));
+    WC_EXPECT_TRUE((const u8*)sv.ptr >= arena.base && (const u8*)sv.ptr < arena.base + arena.size);
+    WC_EXPECT_TRUE(sv_equals_cstr(sv, "arena"));
     Arena_destroy(&arena); // view's lifetime ends here
 }
 
@@ -256,14 +256,14 @@ static void test_StringStore_test_allocator_leak_free(void)
     char big[StringStore_NODE_SIZE + 40];
     memset(big, 'G', sizeof(big));
     StrView v = StringStore_cstr(&ss, big, sizeof(big)); // overflow: node + heap buffer
-    WC_ASSERT_TRUE(wc_test_alloc_owns(&ta, v.ptr));
+    WC_EXPECT_TRUE(wc_test_alloc_owns(&ta, v.ptr));
     // 3 nodes (initial, overflow, fresh tail) + the overflow buffer
-    WC_ASSERT_EQ_U64(ta.live_blocks, 4);
+    WC_EXPECT_EQ_U64(ta.live_blocks, 4);
 
     StringStore_destroy(&ss);
-    WC_ASSERT_NULL(ss.head);
-    WC_ASSERT_EQ_U64(ta.n_errors, 0); // heap_len recorded correctly for the free
-    WC_ASSERT_EQ_U64(wc_test_alloc_destroy(&ta), 0);
+    WC_EXPECT_NULL(ss.head);
+    WC_EXPECT_EQ_U64(ta.n_errors, 0); // heap_len recorded correctly for the free
+    WC_EXPECT_EQ_U64(wc_test_alloc_destroy(&ta), 0);
 }
 
 static void test_StringStore_on_arena(void)
@@ -272,8 +272,8 @@ static void test_StringStore_on_arena(void)
     Arena_create(&arena, WC_LIBC, nKB(8));
     StringStore ss = StringStore_create(Arena_allocator(&arena));
     StrView     a  = StringStore_cstr(&ss, "inside", 6);
-    WC_ASSERT_TRUE((const u8*)a.ptr >= arena.base && (const u8*)a.ptr < arena.base + arena.size);
-    WC_ASSERT_TRUE(sv_equals_cstr(a, "inside"));
+    WC_EXPECT_TRUE((const u8*)a.ptr >= arena.base && (const u8*)a.ptr < arena.base + arena.size);
+    WC_EXPECT_TRUE(sv_equals_cstr(a, "inside"));
     StringStore_destroy(&ss);
     Arena_destroy(&arena);
 }
@@ -284,7 +284,7 @@ static void test_StringStore_destroy_zeroed_is_safe(void)
     memset(&z, 0, sizeof(z));
     StringStore_destroy(&z);
     StringStore_destroy(&z);
-    WC_ASSERT_NULL(z.head);
+    WC_EXPECT_NULL(z.head);
 }
 
 static void cstr_after_destroy(void)
@@ -304,8 +304,8 @@ static void create_on_exhausted_arena(void)
 
 static void test_StringStore_zero_state_and_oom_die(void)
 {
-    WC_ASSERT_DIES(cstr_after_destroy);
-    WC_ASSERT_DIES(create_on_exhausted_arena);
+    WC_EXPECT_DIES(cstr_after_destroy);
+    WC_EXPECT_DIES(create_on_exhausted_arena);
 }
 
 

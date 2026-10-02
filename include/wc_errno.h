@@ -13,9 +13,13 @@
  *                allocator returned NULL, or a zeroed (moved-from/destroyed)
  *                container was mutated. Continuing would corrupt memory.
  *
- *   CHECK_FATAL  Programmer errors: null pointer, out of bounds, size 0.
- *                Crashes with a message in debug builds; compiled out under
- *                NDEBUG. Never use it for allocation failure.
+ *   WC_ASSERT    Programmer errors: null pointer, out of bounds, size 0.
+ *                Takes the INVARIANT (`i < size`). Crashes with a message in
+ *                debug builds; compiled out under NDEBUG (condition not
+ *                evaluated). Never use it for allocation failure.
+ *
+ *   (WARN_IF / LOG_IF report and continue, in every build. Full list and
+ *    the release/debug split: the DIAGNOSTICS block in common.h.)
  *
  *   wc_errno     Expected conditions: pop on empty, Arena full.
  *                Function returns NULL / 0 / void. wc_errno says why.
@@ -90,31 +94,31 @@ static inline void wc_perror(const char* prefix)
 
 /* Internal macros (library use only)
  * ------------------------------------
- * WC_SET_RET — replaces CHECK_WARN_RET at expected-condition sites.
+ * WC_SET_RET — for expected-condition sites (use WARN_IF_RET to also print).
  * Sets wc_errno silently and returns. No print.
  *
  *   WC_SET_RET(WC_ERR_EMPTY, vec->size == 0, );     void return
  *   WC_SET_RET(WC_ERR_FULL,  cond,           NULL); pointer return
  */
 #define WC_SET_RET(err_code, cond, ret) \
-    do {                                \
-        if (cond) {                     \
+    ({                                  \
+        if (WC_UNLIKELY(cond)) {        \
             wc_errno = (err_code);      \
             return ret;                 \
         }                               \
-    } while (0)
+    })
 
 /* WC_PROPAGATE_RET — exit immediately if a callee already set wc_errno.
  *
  *   some_internal_fn(vec);
  *   WC_PROPAGATE_RET( );   // exits if some_internal_fn set wc_errno
  */
-#define WC_PROPAGATE_RET(ret)    \
-    do {                         \
-        if (wc_errno != WC_OK) { \
-            return ret;          \
-        }                        \
-    } while (0)
+#define WC_PROPAGATE_RET(ret)                 \
+    ({                                        \
+        if (WC_UNLIKELY(wc_errno != WC_OK)) { \
+            return ret;                       \
+        }                                     \
+    })
 
 #endif // WC_ERRNO_H
 

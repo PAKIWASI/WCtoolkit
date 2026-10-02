@@ -37,24 +37,24 @@ static int abs_close(float got, float ref, float eps)
 
 static void test_sqrt_zero(void)
 {
-    WC_ASSERT_TRUE(fast_sqrt(0.0f) == 0.0f);
+    WC_EXPECT_TRUE(fast_sqrt(0.0f) == 0.0f);
 }
 
 static void test_sqrt_one(void)
 {
-    WC_ASSERT_TRUE(rel_close(fast_sqrt(1.0f), 1.0f, EPS_TIGHT));
+    WC_EXPECT_TRUE(rel_close(fast_sqrt(1.0f), 1.0f, EPS_TIGHT));
 }
 
 static void test_sqrt_four(void)
 {
-    WC_ASSERT_TRUE(rel_close(fast_sqrt(4.0f), 2.0f, EPS_TIGHT));
+    WC_EXPECT_TRUE(rel_close(fast_sqrt(4.0f), 2.0f, EPS_TIGHT));
 }
 
 static void test_sqrt_perfect_squares(void)
 {
     float cases[] = {9.0f, 16.0f, 25.0f, 49.0f, 100.0f, 10000.0f};
     for (int i = 0; i < 6; i++) {
-        WC_ASSERT_TRUE(rel_close(fast_sqrt(cases[i]), sqrtf(cases[i]), EPS_TIGHT));
+        WC_EXPECT_TRUE(rel_close(fast_sqrt(cases[i]), sqrtf(cases[i]), EPS_TIGHT));
     }
 }
 
@@ -62,27 +62,27 @@ static void test_sqrt_non_integer(void)
 {
     float cases[] = {2.0f, 3.0f, 0.5f, 0.1f, 7.5f, 123.456f};
     for (int i = 0; i < 6; i++) {
-        WC_ASSERT_TRUE(rel_close(fast_sqrt(cases[i]), sqrtf(cases[i]), EPS_TIGHT));
+        WC_EXPECT_TRUE(rel_close(fast_sqrt(cases[i]), sqrtf(cases[i]), EPS_TIGHT));
     }
 }
 
 static void test_sqrt_large(void)
 {
-    WC_ASSERT_TRUE(rel_close(fast_sqrt(1e8f), sqrtf(1e8f), EPS_TIGHT));
-    WC_ASSERT_TRUE(rel_close(fast_sqrt(1e12f), sqrtf(1e12f), EPS_TIGHT));
+    WC_EXPECT_TRUE(rel_close(fast_sqrt(1e8f), sqrtf(1e8f), EPS_TIGHT));
+    WC_EXPECT_TRUE(rel_close(fast_sqrt(1e12f), sqrtf(1e12f), EPS_TIGHT));
 }
 
 static void test_sqrt_small(void)
 {
-    WC_ASSERT_TRUE(rel_close(fast_sqrt(1e-4f), sqrtf(1e-4f), EPS_TIGHT));
-    WC_ASSERT_TRUE(rel_close(fast_sqrt(1e-6f), sqrtf(1e-6f), EPS_TIGHT));
+    WC_EXPECT_TRUE(rel_close(fast_sqrt(1e-4f), sqrtf(1e-4f), EPS_TIGHT));
+    WC_EXPECT_TRUE(rel_close(fast_sqrt(1e-6f), sqrtf(1e-6f), EPS_TIGHT));
 }
 
 static void test_sqrt_negative_returns_zero(void)
 {
     // implementation clamps negative input to 0
-    WC_ASSERT_TRUE(fast_sqrt(-1.0f) == 0.0f);
-    WC_ASSERT_TRUE(fast_sqrt(-100.0f) == 0.0f);
+    WC_EXPECT_TRUE(fast_sqrt(-1.0f) == 0.0f);
+    WC_EXPECT_TRUE(fast_sqrt(-100.0f) == 0.0f);
 }
 
 static void test_sqrt_roundtrip(void)
@@ -91,7 +91,7 @@ static void test_sqrt_roundtrip(void)
     float cases[] = {2.0f, 7.0f, 42.0f, 0.3f};
     for (int i = 0; i < 4; i++) {
         float s = fast_sqrt(cases[i]);
-        WC_ASSERT_TRUE(rel_close(s * s, cases[i], EPS_TIGHT));
+        WC_EXPECT_TRUE(rel_close(s * s, cases[i], EPS_TIGHT));
     }
 }
 
@@ -101,14 +101,14 @@ static void test_sqrt_roundtrip(void)
 static void test_log_one(void)
 {
     // ln(1) = 0 — use absolute tolerance since ref is 0
-    WC_ASSERT_TRUE(abs_close(fast_log(1.0f), 0.0f, EPS_TIGHT));
+    WC_EXPECT_TRUE(abs_close(fast_log(1.0f), 0.0f, EPS_TIGHT));
 }
 
 static void test_log_e(void)
 {
     // ln(e) = 1
     const float E = 2.718281828f;
-    WC_ASSERT_TRUE(rel_close(fast_log(E), 1.0f, EPS_TIGHT));
+    WC_EXPECT_TRUE(rel_close(fast_log(E), 1.0f, EPS_TIGHT));
 }
 
 static void test_log_powers_of_two(void)
@@ -116,7 +116,7 @@ static void test_log_powers_of_two(void)
     // ln(2^n) = n * ln(2) — exercises the range-reduction path
     float cases[] = {2.0f, 4.0f, 8.0f, 16.0f, 32.0f};
     for (int i = 0; i < 5; i++) {
-        WC_ASSERT_TRUE(rel_close(fast_log(cases[i]), logf(cases[i]), EPS_TIGHT));
+        WC_EXPECT_TRUE(rel_close(fast_log(cases[i]), logf(cases[i]), EPS_TIGHT));
     }
 }
 
@@ -124,7 +124,7 @@ static void test_log_general(void)
 {
     float cases[] = {0.5f, 0.1f, 1.5f, 3.0f, 10.0f, 100.0f, 1000.0f};
     for (int i = 0; i < 7; i++) {
-        WC_ASSERT_TRUE(rel_close(fast_log(cases[i]), logf(cases[i]), EPS_TIGHT));
+        WC_EXPECT_TRUE(rel_close(fast_log(cases[i]), logf(cases[i]), EPS_TIGHT));
     }
 }
 
@@ -132,15 +132,15 @@ static void test_log_small_positive(void)
 {
     float cases[] = {0.01f, 0.001f, 1e-4f};
     for (int i = 0; i < 3; i++) {
-        WC_ASSERT_TRUE(rel_close(fast_log(cases[i]), logf(cases[i]), EPS_TIGHT));
+        WC_EXPECT_TRUE(rel_close(fast_log(cases[i]), logf(cases[i]), EPS_TIGHT));
     }
 }
 
 static void test_log_nonpositive_returns_sentinel(void)
 {
     // implementation returns -1e10f for x <= 0
-    WC_ASSERT_TRUE(fast_log(0.0f)  < -1e9f);
-    WC_ASSERT_TRUE(fast_log(-1.0f) < -1e9f);
+    WC_EXPECT_TRUE(fast_log(0.0f)  < -1e9f);
+    WC_EXPECT_TRUE(fast_log(-1.0f) < -1e9f);
 }
 
 static void test_log_exp_inverse(void)
@@ -148,7 +148,7 @@ static void test_log_exp_inverse(void)
     // log(exp(x)) ≈ x
     float cases[] = {0.0f, 0.5f, 1.0f, 2.0f, 5.0f};
     for (int i = 0; i < 5; i++) {
-        WC_ASSERT_TRUE(abs_close(fast_log(fast_exp(cases[i])), cases[i], EPS_TIGHT));
+        WC_EXPECT_TRUE(abs_close(fast_log(fast_exp(cases[i])), cases[i], EPS_TIGHT));
     }
 }
 
@@ -157,29 +157,29 @@ static void test_log_exp_inverse(void)
 
 static void test_sin_zero(void)
 {
-    WC_ASSERT_TRUE(abs_close(fast_sin(0.0f), 0.0f, EPS_TRIG));
+    WC_EXPECT_TRUE(abs_close(fast_sin(0.0f), 0.0f, EPS_TRIG));
 }
 
 static void test_sin_half_pi(void)
 {
-    WC_ASSERT_TRUE(abs_close(fast_sin(PI / 2.0f), 1.0f, EPS_TRIG));
+    WC_EXPECT_TRUE(abs_close(fast_sin(PI / 2.0f), 1.0f, EPS_TRIG));
 }
 
 static void test_sin_pi(void)
 {
-    WC_ASSERT_TRUE(abs_close(fast_sin(PI), 0.0f, EPS_TRIG));
+    WC_EXPECT_TRUE(abs_close(fast_sin(PI), 0.0f, EPS_TRIG));
 }
 
 static void test_sin_neg_half_pi(void)
 {
-    WC_ASSERT_TRUE(abs_close(fast_sin(-PI / 2.0f), -1.0f, EPS_TRIG));
+    WC_EXPECT_TRUE(abs_close(fast_sin(-PI / 2.0f), -1.0f, EPS_TRIG));
 }
 
 static void test_sin_general(void)
 {
     float cases[] = {0.1f, 0.5f, 1.0f, 1.5f, 2.0f, 2.5f, 3.0f};
     for (int i = 0; i < 7; i++) {
-        WC_ASSERT_TRUE(abs_close(fast_sin(cases[i]), sinf(cases[i]), EPS_TRIG));
+        WC_EXPECT_TRUE(abs_close(fast_sin(cases[i]), sinf(cases[i]), EPS_TRIG));
     }
 }
 
@@ -187,7 +187,7 @@ static void test_sin_negative(void)
 {
     float cases[] = {-0.5f, -1.0f, -2.0f, -PI / 4.0f};
     for (int i = 0; i < 4; i++) {
-        WC_ASSERT_TRUE(abs_close(fast_sin(cases[i]), sinf(cases[i]), EPS_TRIG));
+        WC_EXPECT_TRUE(abs_close(fast_sin(cases[i]), sinf(cases[i]), EPS_TRIG));
     }
 }
 
@@ -196,7 +196,7 @@ static void test_sin_odd_symmetry(void)
     // sin(-x) = -sin(x)
     float cases[] = {0.3f, 1.2f, 2.7f};
     for (int i = 0; i < 3; i++) {
-        WC_ASSERT_TRUE(abs_close(fast_sin(-cases[i]), -fast_sin(cases[i]), EPS_TRIG));
+        WC_EXPECT_TRUE(abs_close(fast_sin(-cases[i]), -fast_sin(cases[i]), EPS_TRIG));
     }
 }
 
@@ -205,8 +205,8 @@ static void test_sin_large_angle_wraps(void)
     // Periodicity: sin(x + 2π) ≈ sin(x)
     float cases[] = {0.5f, 1.0f, 2.0f};
     for (int i = 0; i < 3; i++) {
-        WC_ASSERT_TRUE(abs_close(fast_sin(cases[i] + TWO_PI), fast_sin(cases[i]), EPS_TRIG));
-        WC_ASSERT_TRUE(abs_close(fast_sin(cases[i] + (4.0f * PI)), fast_sin(cases[i]), EPS_TRIG));
+        WC_EXPECT_TRUE(abs_close(fast_sin(cases[i] + TWO_PI), fast_sin(cases[i]), EPS_TRIG));
+        WC_EXPECT_TRUE(abs_close(fast_sin(cases[i] + (4.0f * PI)), fast_sin(cases[i]), EPS_TRIG));
     }
 }
 
@@ -215,24 +215,24 @@ static void test_sin_large_angle_wraps(void)
 
 static void test_cos_zero(void)
 {
-    WC_ASSERT_TRUE(abs_close(fast_cos(0.0f), 1.0f, EPS_TRIG));
+    WC_EXPECT_TRUE(abs_close(fast_cos(0.0f), 1.0f, EPS_TRIG));
 }
 
 static void test_cos_half_pi(void)
 {
-    WC_ASSERT_TRUE(abs_close(fast_cos(PI / 2.0f), 0.0f, EPS_TRIG));
+    WC_EXPECT_TRUE(abs_close(fast_cos(PI / 2.0f), 0.0f, EPS_TRIG));
 }
 
 static void test_cos_pi(void)
 {
-    WC_ASSERT_TRUE(abs_close(fast_cos(PI), -1.0f, EPS_TRIG));
+    WC_EXPECT_TRUE(abs_close(fast_cos(PI), -1.0f, EPS_TRIG));
 }
 
 static void test_cos_general(void)
 {
     float cases[] = {0.1f, 0.5f, 1.0f, 1.5f, 2.0f, 2.5f, 3.0f};
     for (int i = 0; i < 7; i++) {
-        WC_ASSERT_TRUE(abs_close(fast_cos(cases[i]), cosf(cases[i]), EPS_TRIG));
+        WC_EXPECT_TRUE(abs_close(fast_cos(cases[i]), cosf(cases[i]), EPS_TRIG));
     }
 }
 
@@ -241,7 +241,7 @@ static void test_cos_even_symmetry(void)
     // cos(-x) = cos(x)
     float cases[] = {0.3f, 1.2f, 2.7f};
     for (int i = 0; i < 3; i++) {
-        WC_ASSERT_TRUE(abs_close(fast_cos(-cases[i]), fast_cos(cases[i]), EPS_TRIG));
+        WC_EXPECT_TRUE(abs_close(fast_cos(-cases[i]), fast_cos(cases[i]), EPS_TRIG));
     }
 }
 
@@ -252,7 +252,7 @@ static void test_sin_cos_pythagorean(void)
     for (int i = 0; i < 6; i++) {
         float s = fast_sin(cases[i]);
         float c = fast_cos(cases[i]);
-        WC_ASSERT_TRUE(abs_close((s * s) + (c * c), 1.0f, EPS_TRIG));
+        WC_EXPECT_TRUE(abs_close((s * s) + (c * c), 1.0f, EPS_TRIG));
     }
 }
 
@@ -262,20 +262,20 @@ static void test_sin_cos_pythagorean(void)
 static void test_exp_zero(void)
 {
     // e^0 = 1
-    WC_ASSERT_TRUE(rel_close(fast_exp(0.0f), 1.0f, EPS_TIGHT));
+    WC_EXPECT_TRUE(rel_close(fast_exp(0.0f), 1.0f, EPS_TIGHT));
 }
 
 static void test_exp_one(void)
 {
     // e^1 = e
-    WC_ASSERT_TRUE(rel_close(fast_exp(1.0f), expf(1.0f), EPS_TIGHT));
+    WC_EXPECT_TRUE(rel_close(fast_exp(1.0f), expf(1.0f), EPS_TIGHT));
 }
 
 static void test_exp_small_positive(void)
 {
     float cases[] = {0.1f, 0.5f, 0.9f};
     for (int i = 0; i < 3; i++) {
-        WC_ASSERT_TRUE(rel_close(fast_exp(cases[i]), expf(cases[i]), EPS_TIGHT));
+        WC_EXPECT_TRUE(rel_close(fast_exp(cases[i]), expf(cases[i]), EPS_TIGHT));
     }
 }
 
@@ -283,7 +283,7 @@ static void test_exp_integers(void)
 {
     float cases[] = {1.0f, 2.0f, 3.0f, 5.0f, 10.0f};
     for (int i = 0; i < 5; i++) {
-        WC_ASSERT_TRUE(rel_close(fast_exp(cases[i]), expf(cases[i]), EPS_TIGHT));
+        WC_EXPECT_TRUE(rel_close(fast_exp(cases[i]), expf(cases[i]), EPS_TIGHT));
     }
 }
 
@@ -291,7 +291,7 @@ static void test_exp_negative(void)
 {
     float cases[] = {-0.5f, -1.0f, -2.0f, -5.0f, -10.0f};
     for (int i = 0; i < 5; i++) {
-        WC_ASSERT_TRUE(rel_close(fast_exp(cases[i]), expf(cases[i]), EPS_TIGHT));
+        WC_EXPECT_TRUE(rel_close(fast_exp(cases[i]), expf(cases[i]), EPS_TIGHT));
     }
 }
 
@@ -299,22 +299,22 @@ static void test_exp_fractional(void)
 {
     float cases[] = {0.25f, 0.75f, 1.5f, 2.7f, 3.14f};
     for (int i = 0; i < 5; i++) {
-        WC_ASSERT_TRUE(rel_close(fast_exp(cases[i]), expf(cases[i]), EPS_TIGHT));
+        WC_EXPECT_TRUE(rel_close(fast_exp(cases[i]), expf(cases[i]), EPS_TIGHT));
     }
 }
 
 static void test_exp_clamp_large(void)
 {
     // x > 88: implementation returns 1e38 sentinel
-    WC_ASSERT_TRUE(fast_exp(89.0f) >= 1e37f);
-    WC_ASSERT_TRUE(fast_exp(1000.0f) >= 1e37f);
+    WC_EXPECT_TRUE(fast_exp(89.0f) >= 1e37f);
+    WC_EXPECT_TRUE(fast_exp(1000.0f) >= 1e37f);
 }
 
 static void test_exp_clamp_small(void)
 {
     // x < -87: implementation returns 0
-    WC_ASSERT_TRUE(fast_exp(-88.0f) == 0.0f);
-    WC_ASSERT_TRUE(fast_exp(-1000.0f) == 0.0f);
+    WC_EXPECT_TRUE(fast_exp(-88.0f) == 0.0f);
+    WC_EXPECT_TRUE(fast_exp(-1000.0f) == 0.0f);
 }
 
 static void test_exp_log_inverse(void)
@@ -322,7 +322,7 @@ static void test_exp_log_inverse(void)
     // exp(log(x)) ≈ x
     float cases[] = {0.5f, 1.0f, 2.0f, 10.0f, 50.0f};
     for (int i = 0; i < 5; i++) {
-        WC_ASSERT_TRUE(rel_close(fast_exp(fast_log(cases[i])), cases[i], EPS_TIGHT));
+        WC_EXPECT_TRUE(rel_close(fast_exp(fast_log(cases[i])), cases[i], EPS_TIGHT));
     }
 }
 
@@ -330,7 +330,7 @@ static void test_exp_product_rule(void)
 {
     // e^(a+b) = e^a * e^b
     float a = 1.5f, b = 2.5f;
-    WC_ASSERT_TRUE(rel_close(fast_exp(a + b), fast_exp(a) * fast_exp(b), EPS_TIGHT));
+    WC_EXPECT_TRUE(rel_close(fast_exp(a + b), fast_exp(a) * fast_exp(b), EPS_TIGHT));
 }
 
 
@@ -340,7 +340,7 @@ static void test_ceil_exact_integers(void)
 {
     float cases[] = {0.0f, 1.0f, -1.0f, 5.0f, -5.0f, 100.0f};
     for (int i = 0; i < 6; i++) {
-        WC_ASSERT_TRUE(fast_ceil(cases[i]) == ceilf(cases[i]));
+        WC_EXPECT_TRUE(fast_ceil(cases[i]) == ceilf(cases[i]));
     }
 }
 
@@ -348,7 +348,7 @@ static void test_ceil_positive_fractions(void)
 {
     float cases[] = {0.1f, 0.5f, 0.9f, 1.1f, 2.7f, 99.001f};
     for (int i = 0; i < 6; i++) {
-        WC_ASSERT_TRUE(fast_ceil(cases[i]) == ceilf(cases[i]));
+        WC_EXPECT_TRUE(fast_ceil(cases[i]) == ceilf(cases[i]));
     }
 }
 
@@ -356,13 +356,13 @@ static void test_ceil_negative_fractions(void)
 {
     float cases[] = {-0.1f, -0.5f, -0.9f, -1.1f, -2.7f, -99.001f};
     for (int i = 0; i < 6; i++) {
-        WC_ASSERT_TRUE(fast_ceil(cases[i]) == ceilf(cases[i]));
+        WC_EXPECT_TRUE(fast_ceil(cases[i]) == ceilf(cases[i]));
     }
 }
 
 static void test_ceil_zero(void)
 {
-    WC_ASSERT_TRUE(fast_ceil(0.0f) == 0.0f);
+    WC_EXPECT_TRUE(fast_ceil(0.0f) == 0.0f);
 }
 
 static void test_ceil_result_is_integer(void)
@@ -371,7 +371,7 @@ static void test_ceil_result_is_integer(void)
     float cases[] = {1.3f, -2.7f, 0.01f, -0.01f, 5.5f, -5.5f};
     for (int i = 0; i < 6; i++) {
         float c = fast_ceil(cases[i]);
-        WC_ASSERT_TRUE(c == (float)(int)c);
+        WC_EXPECT_TRUE(c == (float)(int)c);
     }
 }
 
@@ -379,7 +379,7 @@ static void test_ceil_result_geq_input(void)
 {
     float cases[] = {0.1f, -0.9f, 3.3f, -3.3f, 0.0f, -1.0f};
     for (int i = 0; i < 6; i++) {
-        WC_ASSERT_TRUE(fast_ceil(cases[i]) >= cases[i]);
+        WC_EXPECT_TRUE(fast_ceil(cases[i]) >= cases[i]);
     }
 }
 
@@ -388,60 +388,60 @@ static void test_ceil_result_geq_input(void)
 
 static void test_pow_zero_exponent(void)
 {
-    WC_ASSERT_TRUE(fast_pow(2.0f, 0.0f) == 1.0f);
-    WC_ASSERT_TRUE(fast_pow(0.5f, 0.0f) == 1.0f);
-    WC_ASSERT_TRUE(fast_pow(0.0f, 0.0f) == 1.0f);
+    WC_EXPECT_TRUE(fast_pow(2.0f, 0.0f) == 1.0f);
+    WC_EXPECT_TRUE(fast_pow(0.5f, 0.0f) == 1.0f);
+    WC_EXPECT_TRUE(fast_pow(0.0f, 0.0f) == 1.0f);
 }
 
 static void test_pow_one_exponent(void)
 {
-    WC_ASSERT_TRUE(fast_pow(2.0f, 1.0f) == 2.0f);
-    WC_ASSERT_TRUE(fast_pow(0.5f, 1.0f) == 0.5f);
+    WC_EXPECT_TRUE(fast_pow(2.0f, 1.0f) == 2.0f);
+    WC_EXPECT_TRUE(fast_pow(0.5f, 1.0f) == 0.5f);
 }
 
 static void test_pow_zero_base(void)
 {
-    WC_ASSERT_TRUE(fast_pow(0.0f, 2.0f) == 0.0f);
-    WC_ASSERT_TRUE(fast_pow(0.0f, 0.5f) == 0.0f);
+    WC_EXPECT_TRUE(fast_pow(0.0f, 2.0f) == 0.0f);
+    WC_EXPECT_TRUE(fast_pow(0.0f, 0.5f) == 0.0f);
     // Negative exponent for zero base returns sentinel (1e38)
-    WC_ASSERT_TRUE(fast_pow(0.0f, -1.0f) >= 1e37f);
+    WC_EXPECT_TRUE(fast_pow(0.0f, -1.0f) >= 1e37f);
 }
 
 static void test_pow_square(void)
 {
-    WC_ASSERT_TRUE(rel_close(fast_pow(3.0f, 2.0f), 9.0f, EPS_TIGHT));
-    WC_ASSERT_TRUE(rel_close(fast_pow(-4.0f, 2.0f), 16.0f, EPS_TIGHT));
-    WC_ASSERT_TRUE(rel_close(fast_pow(0.5f, 2.0f), 0.25f, EPS_TIGHT));
+    WC_EXPECT_TRUE(rel_close(fast_pow(3.0f, 2.0f), 9.0f, EPS_TIGHT));
+    WC_EXPECT_TRUE(rel_close(fast_pow(-4.0f, 2.0f), 16.0f, EPS_TIGHT));
+    WC_EXPECT_TRUE(rel_close(fast_pow(0.5f, 2.0f), 0.25f, EPS_TIGHT));
 }
 
 static void test_pow_sqrt(void)
 {
-    WC_ASSERT_TRUE(rel_close(fast_pow(4.0f, 0.5f), 2.0f, EPS_TIGHT));
-    WC_ASSERT_TRUE(rel_close(fast_pow(2.0f, 0.5f), sqrtf(2.0f), EPS_TIGHT));
-    WC_ASSERT_TRUE(rel_close(fast_pow(0.25f, 0.5f), 0.5f, EPS_TIGHT));
+    WC_EXPECT_TRUE(rel_close(fast_pow(4.0f, 0.5f), 2.0f, EPS_TIGHT));
+    WC_EXPECT_TRUE(rel_close(fast_pow(2.0f, 0.5f), sqrtf(2.0f), EPS_TIGHT));
+    WC_EXPECT_TRUE(rel_close(fast_pow(0.25f, 0.5f), 0.5f, EPS_TIGHT));
 }
 
 static void test_pow_integer_exponent(void)
 {
-    WC_ASSERT_TRUE(rel_close(fast_pow(2.0f, 3.0f), 8.0f, EPS_TIGHT));
-    WC_ASSERT_TRUE(rel_close(fast_pow(3.0f, 4.0f), 81.0f, EPS_TIGHT));
-    WC_ASSERT_TRUE(rel_close(fast_pow(2.0f, 10.0f), 1024.0f, EPS_TIGHT));
-    WC_ASSERT_TRUE(rel_close(fast_pow(1.1f, 2.0f), 1.21f, EPS_TIGHT));
+    WC_EXPECT_TRUE(rel_close(fast_pow(2.0f, 3.0f), 8.0f, EPS_TIGHT));
+    WC_EXPECT_TRUE(rel_close(fast_pow(3.0f, 4.0f), 81.0f, EPS_TIGHT));
+    WC_EXPECT_TRUE(rel_close(fast_pow(2.0f, 10.0f), 1024.0f, EPS_TIGHT));
+    WC_EXPECT_TRUE(rel_close(fast_pow(1.1f, 2.0f), 1.21f, EPS_TIGHT));
 }
 
 static void test_pow_negative_exponent(void)
 {
-    WC_ASSERT_TRUE(rel_close(fast_pow(2.0f, -1.0f), 0.5f, EPS_TIGHT));
-    WC_ASSERT_TRUE(rel_close(fast_pow(2.0f, -2.0f), 0.25f, EPS_TIGHT));
-    WC_ASSERT_TRUE(rel_close(fast_pow(10.0f, -3.0f), 0.001f, EPS_TIGHT));
-    WC_ASSERT_TRUE(rel_close(fast_pow(0.5f, -1.0f), 2.0f, EPS_TIGHT));
+    WC_EXPECT_TRUE(rel_close(fast_pow(2.0f, -1.0f), 0.5f, EPS_TIGHT));
+    WC_EXPECT_TRUE(rel_close(fast_pow(2.0f, -2.0f), 0.25f, EPS_TIGHT));
+    WC_EXPECT_TRUE(rel_close(fast_pow(10.0f, -3.0f), 0.001f, EPS_TIGHT));
+    WC_EXPECT_TRUE(rel_close(fast_pow(0.5f, -1.0f), 2.0f, EPS_TIGHT));
 }
 
 static void test_pow_fractional_exponent(void)
 {
-    WC_ASSERT_TRUE(rel_close(fast_pow(2.0f, 1.5f), powf(2.0f, 1.5f), EPS_TIGHT));
-    WC_ASSERT_TRUE(rel_close(fast_pow(3.0f, 0.33f), powf(3.0f, 0.33f), EPS_TIGHT));
-    WC_ASSERT_TRUE(rel_close(fast_pow(0.5f, 0.5f), powf(0.5f, 0.5f), EPS_TIGHT));
+    WC_EXPECT_TRUE(rel_close(fast_pow(2.0f, 1.5f), powf(2.0f, 1.5f), EPS_TIGHT));
+    WC_EXPECT_TRUE(rel_close(fast_pow(3.0f, 0.33f), powf(3.0f, 0.33f), EPS_TIGHT));
+    WC_EXPECT_TRUE(rel_close(fast_pow(0.5f, 0.5f), powf(0.5f, 0.5f), EPS_TIGHT));
 }
 
 static void test_pow_general(void)
@@ -450,7 +450,7 @@ static void test_pow_general(void)
     float exps[] = {2.2f, -1.1f, 0.5f};
     for (int i = 0; i < 3; i++) {
         for (int j = 0; j < 3; j++) {
-            WC_ASSERT_TRUE(rel_close(fast_pow(bases[i], exps[j]), powf(bases[i], exps[j]), EPS_TIGHT));
+            WC_EXPECT_TRUE(rel_close(fast_pow(bases[i], exps[j]), powf(bases[i], exps[j]), EPS_TIGHT));
         }
     }
 }
@@ -458,25 +458,25 @@ static void test_pow_general(void)
 static void test_pow_large_result(void)
 {
     // Should handle large results gracefully (approaching float max)
-    WC_ASSERT_TRUE(fast_pow(10.0f, 30.0f) > 1e29f);
+    WC_EXPECT_TRUE(fast_pow(10.0f, 30.0f) > 1e29f);
 }
 
 static void test_pow_small_result(void)
 {
     // Should handle very small results (approaching 0)
-    WC_ASSERT_TRUE(fast_pow(0.1f, 40.0f) < 1e-37f);
+    WC_EXPECT_TRUE(fast_pow(0.1f, 40.0f) < 1e-37f);
 }
 
 static void test_pow_negative_base(void)
 {
     // Integer exponents should work
-    WC_ASSERT_TRUE(rel_close(fast_pow(-2.0f, 2.0f), 4.0f, EPS_TIGHT));
-    WC_ASSERT_TRUE(rel_close(fast_pow(-2.0f, 3.0f), -8.0f, EPS_TIGHT));
+    WC_EXPECT_TRUE(rel_close(fast_pow(-2.0f, 2.0f), 4.0f, EPS_TIGHT));
+    WC_EXPECT_TRUE(rel_close(fast_pow(-2.0f, 3.0f), -8.0f, EPS_TIGHT));
     
     // Fractional exponents with negative base: implementation returns 0
     // (consistent with fast_sqrt and fast_log returning sentinels)
-    WC_ASSERT_TRUE(fast_pow(-2.0f, 0.5f) == 0.0f);
-    WC_ASSERT_TRUE(fast_pow(-2.0f, 1.5f) == 0.0f);
+    WC_EXPECT_TRUE(fast_pow(-2.0f, 0.5f) == 0.0f);
+    WC_EXPECT_TRUE(fast_pow(-2.0f, 1.5f) == 0.0f);
 }
 
 
