@@ -18,6 +18,7 @@ _Thread_local wc_err wc_errno = WC_OK;
  * the compiler places them, and every branch that calls them, away from hot
  * code. Both write to stderr so diagnostics never mix into program output. */
 
+// NOLINTBEGIN(clang-analyzer-valist.Uninitialized): false positive: va_start precedes vfprintf
 void wc_fatal_report(const char* file, int line, const char* func, const char* fmt, ...)
 {
     fflush(stdout); // keep ordering with anything already printed
@@ -29,7 +30,9 @@ void wc_fatal_report(const char* file, int line, const char* func, const char* f
     fprintf(stderr, "\n" WC_COLOR_RESET);
     exit(EXIT_FAILURE);
 }
+// NOLINTEND(clang-analyzer-valist.Uninitialized)
 
+// NOLINTBEGIN(clang-analyzer-valist.Uninitialized): as above
 void wc_warn_report(const char* file, int line, const char* func, const char* fmt, ...)
 {
     fflush(stdout);
@@ -40,3 +43,4 @@ void wc_warn_report(const char* file, int line, const char* func, const char* fm
     va_end(args);
     fprintf(stderr, "\n" WC_COLOR_RESET);
 }
+// NOLINTEND(clang-analyzer-valist.Uninitialized)

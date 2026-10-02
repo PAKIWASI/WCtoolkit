@@ -1,16 +1,15 @@
 #define JSMN_PARENT_LINKS
-#include "jsmn.h"
 #include "wcjson.h"
 #include "Arena.h"
 #include "common.h"
+#include "jsmn.h"
 
 #include <stdio.h>
 
 
 
-
 static long read_file(const char* filename, char** output);
-static int jsmn_parse_json(char* json_buf, u32 json_len, jsmntok_t** tokens);
+static int  jsmn_parse_json(char* json_buf, u32 json_len, jsmntok_t** tokens);
 static bool build_json_tree(char* raw_json, jsmntok_t* tokens, wcjson* json);
 
 
@@ -23,9 +22,9 @@ wcjson* wcjson_create_from_file(const char* filename)
     // processing raw json file with jsmn
 
     char* raw_json;
-    long size = read_file(filename, &raw_json);
+    long  size = read_file(filename, &raw_json);
 
-    // NOTE: we need a good way to caculate size of the final json to init Arena or 
+    // NOTE: we need a good way to caculate size of the final json to init Arena or
     // implement paging (maybe a paged Arena?)
 
     wcjson* json = malloc(sizeof(wcjson));
@@ -33,7 +32,7 @@ wcjson* wcjson_create_from_file(const char* filename)
     Arena_create_stk(&json->Arena, (u64)size * 2);
 
     jsmntok_t* tokens;
-    int num_tokens = jsmn_parse_json(raw_json, (u32)size, &tokens);
+    int        num_tokens = jsmn_parse_json(raw_json, (u32)size, &tokens);
     CHECK_FATAL(num_tokens != -1, "jsmn parse failure");
 
     // using jsmn tokens to create the json tree structure
@@ -43,7 +42,6 @@ wcjson* wcjson_create_from_file(const char* filename)
     free(raw_json);
     return json;
 }
-
 
 
 
@@ -89,7 +87,7 @@ static long read_file(const char* filename, char** output)
 
 
 // parse json (2 phases) and build token arr
-static int jsmn_parse_json(char* json_buf, u32 json_len, jsmntok_t** tokens)    // tokens allocatedon Arena
+static int jsmn_parse_json(char* json_buf, u32 json_len, jsmntok_t** tokens) // tokens allocatedon Arena
 {
     // Two-pass jsmn parse
     // Pass 1: tokens=NULL → jsmn counts tokens, returns how many
@@ -120,9 +118,4 @@ static int jsmn_parse_json(char* json_buf, u32 json_len, jsmntok_t** tokens)    
     return n_tokens;
 }
 
-static bool build_json_tree(char* raw_json, jsmntok_t* tokens, wcjson* json)
-{
-
-}
-
-
+static bool build_json_tree(char* raw_json, jsmntok_t* tokens, wcjson* json) {}

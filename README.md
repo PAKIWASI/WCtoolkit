@@ -28,7 +28,7 @@ int main(void)
 | Containers | `GenVec`, `Stack`, `Queue`, `PriorityQueue`, `HashMap`, `HashSet`, `BitVec` |
 | Strings | `String` (31 chars inline), `StrView`, `StringStore` |
 | Memory | `wc_allocator`, `Arena`, `ChainArena`, `wc_borrowed` |
-| Math | `Matrixf`, `matrix_generic.h`, `fast_math`, PCG `random` |
+| Math | `Matrixf`, `fast_math`, PCG `random` |
 
 ## Three rules
 

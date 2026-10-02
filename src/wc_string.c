@@ -433,6 +433,7 @@ u64 String_find_cstr(const String* s, const char* substr)
     return WC_NOT_FOUND;
 }
 
+// NOLINTBEGIN(clang-analyzer-unix.Malloc): false positive: the returned String owns its heap buffer
 String String_substr(wc_allocator a, const String* s, u64 start, u64 length)
 {
     WC_ASSERT(start < s->size, "start out of bounds");
@@ -451,6 +452,7 @@ String String_substr(wc_allocator a, const String* s, u64 start, u64 length)
 
     return result;
 }
+// NOLINTEND(clang-analyzer-unix.Malloc)
 
 
 //  I/O

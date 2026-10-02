@@ -190,8 +190,7 @@ UTEST(chain_arena, scratch_across_node_boundary_frees_new_nodes)
     u64 blocks = ta.live_blocks;
     u64 used   = ChainArena_used(&ca);
 
-    CHAIN_ARENA_SCRATCH(&ca)
-    {
+    CHAIN_ARENA_SCRATCH (&ca) {
         for (int i = 0; i < 30; i++) {
             ChainArena_alloc(&ca, 1000); // spans several nodes
         }
@@ -213,8 +212,7 @@ static void grow_outer_block_inside_chain_scratch(void)
     ChainArena_create(&ca, WC_LIBC);
     wc_allocator al = ChainArena_allocator(&ca);
     u8*          v  = wc_alloc(al, 64, 8);
-    CHAIN_ARENA_SCRATCH(&ca)
-    {
+    CHAIN_ARENA_SCRATCH (&ca) {
         v = wc_realloc(al, v, 64, 512, 8);
     }
     (void)v;
@@ -230,8 +228,7 @@ static void grow_block_from_earlier_node_inside_chain_scratch(void)
     for (int i = 0; i < 10; i++) {
         ChainArena_alloc(&ca, 1000); // v's node is no longer the tail
     }
-    CHAIN_ARENA_SCRATCH(&ca)
-    {
+    CHAIN_ARENA_SCRATCH (&ca) {
         v = wc_realloc(al, v, 64, 512, 8);
     }
     (void)v;
@@ -250,8 +247,7 @@ UTEST(chain_arena, floor_grow_outer_block_inside_scratch)
     wc_allocator al = ChainArena_allocator(&ca);
     u8*          v  = wc_alloc(al, 64, 8);
     u64          u  = ChainArena_used(&ca);
-    CHAIN_ARENA_SCRATCH(&ca)
-    {
+    CHAIN_ARENA_SCRATCH (&ca) {
         EXPECT_TRUE(wc_realloc(al, v, 64, 512, 8) != v); // never in place past the mark
     }
     EXPECT_EQ(ChainArena_used(&ca), u);
@@ -259,14 +255,16 @@ UTEST(chain_arena, floor_grow_outer_block_inside_scratch)
 #endif
 }
 
+// Misuses the allocator on purpose, or the memory belongs to an arena the
+// analyzer cannot see through (wc_alloc is inline and has a libc branch).
+// NOLINTBEGIN(clang-analyzer-unix.Malloc)
 UTEST(chain_arena, floor_free_inside_scratch_does_not_rewind)
 {
     WITH_CHAIN(ca, ta);
     wc_allocator al    = ChainArena_allocator(&ca);
     u8*          outer = wc_alloc(al, 64, 8);
     u64          u     = ChainArena_used(&ca);
-    CHAIN_ARENA_SCRATCH(&ca)
-    {
+    CHAIN_ARENA_SCRATCH (&ca) {
         wc_free(al, outer, 64, 8);
         EXPECT_EQ(ChainArena_used(&ca), u);
         u8* t = wc_alloc(al, 16, 8);
@@ -275,6 +273,7 @@ UTEST(chain_arena, floor_free_inside_scratch_does_not_rewind)
     EXPECT_EQ(ChainArena_used(&ca), u);
     END_CHAIN(ca, ta);
 }
+// NOLINTEND(clang-analyzer-unix.Malloc)
 
 UTEST(chain_arena, floor_nested_scopes)
 {
@@ -325,5 +324,31 @@ UTEST(chain_arena, A3_chain_arena_oversize_request)
         n = cap;
     }
     EXPECT_EQ(p[nKB(64) - 1], (int)(nKB(64) & 0xFF));
+    ChainArena_destroy(&ca);
+}
+
+
+// CHAIN_ARENA_ALLOC_ZERO(_N) declared `(T)* x`, which C parses as a cast:
+// they did not compile when used.
+UTEST(chain_arena, typed_zero_macros)
+{
+    ChainArena ca;
+    ChainArena_create(&ca, WC_LIBC);
+
+    typedef struct {
+        u64 a;
+        u32 b;
+    } pair;
+    pair* p = CHAIN_ARENA_ALLOC_ZERO(&ca, pair);
+    ASSERT_TRUE(p != NULL);
+    EXPECT_EQ(p->a, 0u);
+    EXPECT_EQ((uintptr_t)p % alignof(pair), 0u);
+
+    u32* z = CHAIN_ARENA_ALLOC_ZERO_N(&ca, u32, 8);
+    ASSERT_TRUE(z != NULL);
+    for (int i = 0; i < 8; i++) {
+        EXPECT_EQ(z[i], 0u);
+    }
+
     ChainArena_destroy(&ca);
 }

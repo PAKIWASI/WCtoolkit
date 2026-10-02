@@ -6,6 +6,8 @@
 #include "wc_string.h"
 #include <stdio.h>
 
+// ubench.h registers each benchmark with realloc() inside the UBENCH macro
+// NOLINTBEGIN(bugprone-suspicious-realloc-usage)
 UBENCH(hashmap, put_int)
 {
     HashMap m = MAP_OF(int, int);
@@ -80,3 +82,5 @@ UBENCH(hashmap, clear_string)
     HashMap_clear(&m); // del_fn on every key and value
     HashMap_destroy(&m);
 }
+
+// NOLINTEND(bugprone-suspicious-realloc-usage)

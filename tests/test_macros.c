@@ -102,8 +102,7 @@ UTEST(macros, Stack_macros)
     EXPECT_EQ(STACK_AT(&s, int, 1), 200);
 
     int sum = 0;
-    STACK_FOREACH(&s, int, p)
-    {
+    STACK_FOREACH (&s, int, p) {
         sum += *p;
     }
     EXPECT_EQ(sum, 300);
@@ -141,15 +140,13 @@ UTEST(macros, map_get_and_try_get)
 
     /* MAP_FOREACH_KEY / VAL */
     int key_sum = 0;
-    MAP_FOREACH_KEY(&m, int, k)
-    {
+    MAP_FOREACH_KEY (&m, int, k) {
         key_sum += *k;
     }
     EXPECT_EQ(key_sum, 3);
 
     int val_sum = 0;
-    MAP_FOREACH_VAL(&m, int, v)
-    {
+    MAP_FOREACH_VAL (&m, int, v) {
         val_sum += *v;
     }
     EXPECT_EQ(val_sum, 30);
@@ -170,8 +167,7 @@ UTEST(macros, set_foreach_and_from_vec)
     EXPECT_EQ(HashSet_size(&s), 3u);
 
     int sum = 0;
-    SET_FOREACH(&s, int, elm)
-    {
+    SET_FOREACH (&s, int, elm) {
         sum += *elm;
     }
     EXPECT_EQ(sum, 6);
@@ -321,8 +317,7 @@ UTEST(macros, vec_foreach_if_else_prefix)
     // leading if/else must still compile: the foreach is a plain for loop with
     // no dangling-statement traps
     if (v.size > 0) {
-        VEC_FOREACH(&v, int, p)
-        {
+        VEC_FOREACH (&v, int, p) {
             count++;
         }
     } else {
@@ -452,8 +447,7 @@ UTEST(macros, vec_foreach_break_stops)
 {
     GenVec v       = VEC_FROM_ARR(int, 5, ((int[5]){1, 2, 3, 4, 5}));
     int    visited = 0;
-    VEC_FOREACH(&v, int, x)
-    {
+    VEC_FOREACH (&v, int, x) {
         visited++;
         if (*x == 2) {
             break;
@@ -467,8 +461,7 @@ UTEST(macros, vec_foreach_continue_skips)
 {
     GenVec v   = VEC_FROM_ARR(int, 5, ((int[5]){1, 2, 3, 4, 5}));
     int    sum = 0;
-    VEC_FOREACH(&v, int, x)
-    {
+    VEC_FOREACH (&v, int, x) {
         if (*x % 2 == 0) {
             continue;
         }
@@ -482,10 +475,8 @@ UTEST(macros, vec_foreach_nested_break_ends_inner_only)
 {
     GenVec v     = VEC_FROM_ARR(int, 3, ((int[3]){1, 2, 3}));
     int    pairs = 0;
-    VEC_FOREACH(&v, int, a)
-    {
-        VEC_FOREACH(&v, int, b)
-        {
+    VEC_FOREACH (&v, int, a) {
+        VEC_FOREACH (&v, int, b) {
             if (*b > *a) {
                 break;
             }
@@ -503,8 +494,7 @@ UTEST(macros, stack_foreach_break_stops)
         STACK_PUSH(&s, i);
     }
     int visited = 0;
-    STACK_FOREACH(&s, int, x)
-    {
+    STACK_FOREACH (&s, int, x) {
         (void)x;
         if (++visited == 1) {
             break;
@@ -522,15 +512,13 @@ UTEST(macros, map_foreach_break_stops)
     }
 
     int keys = 0;
-    MAP_FOREACH_KEY(&m, int, k)
-    {
+    MAP_FOREACH_KEY (&m, int, k) {
         (void)k;
         keys++;
         break;
     }
     int vals = 0;
-    MAP_FOREACH_VAL(&m, int, val)
-    {
+    MAP_FOREACH_VAL (&m, int, val) {
         (void)val;
         vals++;
         break;
@@ -539,8 +527,7 @@ UTEST(macros, map_foreach_break_stops)
     EXPECT_EQ(vals, 1);
 
     int all = 0;
-    MAP_FOREACH_KEY(&m, int, k)
-    {
+    MAP_FOREACH_KEY (&m, int, k) {
         (void)k;
         all++;
     } // empty buckets are skipped
@@ -555,8 +542,7 @@ UTEST(macros, set_foreach_break_stops)
         SET_INSERT(&s, i);
     }
     int visited = 0;
-    SET_FOREACH(&s, int, x)
-    {
+    SET_FOREACH (&s, int, x) {
         (void)x;
         visited++;
         break;
@@ -570,13 +556,11 @@ UTEST(macros, foreach_on_empty_runs_zero_times)
     GenVec  v = VEC(int, 0);
     HashMap m = MAP_OF(int, int);
     int     n = 0;
-    VEC_FOREACH(&v, int, x)
-    {
+    VEC_FOREACH (&v, int, x) {
         (void)x;
         n++;
     }
-    MAP_FOREACH_VAL(&m, int, x)
-    {
+    MAP_FOREACH_VAL (&m, int, x) {
         (void)x;
         n++;
     }

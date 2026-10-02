@@ -9,6 +9,8 @@
 
 // Plain data (no ops, memcpy paths) vs owning elements (String, per-element ops).
 
+// ubench.h registers each benchmark with realloc() inside the UBENCH macro
+// NOLINTBEGIN(bugprone-suspicious-realloc-usage)
 UBENCH(gen_vector, push_int)
 {
     GenVec v = VEC(int, 0);
@@ -147,3 +149,5 @@ UBENCH(gen_vector, push_struct_move)
     }
     GenVec_destroy(&v);
 }
+
+// NOLINTEND(bugprone-suspicious-realloc-usage)

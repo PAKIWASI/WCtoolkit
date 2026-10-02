@@ -1,27 +1,27 @@
 #!/usr/bin/env python3
-
 """
-make_single_header.py
-=====================
+make_single_header.py: build single-header versions of WCtoolkit components.
 
-Converts C header/source pairs into self-contained single-header libraries.
+    include/<name>.h + src/<name>.c  ->  single_header/<name>_single.h
 
-Layout expected:
-    ./include/<name>.h
-    ./src/<name>.c
-Output:
-    ./single_header/<name>_single.h
+Usage (from anywhere; paths resolve from the repo root):
+    python3 tools/make_single_header.py --all
+    python3 tools/make_single_header.py arena hashmap
+    python3 tools/make_single_header.py --list
 
-Usage:
-    python make_single_header.py Arena gen_vector String hashmap hashset
-    python make_single_header.py --all
-    python make_single_header.py Arena --include-dir path/to/include --src-dir path/to/src
+Each output holds the component's header and the headers of everything it
+depends on, then every needed .c file inside one #ifdef WC_IMPLEMENTATION block.
+In exactly one .c file:
 
-Each output file:
-  - Inlines all its declared dependencies (other components from this lib)
-  - Wraps its implementation in  #ifdef WC_IMPLEMENTATION / #ifndef WC_<NAME>_IMPL
-    so that the impl block emits exactly once per translation unit even when
-    multiple single-headers are included together
+    #define WC_IMPLEMENTATION
+    #include "hashmap_single.h"
+
+Several single headers can be included in the same file. Headers keep their own
+include guards and each implementation has a WC_<NAME>_IMPL guard, so shared
+dependencies (common, wc_allocator, ...) are emitted once.
+
+Dependencies are read from the #include "..." lines of include/ and src/, so the
+graph never goes stale. The only hand-written edges are EXTRA_DEPS below.
 """
 
 import argparse
@@ -29,356 +29,153 @@ import re
 import sys
 from pathlib import Path
 
+ROOT = Path(__file__).resolve().parent.parent
 
-# Known components and their dependency order.
-# A component's dependencies must appear BEFORE it in this list.
-# =========================================================================
-COMPONENTS = [
-    "common",
-    "wc_errno",
-    "fast_math",
-    "gen_vector",
-    "wc_string",
-    "arena",
-    "views",
-    "chain_arena",
-    "bit_vector",
-    "stack",
-    "queue",
-    "map_setup",
-    "random",
-    "hashmap",
-    "hashset",
-    "matrix",
-    "matrix_generic",
-    "wc_helpers",
-    "wc_macros",
-]
+# Support headers: inlined wherever needed, never built as a file of their own.
+INTERNAL = {"common", "wc_errno", "map_setup"}
 
+# Always part of every output: common.h's FATAL/WARN call wc_errno.c, and
+# common.h includes wc_allocator.h.
+CORE = ["wc_allocator", "common", "wc_errno"]
 
-# TODO: i dont want map_setup, common, wc_errno to have their own independent files
-
-
-# Maps a component name to the names it depends on (other lib components only).
-# Only direct dependencies are listed; transitive ones are resolved automatically.
-DEPENDENCIES: dict[str, list[str]] = {
-    "common":           [],
-    "wc_errno":         [],
-    "wc_macros":        ["wc_helpers", "hashmap", "hashset", "queue"],
-    "fast_math":        ["common"],
-    "gen_vector":       ["common", "wc_errno"],
-    "wc_string":        ["common"],
-    "arena":            ["common", "wc_errno"],
-    "chain_arena":      ["gen_vector"],
-    "views":            ["wc_string", "arena"],
-    "bit_vector":       ["gen_vector"],
-    "stack":            ["gen_vector"],
-    "queue":            ["gen_vector"],
-    "map_setup":        ["wc_string"],
-    "random":           ["fast_math"],
-    "hashmap":          ["map_setup"],
-    "hashset":          ["map_setup"],
-    "matrix":           ["arena"],
-    "matrix_generic":   ["arena"],
-    "wc_helpers":       ["wc_string", "gen_vector"],
+# Edges the #include graph can't see. wc_macros.h expands to HashMap_*,
+# HashSet_*, Queue_* and Stack_* calls without including their headers.
+EXTRA_DEPS = {
+    "wc_macros": ["hashmap", "hashset", "queue", "stack"],
 }
 
+# Never part of the library.
+EXCLUDED_SOURCES = {"main"}
 
-# Helpers
-# =========================================================================
-
-def guard_name(component: str) -> str:
-    """WC_GEN_VECTOR_H  /  WC_STRING_H  etc."""
-    return f"WC_{component.upper().replace('-', '_')}_H"
+LOCAL_INCLUDE = re.compile(r'^[ \t]*#[ \t]*include[ \t]+"([^"]+)\.h"[^\n]*', re.MULTILINE)
+FILE_MACRO = re.compile(r'^[ \t]*#[ \t]*define[ \t]+(\w+)', re.MULTILINE)
 
 
-def impl_guard_name(component: str) -> str:
-    return f"WC_{component.upper().replace('-', '_')}_IMPL"
+def read(path: Path) -> str:
+    # utf-8-sig drops a byte-order mark, which would otherwise land mid-file.
+    return path.read_text(encoding="utf-8-sig") if path.exists() else ""
 
 
-def read_file(path: Path) -> str:
-    if not path.exists():
-        return ""
-    return path.read_text(encoding="utf-8")
+def discover(include_dir: Path, src_dir: Path) -> dict[str, list[str]]:
+    """Component name -> direct dependencies, from the #include graph."""
+    names = sorted(p.stem for p in include_dir.glob("*.h"))
+    known = set(names)
+    deps: dict[str, list[str]] = {}
+    for name in names:
+        text = read(include_dir / f"{name}.h") + read(src_dir / f"{name}.c")
+        found = [m.group(1) for m in LOCAL_INCLUDE.finditer(text)]
+        unknown = [d for d in found if d not in known]
+        if unknown:
+            sys.exit(f"[error] {name} includes unknown header(s): {', '.join(unknown)}")
+        ordered = dict.fromkeys(d for d in found + EXTRA_DEPS.get(name, []) if d != name)
+        deps[name] = list(ordered)
+    return deps
 
 
-def strip_include_guards(src: str) -> str:
-    """Remove the outermost #ifndef / #define / #endif include-guard pair."""
-    # Match  #ifndef FOO_H  /  #define FOO_H  at the very start (ignoring blank lines)
-    src = re.sub(
-        r"^\s*#ifndef\s+\w+_H\s*\n\s*#define\s+\w+_H\s*\n",
-        "",
-        src,
-        count=1,
-        flags=re.MULTILINE,
-    )
-    # Remove the matching closing  #endif // ...  at the very end
-    src = re.sub(
-        r"\n\s*#endif\s*(?://[^\n]*)?\s*$",
-        "",
-        src.rstrip(),
-    )
-    return src.strip()
+def resolve(targets: list[str], deps: dict[str, list[str]]) -> list[str]:
+    """Targets plus their transitive dependencies, dependencies first."""
+    order: list[str] = []
+    active: set[str] = set()
 
-
-def strip_pragma_once(src: str) -> str:
-    return re.sub(r"^\s*#pragma\s+once\s*\n", "", src, flags=re.MULTILINE)
-
-
-def remove_local_includes(src: str, known_headers: set[str]) -> str:
-    """
-    Remove  #include "foo.h"  lines whose basename is a known lib header.
-    Third-party / stdlib includes (<stdio.h> etc.) are kept.
-    """
-    def replacer(m):
-        header = m.group(1)
-        basename = Path(header).stem          # "gen_vector" from "gen_vector.h"
-        basename_lower = basename.lower()
-        # Drop if it matches any known component (case-insensitive)
-        for known in known_headers:
-            if known.lower() == basename_lower:
-                return ""
-        return m.group(0)
-
-    return re.sub(r'#include\s+"([^"]+)"\s*\n', replacer, src)
-
-
-def resolve_deps(components: list[str]) -> list[str]:
-    """
-    Given a list of requested components, return a full ordered list that
-    includes all transitive dependencies, with each component appearing only
-    once in dependency order.
-    """
-    visited: list[str] = []
-
-    def visit(name: str):
-        if name in visited:
+    def visit(name: str, path: list[str]) -> None:
+        if name in order:
             return
-        if name not in DEPENDENCIES:
-            print(f"  [warn] unknown component '{name}', skipping", file=sys.stderr)
-            return
-        for dep in DEPENDENCIES[name]:
-            visit(dep)
-        visited.append(name)
+        if name in active:
+            sys.exit(f"[error] include cycle: {' -> '.join(path + [name])}")
+        active.add(name)
+        for d in deps[name]:
+            visit(d, path + [name])
+        active.discard(name)
+        order.append(name)
 
-    for c in components:
-        visit(c)
-    return visited
-
-
-# Core builder
-# ==================================================
-
-def build_single_header(
-    component: str,
-    include_dir: Path,
-    src_dir: Path,
-    all_component_names: set[str],
-) -> str:
-    """
-    Build the complete single-header text for one component.
-    All dependencies are inlined before this component's own content.
-    """
-    # Full dependency chain for this component (includes itself at the end)
-    dep_chain = resolve_deps([component])
-
-    guard = f"WC_{component.upper()}_SINGLE_H"   # WC_GEN_VECTOR_SINGLE_H
+    for t in CORE + targets:
+        visit(t, [])
+    return order
 
 
-    lines: list[str] = []
-    lines.append(f"#ifndef {guard}")
-    lines.append(f"#define {guard}")
-    lines.append("")
-    lines.append(
-        "/*"
-        f"\n * {component}_single.h"
-        "\n * Auto-generated single-header library."
-        "\n *"
-        "\n * In EXACTLY ONE .c file, before including this header:"
-        "\n *     #define WC_IMPLEMENTATION"
-        "\n *     #include \"" + component + '_single.h"'
-        "\n *"
-        "\n * All other files just:"
-        "\n *     #include \"" + component + '_single.h"'
-        "\n */"
-    )
-    lines.append("")
-
-    # 1. Inline each dependency's header declarations
-    # ==================================================
-
-    for dep in dep_chain:
-        h_path = include_dir / f"{dep}.h"
-        h_src = read_file(h_path)
-        if not h_src:
-            print(f"  [warn] {dep}.h not found in {include_dir}", file=sys.stderr)
-            continue
-
-        dep_guard = guard_name(dep)
-        h_src = strip_pragma_once(h_src)
-        h_src = strip_include_guards(h_src)
-        h_src = remove_local_includes(h_src, all_component_names)
-        h_src = h_src.strip()
-
-        lines.append(f"/* ===== {dep}.h ===== */")
-        lines.append(f"#ifndef {dep_guard}")
-        lines.append(f"#define {dep_guard}")
-        lines.append("")
-        lines.append(h_src)
-        lines.append("")
-        lines.append(f"#endif /* {dep_guard} */")
-        lines.append("")
-
-    # 2. Wrap all implementations in the WC_IMPLEMENTATION block
-    # ==================================================
-    lines.append("#ifdef WC_IMPLEMENTATION")
-    lines.append("")
-
-    for dep in dep_chain:
-        c_path = src_dir / f"{dep}.c"
-        c_src = read_file(c_path)
-        if not c_src:
-            # Header-only component (e.g. map_setup, matrix_generic) — skip silently
-            continue
-
-        impl_guard = impl_guard_name(dep)
-        c_src = remove_local_includes(c_src, all_component_names)
-        c_src = c_src.strip()
-
-        lines.append(f"/* ===== {dep}.c ===== */")
-        lines.append(f"#ifndef {impl_guard}")
-        lines.append(f"#define {impl_guard}")
-        lines.append("")
-        lines.append(c_src)
-        lines.append("")
-        lines.append(f"#endif /* {impl_guard} */")
-        lines.append("")
-
-    lines.append("#endif /* WC_IMPLEMENTATION */")
-    lines.append("")
-    lines.append(f"#endif /* {guard} */")
-    lines.append("")
-
-    return "\n".join(lines)
+def section(label: str, path: Path, text: str) -> list[str]:
+    # Blank the include lines instead of deleting them, so #line 1 stays exact.
+    body = LOCAL_INCLUDE.sub("", text).rstrip()
+    rel = path.relative_to(ROOT) if path.is_relative_to(ROOT) else path
+    # #line keeps compiler errors and __FILE__ (used by FATAL/WARN) pointing at the real file.
+    return [f"/* ===== {label} ===== */", f'#line 1 "{rel.as_posix()}"', body, ""]
 
 
-# CLI
-# ==================================================
+def build(target: str, deps: dict[str, list[str]], include_dir: Path, src_dir: Path) -> str:
+    chain = resolve([target], deps)
+    guard = f"WC_{target.upper()}_SINGLE_H"
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="Generate single-header versions of WCtoolkit components.",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  # Convert specific components:
-  python make_single_header.py Arena gen_vector String
+    out = [
+        f"/* {target}_single.h: generated by tools/make_single_header.py. Do not edit.",
+        f" * Contains: {', '.join(chain)}",
+        " *",
+        " * In exactly one .c file:",
+        " *     #define WC_IMPLEMENTATION",
+        f' *     #include "{target}_single.h"',
+        " */",
+        f"#ifndef {guard}",
+        f"#define {guard}",
+        "",
+    ]
+    for name in chain:
+        out += section(f"{name}.h", include_dir / f"{name}.h", read(include_dir / f"{name}.h"))
 
-  # Convert everything:
-  python make_single_header.py --all
+    out += ["#ifdef WC_IMPLEMENTATION", ""]
+    for name in chain:
+        c_path = src_dir / f"{name}.c"
+        if not c_path.exists():
+            continue  # header-only
+        impl = f"WC_{name.upper()}_IMPL"
+        out += [f"#ifndef {impl}", f"#define {impl}"]
+        c_src = read(c_path)
+        out += section(f"{name}.c", c_path, c_src)
+        # A .c file's macros are private to it. Undefine them so two sources
+        # that both define, say, GET_PSL don't collide in one translation unit.
+        out += [f"#undef {m}" for m in dict.fromkeys(FILE_MACRO.findall(c_src))]
+        out += [f"#endif /* {impl} */", ""]
+    out += ["#endif /* WC_IMPLEMENTATION */", "", f"#endif /* {guard} */", ""]
+    return "\n".join(out)
 
-  # Custom directory layout:
-  python make_single_header.py --all --include-dir inc --src-dir source
 
-Available components:
-  """ + "  ".join(COMPONENTS),
-    )
+def main() -> None:
+    ap = argparse.ArgumentParser(description="Generate single-header versions of WCtoolkit components.")
+    ap.add_argument("components", nargs="*", metavar="COMPONENT")
+    ap.add_argument("--all", action="store_true", help="build every public component")
+    ap.add_argument("--list", action="store_true", help="list components and their dependencies")
+    ap.add_argument("--include-dir", type=Path, default=ROOT / "include")
+    ap.add_argument("--src-dir", type=Path, default=ROOT / "src")
+    ap.add_argument("--out-dir", type=Path, default=ROOT / "single_header")
+    args = ap.parse_args()
 
-    parser.add_argument(
-        "components",
-        nargs="*",
-        metavar="COMPONENT",
-        help="Component names to convert (e.g. Arena gen_vector String)",
-    )
-    parser.add_argument(
-        "--all",
-        action="store_true",
-        help="Convert all known components",
-    )
-    parser.add_argument(
-        "--include-dir",
-        default="../include",
-        metavar="DIR",
-        help="Directory containing .h files (default: ../include)",
-    )
-    parser.add_argument(
-        "--src-dir",
-        default="../src",
-        metavar="DIR",
-        help="Directory containing .c files (default: ../src)",
-    )
-    parser.add_argument(
-        "--out-dir",
-        default="../single_header",
-        metavar="DIR",
-        help="Output directory (default: ../single_header)",
-    )
-    parser.add_argument(
-        "--list",
-        action="store_true",
-        help="List all known components and exit",
-    )
+    for d in (args.include_dir, args.src_dir):
+        if not d.is_dir():
+            sys.exit(f"[error] directory not found: {d}")
 
-    args = parser.parse_args()
+    deps = discover(args.include_dir, args.src_dir)
+    stray = sorted(p.stem for p in args.src_dir.glob("*.c")
+                   if p.stem not in deps and p.stem not in EXCLUDED_SOURCES)
+    if stray:
+        sys.exit(f"[error] source(s) without a header: {', '.join(stray)}")
+    public = [n for n in deps if n not in INTERNAL]
 
     if args.list:
-        print("Known components (in dependency order):")
-        for name in COMPONENTS:
-            deps = DEPENDENCIES.get(name, [])
-            dep_str = ", ".join(deps) if deps else "(none)"
-            print(f"  {name:<20} deps: {dep_str}")
+        for name in public:
+            print(f"  {name:<16} {', '.join(deps[name]) or '-'}")
         return
 
-    if args.all:
-        targets = list(COMPONENTS)
-    elif args.components:
-        targets = args.components
-    else:
-        parser.print_help()
+    targets = public if args.all else args.components
+    if not targets:
+        ap.print_help()
         sys.exit(1)
+    bad = [t for t in targets if t not in public]
+    if bad:
+        sys.exit(f"[error] not a public component: {', '.join(bad)} (see --list)")
 
-    # Validate component names
-    unknown = [c for c in targets if c not in DEPENDENCIES]
-    if unknown:
-        print(f"[error] unknown components: {', '.join(unknown)}", file=sys.stderr)
-        print(f"        run with --list to see available components", file=sys.stderr)
-        sys.exit(1)
-
-    include_dir = Path(args.include_dir)
-    src_dir     = Path(args.src_dir)
-    out_dir     = Path(args.out_dir)
-
-    if not include_dir.exists():
-        print(f"[error] include dir not found: {include_dir}", file=sys.stderr)
-        sys.exit(1)
-    if not src_dir.exists():
-        print(f"[error] src dir not found: {src_dir}", file=sys.stderr)
-        sys.exit(1)
-
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    all_component_names = set(COMPONENTS)
-
-    print(f"Output → {out_dir}/")
-    print()
-
-    for component in targets:
-        out_path = out_dir / f"{component}_single.h"
-        print(f"  building {component}_single.h ...", end=" ", flush=True)
-
-        content = build_single_header(
-            component=component,
-            include_dir=include_dir,
-            src_dir=src_dir,
-            all_component_names=all_component_names,
-        )
-
-        out_path.write_text(content, encoding="utf-8")
-        size_kb = out_path.stat().st_size / 1024
-        print(f"done  ({size_kb:.1f} KB)")
-
-    print()
-    print(f"Done. {len(targets)} file(s) written to {out_dir}/")
+    args.out_dir.mkdir(parents=True, exist_ok=True)
+    for t in targets:
+        path = args.out_dir / f"{t}_single.h"
+        path.write_text(build(t, deps, args.include_dir, args.src_dir), encoding="utf-8")
+        print(f"  {path.name:<26} {path.stat().st_size / 1024:6.1f} KB")
 
 
 if __name__ == "__main__":

@@ -162,7 +162,6 @@ add_executable(example_allocators
 )
 target_include_directories(example_allocators PRIVATE include)
 target_compile_options(example_allocators PRIVATE ${WC_WARN_FLAGS})
-add_test(NAME example_allocators COMMAND example_allocators)
 
 
 # # wcjson

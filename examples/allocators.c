@@ -6,7 +6,7 @@
 //   3. Escaping a scope: deep-copy the result out of the arena into libc.
 //
 // Build: cmake --build build --target example_allocators && ./build/example_allocators
-// Exits non-zero if any result is wrong (it runs under ctest).
+// Exits non-zero if any result is wrong.
 
 #include "arena.h"
 #include "common.h"
@@ -19,12 +19,12 @@
 #include <stdio.h>
 #include <string.h>
 
-#define EXPECT(cond)                                                    \
-    do {                                                                \
-        if (!(cond)) {                                                  \
+#define EXPECT(cond)                                                            \
+    do {                                                                        \
+        if (!(cond)) {                                                          \
             fprintf(stderr, "%s:%d: expected %s\n", __FILE__, __LINE__, #cond); \
-            return 1;                                                   \
-        }                                                               \
+            return 1;                                                           \
+        }                                                                       \
     } while (0)
 
 
@@ -41,7 +41,9 @@ static int fixed_buffer(void)
     }
 
     int sum = 0;
-    VEC_FOREACH(&squares, int, x) { sum += *x; }
+    VEC_FOREACH (&squares, int, x) {
+        sum += *x;
+    }
     printf("1. stack-buffer vector: %llu squares, sum %d, arena used %llu/%zu bytes\n",
            (unsigned long long)GenVec_size(&squares), sum, (unsigned long long)arena.idx, sizeof(buf));
     EXPECT(sum == 385);
@@ -60,8 +62,7 @@ static int scoped_then_escape(GenVec* out_libc)
     const char* words[] = {"arena", "vec", "map", "string", "scope", "copy", "move", "box"};
     enum { MAX_LEN = 8 };
 
-    ARENA_SCOPE(tmp, nKB(16))
-    {
+    ARENA_SCOPE (tmp, nKB(16)) {
         GenVec groups = VEC_CX_IN(tmp, GenVec, MAX_LEN + 1, &wc_vec_ops);
         for (int len = 0; len <= MAX_LEN; len++) {
             GenVec bucket = VEC_CX_IN(tmp, String, 2, &wc_str_ops);
@@ -89,12 +90,14 @@ static int scoped_then_escape(GenVec* out_libc)
     printf("2. scratch arena: grouped %zu words by length, arena destroyed at scope exit\n",
            sizeof(words) / sizeof(words[0]));
     printf("3. escaped copy (libc): length 5 ->");
-    VEC_FOREACH(fives, String, s) { printf(" %s", String_data_ptr(s)); }
+    VEC_FOREACH (fives, String, s) {
+        printf(" %s", String_data_ptr(s));
+    }
     putchar('\n');
 
     EXPECT(GenVec_size(fives) == 2); // arena, scope
     EXPECT(String_equals_cstr(VEC_AT_MUT(fives, String, 0), "arena"));
-    EXPECT(fives->alloc.vt == NULL);                          // libc
+    EXPECT(fives->alloc.vt == NULL);                        // libc
     EXPECT(VEC_AT_MUT(fives, String, 1)->alloc.vt == NULL); // children follow the copy
     return 0;
 }

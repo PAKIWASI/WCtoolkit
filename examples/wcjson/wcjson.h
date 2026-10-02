@@ -2,8 +2,8 @@
 #define WCJSON_H
 
 #include "Arena.h"
-#include "gen_vector.h"
 #include "HashMap.h"
+#include "gen_vector.h"
 
 
 typedef enum {
@@ -29,7 +29,7 @@ typedef struct {
 } wcjson_val;
 
 typedef struct {
-    u64 num_objs;   // including root
+    u64 num_objs; // including root
     u64 num_arrs;
     u64 num_strs;
     u64 num_nums;
@@ -40,15 +40,11 @@ typedef struct {
 typedef struct {
     wcjson_val      root;
     wcjson_metadata metadata;
-    Arena Arena;        // owns everything
+    Arena           Arena; // owns everything
 } wcjson;
 
 
 wcjson* wcjson_create_from_file(const char* filename);
-
-
-
-
 
 
 

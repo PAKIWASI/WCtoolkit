@@ -61,4 +61,13 @@ BreakBeforeBinaryOperators: None              # Operators at end of line
 # Other common settings
 ReflowComments: false                         # Don't rewrap comment paragraphs
 
-
+# Toolkit loop macros: format them like `for`, brace on the same line
+ForEachMacros:
+  - VEC_FOREACH
+  - STACK_FOREACH
+  - MAP_FOREACH_KEY
+  - MAP_FOREACH_VAL
+  - SET_FOREACH
+  - ARENA_SCOPE
+  - ARENA_SCRATCH
+  - CHAIN_ARENA_SCRATCH

@@ -37,7 +37,7 @@ StrView StrView_copy_cstr(wc_allocator a, const char* cstr, u64 clen)
 void StrView_free_copy(wc_allocator a, StrView sv)
 {
     if (sv.ptr) {
-        wc_free(a, (void*)(uintptr_t)sv.ptr, sv.len + 1, 1);
+        wc_free(a, (char*)sv.ptr, sv.len + 1, 1); // our own allocation: dropping const is fine
     }
 }
 
@@ -103,23 +103,22 @@ static inline void add_node(StringStore* ss)
 }
 
 
-StrView StringStore_cstr(StringStore* ss, const char* cstr, u64 clen)
+// Reserve `len` contiguous bytes in the store. Never moves existing data, so
+// callers may copy from views that point into this same store.
+static char* store_reserve(StringStore* ss, u64 len)
 {
-    FATAL_IF(!ss->tail, "StringStore_cstr on zeroed/destroyed store");
+    FATAL_IF(!ss->tail, "StringStore used after destroy (zeroed store)");
 
     // Strings larger than a whole node go into a dedicated overflow node that
     // owns its buffer via the `heap` union member (from ss->alloc, node is head).
-    // NOTE: the returned view is NOT NUL-terminated for these; only ever hand
-    // (ptr, len) or memcpy out of it.
-    if (clen > StringStore_NODE_SIZE) {
+    // NOTE: views of these are NOT NUL-terminated; use (ptr, len).
+    if (len > StringStore_NODE_SIZE) {
         StringStore_node* node = new_node(ss->alloc);
 
-        node->heap = (char*)wc_alloc(ss->alloc, clen, 1);
-        FATAL_IF(!node->heap, "StringStore: overflow allocation of %llu bytes failed", (unsigned long long)clen);
-        node->heap_len                   = clen;
+        node->heap = (char*)wc_alloc(ss->alloc, len, 1);
+        FATAL_IF(!node->heap, "StringStore: overflow allocation of %llu bytes failed", (unsigned long long)len);
+        node->heap_len                   = len;
         node->buf[StringStore_NODE_SIZE] = 0; // `heap` is live; StringStore_destroy must free it
-
-        memcpy(node->heap, cstr, clen);
 
         node->next = ss->head; // chain continues from the overflow node
         ss->head   = node;
@@ -128,20 +127,37 @@ StrView StringStore_cstr(StringStore* ss, const char* cstr, u64 clen)
         // Fresh empty tail so the old tail's data stays intact, its remaining
         // free space is abandoned (append-only store, rare path, acceptable)
         add_node(ss);
-        return (StrView){.ptr = node->heap, .len = clen};
+        return node->heap;
     }
 
-    if (StringStore_NODE_SIZE - ss->tail_off < clen) {
-        // we need another node
-        add_node(ss);
+    if (StringStore_NODE_SIZE - ss->tail_off < len) {
+        add_node(ss); // doesn't fit in the current tail
     }
 
     char* ptr = TAIL_BUF_OFF(ss);
-    memcpy(ptr, cstr, clen);
-    ss->tail_off += (u32)clen;
-    return (StrView){.ptr = ptr, .len = clen};
+    ss->tail_off += (u32)len;
+    return ptr;
 }
 
 
+StrView StringStore_cstr(StringStore* ss, const char* cstr, u64 clen)
+{
+    char* p = store_reserve(ss, clen);
+    memcpy(p, cstr, clen);
+    return (StrView){.ptr = p, .len = clen};
+}
 
-StrView StringStore_append(StringStore* ss, StrView sv1, StrView sv2) {}
+
+StrView StringStore_append(StringStore* ss, StrView sv1, StrView sv2)
+{
+    char* p = store_reserve(ss, sv1.len + sv2.len);
+    memcpy(p, sv1.ptr, sv1.len);
+    memcpy(p + sv1.len, sv2.ptr, sv2.len);
+    return (StrView){.ptr = p, .len = sv1.len + sv2.len};
+}
+
+
+StrView StringStore_append_cstr(StringStore* ss, StrView sv, const char* cstr, u64 clen)
+{
+    return StringStore_append(ss, sv, (StrView){.ptr = cstr, .len = clen});
+}

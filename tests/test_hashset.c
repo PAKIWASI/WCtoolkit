@@ -650,8 +650,7 @@ UTEST(hashset, set_foreach_visits_all)
     }
 
     int count = 0, sum = 0;
-    SET_FOREACH(&s, int, el)
-    {
+    SET_FOREACH (&s, int, el) {
         count++;
         sum += *el;
     }
@@ -664,8 +663,7 @@ UTEST(hashset, set_foreach_empty)
 {
     HashSet s     = HashSet_create(WC_LIBC, sizeof(int), NULL, NULL, NULL);
     int     count = 0;
-    SET_FOREACH(&s, int, el)
-    {
+    SET_FOREACH (&s, int, el) {
         count++;
         (void)el;
     }
@@ -684,8 +682,7 @@ UTEST(hashset, set_foreach_after_remove)
     }
 
     int count = 0;
-    SET_FOREACH(&s, int, el)
-    {
+    SET_FOREACH (&s, int, el) {
         EXPECT_TRUE(*el >= 4);
         count++;
     }

@@ -116,16 +116,22 @@ static inline void wc_chain_arena_scratch_cleanup(ChainArenaScratch* s)
 // Typed allocation macros
 #define CHAIN_ARENA_ALLOC(arena, T)      ((T*)ChainArena_alloc_aligned((arena), sizeof(T), alignof(T)))
 #define CHAIN_ARENA_ALLOC_N(arena, T, n) ((T*)ChainArena_alloc_aligned((arena), wc_mul((n), sizeof(T)), alignof(T)))
-#define CHAIN_ARENA_ALLOC_ZERO(arena, T)                  \
-    ({                                                    \
-        (T)* _caz = CHAIN_ARENA_ALLOC(arena, T);          \
-        _caz ? (T*)memset(_caz, 0, sizeof(T)) : (T*)NULL; \
+// NOLINTBEGIN(bugprone-macro-parentheses): T is a type; (T)* would parse as a cast
+#define CHAIN_ARENA_ALLOC_ZERO(arena, T)                                                                             \
+    ({                                                                                                               \
+        T* _caz =                                                                                                    \
+            CHAIN_ARENA_ALLOC(arena, T); /* NOLINT(bugprone-macro-parentheses): T is a type: (T)* would be a cast */ \
+        _caz ? (T*)memset(_caz, 0, sizeof(T)) : (T*)NULL;                                                            \
     })
-#define CHAIN_ARENA_ALLOC_ZERO_N(arena, T, n)                     \
-    ({                                                            \
-        u64 _cazn = (u64)(n);                                     \
-        (T)* _caz = CHAIN_ARENA_ALLOC_N(arena, T, _cazn);         \
-        _caz ? (T*)memset(_caz, 0, sizeof(T) * _cazn) : (T*)NULL; \
+// NOLINTEND(bugprone-macro-parentheses)
+// NOLINTBEGIN(bugprone-macro-parentheses): T is a type; (T)* would parse as a cast
+#define CHAIN_ARENA_ALLOC_ZERO_N(arena, T, n)                                                               \
+    ({                                                                                                      \
+        u64 _cazn = (u64)(n);                                                                               \
+        T*  _caz  = CHAIN_ARENA_ALLOC_N(                                                                    \
+            arena, T, _cazn); /* NOLINT(bugprone-macro-parentheses): T is a type: (T)* would be a cast */ \
+        _caz ? (T*)memset(_caz, 0, sizeof(T) * _cazn) : (T*)NULL;                                           \
     })
+// NOLINTEND(bugprone-macro-parentheses)
 
 #endif // CHAIN_ARENA_H

@@ -1,11 +1,11 @@
 #include "arena.h"
 #include "common.h"
+#include "test_support.h"
 #include "utest.h"
 #include "views.h"
 #include "wc_allocator.h"
 #include "wc_string.h"
 #include "wc_test_allocator.h"
-#include "test_support.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -24,7 +24,7 @@ static int sv_equals_cstr(StrView sv, const char* cstr)
 }
 
 
-// Small Strings share one node until it's full 
+// Small Strings share one node until it's full
 
 UTEST(views, small_Strings_share_node)
 {
@@ -42,7 +42,7 @@ UTEST(views, small_Strings_share_node)
 }
 
 
-// A String exactly filling a node must not spill into a new node 
+// A String exactly filling a node must not spill into a new node
 
 UTEST(views, exact_fit_no_new_node)
 {
@@ -68,7 +68,7 @@ UTEST(views, exact_fit_no_new_node)
 }
 
 
-// One byte over the limit goes to a heap-owned overflow node 
+// One byte over the limit goes to a heap-owned overflow node
 // (pre-fix this silently overflowed the fixed-size node buffer — UB)
 
 UTEST(views, overflow_by_one_goes_to_heap)
@@ -93,7 +93,7 @@ UTEST(views, overflow_by_one_goes_to_heap)
 }
 
 
-// Way larger than a node 
+// Way larger than a node
 
 UTEST(views, overflow_way_past_node)
 {
@@ -117,7 +117,7 @@ UTEST(views, overflow_way_past_node)
 }
 
 
-// Many overflows: views must stay intact and must not alias each other 
+// Many overflows: views must stay intact and must not alias each other
 
 UTEST(views, multiple_overflows_keep_content)
 {
@@ -150,7 +150,7 @@ UTEST(views, multiple_overflows_keep_content)
 }
 
 
-// Small Strings after an overflow land in the fresh tail node 
+// Small Strings after an overflow land in the fresh tail node
 
 UTEST(views, small_after_overflow_appends_to_tail)
 {
@@ -169,7 +169,7 @@ UTEST(views, small_after_overflow_appends_to_tail)
 }
 
 
-// Destroy must tolerate overflow nodes anywhere in the chain 
+// Destroy must tolerate overflow nodes anywhere in the chain
 // (ASan catches double-free / mismatched-free if the union is mishandled)
 
 UTEST(views, destroy_mixed_chain)
@@ -192,11 +192,11 @@ UTEST(views, destroy_mixed_chain)
 }
 
 
-// StrView_from_String sanity (same header) 
+// StrView_from_String sanity (same header)
 
 UTEST(views, strview_from_String)
 {
-    String s = String_from_cstr(WC_LIBC, "viewme");
+    String  s  = String_from_cstr(WC_LIBC, "viewme");
     StrView sv = StrView_from_String(&s);
     EXPECT_TRUE(sv_equals_cstr(sv, "viewme"));
     EXPECT_EQ(sv.len, 6u);
@@ -309,4 +309,32 @@ UTEST(views, StringStore_zero_state_and_oom_die)
 }
 
 
-// Suite 
+// Suite
+
+
+UTEST(views, StringStore_append_joins_views)
+{
+    StringStore ss    = StringStore_create(WC_LIBC);
+    StrView     path  = StringStore_cstr(&ss, "usr/", 4);
+    StrView     full  = StringStore_append_cstr(&ss, path, "lib", 3);
+    StrView     twice = StringStore_append(&ss, full, full); // both views point into the store
+
+    EXPECT_TRUE(sv_equals_cstr(full, "usr/lib"));
+    EXPECT_TRUE(sv_equals_cstr(twice, "usr/libusr/lib"));
+    EXPECT_TRUE(sv_equals_cstr(path, "usr/")); // earlier views are untouched
+    StringStore_destroy(&ss);
+}
+
+UTEST(views, StringStore_append_overflow_node)
+{
+    StringStore ss = StringStore_create(WC_LIBC);
+    char        big[StringStore_NODE_SIZE];
+    memset(big, 'z', sizeof(big));
+    StrView a = StringStore_cstr(&ss, big, sizeof(big));
+    StrView j = StringStore_append_cstr(&ss, a, "!", 1); // longer than a node: overflow path
+
+    EXPECT_EQ(j.len, (u64)StringStore_NODE_SIZE + 1);
+    EXPECT_EQ(j.ptr[0], 'z');
+    EXPECT_EQ(j.ptr[StringStore_NODE_SIZE], '!');
+    StringStore_destroy(&ss);
+}

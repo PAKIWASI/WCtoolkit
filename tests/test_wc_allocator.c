@@ -109,6 +109,9 @@ UTEST(allocator, small_alignment_passes_through)
     EXPECT_EQ(wc_test_alloc_destroy(&ta), 0u);
 }
 
+// Misuses the allocator on purpose, or the memory belongs to an arena the
+// analyzer cannot see through (wc_alloc is inline and has a libc branch).
+// NOLINTBEGIN(clang-analyzer-unix.Malloc)
 UTEST(allocator, typed_macros_and_overflow)
 {
     wc_test_alloc ta;
@@ -141,6 +144,7 @@ UTEST(allocator, typed_macros_and_overflow)
     EXPECT_EQ(ta.n_errors, 0u);
     EXPECT_EQ(wc_test_alloc_destroy(&ta), 0u);
 }
+// NOLINTEND(clang-analyzer-unix.Malloc)
 
 // Backend with no realloc: the wrapper must emulate alloc + copy + free.
 static void* noreal_alloc(void* ctx, size_t size, size_t align)
@@ -159,8 +163,9 @@ UTEST(allocator, missing_realloc_is_emulated)
     wc_test_alloc_init(&ta, WC_LIBC);
     wc_allocator a = {.vt = &noreal_vt, .ctx = &ta};
 
-    u8* p = wc_alloc(a, 16, 8);
-    memcpy(p, "0123456789abcdef", 16);
+    u8*               p           = wc_alloc(a, 16, 8);
+    static const char bytes16[16] = "0123456789abcdef"; // 16 bytes, not a C string
+    memcpy(p, bytes16, sizeof(bytes16));
     u8* q = wc_realloc(a, p, 16, 64, 8);
     EXPECT_TRUE(memcmp(q, "0123456789abcdef", 16) == 0);
     EXPECT_EQ(ta.n_free, 1u); // old block freed with its exact size

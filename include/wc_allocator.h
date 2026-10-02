@@ -30,6 +30,7 @@ static inline void* wc_libc_alloc(size_t n, size_t align)
 #endif
 }
 
+// NOLINTBEGIN(clang-analyzer-unix.Malloc): only libc blocks reach libc; the analyzer cannot see that arena allocators always set vt
 static inline void wc_libc_free(void* p, size_t align)
 {
 #ifdef _MSC_VER
@@ -41,7 +42,9 @@ static inline void wc_libc_free(void* p, size_t align)
     (void)align;
     free(p); // POSIX/glibc: fine for both
 }
+// NOLINTEND(clang-analyzer-unix.Malloc)
 
+// NOLINTBEGIN(clang-analyzer-unix.Malloc): as above
 static inline void* wc_libc_realloc(void* p, size_t old_n, size_t n, size_t align)
 {
     if (align <= WC_MAX_ALIGN) {
@@ -57,6 +60,7 @@ static inline void* wc_libc_realloc(void* p, size_t old_n, size_t n, size_t alig
     wc_libc_free(p, align);
     return q;
 }
+// NOLINTEND(clang-analyzer-unix.Malloc)
 
 
 

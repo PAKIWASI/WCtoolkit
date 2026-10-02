@@ -67,9 +67,13 @@ void StringStore_destroy(StringStore* ss) __attribute__((nonnull(1)));
 
 StrView StringStore_cstr(StringStore* ss, const char* cstr, u64 clen) __attribute__((nonnull(1, 2)));
 
-// TODO:
-StrView StringStore_append(StringStore* ss, StrView sv1, StrView sv2);
-StrView StringStore_append_cstr(StringStore* ss, StrView sv, const char* cstr, u64 clen);
+// Store sv1 followed by sv2 as one new string. Either view may point into
+// this same store: existing data never moves.
+StrView StringStore_append(StringStore* ss, StrView sv1, StrView sv2) __attribute__((nonnull(1)));
+// Store sv followed by clen bytes of cstr as one new string.
+StrView StringStore_append_cstr(StringStore* ss, StrView sv, const char* cstr, u64 clen) __attribute__((nonnull(1, 3)));
+
+// TODO: not implemented yet (declared only; calling them fails to link).
 // pass in StrViews...
 StrView StringStore_path_join(StringStore* ss, ...);
 // pass in path1, len1, path2, len2,...

@@ -52,6 +52,17 @@ target_link_libraries(app m)        # libm: needed by the test suite, harmless o
 
 Leave out `src/main.c`: it is the toolkit's own scratch program.
 
+### Single headers
+
+To drop one component into a project without the build setup, generate single headers:
+
+```sh
+python3 tools/make_single_header.py --all      # or: arena hashmap ...
+python3 tools/make_single_header.py --list     # components and their dependencies
+```
+
+Each `single_header/<name>_single.h` carries everything that component needs. In exactly one `.c` file, `#define WC_IMPLEMENTATION` before including it. Several single headers can be included together.
+
 ## A first program
 
 ```c

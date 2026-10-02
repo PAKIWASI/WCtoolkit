@@ -15,12 +15,6 @@
 #define ARENA_CHECK_LIVE(a) WC_ASSERT((a)->self == (a), "Arena used after destroy, or copied/moved after create")
 
 
-static inline b8 is_pow2(u64 x)
-{
-    return x != 0 && (x & (x - 1)) == 0;
-}
-
-
 // Lifecycle
 
 void Arena_create(Arena* arena, wc_allocator backing, u64 capacity)
@@ -91,7 +85,7 @@ void* Arena_alloc_aligned(Arena* arena, u64 size, u64 align)
 {
     ARENA_CHECK_LIVE(arena);
     WC_ASSERT(size != 0, "can't have allocation of size = 0");
-    WC_ASSERT(is_pow2(align), "alignment must be a power of two");
+    WC_ASSERT(align != 0 && (align & (align - 1)) == 0, "alignment must be a power of two");
 
     // Align the ADDRESS, not the offset (A2): the base itself may be unaligned.
     uintptr_t base    = (uintptr_t)arena->base;
@@ -166,12 +160,10 @@ static void arena_vt_free(void* ctx, void* ptr, size_t size, size_t align)
     }
 }
 
-// Positional on purpose: the field names `realloc`/`free` are poisoned in
-// library sources (wc_poison.h). Order matches wc_alloc_vtable.
 static const wc_alloc_vtable arena_vt = {
-    arena_vt_alloc,   // alloc
-    arena_vt_realloc, // realloc
-    arena_vt_free,    // free
+    .alloc   = arena_vt_alloc,
+    .realloc = arena_vt_realloc,
+    .free    = arena_vt_free,
 };
 
 wc_allocator Arena_allocator(Arena* arena)

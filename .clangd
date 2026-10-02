@@ -32,14 +32,18 @@ Diagnostics:
       - readability-uppercase-literal-suffix
       - readability-avoid-const-params-in-decls
       - readability-isolate-declaration
-      - readability-non-const-parameter 
+      - readability-non-const-parameter
       - readability-avoid-nested-conditional-operator
-      
+
       - bugprone-easily-swappable-parameters
-      - bugprone-assignment-in-if-condition 
+      - bugprone-assignment-in-if-condition
 
       - cert-err33-c
       - cert-dcl03-c
 
       - misc-include-cleaner
       - misc-no-recursion
+
+      # Flags every memcpy/memset/snprintf and asks for the C11 Annex K *_s
+      # functions, which glibc does not provide: not actionable here.
+      - clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling

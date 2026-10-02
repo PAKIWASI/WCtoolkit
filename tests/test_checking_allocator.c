@@ -53,7 +53,8 @@ UTEST(checking_allocator, ta_fill_and_realloc_preserves)
     EXPECT_EQ(p[0], WC_TA_FILL);
     EXPECT_EQ(p[7], WC_TA_FILL);
 
-    memcpy(p, "abcdefgh", 8);
+    static const char bytes8[8] = "abcdefgh"; // 8 bytes, not a C string
+    memcpy(p, bytes8, sizeof(bytes8));
     u8* q = wc_realloc(a, p, 8, 16, 16);
     EXPECT_TRUE(q != p); // always moves, so stale-pointer bugs surface
     EXPECT_TRUE(memcmp(q, "abcdefgh", 8) == 0);
@@ -76,6 +77,9 @@ UTEST(checking_allocator, ta_detects_leak)
     EXPECT_EQ(wc_test_alloc_destroy(&ta), 2u); // also releases them
 }
 
+// Misuses the allocator on purpose, or the memory belongs to an arena the
+// analyzer cannot see through (wc_alloc is inline and has a libc branch).
+// NOLINTBEGIN(clang-analyzer-unix.Malloc)
 UTEST(checking_allocator, ta_detects_double_free)
 {
     wc_test_alloc ta;
@@ -90,6 +94,7 @@ UTEST(checking_allocator, ta_detects_double_free)
     EXPECT_EQ(ta.n_free, 1u);
     EXPECT_EQ(wc_test_alloc_destroy(&ta), 0u);
 }
+// NOLINTEND(clang-analyzer-unix.Malloc)
 
 UTEST(checking_allocator, ta_detects_foreign_pointer)
 {
@@ -107,6 +112,9 @@ UTEST(checking_allocator, ta_detects_foreign_pointer)
     EXPECT_EQ(wc_test_alloc_destroy(&ta), 0u);
 }
 
+// Misuses the allocator on purpose, or the memory belongs to an arena the
+// analyzer cannot see through (wc_alloc is inline and has a libc branch).
+// NOLINTBEGIN(clang-analyzer-unix.Malloc)
 UTEST(checking_allocator, ta_detects_size_and_align_mismatch)
 {
     wc_test_alloc ta;
@@ -131,6 +139,7 @@ UTEST(checking_allocator, ta_detects_size_and_align_mismatch)
     EXPECT_EQ(ta.n_errors, 3u);
     EXPECT_EQ(wc_test_alloc_destroy(&ta), 0u);
 }
+// NOLINTEND(clang-analyzer-unix.Malloc)
 
 UTEST(checking_allocator, ta_detects_zero_size)
 {
@@ -145,6 +154,9 @@ UTEST(checking_allocator, ta_detects_zero_size)
     EXPECT_EQ(wc_test_alloc_destroy(&ta), 0u);
 }
 
+// Misuses the allocator on purpose, or the memory belongs to an arena the
+// analyzer cannot see through (wc_alloc is inline and has a libc branch).
+// NOLINTBEGIN(clang-analyzer-unix.Malloc)
 UTEST(checking_allocator, ta_fail_nth)
 {
     wc_test_alloc ta;
@@ -168,6 +180,7 @@ UTEST(checking_allocator, ta_fail_nth)
     EXPECT_EQ(ta.n_errors, 0u);
     EXPECT_EQ(wc_test_alloc_destroy(&ta), 0u);
 }
+// NOLINTEND(clang-analyzer-unix.Malloc)
 
 UTEST(checking_allocator, ta_table_survives_churn)
 {

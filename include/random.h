@@ -1,4 +1,4 @@
-﻿#ifndef RANDOM_H
+#ifndef RANDOM_H
 #define RANDOM_H
 
 #include "common.h"
@@ -52,7 +52,10 @@ typedef struct {
 
 
 // Default initializer with pre-chosen values for state and increment.
-#define PCG32_INITIALIZER {0x853c49e6748fea9bULL, 0xda3e39cb94b95bdbULL}
+#define PCG32_INITIALIZER                            \
+    {                                                \
+        0x853c49e6748fea9bULL, 0xda3e39cb94b95bdbULL \
+    }
 
 
 

@@ -8,7 +8,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define WC_TA_TOMBSTONE ((void*)(uintptr_t)1)
+// A deleted slot: a unique address that is never a real block.
+static char wc_ta_tombstone_;
+#define WC_TA_TOMBSTONE ((void*)&wc_ta_tombstone_)
 #define WC_TA_INIT_CAP  64
 
 

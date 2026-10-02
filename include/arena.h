@@ -152,10 +152,10 @@ ARENA_SCRATCH(&arena) {
 //       ...                       // no destroy needed
 //   }
 #define ARENA_SCOPE(name, cap) ARENA_SCOPE_(name, (cap), WC_CAT(_asc_, __COUNTER__))
-#define ARENA_SCOPE_(name, cap, id)                                                                             \
-    for (int WC_CAT(id, _once) = 1; WC_CAT(id, _once); WC_CAT(id, _once) = 0)                                   \
-        for (Arena __attribute__((cleanup(Arena_destroy))) WC_CAT(id, _arena) = {0}; WC_CAT(id, _once);         \
-             WC_CAT(id, _once)                                                = 0)                              \
+#define ARENA_SCOPE_(name, cap, id)                                                                                                                            \
+    for (int WC_CAT(id, _once) = 1; WC_CAT(id, _once); WC_CAT(id, _once) = 0)                                                                                  \
+        for (Arena __attribute__((cleanup(Arena_destroy))) WC_CAT(id, _arena) = {0}; WC_CAT(id, _once);                                                        \
+             WC_CAT(id, _once)                                                = 0)                                                                             \
             for (wc_allocator name =                                                                            \
                      (Arena_create(&WC_CAT(id, _arena), WC_LIBC, (cap)), Arena_allocator(&WC_CAT(id, _arena))); \
                  WC_CAT(id, _once); WC_CAT(id, _once) = 0)
@@ -172,29 +172,37 @@ ARENA_SCRATCH(&arena) {
 #define ARENA_ALLOC_N(arena, T, n) ((T*)Arena_alloc_aligned((arena), wc_mul((n), sizeof(T)), alignof(T)))
 
 // common for structs
-#define ARENA_ALLOC_ZERO(arena, T)                      \
-    ({                                                  \
-        (T)* _az = ARENA_ALLOC(arena, T);                 \
-        _az ? (T*)memset(_az, 0, sizeof(T)) : (T*)NULL; \
+// NOLINTBEGIN(bugprone-macro-parentheses): T is a type; (T)* would parse as a cast
+#define ARENA_ALLOC_ZERO(arena, T)                                                                                  \
+    ({                                                                                                              \
+        T* _az = ARENA_ALLOC(arena, T); /* NOLINT(bugprone-macro-parentheses): T is a type: (T)* would be a cast */ \
+        _az ? (T*)memset(_az, 0, sizeof(T)) : (T*)NULL;                                                             \
     })
+// NOLINTEND(bugprone-macro-parentheses)
 
-#define ARENA_ALLOC_ZERO_N(arena, T, n)                        \
-    ({                                                         \
-        u64 _azn = (u64)(n);                                   \
-        (T)*  _az  = ARENA_ALLOC_N(arena, T, _azn);              \
-        _az ? (T*)memset(_az, 0, sizeof(T) * _azn) : (T*)NULL; \
+// NOLINTBEGIN(bugprone-macro-parentheses): T is a type; (T)* would parse as a cast
+#define ARENA_ALLOC_ZERO_N(arena, T, n)                                                                                \
+    ({                                                                                                                 \
+        u64 _azn = (u64)(n);                                                                                           \
+        T*  _az =                                                                                                      \
+            ARENA_ALLOC_N(arena, T, _azn); /* NOLINT(bugprone-macro-parentheses): T is a type: (T)* would be a cast */ \
+        _az ? (T*)memset(_az, 0, sizeof(T) * _azn) : (T*)NULL;                                                         \
     })
+// NOLINTEND(bugprone-macro-parentheses)
 
 // Allocate and copy array into Arena
-#define ARENA_PUSH_ARRAY(arena, T, src, count)     \
-    ({                                             \
-        u64 _apc = (u64)(count);                   \
-        (T)*  _dst = ARENA_ALLOC_N(arena, T, _apc);  \
-        if (_dst) {                                \
-            memcpy(_dst, (src), sizeof(T) * _apc); \
-        }                                          \
-        _dst;                                      \
+// NOLINTBEGIN(bugprone-macro-parentheses): T is a type; (T)* would parse as a cast
+#define ARENA_PUSH_ARRAY(arena, T, src, count)                                                                         \
+    ({                                                                                                                 \
+        u64 _apc = (u64)(count);                                                                                       \
+        T*  _dst =                                                                                                     \
+            ARENA_ALLOC_N(arena, T, _apc); /* NOLINT(bugprone-macro-parentheses): T is a type: (T)* would be a cast */ \
+        if (_dst) {                                                                                                    \
+            memcpy(_dst, (src), sizeof(T) * _apc);                                                                     \
+        }                                                                                                              \
+        _dst;                                                                                                          \
     })
+// NOLINTEND(bugprone-macro-parentheses)
 
 
 #endif // ARENA_H

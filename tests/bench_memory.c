@@ -15,6 +15,8 @@
 
 static const char WORD[] = "key_00042";
 
+// ubench.h registers each benchmark with realloc() inside the UBENCH macro
+// NOLINTBEGIN(bugprone-suspicious-realloc-usage)
 UBENCH(memory, malloc_each)
 {
     char* ptrs[N];
@@ -79,3 +81,5 @@ UBENCH(memory, string_heap)
         String_destroy(&s);
     }
 }
+
+// NOLINTEND(bugprone-suspicious-realloc-usage)

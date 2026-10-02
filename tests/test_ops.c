@@ -68,8 +68,7 @@ UTEST(ops, strval_foreach_mutates_in_place)
     VEC_PUSH_CSTR(&v, "one");
     VEC_PUSH_CSTR(&v, "two");
 
-    VEC_FOREACH(&v, String, s)
-    {
+    VEC_FOREACH (&v, String, s) {
         String_append_char(s, '!');
     }
 
@@ -129,8 +128,7 @@ UTEST(ops, strval_triggers_growth)
     }
     EXPECT_EQ(GenVec_size(&v), 20u);
     /* all elements must survive multiple reallocations */
-    VEC_FOREACH(&v, String, s)
-    {
+    VEC_FOREACH (&v, String, s) {
         EXPECT_TRUE(String_equals_cstr(s, "x"));
     }
     GenVec_destroy(&v);
@@ -198,8 +196,7 @@ UTEST(ops, strptr_foreach_dereference)
     VEC_PUSH_CSTR(&v, "one");
     VEC_PUSH_CSTR(&v, "two");
 
-    VEC_FOREACH(&v, String*, sp)
-    { /* sp is String** */
+    VEC_FOREACH (&v, String*, sp) { /* sp is String** */
         String_append_char(*sp, '!');
     }
 

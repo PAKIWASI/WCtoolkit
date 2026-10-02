@@ -49,8 +49,10 @@ UTEST(matrix, create_arr)
 {
     float   arr[6] = {1, 2, 3, 4, 5, 6};
     Matrixf m      = matrix_create_arr(WC_LIBC, 2, 3, arr);
-    EXPECT_TRUE(memcmp(m.data, arr, sizeof(arr)) == 0); // bit-identical
-    EXPECT_TRUE(m.data != arr);                         // owns a copy
+    for (int i = 0; i < 6; i++) {
+        EXPECT_EQ(m.data[i], arr[i]); // exact copy
+    }
+    EXPECT_TRUE(m.data != arr); // owns a copy
     matrix_destroy(&m);
 }
 
@@ -377,8 +379,7 @@ UTEST(matrix, arena_scratch_temporaries)
     wc_allocator al     = Arena_allocator(&arena);
     Matrixf      result = matrix_create(al, 2, 2);
 
-    ARENA_SCRATCH(&arena)
-    {
+    ARENA_SCRATCH (&arena) {
         Matrixf t1 = matrix_create_arr(al, 2, 2, (float[]){1, 0, 0, 1});
         Matrixf t2 = matrix_create_arr(al, 2, 2, (float[]){5, 6, 7, 8});
         matrix_xply(&result, &t1, &t2);

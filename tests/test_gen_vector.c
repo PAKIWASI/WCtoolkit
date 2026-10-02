@@ -666,8 +666,7 @@ UTEST(gen_vector, vec_foreach_mutates)
     for (int i = 0; i < 4; i++) {
         VEC_PUSH(&v, i);
     }
-    VEC_FOREACH(&v, int, p)
-    {
+    VEC_FOREACH (&v, int, p) {
         (*p) *= 2;
     }
     EXPECT_EQ(VEC_AT(&v, int, 0), 0);
@@ -681,8 +680,7 @@ UTEST(gen_vector, vec_foreach_empty)
 {
     GenVec v     = GenVec_create(WC_LIBC, 4, sizeof(int), NULL);
     int    count = 0;
-    VEC_FOREACH(&v, int, p)
-    {
+    VEC_FOREACH (&v, int, p) {
         count++;
         (void)p;
     }
@@ -1114,9 +1112,8 @@ UTEST(gen_vector, fail_nth_allocation_dies_at_every_site)
 }
 
 
-// A5 is a compile-time defect (WC_REALLOC_N had the wrong arity). It cannot
-// live in this binary; see tests/compile/a5_realloc_n.c and the
-// `a5_realloc_n_compiles` ctest entry.
+// A5 (WC_REALLOC_N had the wrong arity) is a compile-time defect: it is
+// covered by allocator.typed_macros_and_overflow, which uses the macro.
 
 
 /* ── Golden scenarios (behaviour to preserve through the refactor) ───────── */
