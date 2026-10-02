@@ -478,6 +478,3 @@ UTEST(fast_math, pow_negative_base)
     EXPECT_TRUE(fast_pow(-2.0f, 0.5f) == 0.0f);
     EXPECT_TRUE(fast_pow(-2.0f, 1.5f) == 0.0f);
 }
-
-
-// Suite entry point

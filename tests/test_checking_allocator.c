@@ -289,6 +289,3 @@ UTEST(checking_allocator, genvec_nested_is_leak_free)
         GenVec_destroy(&copy);
     });
 }
-
-
-/* ── Suite entry point ───────────────────────────────────────────────────── */

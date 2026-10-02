@@ -261,7 +261,7 @@ UTEST(macros, map_create_of)
     MAP_PUT(&m, k, val);
 
     double out = 0;
-    EXPECT_TRUE(MAP_TRY_GET(&m, int, k, &out));
+    EXPECT_TRUE(MAP_TRY_GET(&m, double, k, &out));
     EXPECT_TRUE(out == 3.5);
 
     HashMap_destroy(&m);
@@ -349,3 +349,213 @@ UTEST(macros, genvec_unsafe_getters_in_range)
 
 
 /* -- Suite ----------------------------------------------------------------- */
+
+
+/* -- Value macros check the value's size against the slot (Debug) ---------- */
+
+#ifndef NDEBUG // the checks are WC_ASSERTs: these only die in Debug
+
+// Each of these used to copy through a temporary of the VALUE's type and
+// read past it: an int (4 bytes) into an 8-byte slot.
+static void vec_push_int_into_double(void)
+{
+    GenVec v = VEC(double, 2);
+    VEC_PUSH(&v, 1);
+}
+
+static void vec_set_int_into_double(void)
+{
+    GenVec v = VEC(double, 2);
+    VEC_PUSH(&v, 1.0);
+    VEC_SET(&v, 0, 2);
+}
+
+static void queue_push_int_into_double(void)
+{
+    Queue q = QUEUE_CREATE(double, 2);
+    QUEUE_PUSH(&q, 1);
+}
+
+static void set_insert_int_into_u64(void)
+{
+    HashSet s = HashSet_create(WC_LIBC, sizeof(u64), NULL, NULL, NULL);
+    SET_INSERT(&s, 1);
+}
+
+static void map_put_int_value_into_double(void)
+{
+    HashMap m = MAP_OF(int, double);
+    MAP_PUT(&m, 1, 2);
+}
+
+static void map_put_wrong_key(void)
+{
+    HashMap m = MAP_OF(u64, int);
+    MAP_PUT(&m, 1, 2);
+}
+
+static void map_get_wrong_value_type(void)
+{
+    HashMap m = MAP_OF(int, double);
+    MAP_PUT(&m, 1, 2.0);
+    int v = MAP_GET(&m, int, 1);
+    (void)v;
+}
+
+static void map_put_move_wrong_key(void)
+{
+    HashMap m = MAP_OF(u64, int);
+    int     k = 1, v = 2;
+    MAP_PUT_MOVE(&m, k, v);
+}
+#endif
+
+UTEST(macros, value_size_mismatch_dies)
+{
+#ifndef NDEBUG
+    EXPECT_DIES(vec_push_int_into_double);
+    EXPECT_DIES(vec_set_int_into_double);
+    EXPECT_DIES(queue_push_int_into_double);
+    EXPECT_DIES(set_insert_int_into_u64);
+    EXPECT_DIES(map_put_int_value_into_double);
+    EXPECT_DIES(map_put_wrong_key);
+    EXPECT_DIES(map_get_wrong_value_type);
+    EXPECT_DIES(map_put_move_wrong_key);
+#endif
+}
+
+UTEST(macros, value_size_match_works)
+{
+    GenVec v = VEC(double, 2);
+    VEC_PUSH(&v, 1.0);
+    VEC_PUSH(&v, (double)2);
+    EXPECT_EQ(VEC_AT(&v, double, 1), 2.0);
+    GenVec_destroy(&v);
+
+    HashMap m = MAP_OF(int, double);
+    MAP_PUT(&m, 1, 2.5);
+    EXPECT_EQ(MAP_GET(&m, double, 1), 2.5);
+    HashMap_destroy(&m);
+}
+
+
+/* -- break and continue in *_FOREACH ------------------------------------- */
+
+UTEST(macros, vec_foreach_break_stops)
+{
+    GenVec v       = VEC_FROM_ARR(int, 5, ((int[5]){1, 2, 3, 4, 5}));
+    int    visited = 0;
+    VEC_FOREACH(&v, int, x)
+    {
+        visited++;
+        if (*x == 2) {
+            break;
+        }
+    }
+    EXPECT_EQ(visited, 2);           // used to be 5: break acted like continue
+    GenVec_destroy(&v);
+}
+
+UTEST(macros, vec_foreach_continue_skips)
+{
+    GenVec v   = VEC_FROM_ARR(int, 5, ((int[5]){1, 2, 3, 4, 5}));
+    int    sum = 0;
+    VEC_FOREACH(&v, int, x)
+    {
+        if (*x % 2 == 0) {
+            continue;
+        }
+        sum += *x;
+    }
+    EXPECT_EQ(sum, 1 + 3 + 5);
+    GenVec_destroy(&v);
+}
+
+UTEST(macros, vec_foreach_nested_break_ends_inner_only)
+{
+    GenVec v     = VEC_FROM_ARR(int, 3, ((int[3]){1, 2, 3}));
+    int    pairs = 0;
+    VEC_FOREACH(&v, int, a)
+    {
+        VEC_FOREACH(&v, int, b)
+        {
+            if (*b > *a) {
+                break;
+            }
+            pairs++;
+        }
+    }
+    EXPECT_EQ(pairs, 1 + 2 + 3);     // b runs up to a, for each a
+    GenVec_destroy(&v);
+}
+
+UTEST(macros, stack_foreach_break_stops)
+{
+    Stack s = STACK_CREATE(int, 4);
+    for (int i = 0; i < 4; i++) { STACK_PUSH(&s, i); }
+    int visited = 0;
+    STACK_FOREACH(&s, int, x)
+    {
+        (void)x;
+        if (++visited == 1) {
+            break;
+        }
+    }
+    EXPECT_EQ(visited, 1);
+    Stack_destroy(&s);
+}
+
+UTEST(macros, map_foreach_break_stops)
+{
+    HashMap m = MAP_OF(int, int);
+    for (int i = 0; i < 10; i++) { MAP_PUT(&m, i, i); }
+
+    int keys = 0;
+    MAP_FOREACH_KEY(&m, int, k)
+    {
+        (void)k;
+        keys++;
+        break;
+    }
+    int vals = 0;
+    MAP_FOREACH_VAL(&m, int, val)
+    {
+        (void)val;
+        vals++;
+        break;
+    }
+    EXPECT_EQ(keys, 1);
+    EXPECT_EQ(vals, 1);
+
+    int all = 0;
+    MAP_FOREACH_KEY(&m, int, k) { (void)k; all++; }   // empty buckets are skipped
+    EXPECT_EQ(all, 10);
+    HashMap_destroy(&m);
+}
+
+UTEST(macros, set_foreach_break_stops)
+{
+    HashSet s = HashSet_create(WC_LIBC, sizeof(int), NULL, NULL, NULL);
+    for (int i = 0; i < 10; i++) { SET_INSERT(&s, i); }
+    int visited = 0;
+    SET_FOREACH(&s, int, x)
+    {
+        (void)x;
+        visited++;
+        break;
+    }
+    EXPECT_EQ(visited, 1);
+    HashSet_destroy(&s);
+}
+
+UTEST(macros, foreach_on_empty_runs_zero_times)
+{
+    GenVec  v = VEC(int, 0);
+    HashMap m = MAP_OF(int, int);
+    int     n = 0;
+    VEC_FOREACH(&v, int, x) { (void)x; n++; }
+    MAP_FOREACH_VAL(&m, int, x) { (void)x; n++; }
+    EXPECT_EQ(n, 0);
+    GenVec_destroy(&v);
+    HashMap_destroy(&m);
+}

@@ -26,6 +26,16 @@
               (unsigned)(vec)->data_size, (unsigned long long)sizeof(T))
 
 
+/* WC_ASSERT_SIZE — the value a macro was given must be exactly as big as the
+ * slot it is copied into. Macros copy values through a temporary of the
+ * VALUE's type, so a mismatch (an int literal into a double vector) would
+ * read past the temporary. Debug-only, like every other WC_ASSERT.
+ */
+#define WC_ASSERT_SIZE(have, want, what)                                                     \
+    WC_ASSERT((u64)(have) == (u64)(want), what ": value is %llu bytes, slot is %llu bytes", \
+              (unsigned long long)(have), (unsigned long long)(want))
+
+
 /* WC_OPS — pick the right container_ops for T at compile time.
  * Requires wc_helpers.h (the ops instances it names live there).
  *   VEC_OF(int, 8)                  -> POD, NULL ops
@@ -111,13 +121,15 @@
 Usage:
     GenVec v = VEC_FROM_ARR(int, 4, ((int[4]){1,2,3,4}));
 */
-#define VEC_FROM_ARR_IN(A, T, n, arr)                           \
-    ({                                                          \
-        GenVec _vfa = GenVec_create((A), (n), sizeof(T), NULL); \
-        for (u64 _i = 0; _i < (u64)(n); _i++) {                 \
-            GenVec_push(&_vfa, &(arr)[_i]);          \
-        }                                                       \
-        _vfa;                                                   \
+#define VEC_FROM_ARR_IN(A, T, n, arr)                                                     \
+    ({                                                                                    \
+        _Static_assert(sizeof((arr)[0]) == sizeof(T), "VEC_FROM_ARR: array element type " \
+                                                      "must match T");                   \
+        GenVec _vfa = GenVec_create((A), (n), sizeof(T), NULL);                           \
+        for (u64 _i = 0; _i < (u64)(n); _i++) {                                           \
+            GenVec_push(&_vfa, &(arr)[_i]);                                               \
+        }                                                                                 \
+        _vfa;                                                                             \
     })
 #define VEC_FROM_ARR(T, n, arr) VEC_FROM_ARR_IN(WC_LIBC, T, n, arr)
 
@@ -125,10 +137,11 @@ Usage:
 // Push
 
 // VEC_PUSH — push any POD value
-#define VEC_PUSH(vec, val)                 \
-    ({                                     \
-        typeof(val) wvp_tmp = (val);       \
-        GenVec_push((vec), &wvp_tmp); \
+#define VEC_PUSH(vec, val)                                  \
+    ({                                                      \
+        typeof(val) wvp_tmp = (val);                        \
+        WC_ASSERT_ELEM_SIZE((vec), typeof(wvp_tmp));        \
+        GenVec_push((vec), &wvp_tmp);                       \
     })
 
 // VEC_PUSH_MOVE — transfer ownership of an LVALUE element (struct or pointer).
@@ -189,10 +202,11 @@ Usage:
 
 // Mutate
 
-#define VEC_SET(vec, i, val)                       \
-    ({                                             \
-        typeof(val) wvs_tmp = (val);               \
-        GenVec_replace((vec), (i), &wvs_tmp); \
+#define VEC_SET(vec, i, val)                                \
+    ({                                                      \
+        typeof(val) wvs_tmp = (val);                        \
+        WC_ASSERT_ELEM_SIZE((vec), typeof(wvs_tmp));        \
+        GenVec_replace((vec), (i), &wvs_tmp);               \
     })
 
 
@@ -213,9 +227,20 @@ Usage:
  * here (a leading statement would break `if (x) VEC_FOREACH(...) ...` usage);
  * the T* assignment still gives compile-time type checking.
  */
-#define VEC_FOREACH(vec, T, name)                                         \
-    for (u64 _wvf_n = (vec)->size, _wvf_i = 0; _wvf_i < _wvf_n; _wvf_i++) \
-        for (T* name = GenVec_get_ptr_mut_unsafe((vec), _wvf_i); name; name = NULL)
+/* All *_FOREACH macros are two nested loops sharing a flag `k`:
+ *   normal pass : the inner loop flips k to 0, the outer flips it back to 1 and continues
+ *   break       : skips the inner flip, so the outer flip sets k to 0 and the loop ends
+ *   continue    : runs the inner flip, same as a normal pass
+ * Loop variables get __LINE__-unique names, so FOREACHes nest without shadowing.
+ * The optimizer removes the flag.
+ */
+#define WC_FE_(name, line) WC_CAT(WC_CAT(_wfe_, name), line)
+#define VEC_FOREACH(vec, T, name) VEC_FOREACH_(vec, T, name, __LINE__)
+#define VEC_FOREACH_(vec, T, name, L)                                                          \
+    for (u64 WC_FE_(k, L) = 1, WC_FE_(i, L) = 0, WC_FE_(n, L) = (vec)->size;                  \
+         WC_FE_(k, L) && WC_FE_(i, L) < WC_FE_(n, L); WC_FE_(k, L) = !WC_FE_(k, L), WC_FE_(i, L)++) \
+        for (T* name = GenVec_get_ptr_mut_unsafe((vec), WC_FE_(i, L)); WC_FE_(k, L);          \
+             WC_FE_(k, L) = !WC_FE_(k, L), (void)name)
 
 
 
@@ -278,66 +303,88 @@ Usage:
 
 // Put (COPY semantics)
 
-#define MAP_PUT(map, key, val)                                \
-    ({                                                        \
-        typeof(key) _mk = (key);                              \
-        typeof(val) _mv = (val);                              \
-        HashMap_put((map), &_mk, &_mv); \
+#define MAP_PUT(map, key, val)                                          \
+    ({                                                                  \
+        typeof(key) _mk = (key);                                        \
+        typeof(val) _mv = (val);                                        \
+        WC_ASSERT_SIZE(sizeof(_mk), (map)->key_size, "MAP_PUT key");    \
+        WC_ASSERT_SIZE(sizeof(_mv), (map)->val_size, "MAP_PUT value");  \
+        HashMap_put((map), &_mk, &_mv);                                 \
     })
 
 
 // Put (MOVE semantics): key/val are LVALUE elements, left zeroed after the call.
 
-#define MAP_PUT_MOVE(map, klval, vlval) HashMap_put_move((map), &(klval), &(vlval))
-
-#define MAP_PUT_KEY_MOVE(map, klval, val)                            \
-    ({                                                               \
-        typeof(val) _mv = (val);                                     \
-        HashMap_put_key_move((map), &(klval), &_mv); \
+#define MAP_PUT_MOVE(map, klval, vlval)                                       \
+    ({                                                                        \
+        WC_ASSERT_SIZE(sizeof(klval), (map)->key_size, "MAP_PUT_MOVE key");   \
+        WC_ASSERT_SIZE(sizeof(vlval), (map)->val_size, "MAP_PUT_MOVE value"); \
+        HashMap_put_move((map), &(klval), &(vlval));                          \
     })
 
-#define MAP_PUT_VAL_MOVE(map, key, vlval)                            \
-    ({                                                               \
-        typeof(key) _mk = (key);                                     \
-        HashMap_put_val_move((map), &_mk, &(vlval)); \
+#define MAP_PUT_KEY_MOVE(map, klval, val)                                         \
+    ({                                                                            \
+        typeof(val) _mv = (val);                                                  \
+        WC_ASSERT_SIZE(sizeof(klval), (map)->key_size, "MAP_PUT_KEY_MOVE key");   \
+        WC_ASSERT_SIZE(sizeof(_mv), (map)->val_size, "MAP_PUT_KEY_MOVE value");   \
+        HashMap_put_key_move((map), &(klval), &_mv);                              \
+    })
+
+#define MAP_PUT_VAL_MOVE(map, key, vlval)                                         \
+    ({                                                                            \
+        typeof(key) _mk = (key);                                                  \
+        WC_ASSERT_SIZE(sizeof(_mk), (map)->key_size, "MAP_PUT_VAL_MOVE key");     \
+        WC_ASSERT_SIZE(sizeof(vlval), (map)->val_size, "MAP_PUT_VAL_MOVE value"); \
+        HashMap_put_val_move((map), &_mk, &(vlval));                              \
     })
 
 
 // Get
 
 // V - Type of the value. Asserts key is present.
-#define MAP_GET(map, V, key)                                                                \
-    ({                                                                                      \
-        V           _out;                                                                   \
-        typeof(key) _mk = (key);                                                            \
-        memset(&_out, 0, sizeof(_out));                                                     \
-        /* the lookup must stay OUTSIDE WC_ASSERT: it is not evaluated under NDEBUG */    \
-        b8 _found = HashMap_get((map), &_mk, &_out);                        \
-        WC_ASSERT(_found, "MAP_GET: key not found");                                        \
-        (void)_found;                                                                       \
-        _out;                                                                               \
+#define MAP_GET(map, V, key)                                                            \
+    ({                                                                                  \
+        V           _out;                                                               \
+        typeof(key) _mk = (key);                                                        \
+        WC_ASSERT_SIZE(sizeof(_mk), (map)->key_size, "MAP_GET key");                    \
+        WC_ASSERT_SIZE(sizeof(V), (map)->val_size, "MAP_GET value type");               \
+        memset(&_out, 0, sizeof(_out));                                                 \
+        /* the lookup must stay OUTSIDE WC_ASSERT: it is not evaluated under NDEBUG */  \
+        b8 _found = HashMap_get((map), &_mk, &_out);                                    \
+        WC_ASSERT(_found, "MAP_GET: key not found");                                    \
+        (void)_found;                                                                   \
+        _out;                                                                           \
     })
 
 // Returns b8 (1 if found, 0 if not). Writes *out_ptr on hit.
-#define MAP_TRY_GET(map, V, key, out_ptr)                    \
-    ({                                                       \
-        typeof(key) _mk = (key);                             \
-        HashMap_get((map), &_mk, (out_ptr)); \
+#define MAP_TRY_GET(map, V, key, out_ptr)                                    \
+    ({                                                                       \
+        typeof(key) _mk = (key);                                             \
+        WC_ASSERT_SIZE(sizeof(_mk), (map)->key_size, "MAP_TRY_GET key");     \
+        WC_ASSERT_SIZE(sizeof(V), (map)->val_size, "MAP_TRY_GET value type");\
+        V* _mo = (out_ptr); /* compile-time check: out_ptr must be a V* */   \
+        HashMap_get((map), &_mk, _mo);                                       \
     })
 
 
 
 // Iterate
 
-#define MAP_FOREACH_KEY(map, T, name)                                                                                 \
-    for (u64 _i = 0, _n = HashMap_bucket_count(map); _i < _n; _i++)                                                   \
-        for (const T* name = HashMap_bucket_occupied((map), _i) ? (const T*)HashMap_bucket_key_ptr((map), _i) : NULL; \
-             name; name    = NULL)
+#define MAP_FOREACH_KEY(c, T, name) MAP_FOREACH_KEY_(c, T, name, __LINE__)
+#define MAP_FOREACH_KEY_(c, T, name, L)                                                                \
+    for (u64 WC_FE_(k, L) = 1, WC_FE_(i, L) = 0, WC_FE_(n, L) = HashMap_bucket_count(c);                     \
+         WC_FE_(k, L) && WC_FE_(i, L) < WC_FE_(n, L); WC_FE_(k, L) = !WC_FE_(k, L), WC_FE_(i, L)++) \
+        for (const T* name = HashMap_bucket_occupied((c), WC_FE_(i, L)) ? (const T*)HashMap_bucket_key_ptr((c), WC_FE_(i, L)) : NULL; \
+             WC_FE_(k, L); WC_FE_(k, L) = !WC_FE_(k, L))                                         \
+            if (!name) {} else
 
-#define MAP_FOREACH_VAL(map, T, name)                                                                           \
-    for (u64 _i = 0, _n = HashMap_bucket_count(map); _i < _n; _i++)                                             \
-        for (T* name = HashMap_bucket_occupied((map), _i) ? (T*)HashMap_bucket_val_ptr((map), _i) : NULL; name; \
-             name    = NULL)
+#define MAP_FOREACH_VAL(c, T, name) MAP_FOREACH_VAL_(c, T, name, __LINE__)
+#define MAP_FOREACH_VAL_(c, T, name, L)                                                                \
+    for (u64 WC_FE_(k, L) = 1, WC_FE_(i, L) = 0, WC_FE_(n, L) = HashMap_bucket_count(c);                     \
+         WC_FE_(k, L) && WC_FE_(i, L) < WC_FE_(n, L); WC_FE_(k, L) = !WC_FE_(k, L), WC_FE_(i, L)++) \
+        for (T* name = HashMap_bucket_occupied((c), WC_FE_(i, L)) ? (T*)HashMap_bucket_val_ptr((c), WC_FE_(i, L)) : NULL; \
+             WC_FE_(k, L); WC_FE_(k, L) = !WC_FE_(k, L))                                         \
+            if (!name) {} else
 
 
 // Hashset shorthands
@@ -351,14 +398,19 @@ Usage:
         _set;                                                                                       \
     })
 
-#define SET_INSERT(set, elm)                  \
-    ({                                        \
-        typeof(elm) _temp = (elm);            \
-        HashSet_insert((set), &(_temp)); \
+#define SET_INSERT(set, elm)                                        \
+    ({                                                              \
+        typeof(elm) _temp = (elm);                                  \
+        WC_ASSERT_SIZE(sizeof(_temp), (set)->elm_size, "SET_INSERT"); \
+        HashSet_insert((set), &(_temp));                            \
     })
 
 // lval is left zeroed (moved in, or destroyed if already present)
-#define SET_INSERT_MOVE(set, lval) HashSet_insert_move((set), &(lval))
+#define SET_INSERT_MOVE(set, lval)                                         \
+    ({                                                                     \
+        WC_ASSERT_SIZE(sizeof(lval), (set)->elm_size, "SET_INSERT_MOVE");  \
+        HashSet_insert_move((set), &(lval));                               \
+    })
 
 #define SET_INSERT_CSTR(set, cstr)                          \
     ({                                                      \
@@ -368,10 +420,13 @@ Usage:
     })
 
 
-#define SET_FOREACH(set, T, name)                                                                                     \
-    for (u64 _i = 0, _n = HashSet_bucket_count(set); _i < _n; _i++)                                                   \
-        for (const T* name = HashSet_bucket_occupied((set), _i) ? (const T*)HashSet_bucket_elm_ptr((set), _i) : NULL; \
-             name; name    = NULL)
+#define SET_FOREACH(c, T, name) SET_FOREACH_(c, T, name, __LINE__)
+#define SET_FOREACH_(c, T, name, L)                                                                \
+    for (u64 WC_FE_(k, L) = 1, WC_FE_(i, L) = 0, WC_FE_(n, L) = HashSet_bucket_count(c);                     \
+         WC_FE_(k, L) && WC_FE_(i, L) < WC_FE_(n, L); WC_FE_(k, L) = !WC_FE_(k, L), WC_FE_(i, L)++) \
+        for (const T* name = HashSet_bucket_occupied((c), WC_FE_(i, L)) ? (const T*)HashSet_bucket_elm_ptr((c), WC_FE_(i, L)) : NULL; \
+             WC_FE_(k, L); WC_FE_(k, L) = !WC_FE_(k, L))                                         \
+            if (!name) {} else
 
 
 // Stack macros
@@ -396,13 +451,18 @@ Usage:
 #define QUEUE_CREATE_CX(T, cap, ops)    Queue_create(WC_LIBC, (cap), sizeof(T), (ops))
 #define QUEUE_CREATE_IN(A, T, cap)      Queue_create((A), (cap), sizeof(T), NULL)
 #define QUEUE_CREATE_CX_IN(A, T, cap, ops) Queue_create((A), (cap), sizeof(T), (ops))
-#define QUEUE_PUSH(q, val)              \
-    ({                                  \
-        typeof(val) _qp_tmp = (val);    \
-        Queue_push((q), &_qp_tmp); \
+#define QUEUE_PUSH(q, val)                                   \
+    ({                                                       \
+        typeof(val) _qp_tmp = (val);                         \
+        WC_ASSERT_ELEM_SIZE(&(q)->arr, typeof(_qp_tmp));     \
+        Queue_push((q), &_qp_tmp);                           \
     })
 
-#define QUEUE_PUSH_MOVE(q, lval) Queue_push_move((q), &(lval))
+#define QUEUE_PUSH_MOVE(q, lval)                             \
+    ({                                                       \
+        WC_ASSERT_ELEM_SIZE(&(q)->arr, typeof(lval));        \
+        Queue_push_move((q), &(lval));                       \
+    })
 
 #define QUEUE_PUSH_CSTR(q, cstr)                               \
     ({                                                         \

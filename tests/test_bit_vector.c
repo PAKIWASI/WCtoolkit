@@ -4,7 +4,6 @@
 #include "test_support.h"
 
 
-
 /* ── Creation / destruction ──────────────────────────────────────────────── */
 
 UTEST(bit_vector, create)
@@ -272,6 +271,3 @@ UTEST(bit_vector, set_clear_all_bits_in_byte)
     }
     BitVec_destroy(&bv);
 }
-
-
-/* ── Suite entry point ───────────────────────────────────────────────────── */

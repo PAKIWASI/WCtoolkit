@@ -682,9 +682,6 @@ UTEST(gen_vector, back_empty_sets_errno)
 }
 
 
-// Suite entry point 
-
-
 /* ── One workload, every backend ─────────────────────────────────────────── */
 
 // push / grow / insert / remove / shrink, checked element by element
@@ -1075,9 +1072,6 @@ UTEST(gen_vector, fail_nth_allocation_dies_at_every_site)
         EXPECT_EQ(died, 1);
     }
 }
-
-
-/* ── Suite entry point ───────────────────────────────────────────────────── */
 
 
 // A5 is a compile-time defect (WC_REALLOC_N had the wrong arity). It cannot

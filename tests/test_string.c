@@ -653,6 +653,3 @@ UTEST(string, test_allocator_leak_free)
 
     wc_test_alloc_destroy(&ta);
 }
-
-
-// Suite entry point

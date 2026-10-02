@@ -8,7 +8,6 @@
 #include "test_support.h"
 
 
-
 /* ══════════════════════════════════════════════════════════════════════════
  * SECTION 1 — Vec<String> by VALUE (Strategy A)
  *
@@ -533,6 +532,3 @@ UTEST(ops, strategy_b_pointer_outlives_growth)
     EXPECT_TRUE(String_equals_cstr(anchor, "anchor"));
     GenVec_destroy(&v);
 }
-
-
-/* ── Suite entry point ───────────────────────────────────────────────────── */

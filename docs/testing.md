@@ -98,7 +98,7 @@ UTEST(gen_vector, misuse_dies)
 }
 ```
 
-Death tests need `fork()`, so they're POSIX only.
+Death tests need `fork()`, so they're POSIX only. `test_support.h` defines `WC_HAS_FORK` for code that wants to check.
 
 ## The checking allocator
 
@@ -172,7 +172,3 @@ UBENCH_EX(gen_vector, copy_int)                   // setup outside the timed par
 ```
 
 Each benchmark comes in pairs where it makes a point: plain data vs an owning type (`push_int` / `push_string`), copy vs move (`push_struct_copy` / `push_struct_move`), or one allocator vs another (`memory.*`).
-
-## Known gaps
-
-- The HashMap and HashSet zero-state death tests sit inside `#if WC_HAS_FORK`, and nothing defines `WC_HAS_FORK`, so they're compiled out.

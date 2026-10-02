@@ -38,6 +38,9 @@ static inline int test_dies(void (*fn)(void))
     return WIFSIGNALED(status) || (WIFEXITED(status) && WEXITSTATUS(status) != 0);
 }
 
+// Death tests are available (this header already requires POSIX fork()).
+#define WC_HAS_FORK 1
+
 // Expect fn() to abort (FATAL_IF, WC_ASSERT in Debug, ...). POSIX only.
 #define EXPECT_DIES(fn) EXPECT_EQ_MSG(test_dies(fn), 1, #fn " should terminate")
 

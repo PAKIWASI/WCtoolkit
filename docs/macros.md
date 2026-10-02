@@ -6,9 +6,12 @@
 
 Include `wc_macros.h`. It pulls in `gen_vector.h`, `wc_string.h`, `map_setup.h` and the built-in ops from `wc_helpers.h`.
 
-## The value-type rule
+## Value types are checked
 
-Macros that take a **value** (`VEC_PUSH`, `VEC_SET`, `STACK_PUSH`, `QUEUE_PUSH`, `SET_INSERT`, `MAP_PUT`, `MAP_GET`, `MAP_TRY_GET`, `MAP_PUT_KEY_MOVE`, `MAP_PUT_VAL_MOVE`) copy it through a temporary of the value's own type. **That type must be exactly the element type.** These macros don't check it.
+Macros that take a **value** copy it through a temporary of the value's own type, then check that type's size against the slot it goes into. A mismatch aborts in Debug, with a message naming both sizes:
+- `VEC_PUSH`, `VEC_SET`, `STACK_PUSH`, `QUEUE_PUSH`, `QUEUE_PUSH_MOVE`
+- `SET_INSERT`, `SET_INSERT_MOVE`
+- `MAP_PUT`, `MAP_PUT_MOVE`, `MAP_PUT_KEY_MOVE`, `MAP_PUT_VAL_MOVE`, `MAP_GET`, `MAP_TRY_GET`
 
 ```c
 #include "wc_macros.h"
@@ -16,15 +19,17 @@ Macros that take a **value** (`VEC_PUSH`, `VEC_SET`, `STACK_PUSH`, `QUEUE_PUSH`,
 int main(void)
 {
     GenVec d = VEC(double, 4);
-    VEC_PUSH(&d, 1.0);          // correct: a double
-    // VEC_PUSH(&d, 1);         // WRONG: an int; reads 8 bytes from a 4-byte temporary
-    VEC_PUSH(&d, (double)2);    // correct: cast to the element type
+    VEC_PUSH(&d, 1.0);          // a double: fine
+    VEC_PUSH(&d, (double)2);    // cast to the element type: fine
+    // VEC_PUSH(&d, 1);         // an int: aborts in Debug ("value is 4 bytes, slot is 8 bytes")
     GenVec_destroy(&d);
     return 0;
 }
 ```
 
-Watch for integer literals in `double`, `u64` or `float` containers, and for `char` vs `int`.
+Like every `WC_ASSERT`, the check is gone in Release, so a mismatch there reads past the temporary. Run your tests in Debug. Integer literals in `double`, `u64` or `float` containers are the usual cause.
+
+`VEC_FROM_ARR` checks at compile time instead: the array's element type must be the same size as `T`.
 
 ## Creating
 
@@ -48,7 +53,7 @@ Watch for integer literals in `double`, `u64` or `float` containers, and for `ch
 
 | Macro | Returns | Notes |
 |---|---|---|
-| `VEC_PUSH(&v, val)` | | Copies `val`. See the value-type rule. |
+| `VEC_PUSH(&v, val)` | | Copies `val`. Size-checked in Debug. |
 | `VEC_PUSH_MOVE(&v, lval)` | | Moves an lvalue in; `lval` is zeroed. Size-checked. |
 | `VEC_PUSH_CSTR(&v, "text")` | | Builds a `String` in `v`'s allocator. Works for `String` and `String*` vectors. |
 | `VEC_PUSH_VEC(&outer, inner)`, `VEC_PUSH_VEC_PTR(&outer, p)` | | Move a vector, or a boxed vector, into a vector of vectors |
@@ -57,7 +62,7 @@ Watch for integer literals in `double`, `u64` or `float` containers, and for `ch
 | `VEC_FRONT(&v, T)`, `VEC_BACK(&v, T)` | `T` | |
 | `VEC_SET(&v, i, val)` | | Replaces element `i`; the old one is deleted |
 | `VEC_POP(&v, T)` | `T` | Removes and returns the last element; you own it now |
-| `VEC_FOREACH(&v, T, name) { ... }` | | `name` is a `T*`. **`break` does not stop the loop**; see below. |
+| `VEC_FOREACH(&v, T, name) { ... }` | | `name` is a `T*`. `break` and `continue` work. |
 
 ```c
 #include "wc_macros.h"
@@ -77,11 +82,9 @@ int main(void)
 
 `VEC_FOREACH` does no element-size check of its own. Instead, the `T*` assignment gives a compile-time type check against what you wrote. The vector must not grow inside the loop.
 
-### `break` inside a `*_FOREACH`
+### How the `*_FOREACH` macros work
 
-Every `*_FOREACH` macro (`VEC_`, `STACK_`, `MAP_FOREACH_KEY`, `MAP_FOREACH_VAL`, `SET_`) is two nested `for` loops. `break` leaves only the inner one, so **it acts like `continue`: iteration goes on with the next element.** `continue` works as expected.
-
-To stop early, loop by index instead:
+Each `*_FOREACH` (`VEC_`, `STACK_`, `MAP_FOREACH_KEY`, `MAP_FOREACH_VAL`, `SET_`) is two nested `for` loops sharing one flag, so `break` ends the whole loop and `continue` moves to the next element, as in a plain `for`. The optimizer removes the flag. Loop variables have line-unique names, so FOREACHes nest without shadowing warnings.
 
 ```c
 #include "wc_macros.h"
@@ -89,12 +92,13 @@ To stop early, loop by index instead:
 int main(void)
 {
     GenVec v = VEC_FROM_ARR(int, 4, ((int[4]){5, 7, 9, 11}));
-    u64 found = WC_NOT_FOUND;
-    for (u64 i = 0; i < GenVec_size(&v); i++) {
-        if (VEC_AT(&v, int, i) == 9) { found = i; break; }   // a real break
+    int seen = 0;
+    VEC_FOREACH(&v, int, x) {
+        seen++;
+        if (*x == 9) { break; }     // stops after 5, 7, 9
     }
     GenVec_destroy(&v);
-    return found == 2 ? 0 : 1;
+    return seen == 3 ? 0 : 1;
 }
 ```
 
@@ -135,7 +139,7 @@ int main(void)
 
 | Macro | Notes |
 |---|---|
-| `SET_INSERT(&s, val)` | Copies `val`. Returns `b8`: `1` if it was already present. See the value-type rule. |
+| `SET_INSERT(&s, val)` | Copies `val`. Returns `b8`: `1` if it was already present. Size-checked in Debug. |
 | `SET_INSERT_MOVE(&s, lval)` | Moves in, or destroys `lval` if already present. `lval` is zeroed either way. |
 | `SET_INSERT_CSTR(&s, "text")` | Builds a `String` in the set's allocator |
 | `SET_FROM_VEC(&v, hash, cmp)` | A new set of `v`'s elements, on `v`'s allocator |

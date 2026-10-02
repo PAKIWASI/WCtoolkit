@@ -455,6 +455,3 @@ UTEST(matrix, zero_state_and_oom_die)
     EXPECT_DIES(copy_of_zeroed);
     EXPECT_DIES(create_fails_on_exhausted_arena);
 }
-
-
-// Suite entry point

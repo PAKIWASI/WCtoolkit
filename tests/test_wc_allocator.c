@@ -205,6 +205,3 @@ UTEST(allocator, same)
     EXPECT_FALSE(wc_same(a, b));
     EXPECT_TRUE(wc_same(WC_LIBC, WC_LIBC));
 }
-
-
-/* ── Suite entry point ───────────────────────────────────────────────────── */

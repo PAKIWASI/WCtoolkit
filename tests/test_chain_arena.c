@@ -292,9 +292,6 @@ UTEST(chain_arena, floor_nested_scopes)
 }
 
 
-/* ── Suite entry point ───────────────────────────────────────────────────── */
-
-
 // A2 (ChainArena): blocks start 8 bytes into a malloc'd node (after `u64 used`),
 // so any request aligned above 8 is misaligned by construction.
 UTEST(chain_arena, A2_chain_arena_aligns_address)

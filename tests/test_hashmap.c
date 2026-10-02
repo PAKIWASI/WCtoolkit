@@ -823,9 +823,6 @@ UTEST(hashmap, zero_state_fatal)
 #endif
 
 
-/* ── Suite entry point ───────────────────────────────────────────────────── */
-
-
 static inline u64 golden_mix(u64 h, u64 x)
 {
     h ^= x + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2);
@@ -891,6 +888,3 @@ UTEST(hashmap, golden_queue_hashmap_fixed_seed)
     EXPECT_EQ(m_sum, GOLDEN_MAP_CHECKSUM);
     EXPECT_EQ(m_size, GOLDEN_MAP_SIZE);
 }
-
-
-/* ── Suite entry point ───────────────────────────────────────────────────── */

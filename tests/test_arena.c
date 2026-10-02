@@ -529,9 +529,6 @@ UTEST(arena, floor_allows_in_place_above_mark)
 }
 
 
-/* ── Suite entry point ───────────────────────────────────────────────────── */
-
-
 // ARENA_SCOPE (plan 3.3) and typed helper macros
 
 UTEST(arena, scope_basic)
@@ -593,17 +590,17 @@ UTEST(arena, typed_macros)
 
     typedef struct { u64 a; u32 b; } pair;
     pair* p = ARENA_ALLOC_ZERO(&arena, pair);
-    EXPECT_TRUE((p) != NULL);
+    ASSERT_TRUE(p != NULL);   // stop here rather than dereference NULL
     EXPECT_EQ(p->a, 0u);
     EXPECT_EQ((uintptr_t)p % alignof(pair), 0u);
 
     u32* z = ARENA_ALLOC_ZERO_N(&arena, u32, 8);
-    EXPECT_TRUE((z) != NULL);
+    ASSERT_TRUE(z != NULL);   // stop here rather than dereference NULL
     for (int i = 0; i < 8; i++) { EXPECT_EQ(z[i], 0u); }
 
     int  src[] = {4, 5, 6};
     int* c     = ARENA_PUSH_ARRAY(&arena, int, src, 3);
-    EXPECT_TRUE((c) != NULL);
+    ASSERT_TRUE(c != NULL);   // stop here rather than dereference NULL
     EXPECT_TRUE(c != src);
     EXPECT_EQ(c[2], 6);
 

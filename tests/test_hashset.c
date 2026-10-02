@@ -755,6 +755,3 @@ UTEST(hashset, zero_state_fatal)
     EXPECT_DIES(die_mutating_zero_hashset);
 }
 #endif
-
-
-/* ── Suite entry point ───────────────────────────────────────────────────── */
