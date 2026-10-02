@@ -28,7 +28,7 @@
 
 
 
-/* ════════════════════════════════════════════════════════════════════════
+/*
  * DIAGNOSTICS
  *
  * Every macro below is an EXPRESSION of type void (no do { } while (0)), so
@@ -61,7 +61,7 @@
  * `cold, noinline` functions defined once in wc_errno.c. The compiler moves
  * every failure branch (argument setup + call) out of the hot path into
  * .text.unlikely, so a check costs one compare and one not-taken branch.
- * ════════════════════════════════════════════════════════════════════════ */
+*/ 
 
 #define WC_LIKELY(x)   __builtin_expect(!!(x), 1)
 #define WC_UNLIKELY(x) __builtin_expect(!!(x), 0)
@@ -73,7 +73,7 @@ __attribute__((cold, noinline, format(printf, 4, 5))) void
 wc_warn_report(const char* file, int line, const char* func, const char* fmt, ...);
 
 
-/* ── SURVIVES EVERY BUILD ─────────────────────────────────────────────── */
+/* SURVIVES EVERY BUILD */
 
 #define FATAL(fmt, ...) wc_fatal_report(__FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__)
 
@@ -94,15 +94,13 @@ wc_warn_report(const char* file, int line, const char* func, const char* fmt, ..
         (void)0;                                      \
     })
 
-// No branch hint on LOG_IF: a log condition is not an error path, so there is
-// no direction to predict. Let the hardware predictor or PGO decide.
 #define LOG(fmt, ...) \
     ((void)printf(WC_COLOR_CYAN "[LOG] %s(): " fmt "\n" WC_COLOR_RESET, __func__, ##__VA_ARGS__))
 
 #define LOG_IF(cond, fmt, ...) ((void)((cond) && (LOG(fmt, ##__VA_ARGS__), 0)))
 
 
-/* ── STRIPPED UNDER NDEBUG ────────────────────────────────────────────── */
+/* STRIPPED UNDER NDEBUG */
 
 #ifdef NDEBUG
 // Not evaluated (sizeof of an int expression), still compiled: a stale field
