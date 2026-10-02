@@ -2,7 +2,7 @@
 #define MATRIX_GENERIC_H
 
 #include "common.h"
-#include "arena.h"
+#include "wc_allocator.h"
 // #include <String.h>
 
 
@@ -11,11 +11,14 @@
 // ============================================================================
 
 // Define a matrix type for a specific data type
-#define MATRIX_TYPE(T)    \
-    typedef struct {      \
-        T*  data;         \
-        u64 m; /* rows */ \
-        u64 n; /* cols */ \
+// Same contract as Matrixf (matrix.h): value type, stores its allocator,
+// zeroed == dead (mutation on m == 0 is an unconditional FATAL).
+#define MATRIX_TYPE(T)             \
+    typedef struct {               \
+        T*           data;         \
+        u64          m; /* rows */ \
+        u64          n; /* cols */ \
+        wc_allocator alloc;        \
     } Matrix_##T
 
 
@@ -32,44 +35,57 @@
 // MATRIX CREATION/DESTRUCTION
 // ============================================================================
 
-#define MATRIX_CREATE(T)                                           \
-    Matrix_##T* matrix_create_##T(u64 m, u64 n)                    \
-    {                                                              \
-        CHECK_FATAL(n == 0 && m == 0, "n == m == 0");              \
-        Matrix_##T* mat = (Matrix_##T*)malloc(sizeof(Matrix_##T)); \
-        FATAL_IF(!mat, "matrix malloc failed");                    \
-        mat->m    = m;                                             \
-        mat->n    = n;                                             \
-        mat->data = (T*)malloc(sizeof(T) * n * m);                 \
-        FATAL_IF(!mat->data, "matrix data malloc failed");         \
-        return mat;                                                \
+#define MATRIX_BYTES(T, m, n) wc_mul(wc_mul((m), (n)), sizeof(T))
+
+#define MATRIX_CREATE(T)                                                          \
+    Matrix_##T matrix_create_##T(wc_allocator a, u64 m, u64 n)                    \
+    {                                                                             \
+        FATAL_IF(m == 0 || n == 0, "matrix_create_" #T ": dims must be > 0");     \
+        T* data = (T*)wc_alloc(a, MATRIX_BYTES(T, m, n), alignof(T));             \
+        FATAL_IF(!data, "matrix_create_" #T ": data allocation failed");          \
+        return (Matrix_##T){.data = data, .m = m, .n = n, .alloc = a};            \
     }
 
-#define MATRIX_CREATE_ARR(T)                                      \
-    Matrix_##T* matrix_create_arr_##T(u64 m, u64 n, const T* arr) \
-    {                                                             \
-        CHECK_FATAL(!arr, "input arr is null");                   \
-        Matrix_##T* mat = matrix_create_##T(m, n);                \
-        memcpy(mat->data, arr, sizeof(T) * m * n);                \
-        return mat;                                               \
+#define MATRIX_CREATE_ARR(T)                                                        \
+    Matrix_##T matrix_create_arr_##T(wc_allocator a, u64 m, u64 n, const T* arr)    \
+    {                                                                               \
+        CHECK_FATAL(!arr, "input arr is null");                                     \
+        Matrix_##T mat = matrix_create_##T(a, m, n);                                \
+        memcpy(mat.data, arr, sizeof(T) * m * n);                                   \
+        return mat;                                                                 \
     }
 
-#define MATRIX_CREATE_STK(T)                                           \
-    void matrix_create_stk_##T(Matrix_##T* mat, u64 m, u64 n, T* data) \
-    {                                                                  \
-        CHECK_FATAL(!mat, "matrix is null");                           \
-        CHECK_FATAL(!data, "data is null");                            \
-        mat->data = data;                                              \
-        mat->m    = m;                                                 \
-        mat->n    = n;                                                 \
+/* Wrap caller-owned memory via wc_borrowed; destroy frees nothing. */
+#define MATRIX_CREATE_BUF(T)                                                      \
+    Matrix_##T matrix_create_buf_##T(u64 m, u64 n, T* data)                       \
+    {                                                                             \
+        FATAL_IF(m == 0 || n == 0, "matrix_create_buf_" #T ": dims must be > 0"); \
+        CHECK_FATAL(!data, "data is null");                                       \
+        return (Matrix_##T){.data = data, .m = m, .n = n, .alloc = wc_borrowed};  \
     }
 
-#define MATRIX_DESTROY(T)                    \
-    void matrix_destroy_##T(Matrix_##T* mat) \
-    {                                        \
-        CHECK_FATAL(!mat, "matrix is null"); \
-        free(mat->data);                     \
-        free(mat);                           \
+/* Safe on zeroed matrices; leaves the struct zeroed. */
+#define MATRIX_DESTROY(T)                                                       \
+    void matrix_destroy_##T(Matrix_##T* mat)                                    \
+    {                                                                           \
+        CHECK_FATAL(!mat, "matrix is null");                                    \
+        if (mat->data) {                                                        \
+            wc_allocator a = mat->alloc;                                        \
+            wc_free(a, mat->data, MATRIX_BYTES(T, mat->m, mat->n), alignof(T)); \
+        }                                                                       \
+        memset(mat, 0, sizeof(*mat));                                           \
+    }
+
+/* Transfer: dest takes src's storage and allocator, src is left zeroed. */
+#define MATRIX_MOVE(T)                                         \
+    void matrix_move_##T(Matrix_##T* dest, Matrix_##T* src)    \
+    {                                                          \
+        CHECK_FATAL(!dest || !src, "matrix is null");          \
+        if (dest == src) {                                     \
+            return;                                            \
+        }                                                      \
+        memcpy(dest, src, sizeof(*src));                       \
+        memset(src, 0, sizeof(*src));                          \
     }
 
 // ============================================================================
@@ -89,6 +105,7 @@
 #define MATRIX_SET_VAL_ARR(T)                                                       \
     void matrix_set_val_arr_##T(Matrix_##T* mat, u64 count, const T* arr)           \
     {                                                                               \
+        FATAL_IF((mat)->m == 0, "matrix_set_val_arr_" #T " on zeroed/moved-from matrix"); \
         CHECK_FATAL(!mat, "matrix is null");                                        \
         CHECK_FATAL(!arr, "arr is null");                                           \
         CHECK_FATAL(count != MATRIX_TOTAL(mat), "count doesn't match matrix size"); \
@@ -99,6 +116,7 @@
 #define MATRIX_SET_VAL_ARR2(T)                                                            \
     void matrix_set_val_arr2_##T(Matrix_##T* mat, u64 m, u64 n, const T** arr2)           \
     {                                                                                     \
+        FATAL_IF((mat)->m == 0, "matrix_set_val_arr2_" #T " on zeroed/moved-from matrix"); \
         CHECK_FATAL(!mat, "matrix is null");                                              \
         CHECK_FATAL(!arr2, "arr is null");                                                \
         CHECK_FATAL(!*arr2, "*arr is null");                                              \
@@ -114,6 +132,7 @@
 #define MATRIX_SET_ELM(T)                                               \
     void matrix_set_elm_##T(Matrix_##T* mat, T elm, u64 i, u64 j)       \
     {                                                                   \
+        FATAL_IF((mat)->m == 0, "matrix_set_elm_" #T " on zeroed/moved-from matrix"); \
         CHECK_FATAL(!mat, "matrix is null");                            \
         CHECK_FATAL(i >= mat->m || j >= mat->n, "index out of bounds"); \
         mat->data[IDX(mat, i, j)] = elm;                                \
@@ -126,6 +145,7 @@
 #define MATRIX_ADD(T)                                                                 \
     void matrix_add_##T(Matrix_##T* out, const Matrix_##T* a, const Matrix_##T* b)    \
     {                                                                                 \
+        FATAL_IF((out)->m == 0, "matrix_add_" #T " on zeroed/moved-from matrix");     \
         CHECK_FATAL(!out, "out matrix is null");                                      \
         CHECK_FATAL(!a, "a matrix is null");                                          \
         CHECK_FATAL(!b, "b matrix is null");                                          \
@@ -140,6 +160,7 @@
 #define MATRIX_SUB(T)                                                                 \
     void matrix_sub_##T(Matrix_##T* out, const Matrix_##T* a, const Matrix_##T* b)    \
     {                                                                                 \
+        FATAL_IF((out)->m == 0, "matrix_sub_" #T " on zeroed/moved-from matrix");     \
         CHECK_FATAL(!out, "out matrix is null");                                      \
         CHECK_FATAL(!a, "a matrix is null");                                          \
         CHECK_FATAL(!b, "b matrix is null");                                          \
@@ -154,6 +175,7 @@
 #define MATRIX_SCALE(T)                           \
     void matrix_scale_##T(Matrix_##T* mat, T val) \
     {                                             \
+        FATAL_IF((mat)->m == 0, "matrix_scale_" #T " on zeroed/moved-from matrix"); \
         CHECK_FATAL(!mat, "matrix is null");      \
         u64 total = MATRIX_TOTAL(mat);            \
         for (u64 i = 0; i < total; i++) {         \
@@ -164,6 +186,7 @@
 #define MATRIX_DIV(T)                               \
     void matrix_div_##T(Matrix_##T* mat, T val)     \
     {                                               \
+        FATAL_IF((mat)->m == 0, "matrix_div_" #T " on zeroed/moved-from matrix"); \
         CHECK_FATAL(!mat, "mat is null");           \
         CHECK_FATAL(val == 0, "division by zero!"); \
         u64 total = MATRIX_TOTAL(mat);              \
@@ -179,6 +202,7 @@
 #define MATRIX_XPLY(T)                                                                          \
     void matrix_xply_##T(Matrix_##T* out, const Matrix_##T* a, const Matrix_##T* b)             \
     {                                                                                           \
+        FATAL_IF((out)->m == 0, "matrix_xply_" #T " on zeroed/moved-from matrix");              \
         CHECK_FATAL(!out, "out matrix is null");                                                \
         CHECK_FATAL(!a, "a matrix is null");                                                    \
         CHECK_FATAL(!b, "b matrix is null");                                                    \
@@ -222,6 +246,7 @@
 #define MATRIX_XPLY_2(T)                                                                     \
     void matrix_xply_2_##T(Matrix_##T* out, const Matrix_##T* a, const Matrix_##T* b)        \
     {                                                                                        \
+        FATAL_IF((out)->m == 0, "matrix_xply_2_" #T " on zeroed/moved-from matrix");         \
         CHECK_FATAL(!out, "out matrix is null");                                             \
         CHECK_FATAL(!a, "a matrix is null");                                                 \
         CHECK_FATAL(!b, "b matrix is null");                                                 \
@@ -232,7 +257,8 @@
         u64 k = a->n;                                                                        \
         u64 n = b->n;                                                                        \
                                                                                              \
-        Matrix_##T* b_T = matrix_create_##T(n, k);                                           \
+        Matrix_##T  b_T_s = matrix_create_##T(WC_LIBC, n, k); /* scratch */                  \
+        Matrix_##T* b_T   = &b_T_s;                                                          \
         matrix_T_##T(b_T, b);                                                                \
                                                                                              \
         memset(out->data, 0, sizeof(T) * m * n);                                             \
@@ -265,6 +291,7 @@
 #define MATRIX_T(T)                                                                          \
     void matrix_T_##T(Matrix_##T* out, const Matrix_##T* mat)                                \
     {                                                                                        \
+        FATAL_IF((out)->m == 0, "matrix_T_" #T " on zeroed/moved-from matrix");              \
         CHECK_FATAL(!mat, "mat matrix is null");                                             \
         CHECK_FATAL(!out, "out matrix is null");                                             \
         CHECK_FATAL(mat->m != out->n || mat->n != out->m, "incompatible matrix dimensions"); \
@@ -289,13 +316,13 @@
 // MATRIX COPY
 // ============================================================================
 
-#define MATRIX_COPY(T)                                                                        \
-    void matrix_copy_##T(Matrix_##T* dest, const Matrix_##T* src)                             \
-    {                                                                                         \
-        CHECK_FATAL(!dest, "dest matrix is null");                                            \
-        CHECK_FATAL(!src, "src matrix is null");                                              \
-        CHECK_FATAL(dest->m != src->m || dest->n != src->n, "matrix dimensions don't match"); \
-        memcpy(dest->data, src->data, sizeof(T) * MATRIX_TOTAL(src));                         \
+/* Deep copy into a new matrix allocated from `a` (never inherits src->alloc). */
+#define MATRIX_COPY(T)                                                         \
+    Matrix_##T matrix_copy_##T(wc_allocator a, const Matrix_##T* src)          \
+    {                                                                          \
+        CHECK_FATAL(!src, "src matrix is null");                               \
+        FATAL_IF(src->m == 0, "matrix_copy_" #T " on zeroed/moved-from matrix"); \
+        return matrix_create_arr_##T(a, src->m, src->n, src->data);            \
     }
 
 // ============================================================================
@@ -305,6 +332,8 @@
 #define MATRIX_LU_DECOMP(T)                                                                 \
     void matrix_LU_Decomp_##T(Matrix_##T* L, Matrix_##T* U, const Matrix_##T* mat)          \
     {                                                                                       \
+        FATAL_IF((L)->m == 0, "matrix_LU_Decomp_" #T " on zeroed/moved-from matrix");       \
+        FATAL_IF((U)->m == 0, "matrix_LU_Decomp_" #T " on zeroed/moved-from matrix");       \
         CHECK_FATAL(!L, "L mat is null");                                                   \
         CHECK_FATAL(!U, "U mat is null");                                                   \
         CHECK_FATAL(!mat, "mat is null");                                                   \
@@ -355,8 +384,10 @@
         CHECK_FATAL(mat->m != mat->n, "only square matrices have determinant"); \
                                                                                 \
         u64         n = mat->n;                                                 \
-        Matrix_##T* L = matrix_create_##T(n, n);                                \
-        Matrix_##T* U = matrix_create_##T(n, n);                                \
+        Matrix_##T  L_s = matrix_create_##T(WC_LIBC, n, n); /* scratch */       \
+        Matrix_##T  U_s = matrix_create_##T(WC_LIBC, n, n);                     \
+        Matrix_##T* L   = &L_s;                                                 \
+        Matrix_##T* U   = &U_s;                                                 \
                                                                                 \
         matrix_LU_Decomp_##T(L, U, mat);                                        \
                                                                                 \
@@ -399,33 +430,7 @@
 
 
 
-// ARENA-BASED MATRIX ALLOCATION MACROS
-// ============================================================================
-
-/*
-Create a matrix allocated from Arena (heap-style)
-Matrix struct and data both allocated from Arena
-No need to call matrix_destroy - freed when Arena is cleared/released
-
-Usage:
-    Matrix* mat = MATRIX_ARENA(Arena, 3, 3);
-*/
-#define MATRIX_ARENA_ALLOC(T)                                           \
-    Matrix_##T* matrix_Arena_alloc_##T(Arena* Arena, u64 m, u64 n)      \
-    {                                                                   \
-        CHECK_FATAL(m == 0 && n == 0, "n == m == 0");                   \
-        Matrix_##T* mat = ARENA_ALLOC(Arena, Matrix_##T);               \
-                                                                        \
-        FATAL_IF(!mat, "matrix Arena allocation failed");               \
-                                                                        \
-        mat->m = m;                                                     \
-        mat->n = n;                                                     \
-                                                                        \
-        mat->data = ARENA_ALLOC_N(Arena, T, (u64)(m * n));              \
-        FATAL_IF(!mat->data, "matrix data Arena allocation failed");    \
-                                                                        \
-        return mat;                                                     \
-    }
+// Arena-backed matrices: matrix_create_T(Arena_allocator(&arena), m, n).
 
 // ============================================================================
 // MACRO TO INSTANTIATE ALL FUNCTIONS FOR A TYPE
@@ -437,8 +442,9 @@ Usage:
     MATRIX_TYPE(T);                \
     MATRIX_CREATE(T)               \
     MATRIX_CREATE_ARR(T)           \
-    MATRIX_CREATE_STK(T)           \
+    MATRIX_CREATE_BUF(T)           \
     MATRIX_DESTROY(T)              \
+    MATRIX_MOVE(T)                 \
     MATRIX_SET_VAL_ARR(T)          \
     MATRIX_SET_VAL_ARR2(T)         \
     MATRIX_SET_ELM(T)              \
@@ -452,8 +458,7 @@ Usage:
     MATRIX_XPLY_2(T)               \
     MATRIX_LU_DECOMP(T)            \
     MATRIX_DET(T)                  \
-    MATRIX_PRINT(T, fmt)           \
-    MATRIX_ARENA_ALLOC(T)
+    MATRIX_PRINT(T, fmt)
 
 
 #endif // MATRIX_GENERIC_H

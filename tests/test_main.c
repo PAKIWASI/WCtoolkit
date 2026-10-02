@@ -14,6 +14,7 @@ void HashSet_suite(void);
 void Stack_suite(void);
 void Queue_suite(void);
 void matrix_suite(void);
+void matrix_generic_suite(void);
 void bit_vector_suite(void);
 void fast_math_suite(void);
 void complex_suite(void);
@@ -51,6 +52,7 @@ int main(void)
     Queue_suite();
 
     matrix_suite();
+    matrix_generic_suite();
 
     fast_math_suite();
 

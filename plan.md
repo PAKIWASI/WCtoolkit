@@ -424,11 +424,17 @@ Effort: S (hours), M (a day), L (multi-day). Each phase ends with a green build,
 - [x] Tests: fill past several resizes, remove/backward-shift, duplicate puts with owning keys (String), copy into a different allocator, move, zero-state fatal guards.
 - Exit: leak-free with test allocator; behaviour matches the pre-refactor golden results on the same inputs.
 
-### Phase 6: `Matrixf`, `StringStore`/`StrView` (M)
+### Phase 6: `Matrixf`, `StringStore`/`StrView` (M): DONE
 
-- [ ] `Matrixf` and `matrix_generic.h` macros; `matrix_create_buf` via `wc_borrowed`.
-- [ ] `StringStore` and the `StrView_*` split.
-- Exit: matrix and string-store tests green; no `Arena*` parameters remain outside the arena module.
+- [x] **Pre-phase repair (build was red):** `FATAL_IF` was used by `hashmap.c`/`hashset.c`/`wc_string.c` but never defined; now defined in `common.h`, unconditional in every build. Library bugs the stale tests had hidden: `str_cmp`/`str_cmp_ptr` used `const u8*` instead of `wc_compare_fn`'s `const void*`; `VEC_PUSH_CSTR` passed the allocator twice through `WC_BOX_IN`. A6 was still live in `GenVec`, `HashSet`, `Arena`, `Queue`, `WC_BOX_IN`: their allocation-failure and zero-state checks were `CHECK_FATAL` and vanished in Release (`test_fail_nth_allocation_dies_at_every_site` and `test_zero_state_mutation_dies` failed in Release only). All converted to `FATAL_IF`. Stale tests ported; `tests/compile/a5_realloc_n.c` restored.
+- [x] `Matrixf` stores `wc_allocator` (40 B, asserted). `matrix_create(a, m, n)`, `matrix_create_arr(a, m, n, arr)`, `matrix_create_buf(m, n, data)` (over `wc_borrowed`) return by value. `matrix_destroy` is zero-safe and leaves the struct zeroed. `matrix_copy(a, src)` returns a new matrix and never inherits `src->alloc`; `matrix_move(dest, src)` is memcpy + zero. `matrix_create_stk`, `matrix_Arena_alloc`, `matrix_Arena_arr_alloc` removed; `MATRIX(m, n)` / `MATRIX_IN(A, m, n)` added.
+- [x] Zero state (D4): create rejects `m == 0 || n == 0`; every mutating op (`set_*`, `add`, `sub`, `scale`, `div`, `xply`, `xply_2`, `T`, `LU_Decomp`) and `copy` FATAL on `m == 0`, in all builds.
+- [x] `matrix_generic.h`: same contract (`Matrix_T` stores the allocator; `create/create_arr/create_buf/destroy/copy/move`). `MATRIX_ARENA_ALLOC` and `MATRIX_CREATE_STK` removed. `MATRIX_COPY` changed from "memcpy into an existing same-size dest" to the by-value `matrix_copy(a, src)` contract. Internal temporaries in `xply_2`/`det` use `WC_LIBC` scratch (they were `malloc` before). The header was never instantiated anywhere; `tests/matrix_generic_test.c` now instantiates it for `double`.
+- [x] `StringStore` stores `wc_allocator` (40 B, asserted). **Deviation from 5.9:** `StringStore_create(a)` returns by value instead of `(ss, a)`, per D1 (the struct is not self-referential). Nodes and overflow buffers go through the allocator; overflow nodes record `heap_len` so the free size is exact. `StringStore_destroy` is zero-safe and zeroes; `StringStore_cstr` on a zeroed store is FATAL.
+- [x] `StrView_from_cstr(cstr, clen)` (no allocation) and `StrView_copy_cstr(a, cstr, clen)` (allocates `clen + 1`, NUL-terminated) plus `StrView_free_copy(a, sv)` for freeing allocators. Fixes a latent bug: the old Arena path copied `clen + 1` bytes and used `cstr[clen]` as the terminator, which is wrong when `clen < strlen(cstr)`.
+- [x] Tests: `matrix_test.c` rewritten (30), `matrix_generic_test.c` (4), 7 new views tests: copy across allocators, borrowed buffers, move, arena scratch, test-allocator leak/size checks, zero-state and exhausted-arena deaths.
+- Exit met: 503/503 tests in Debug (ASAN + UBSan, gcc), Release (gcc) and DebugNoSan (clang); ctest 2/2. No `Arena*` parameters outside the arena module. Only raw allocation left in `src/`/`include/` is the legacy `MALLOC` macro in `common.h` (Phase 7).
+- Open (not in scope): `matrix_xply_2`/`matrix_det` use stack VLAs sized `n * k` / `2 * n * n` floats, which overflow the stack for large matrices. `StringStore_append` has no return statement and three `StringStore_*` TODO functions are declared but not defined.
 
 ### Phase 7: Enforcement and cleanup (S)
 

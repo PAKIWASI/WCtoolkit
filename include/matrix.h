@@ -2,36 +2,48 @@
 #define MATRIX_H
 
 #include "common.h"
+#include "wc_allocator.h"
 #include <string.h>
 
 
 
 // ROW MAJOR 2D MATRIX
+//
+// Value type. Storage comes from `alloc`, which the matrix stores (40 bytes).
+// Zero state (moved-from / destroyed) is dead: only destroy or re-create it.
+// Every mutating op on a zeroed matrix (m == 0) is an unconditional FATAL.
 typedef struct {
-    float* data;
-    u64    m; // rows
-    u64    n; // cols
+    float*       data;
+    u64          m; // rows
+    u64          n; // cols
+    wc_allocator alloc;
 } Matrixf;
+
+_Static_assert(sizeof(Matrixf) == 40, "Matrixf layout: data + m + n + 16-byte allocator");
 
 
 // CREATION AND DESTRUCTION
 // ============================================================================
 
-// create heap matrix with m rows and n cols
-Matrixf* matrix_create(u64 m, u64 n) __attribute__((warn_unused_result));
+// m x n matrix, storage from `a`. Contents are uninitialised.
+Matrixf matrix_create(wc_allocator a, u64 m, u64 n) __attribute__((warn_unused_result));
 
-// create heap matrix with m rows and n cols and an array of size m x n
-Matrixf* matrix_create_arr(u64 m, u64 n, const float* arr) __attribute__((nonnull(3), warn_unused_result));
+// m x n matrix from `a`, filled from a row-major array of m * n floats.
+Matrixf matrix_create_arr(wc_allocator a, u64 m, u64 n, const float* arr) __attribute__((nonnull(4), warn_unused_result));
 
-// create matrix with everything on the Stack
-void matrix_create_stk(Matrixf* mat, u64 m, u64 n, float* data) __attribute__((nonnull(1, 4)));
+// Wrap caller-owned memory (stack array, static buffer). Uses wc_borrowed:
+// destroy frees nothing. `data` must outlive the matrix.
+Matrixf matrix_create_buf(u64 m, u64 n, float* data) __attribute__((nonnull(3), warn_unused_result));
 
-// destroy the matrix created with matrix_create or matrix_create_arr
-// DO NOT use on Stack-allocated matrices (created with matrix_create_stk)
+// Free storage through mat->alloc and zero the struct. Safe on zeroed matrices.
 void matrix_destroy(Matrixf* mat) __attribute__((nonnull(1)));
-// SAFE ON: raw/uninitialized dest. Never reads dest before writing it.
-void matrix_copy(Matrixf* dest, const Matrixf* src) __attribute__((nonnull(1, 2)));
-void matrix_move(Matrixf* dest, Matrixf** src) __attribute__((nonnull(1, 2)));
+
+// Deep copy of `src` into a new matrix allocated from `a` (never inherits src->alloc).
+Matrixf matrix_copy(wc_allocator a, const Matrixf* src) __attribute__((nonnull(2), warn_unused_result));
+
+// Transfer: dest takes src's storage and allocator, src is left zeroed.
+// dest must be raw or already destroyed (it is overwritten, not freed).
+void matrix_move(Matrixf* dest, Matrixf* src) __attribute__((nonnull(1, 2)));
 
 
 // SETTERS
@@ -132,52 +144,12 @@ void matrix_print(const Matrixf* mat) __attribute__((nonnull(1)));
 
 
 
-// ARENA-BASED MATRIX ALLOCATION MACROS
+// CONSTRUCTION MACROS
 // ============================================================================
-#include "arena.h"
-
-/*
-Create a matrix allocated from Arena (heap-style)
-Matrix struct and data both allocated from Arena
-No need to call matrix_destroy - freed when Arena is cleared/released
-
-Usage:
-    Matrix* mat = MATRIX_ARENA(Arena, 3, 3);
-*/
-__attribute__((nonnull(1))) static inline Matrixf* matrix_Arena_alloc(Arena* arena, u64 m, u64 n)
-{
-    CHECK_FATAL(m == 0 && n == 0, "n == m == 0");
-
-    Matrixf* mat = ARENA_ALLOC(arena, Matrixf);
-    FATAL_IF(!mat, "matrix Arena allocation failed");
-
-    mat->m = m;
-    mat->n = n;
-
-    mat->data = ARENA_ALLOC_N(arena, float, (u64)(m * n));
-    FATAL_IF(!mat->data, "matrix data Arena allocation failed");
-
-    return mat;
-}
-
-/*
-Create a matrix allocated from Arena with initial values
-Matrix struct and data allocated from Arena
-
-Usage:
-    Matrix* mat = MATRIX_ARENA_ARR(Arena, 3, 3, (float[9]){1,2,3,4,5,6,7,8,9});
-*/
-
-__attribute__((nonnull(1, 4))) static inline Matrixf* matrix_Arena_arr_alloc(Arena* arena, u64 m, u64 n, const float* arr)
-{
-    CHECK_FATAL(m == 0 || n == 0, "matrix dims must be > 0");
-
-    Matrixf* mat = matrix_Arena_alloc(arena, m, n);
-    memcpy(mat->data, arr, sizeof(float) * m * n);
-    return mat;
-}
-
-
+// MATRIX(m, n)         libc-backed
+// MATRIX_IN(A, m, n)   any allocator, e.g. MATRIX_IN(Arena_allocator(&arena), 3, 3)
+#define MATRIX_IN(A, m, n) matrix_create((A), (m), (n))
+#define MATRIX(m, n)       MATRIX_IN(WC_LIBC, (m), (n))
 
 
 #endif // MATRIX_H

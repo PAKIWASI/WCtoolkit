@@ -1,8 +1,8 @@
 #ifndef WC_VIEWS_H
 #define WC_VIEWS_H
 
-#include "arena.h"
 #include "common.h"
+#include "wc_allocator.h"
 #include "wc_string.h"
 
 
@@ -16,9 +16,17 @@ StrView StrView_from_String(String* str) __attribute__((nonnull(1)));
 
 StrView StrView_from_String_ex(String* str, u64 off, u64 len) __attribute__((nonnull(1)));
 
-// return a view into a cstr.
-// if arena, is passed, allocate the cstr into it and return it's view
-StrView StrView_from_cstr(const char* cstr, u64 clen, Arena* a) __attribute__((nonnull(1)));
+// View over existing memory. No allocation; `cstr` must outlive the view.
+StrView StrView_from_cstr(const char* cstr, u64 clen) __attribute__((nonnull(1)));
+
+// Copy clen bytes of `cstr` into memory from `a` (plus a NUL terminator) and
+// view it. LIFETIME: the view borrows from `a`. With an arena it lives until
+// the arena is reset/destroyed; with any freeing allocator (libc, test
+// allocator) release it with StrView_free_copy using the same allocator.
+StrView StrView_copy_cstr(wc_allocator a, const char* cstr, u64 clen) __attribute__((nonnull(2)));
+
+// Release a view returned by StrView_copy_cstr(a, ...). No-op on arenas.
+void StrView_free_copy(wc_allocator a, StrView sv);
 
 void StrView_print(StrView sv);
 
@@ -29,23 +37,33 @@ void StrView_print(StrView sv);
 
 typedef struct StringStore_node {
     union {
-        char  buf[StringStore_NODE_SIZE + 1]; // last bit is NULL (0) -> heap is active
-        char* heap;
+        char buf[StringStore_NODE_SIZE + 1]; // last byte 0 -> overflow `heap` is active
+        struct {
+            char* heap;     // overflow buffer, allocated from the store's allocator
+            u64   heap_len; // its size, needed to free it through wc_free
+        };
     };
     struct StringStore_node* next;
 } StringStore_node;
 
 // append-only, immutable String storage with a chain Arena-like backing
 // you get StrViews over the immutable Strings
+// Nodes and overflow buffers come from `alloc`, which the store keeps (40 bytes).
+// Views stay valid until StringStore_destroy. Zeroed store is dead: only
+// destroy or re-create it; StringStore_cstr on it is an unconditional FATAL.
 typedef struct {
     StringStore_node* tail;
     StringStore_node* head;
-    u32               tail_off; // how much of th tail node is used
+    wc_allocator      alloc;
+    u32               tail_off; // how much of the tail node is used
     u32               num;      // total number of nodes
 } StringStore;
 
-void StringStore_create(StringStore* ss) __attribute__((nonnull(1)));
-void StringStore_destroy(StringStore* ss);
+_Static_assert(sizeof(StringStore) == 40, "StringStore layout: 2 ptrs + allocator + 2 u32");
+
+StringStore StringStore_create(wc_allocator a) __attribute__((warn_unused_result));
+// Frees every node through ss->alloc and zeroes the struct. Safe on zeroed stores.
+void StringStore_destroy(StringStore* ss) __attribute__((nonnull(1)));
 
 StrView StringStore_cstr(StringStore* ss, const char* cstr, u64 clen) __attribute__((nonnull(1, 2)));
 

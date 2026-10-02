@@ -1,50 +1,54 @@
 #include "matrix.h"
 #include "common.h"
+#include "wc_allocator.h"
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
 
 
-Matrixf* matrix_create(u64 m, u64 n)
+#define MAT_BYTES(m, n) wc_mul(wc_mul((m), (n)), sizeof(float))
+
+// D4: a zeroed matrix is dead. Unconditional in every build.
+#define MAT_LIVE(mat, fn) FATAL_IF((mat)->m == 0, fn " on zeroed/moved-from matrix")
+
+
+Matrixf matrix_create(wc_allocator a, u64 m, u64 n)
 {
-    CHECK_FATAL(n == 0 && m == 0, "n == m == 0");
+    FATAL_IF(m == 0 || n == 0, "matrix_create: dims must be > 0 (got %llu x %llu)",
+             (unsigned long long)m, (unsigned long long)n);
 
-    Matrixf* mat = (Matrixf*)malloc(sizeof(Matrixf));
-    FATAL_IF(!mat, "matrix malloc failed");
+    float* data = (float*)wc_alloc(a, MAT_BYTES(m, n), alignof(float));
+    FATAL_IF(!data, "matrix_create: data allocation failed");
 
-    mat->m    = m;
-    mat->n    = n;
-    mat->data = (float*)malloc(sizeof(float) * n * m);
-    FATAL_IF(!mat->data, "matrix data malloc failed");
+    return (Matrixf){.data = data, .m = m, .n = n, .alloc = a};
+}
 
+Matrixf matrix_create_arr(wc_allocator a, u64 m, u64 n, const float* arr)
+{
+    Matrixf mat = matrix_create(a, m, n);
+    memcpy(mat.data, arr, sizeof(float) * m * n);
     return mat;
 }
 
-Matrixf* matrix_create_arr(u64 m, u64 n, const float* arr)
+Matrixf matrix_create_buf(u64 m, u64 n, float* data)
 {
-    Matrixf* mat = matrix_create(m, n);
-    memcpy(mat->data, arr, sizeof(float) * m * n);
-    return mat;
-}
-
-void matrix_create_stk(Matrixf* mat, u64 m, u64 n, float* data)
-{
-    // we can do this on the Stack
-    mat->data = data; // copying stk ptr 
-    mat->m    = m;
-    mat->n    = n;
+    FATAL_IF(m == 0 || n == 0, "matrix_create_buf: dims must be > 0");
+    return (Matrixf){.data = data, .m = m, .n = n, .alloc = wc_borrowed};
 }
 
 void matrix_destroy(Matrixf* mat)
 {
-    free(mat->data);
-    free(mat);
+    if (mat->data) {
+        wc_allocator a = mat->alloc; // read before zeroing
+        wc_free(a, mat->data, MAT_BYTES(mat->m, mat->n), alignof(float));
+    }
+    memset(mat, 0, sizeof(*mat));
 }
 
 
 void matrix_set_val_arr(Matrixf* mat, u64 count, const float* arr)
 {
+    MAT_LIVE(mat, "matrix_set_val_arr");
     CHECK_FATAL(count != MATRIX_TOTAL(mat), "count doesn't match matrix size");
 
     memcpy(mat->data, arr, sizeof(float) * count);
@@ -52,6 +56,7 @@ void matrix_set_val_arr(Matrixf* mat, u64 count, const float* arr)
 
 void matrix_set_val_arr2(Matrixf* mat, u64 m, u64 n, const float** arr2)
 {
+    MAT_LIVE(mat, "matrix_set_val_arr2");
     CHECK_FATAL(!*arr2, "*arr is null");
     CHECK_FATAL(m != mat->m || n != mat->n,
                 "mat dimentions dont match passed arr2");
@@ -65,6 +70,7 @@ void matrix_set_val_arr2(Matrixf* mat, u64 m, u64 n, const float** arr2)
 
 void matrix_set_elm(Matrixf* mat, float elm, u64 i, u64 j)
 {
+    MAT_LIVE(mat, "matrix_set_elm");
     CHECK_FATAL(i >= mat->m || j >= mat->n, "index out of bounds");
 
     mat->data[IDX(mat, i, j)] = elm;
@@ -79,6 +85,7 @@ float matrix_get_elm(const Matrixf* mat, u64 i, u64 j)
 
 void matrix_add(Matrixf* restrict out, const Matrixf* restrict a, const Matrixf* restrict b)
 {
+    MAT_LIVE(out, "matrix_add");
     CHECK_FATAL(a->m != b->m || a->n != b->n || a->m != out->m ||
                     a->n != out->n,
                 "a, b, out mat dimentions dont match");
@@ -93,6 +100,7 @@ void matrix_add(Matrixf* restrict out, const Matrixf* restrict a, const Matrixf*
 
 void matrix_sub(Matrixf* restrict out, const Matrixf* restrict a, const Matrixf* restrict b)
 {
+    MAT_LIVE(out, "matrix_sub");
     // FIXED: Added dimension check for 'out' matrix
     CHECK_FATAL(a->m != b->m || a->n != b->n || a->m != out->m ||
                     a->n != out->n,
@@ -109,6 +117,7 @@ void matrix_sub(Matrixf* restrict out, const Matrixf* restrict a, const Matrixf*
 // this is good for small to medium size matrices
 void matrix_xply(Matrixf* restrict out, const Matrixf* restrict a, const Matrixf* restrict b)
 {
+    MAT_LIVE(out, "matrix_xply");
     CHECK_FATAL(a->n != b->m,
                 "incompatible matrix dimensions for multiplication");
     CHECK_FATAL(out->m != a->m || out->n != b->n,
@@ -155,6 +164,7 @@ void matrix_xply(Matrixf* restrict out, const Matrixf* restrict a, const Matrixf
 // takes more memory, good for large size matrices
 void matrix_xply_2(Matrixf* restrict out, const Matrixf* restrict a, const Matrixf* restrict b)
 {
+    MAT_LIVE(out, "matrix_xply_2");
     CHECK_FATAL(a->n != b->m, "incompatible matrix dimensions");
     CHECK_FATAL(out->m != a->m || out->n != b->n,
                 "output matrix has wrong dimensions");
@@ -164,9 +174,8 @@ void matrix_xply_2(Matrixf* restrict out, const Matrixf* restrict a, const Matri
     u64 n = b->n;
 
     // Transpose B for cache-friendly access
-    Matrixf b_T;
-    float  data[n * k]; // random vals
-    matrix_create_stk(&b_T, n, k, data);
+    float   data[n * k]; // random vals
+    Matrixf b_T = matrix_create_buf(n, k, data);
     matrix_T(&b_T, b); // transpose sets all vals
 
     memset(out->data, 0, sizeof(float) * m * n);
@@ -203,6 +212,8 @@ For each element, you subtract the dot product of already-computed L and U value
 */
 void matrix_LU_Decomp(Matrixf* restrict L, Matrixf* restrict U, const Matrixf* restrict mat)
 {
+    MAT_LIVE(L, "matrix_LU_Decomp");
+    MAT_LIVE(U, "matrix_LU_Decomp");
     CHECK_FATAL(mat->n != mat->m, "mat is not a square matrix");
     CHECK_FATAL(L->n != mat->n || L->m != mat->m, "L dimensions don't match");
     CHECK_FATAL(U->n != mat->n || U->m != mat->m, "U dimensions don't match");
@@ -264,11 +275,10 @@ float matrix_det(const Matrixf* mat)
 
     u64 n = mat->n;
 
-    Matrixf L, U;
-    float  Ldata[n * n]; // random vals
-    float  Udata[n * n];
-    matrix_create_stk(&L, n, n, Ldata);
-    matrix_create_stk(&U, n, n, Udata);
+    float   Ldata[n * n]; // random vals
+    float   Udata[n * n];
+    Matrixf L = matrix_create_buf(n, n, Ldata);
+    Matrixf U = matrix_create_buf(n, n, Udata);
 
     // Perform LU decomposition
     matrix_LU_Decomp(&L, &U, mat); // L and U set to zero
@@ -283,6 +293,7 @@ float matrix_det(const Matrixf* mat)
 
 void matrix_T(Matrixf* restrict out, const Matrixf* restrict mat)
 {
+    MAT_LIVE(out, "matrix_T");
     CHECK_FATAL(mat->m != out->n || mat->n != out->m,
                 "incompatible matrix dimensions");
 
@@ -310,6 +321,7 @@ void matrix_T(Matrixf* restrict out, const Matrixf* restrict mat)
 
 void matrix_scale(Matrixf* restrict mat, float val)
 {
+    MAT_LIVE(mat, "matrix_scale");
     u64 total = MATRIX_TOTAL(mat);
     for (u64 i = 0; i < total; i++) { mat->data[i] *= val; }
 }
@@ -317,37 +329,26 @@ void matrix_scale(Matrixf* restrict mat, float val)
 
 void matrix_div(Matrixf* restrict mat, float val)
 {
+    MAT_LIVE(mat, "matrix_div");
     CHECK_FATAL(val == 0, "division by zero!");
 
     u64 total = MATRIX_TOTAL(mat);
     for (u64 i = 0; i < total; i++) { mat->data[i] /= val; }
 }
 
-void matrix_copy(Matrixf* dest, const Matrixf* src)
+Matrixf matrix_copy(wc_allocator a, const Matrixf* src)
+{
+    MAT_LIVE(src, "matrix_copy");
+    return matrix_create_arr(a, src->m, src->n, src->data);
+}
+
+void matrix_move(Matrixf* dest, Matrixf* src)
 {
     if (dest == src) {
         return;
     }
-
-    u64 count = src->m * src->n;
-    dest->data = malloc(count * sizeof(float));
-    FATAL_IF(!dest->data, "matrix copy malloc failed");
-    memcpy(dest->data, src->data, count * sizeof(float));
-
-    dest->m = src->m;
-    dest->n = src->n;
-}
-
-void matrix_move(Matrixf* dest, Matrixf** src)
-{
-    if (dest == *src) {
-        *src = NULL;
-        return;
-    }
-
-    memcpy(dest, *src, sizeof(Matrixf));
-    free(*src);
-    *src = NULL;
+    memcpy(dest, src, sizeof(Matrixf));
+    memset(src, 0, sizeof(Matrixf));
 }
 
 void matrix_print(const Matrixf* mat)

@@ -1,5 +1,9 @@
+#include "arena.h"
 #include "common.h"
 #include "views.h"
+#include "wc_allocator.h"
+#include "wc_test_allocator.h"
+#include "wc_test_fatal.h"
 #include "wc_string.h"
 #include "wc_test.h"
 
@@ -24,8 +28,7 @@ static int sv_equals_cstr(StrView sv, const char* cstr)
 
 static void test_small_Strings_share_node(void)
 {
-    StringStore ss;
-    StringStore_create(&ss);
+    StringStore ss = StringStore_create(WC_LIBC);
 
     StrView a = StringStore_cstr(&ss, "hello", 5);
     StrView b = StringStore_cstr(&ss, "world", 5);
@@ -43,8 +46,7 @@ static void test_small_Strings_share_node(void)
 
 static void test_exact_fit_no_new_node(void)
 {
-    StringStore ss;
-    StringStore_create(&ss);
+    StringStore ss = StringStore_create(WC_LIBC);
 
     char big[StringStore_NODE_SIZE];
     memset(big, 'A', sizeof(big));
@@ -71,8 +73,7 @@ static void test_exact_fit_no_new_node(void)
 
 static void test_overflow_by_one_goes_to_heap(void)
 {
-    StringStore ss;
-    StringStore_create(&ss);
+    StringStore ss = StringStore_create(WC_LIBC);
 
     char big[StringStore_NODE_SIZE + 1];
     memset(big, 'B', sizeof(big));
@@ -96,8 +97,7 @@ static void test_overflow_by_one_goes_to_heap(void)
 
 static void test_overflow_way_past_node(void)
 {
-    StringStore ss;
-    StringStore_create(&ss);
+    StringStore ss = StringStore_create(WC_LIBC);
 
     u64   big_len = (StringStore_NODE_SIZE * 3) + 7;
     char* big     = malloc(big_len);
@@ -121,8 +121,7 @@ static void test_overflow_way_past_node(void)
 
 static void test_multiple_overflows_keep_content(void)
 {
-    StringStore ss;
-    StringStore_create(&ss);
+    StringStore ss = StringStore_create(WC_LIBC);
 
     enum { OVER_N = 4, OVER_LEN = StringStore_NODE_SIZE + 5 };
     char buf[OVER_LEN];
@@ -155,8 +154,7 @@ static void test_multiple_overflows_keep_content(void)
 
 static void test_small_after_overflow_appends_to_tail(void)
 {
-    StringStore ss;
-    StringStore_create(&ss);
+    StringStore ss = StringStore_create(WC_LIBC);
 
     char big[StringStore_NODE_SIZE + 3];
     memset(big, 'E', sizeof(big));
@@ -176,8 +174,7 @@ static void test_small_after_overflow_appends_to_tail(void)
 
 static void test_destroy_mixed_chain(void)
 {
-    StringStore ss;
-    StringStore_create(&ss);
+    StringStore ss = StringStore_create(WC_LIBC);
 
     (void)StringStore_cstr(&ss, "one", 3);
 
@@ -207,6 +204,111 @@ static void test_strview_from_String(void)
 }
 
 
+// StrView_from_cstr never allocates; StrView_copy_cstr owns a terminated copy
+
+static void test_strview_from_cstr_borrows(void)
+{
+    const char* text = "borrowed";
+    StrView     sv   = StrView_from_cstr(text, 3);
+    WC_ASSERT_TRUE(sv.ptr == text);
+    WC_ASSERT_TRUE(sv_equals_cstr(sv, "bor"));
+}
+
+static void test_strview_copy_cstr_terminates_and_frees(void)
+{
+    wc_test_alloc ta;
+    wc_test_alloc_init(&ta, WC_LIBC);
+    wc_allocator al = wc_test_alloc_allocator(&ta);
+
+    // clen shorter than the string: the old Arena path copied clen + 1 bytes
+    // and left cstr[clen] ('l') where the terminator should be
+    StrView sv = StrView_copy_cstr(al, "hello", 3);
+    WC_ASSERT_TRUE(sv_equals_cstr(sv, "hel"));
+    WC_ASSERT(sv.ptr[3] == '\0');
+    WC_ASSERT_EQ_U64(ta.live_blocks, 1);
+
+    StrView_free_copy(al, sv);
+    WC_ASSERT_EQ_U64(ta.n_errors, 0); // size/align matched the alloc
+    WC_ASSERT_EQ_U64(wc_test_alloc_destroy(&ta), 0);
+}
+
+static void test_strview_copy_cstr_on_arena(void)
+{
+    Arena arena;
+    Arena_create(&arena, WC_LIBC, 256);
+    StrView sv = StrView_copy_cstr(Arena_allocator(&arena), "arena", 5);
+    WC_ASSERT_TRUE((const u8*)sv.ptr >= arena.base && (const u8*)sv.ptr < arena.base + arena.size);
+    WC_ASSERT_TRUE(sv_equals_cstr(sv, "arena"));
+    Arena_destroy(&arena); // view's lifetime ends here
+}
+
+
+// StringStore through the allocator
+
+static void test_StringStore_test_allocator_leak_free(void)
+{
+    wc_test_alloc ta;
+    wc_test_alloc_init(&ta, WC_LIBC);
+    wc_allocator al = wc_test_alloc_allocator(&ta);
+
+    StringStore ss = StringStore_create(al);
+    (void)StringStore_cstr(&ss, "small", 5);
+    char big[StringStore_NODE_SIZE + 40];
+    memset(big, 'G', sizeof(big));
+    StrView v = StringStore_cstr(&ss, big, sizeof(big)); // overflow: node + heap buffer
+    WC_ASSERT_TRUE(wc_test_alloc_owns(&ta, v.ptr));
+    // 3 nodes (initial, overflow, fresh tail) + the overflow buffer
+    WC_ASSERT_EQ_U64(ta.live_blocks, 4);
+
+    StringStore_destroy(&ss);
+    WC_ASSERT_NULL(ss.head);
+    WC_ASSERT_EQ_U64(ta.n_errors, 0); // heap_len recorded correctly for the free
+    WC_ASSERT_EQ_U64(wc_test_alloc_destroy(&ta), 0);
+}
+
+static void test_StringStore_on_arena(void)
+{
+    Arena arena;
+    Arena_create(&arena, WC_LIBC, nKB(8));
+    StringStore ss = StringStore_create(Arena_allocator(&arena));
+    StrView     a  = StringStore_cstr(&ss, "inside", 6);
+    WC_ASSERT_TRUE((const u8*)a.ptr >= arena.base && (const u8*)a.ptr < arena.base + arena.size);
+    WC_ASSERT_TRUE(sv_equals_cstr(a, "inside"));
+    StringStore_destroy(&ss);
+    Arena_destroy(&arena);
+}
+
+static void test_StringStore_destroy_zeroed_is_safe(void)
+{
+    StringStore z;
+    memset(&z, 0, sizeof(z));
+    StringStore_destroy(&z);
+    StringStore_destroy(&z);
+    WC_ASSERT_NULL(z.head);
+}
+
+static void cstr_after_destroy(void)
+{
+    StringStore ss = StringStore_create(WC_LIBC);
+    StringStore_destroy(&ss);
+    (void)StringStore_cstr(&ss, "dead", 4);
+}
+
+static void create_on_exhausted_arena(void)
+{
+    Arena arena;
+    Arena_create(&arena, WC_LIBC, 64); // smaller than one node
+    StringStore ss = StringStore_create(Arena_allocator(&arena));
+    (void)ss;
+}
+
+static void test_StringStore_zero_state_and_oom_die(void)
+{
+    WC_ASSERT_DIES(cstr_after_destroy);
+    WC_ASSERT_DIES(create_on_exhausted_arena);
+}
+
+
 // Suite 
 
 void views_suite(void)
@@ -220,4 +322,11 @@ void views_suite(void)
     WC_RUN(test_small_after_overflow_appends_to_tail);
     WC_RUN(test_destroy_mixed_chain);
     WC_RUN(test_strview_from_String);
+    WC_RUN(test_strview_from_cstr_borrows);
+    WC_RUN(test_strview_copy_cstr_terminates_and_frees);
+    WC_RUN(test_strview_copy_cstr_on_arena);
+    WC_RUN(test_StringStore_test_allocator_leak_free);
+    WC_RUN(test_StringStore_on_arena);
+    WC_RUN(test_StringStore_destroy_zeroed_is_safe);
+    WC_RUN(test_StringStore_zero_state_and_oom_die);
 }

@@ -136,6 +136,7 @@ add_executable(tests
     tests/hashset_test.c
     tests/stack_queue_test.c
     tests/matrix_test.c
+    tests/matrix_generic_test.c
     tests/bit_vector_test.c
     tests/fast_math_test.c
     tests/complex_test.c

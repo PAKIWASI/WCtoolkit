@@ -765,8 +765,7 @@ static inline int strstore_fmt(char* buf, u64 bufsize, int i)
 
 static void bench_ss_StringStore(void)
 {
-    StringStore ss;
-    StringStore_create(&ss);
+    StringStore ss = StringStore_create(WC_LIBC);
 
     char buf[64];
     u64  t0 = ns_now();
