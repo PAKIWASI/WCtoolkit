@@ -30,7 +30,7 @@ void Arena_create(Arena* arena, wc_allocator backing, u64 capacity)
     }
 
     u8* base = wc_alloc(backing, capacity, ARENA_BASE_ALIGN);
-    CHECK_FATAL(!base, "Arena base allocation of %llu bytes failed", (unsigned long long)capacity); // D5: unconditional
+    FATAL_IF(!base, "Arena base allocation of %llu bytes failed", (unsigned long long)capacity); // D5: unconditional
 
     *arena = (Arena){
         .backing   = backing,

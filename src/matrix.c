@@ -11,12 +11,12 @@ Matrixf* matrix_create(u64 m, u64 n)
     CHECK_FATAL(n == 0 && m == 0, "n == m == 0");
 
     Matrixf* mat = (Matrixf*)malloc(sizeof(Matrixf));
-    CHECK_FATAL(!mat, "matrix malloc failed");
+    FATAL_IF(!mat, "matrix malloc failed");
 
     mat->m    = m;
     mat->n    = n;
     mat->data = (float*)malloc(sizeof(float) * n * m);
-    CHECK_FATAL(!mat->data, "matrix data malloc failed");
+    FATAL_IF(!mat->data, "matrix data malloc failed");
 
     return mat;
 }
@@ -331,7 +331,7 @@ void matrix_copy(Matrixf* dest, const Matrixf* src)
 
     u64 count = src->m * src->n;
     dest->data = malloc(count * sizeof(float));
-    CHECK_FATAL(!dest->data, "matrix copy malloc failed");
+    FATAL_IF(!dest->data, "matrix copy malloc failed");
     memcpy(dest->data, src->data, count * sizeof(float));
 
     dest->m = src->m;

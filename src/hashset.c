@@ -57,15 +57,15 @@ HashSet HashSet_create(wc_allocator a, u32 elm_size, custom_hash_fn hash_fn,
     HashSet set;
 
     set.elms = wc_alloc(a, set_elms_size(HASHMAP_INIT_CAPACITY, elm_size), 1);
-    CHECK_FATAL(!set.elms, "elms alloc failed");
+    FATAL_IF(!set.elms, "elms alloc failed");
 
     set.psls = wc_alloc(a, set_psls_size(HASHMAP_INIT_CAPACITY), 1);
-    CHECK_FATAL(!set.psls, "psls alloc failed");
+    FATAL_IF(!set.psls, "psls alloc failed");
     memset(set.psls, 0, set_psls_size(HASHMAP_INIT_CAPACITY));
 
     // 2 * elm_size: first half = staging, second half = RH swap buffer
     set.scratch = wc_alloc(a, set_scratch_size(elm_size), 1);
-    CHECK_FATAL(!set.scratch, "scratch alloc failed");
+    FATAL_IF(!set.scratch, "scratch alloc failed");
 
     set.size     = 0;
     set.capacity = HASHMAP_INIT_CAPACITY;
@@ -122,15 +122,15 @@ HashSet HashSet_copy(wc_allocator a, const HashSet* src)
     HashSet dest;
 
     dest.elms = wc_alloc(a, set_elms_size(src->capacity, src->elm_size), 1);
-    CHECK_FATAL(!dest.elms, "copy elms alloc failed");
+    FATAL_IF(!dest.elms, "copy elms alloc failed");
     memset(dest.elms, 0, set_elms_size(src->capacity, src->elm_size));
 
     dest.psls = wc_alloc(a, set_psls_size(src->capacity), 1);
-    CHECK_FATAL(!dest.psls, "copy psls alloc failed");
+    FATAL_IF(!dest.psls, "copy psls alloc failed");
     memset(dest.psls, 0, set_psls_size(src->capacity));
 
     dest.scratch = wc_alloc(a, set_scratch_size(src->elm_size), 1);
-    CHECK_FATAL(!dest.scratch, "copy scratch alloc failed");
+    FATAL_IF(!dest.scratch, "copy scratch alloc failed");
 
     dest.size     = src->size;
     dest.capacity = src->capacity;
@@ -455,10 +455,10 @@ static void set_resize(HashSet* set, u64 new_capacity)
     u64 old_cap  = set->capacity;
 
     set->elms = wc_alloc(a, set_elms_size(new_capacity, set->elm_size), 1);
-    CHECK_FATAL(!set->elms, "resize elms alloc failed");
+    FATAL_IF(!set->elms, "resize elms alloc failed");
 
     set->psls = wc_alloc(a, set_psls_size(new_capacity), 1);
-    CHECK_FATAL(!set->psls, "resize psls alloc failed");
+    FATAL_IF(!set->psls, "resize psls alloc failed");
     memset(set->psls, 0, set_psls_size(new_capacity));
 
     set->capacity = new_capacity;

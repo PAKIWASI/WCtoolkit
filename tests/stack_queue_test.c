@@ -4,6 +4,7 @@
 #include "stack.h"
 #include "wc_allocator.h"
 #include "wc_errno.h"
+#include "wc_macros.h"
 #include "wc_test.h"
 #include "wc_test_allocator.h"
 

@@ -44,7 +44,7 @@ void StrView_print(StrView sv)
 void StringStore_create(StringStore* ss)
 {
     StringStore_node* node = malloc(sizeof(StringStore_node));
-    CHECK_FATAL(!node, "node malloc failed");
+    FATAL_IF(!node, "node malloc failed");
 
     node->next                       = NULL;
     node->buf[StringStore_NODE_SIZE] = 1; // heap inactive
@@ -84,7 +84,7 @@ void StringStore_destroy(StringStore* ss)
 static inline void add_node(StringStore* ss)
 {
     StringStore_node* node = malloc(sizeof(StringStore_node));
-    CHECK_FATAL(!node, "node malloc failed");
+    FATAL_IF(!node, "node malloc failed");
 
     node->next                       = NULL; // must terminate the chain for StringStore_destroy
     node->buf[StringStore_NODE_SIZE] = 1;    // heap inactive
@@ -103,11 +103,11 @@ StrView StringStore_cstr(StringStore* ss, const char* cstr, u64 clen)
     // (ptr, len) or memcpy out of it.
     if (clen > StringStore_NODE_SIZE) {
         StringStore_node* node = malloc(sizeof(StringStore_node));
-        CHECK_FATAL(!node, "node malloc failed");
+        FATAL_IF(!node, "node malloc failed");
 
         node->heap                       = malloc(clen);
         node->buf[StringStore_NODE_SIZE] = 0; // `heap` is live; StringStore_destroy must free it
-        CHECK_FATAL(!node->heap, "overflow node malloc failed");
+        FATAL_IF(!node->heap, "overflow node malloc failed");
 
         memcpy(node->heap, cstr, clen);
 

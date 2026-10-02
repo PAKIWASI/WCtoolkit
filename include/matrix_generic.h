@@ -37,11 +37,11 @@
     {                                                              \
         CHECK_FATAL(n == 0 && m == 0, "n == m == 0");              \
         Matrix_##T* mat = (Matrix_##T*)malloc(sizeof(Matrix_##T)); \
-        CHECK_FATAL(!mat, "matrix malloc failed");                 \
+        FATAL_IF(!mat, "matrix malloc failed");                    \
         mat->m    = m;                                             \
         mat->n    = n;                                             \
         mat->data = (T*)malloc(sizeof(T) * n * m);                 \
-        CHECK_FATAL(!mat->data, "matrix data malloc failed");      \
+        FATAL_IF(!mat->data, "matrix data malloc failed");         \
         return mat;                                                \
     }
 
@@ -416,13 +416,13 @@ Usage:
         CHECK_FATAL(m == 0 && n == 0, "n == m == 0");                   \
         Matrix_##T* mat = ARENA_ALLOC(Arena, Matrix_##T);               \
                                                                         \
-        CHECK_FATAL(!mat, "matrix Arena allocation failed");            \
+        FATAL_IF(!mat, "matrix Arena allocation failed");               \
                                                                         \
         mat->m = m;                                                     \
         mat->n = n;                                                     \
                                                                         \
         mat->data = ARENA_ALLOC_N(Arena, T, (u64)(m * n));              \
-        CHECK_FATAL(!mat->data, "matrix data Arena allocation failed"); \
+        FATAL_IF(!mat->data, "matrix data Arena allocation failed");    \
                                                                         \
         return mat;                                                     \
     }

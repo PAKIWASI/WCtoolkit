@@ -138,8 +138,7 @@ Usage:
         } else {                                                                         \
             /* by pointer: box the String in the vec's allocator */                      \
             WC_ASSERT_ELEM_SIZE((vec), String*);                                         \
-            String* _wpc_p = WC_BOX_IN((vec)->alloc, String, String_from_cstr,          \
-                                        (vec)->alloc, (cstr));                           \
+            String* _wpc_p = WC_BOX_IN((vec)->alloc, String, String_from_cstr, (cstr));  \
             GenVec_push_move((vec), (u8*)&_wpc_p); /* slot owns the pointer */          \
         }                                                                                \
     } while (0)

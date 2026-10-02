@@ -149,13 +149,13 @@ __attribute__((nonnull(1))) static inline Matrixf* matrix_Arena_alloc(Arena* are
     CHECK_FATAL(m == 0 && n == 0, "n == m == 0");
 
     Matrixf* mat = ARENA_ALLOC(arena, Matrixf);
-    CHECK_FATAL(!mat, "matrix Arena allocation failed");
+    FATAL_IF(!mat, "matrix Arena allocation failed");
 
     mat->m = m;
     mat->n = n;
 
     mat->data = ARENA_ALLOC_N(arena, float, (u64)(m * n));
-    CHECK_FATAL(!mat->data, "matrix data Arena allocation failed");
+    FATAL_IF(!mat->data, "matrix data Arena allocation failed");
 
     return mat;
 }

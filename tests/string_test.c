@@ -645,10 +645,10 @@ static void test_string_test_allocator_leak_free(void)
         String_append_char(&s, 'x');
     }
     WC_ASSERT_FALSE(String_is_sso(&s));
-    WC_ASSERT_TRUE(wc_test_alloc_active_bytes(&ta) > 0);
+    WC_ASSERT_TRUE(ta.live_bytes > 0);
 
     String_destroy(&s);
-    WC_ASSERT_EQ_U64(wc_test_alloc_active_bytes(&ta), 0);
+    WC_ASSERT_EQ_U64(ta.live_bytes, 0);
 
     wc_test_alloc_destroy(&ta);
 }

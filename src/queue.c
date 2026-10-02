@@ -52,7 +52,7 @@ static void Queue_compact(Queue* q, u64 new_capacity);
 
 Queue Queue_create(wc_allocator a, u64 n, u32 data_size, const wc_container_ops* ops)
 {
-    CHECK_FATAL(n == 0 || data_size == 0, "n/data_size can't be 0");
+    FATAL_IF(n == 0 || data_size == 0, "n/data_size can't be 0");
 
     Queue q;
     q.arr  = GenVec_create(a, n, data_size, ops);
@@ -64,7 +64,7 @@ Queue Queue_create(wc_allocator a, u64 n, u32 data_size, const wc_container_ops*
 
 Queue Queue_create_val(wc_allocator a, u64 n, const u8* val, u32 data_size, const wc_container_ops* ops)
 {
-    CHECK_FATAL(n == 0 || data_size == 0, "n/data_size can't be 0");
+    FATAL_IF(n == 0 || data_size == 0, "n/data_size can't be 0");
 
     Queue q;
     q.arr  = GenVec_create_val(a, n, val, data_size, ops);

@@ -83,7 +83,7 @@ static void        map_resize(HashMap* map, u64 new_capacity);
 HashMap HashMap_create(wc_allocator a, u32 key_size, u32 val_size, custom_hash_fn hash_fn, wc_compare_fn cmp_fn,
                        const wc_container_ops* key_ops, const wc_container_ops* val_ops)
 {
-    CHECK_FATAL(key_size == 0 || val_size == 0, "key/val size can't be 0");
+    FATAL_IF(key_size == 0 || val_size == 0, "key/val size can't be 0");
 
     HashMap map;
     map.alloc    = a;

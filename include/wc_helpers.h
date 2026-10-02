@@ -119,13 +119,13 @@ static inline void str_print_ptr(const u8* elm)
     String_print(*(const String**)elm);
 }
 
-static inline int str_cmp(const u8* a, const u8* b, u64 size)
+static inline int str_cmp(const void* a, const void* b, u64 size)
 {
     (void)size;
     return String_compare((const String*)a, (const String*)b);
 }
 
-static inline int str_cmp_ptr(const u8* a, const u8* b, u64 size)
+static inline int str_cmp_ptr(const void* a, const void* b, u64 size)
 {
     (void)size;
     return String_compare(*(const String**)a, *(const String**)b);

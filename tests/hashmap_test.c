@@ -1,3 +1,4 @@
+#include "arena.h"
 #include "common.h"
 #include "map_setup.h"
 #include "wc_string.h"

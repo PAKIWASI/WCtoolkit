@@ -18,10 +18,11 @@ static u64 hash_int(const u8* key, u64 size)
     return (u64)(*(const int*)key);
 }
 
-static int cmp_int(const u8* a, const u8* b, u64 size)
+static int cmp_int(const void* a, const void* b, u64 size)
 {
     (void)size;
-    return (*(const int*)a) - (*(const int*)b);
+    int x = *(const int*)a, y = *(const int*)b;
+    return (x > y) - (x < y); // no overflow, unlike x - y
 }
 
 

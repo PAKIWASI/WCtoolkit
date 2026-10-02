@@ -66,6 +66,15 @@ wc_fatal_report(const char* file, int line, const char* func, const char* fmt, .
         }                                                    \
     } while (0)
 
+// Unconditional fatal check: stays active under NDEBUG. Use for resource
+// failures (allocation) where continuing would corrupt memory (D5).
+#define FATAL_IF(cond, fmt, ...)                              \
+    do {                                                      \
+        if (__builtin_expect(!!(cond), 0)) {                  \
+            FATAL("Check: (%s): " fmt, #cond, ##__VA_ARGS__); \
+        }                                                     \
+    } while (0)
+
 #ifdef NDEBUG
 #define CHECK_FATAL(cond, fmt, ...) ((void)0)
 #else
@@ -142,7 +151,7 @@ typedef struct {
     ({                                                                     \
         wc_allocator _wbx_a = (A);                                         \
         T*           _wbx_p = (T*)wc_alloc(_wbx_a, sizeof(T), alignof(T)); \
-        CHECK_FATAL(!_wbx_p, "WC_BOX_IN(" #T "): allocation failed");      \
+        FATAL_IF(!_wbx_p, "WC_BOX_IN(" #T "): allocation failed");         \
         *_wbx_p = init_fn(_wbx_a, __VA_ARGS__);                            \
         _wbx_p;                                                            \
     })

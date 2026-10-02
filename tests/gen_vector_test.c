@@ -544,11 +544,11 @@ static void test_shrink_to_fit_already_tight(void)
 static void test_push_move_zeroes_src(void)
 {
     GenVec  v = VEC_OF_STR(4);
-    String* s = String_from_cstr("owned");
-    GenVec_push_move(&v, (u8*)s);
-    WC_ASSERT_EQ_U64(s->size, 0); // moved-from String is zeroed
-    WC_ASSERT_NULL(s->heap);
-    String_destroy(s);            // frees the shell only
+    String  s = String_from_cstr(WC_LIBC, "owned");
+    GenVec_push_move(&v, (u8*)&s);
+    WC_ASSERT_EQ_U64(s.size, 0); // moved-from String is zeroed
+    WC_ASSERT_NULL(s.heap);
+    String_destroy(&s);          // zero-safe no-op
     WC_ASSERT_EQ_U64(GenVec_size(&v), 1);
     WC_ASSERT(String_equals_cstr(VEC_AT_MUT(&v, String, 0), "owned"));
     GenVec_destroy(&v);
@@ -562,10 +562,10 @@ static void test_insert_move_front(void)
     GenVec v = VEC_OF_STR(4);
     VEC_PUSH_CSTR(&v, "b");
     VEC_PUSH_CSTR(&v, "c");
-    String* s = String_from_cstr("a");
-    GenVec_insert_move(&v, 0, (u8*)s);
-    WC_ASSERT_EQ_U64(s->size, 0);
-    String_destroy(s);
+    String  s = String_from_cstr(WC_LIBC, "a");
+    GenVec_insert_move(&v, 0, (u8*)&s);
+    WC_ASSERT_EQ_U64(s.size, 0);
+    String_destroy(&s);
     WC_ASSERT_EQ_U64(GenVec_size(&v), 3);
     WC_ASSERT(String_equals_cstr(VEC_AT_MUT(&v, String, 0), "a"));
     WC_ASSERT(String_equals_cstr(VEC_AT_MUT(&v, String, 1), "b"));
@@ -579,10 +579,10 @@ static void test_replace_move_frees_old(void)
 {
     GenVec v = VEC_OF_STR(4);
     VEC_PUSH_CSTR(&v, "old");
-    String* s = String_from_cstr("new");
-    GenVec_replace_move(&v, 0, (u8*)s);
-    WC_ASSERT_EQ_U64(s->size, 0);
-    String_destroy(s);
+    String  s = String_from_cstr(WC_LIBC, "new");
+    GenVec_replace_move(&v, 0, (u8*)&s);
+    WC_ASSERT_EQ_U64(s.size, 0);
+    String_destroy(&s);
     WC_ASSERT(String_equals_cstr(VEC_AT_MUT(&v, String, 0), "new"));
     GenVec_destroy(&v);
 }

@@ -144,7 +144,7 @@ static void test_strval_triggers_growth(void)
 static void test_strptr_push_copy_independent(void)
 {
     GenVec  v = VEC_OF_STR_PTR(4);
-    String* s = WC_BOX_IN(WC_LIBC, String, String_from_cstr, WC_LIBC, "hello");
+    String* s = WC_BOX_IN(WC_LIBC, String, String_from_cstr, "hello");
 
     VEC_PUSH(&v, s);
     VEC_PUSH(&v, s);
@@ -162,7 +162,7 @@ static void test_strptr_push_copy_independent(void)
 static void test_strptr_push_move_nulls_src(void)
 {
     GenVec  v = VEC_OF_STR_PTR(4);
-    String* s = WC_BOX_IN(WC_LIBC, String, String_from_cstr, WC_LIBC, "world");
+    String* s = WC_BOX_IN(WC_LIBC, String, String_from_cstr, "world");
     VEC_PUSH_MOVE(&v, s);
 
     WC_ASSERT_NULL(s);
@@ -174,7 +174,7 @@ static void test_strptr_address_stable_after_growth(void)
 {
     /* key advantage of Strategy B: address of String doesn't change on realloc */
     GenVec  v    = VEC_OF_STR_PTR(2);
-    String* s    = WC_BOX_IN(WC_LIBC, String, String_from_cstr, WC_LIBC, "stable");
+    String* s    = WC_BOX_IN(WC_LIBC, String, String_from_cstr, "stable");
     VEC_PUSH_MOVE(&v, s);
     String* addr = VEC_AT(&v, String*, 0); /* address of the heap String */
 
@@ -210,7 +210,7 @@ static void test_strptr_replace_slot_pointer(void)
 
     /* VEC_AT_MUT gives String** — we can replace which String the slot points to */
     String** slot        = VEC_AT_MUT(&v, String*, 0);
-    String*  replacement = WC_BOX_IN(WC_LIBC, String, String_from_cstr, WC_LIBC, "new");
+    String*  replacement = WC_BOX_IN(WC_LIBC, String, String_from_cstr, "new");
     String_destroy(*slot);  /* free old String */
     wc_free(WC_LIBC, *slot, sizeof(String), alignof(String));
     *slot = replacement;    /* put new String* in slot */

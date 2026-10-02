@@ -70,7 +70,7 @@ static void GenVec_grow(GenVec* vec);
         u8* data = NULL;                                                                                            \
         if ((n) != 0) {                                                                                             \
             data = wc_alloc(a, wc_mul(n, data_size), wc_align_for_size(data_size));                                 \
-            CHECK_FATAL(!data, "GenVec: allocation of %llu x %u bytes failed", (unsigned long long)(n), data_size); \
+            FATAL_IF(!data, "GenVec: allocation of %llu x %u bytes failed", (unsigned long long)(n), data_size);    \
         }                                                                                                           \
         data;                                                                                                       \
     })
@@ -78,7 +78,7 @@ static void GenVec_grow(GenVec* vec);
 
 GenVec GenVec_create(wc_allocator alloc, u64 n, u32 data_size, const wc_container_ops* ops)
 {
-    CHECK_FATAL(data_size == 0, "GenVec: data_size can't be 0");
+    FATAL_IF(data_size == 0, "GenVec: data_size can't be 0");
 
     return (GenVec){
         .data      = ALLOC_OR_DIE(alloc, n, data_size),
@@ -121,7 +121,7 @@ GenVec GenVec_create_val(wc_allocator alloc, u64 n, const u8* val, u32 data_size
 
 GenVec GenVec_create_buf(u8* buf, u64 n, u32 data_size, const wc_container_ops* ops)
 {
-    CHECK_FATAL(n == 0 || data_size == 0, "GenVec_create_buf: n/data_size can't be 0");
+    FATAL_IF(n == 0 || data_size == 0, "GenVec_create_buf: n/data_size can't be 0");
 
     return (GenVec){
         .data      = buf,
@@ -193,7 +193,7 @@ void GenVec_reserve(GenVec* vec, u64 new_capacity)
 
     u8* new_data = wc_realloc(vec->alloc, vec->data, GET_SCALED(vec, vec->capacity),
                               wc_mul(new_capacity, vec->data_size), DATA_ALIGN(vec));
-    CHECK_FATAL(!new_data, "GenVec_reserve: realloc to %llu elements failed", (unsigned long long)new_capacity);
+    FATAL_IF(!new_data, "GenVec_reserve: realloc to %llu elements failed", (unsigned long long)new_capacity);
 
     vec->data     = new_data;
     vec->capacity = new_capacity;
@@ -236,7 +236,7 @@ void GenVec_shrink_to_fit(GenVec* vec)
     }
 
     u8* new_data = wc_realloc(vec->alloc, vec->data, GET_SCALED(vec, curr_cap), GET_SCALED(vec, min_cap), DATA_ALIGN(vec));
-    CHECK_FATAL(!new_data, "GenVec_shrink_to_fit: realloc failed");
+    FATAL_IF(!new_data, "GenVec_shrink_to_fit: realloc failed");
 
     vec->data     = new_data;
     vec->capacity = min_cap;
