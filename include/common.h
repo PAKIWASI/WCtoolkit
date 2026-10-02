@@ -167,7 +167,7 @@ typedef struct {
 #define WC_BOX_IN(A, T, init_fn, ...)                                      \
     ({                                                                     \
         wc_allocator _wbx_a = (A);                                         \
-        T*           _wbx_p = wc_alloc(_wbx_a, sizeof(T), alignof(T)); \
+        T*           _wbx_p = wc_alloc(_wbx_a, sizeof(T), alignof(T));     \
         FATAL_IF(!_wbx_p, "WC_BOX_IN(" #T "): allocation failed");         \
         *_wbx_p = init_fn(_wbx_a, __VA_ARGS__);                            \
         _wbx_p;                                                            \
