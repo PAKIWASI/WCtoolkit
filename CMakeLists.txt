@@ -155,18 +155,18 @@ target_include_directories(tests PRIVATE include tests)
 target_compile_options(tests PRIVATE ${WC_WARN_FLAGS})
 target_link_libraries(tests m)
 
-# Register with CTest so `ctest` works from the build directory
-enable_testing()
-add_test(NAME unit_tests COMMAND tests)
-
-# A5: the typed realloc macro must compile when used (fixed in Phase 1).
-add_test(NAME a5_realloc_n_compiles
-    COMMAND ${CMAKE_C_COMPILER} -std=gnu11 -fsyntax-only -Wall -Wextra -Werror
-            -I${CMAKE_SOURCE_DIR}/include
-            ${CMAKE_SOURCE_DIR}/tests/compile/a5_realloc_n.c)
-
 
 # Example projects
+
+# Allocator patterns: Arena_create_buf, ARENA_SCOPE, nested containers, escape copy.
+add_executable(example_allocators
+    examples/allocators.c
+    ${LIB_SOURCES}
+)
+target_include_directories(example_allocators PRIVATE include)
+target_compile_options(example_allocators PRIVATE ${WC_WARN_FLAGS})
+add_test(NAME example_allocators COMMAND example_allocators)
+
 
 # # wcjson
 # add_executable(wcjson

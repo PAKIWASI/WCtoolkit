@@ -1,4 +1,5 @@
 #include "wc_errno.h"
+#include "wc_poison.h" // must stay last: bans raw malloc/free below
 
 
 

@@ -232,9 +232,39 @@ static void test_create_of_String_by_pointer(void)
     GenVec_destroy(&v);
 }
 
+static void test_map_of_string_keys_hash_content(void)
+{
+    // Regression: MAP_OF(String, V) used NULL hash/cmp, so it hashed the raw
+    // String struct and every lookup with an equal-but-distinct key missed.
+    HashMap m = MAP_OF(String, int);
+
+    String k1 = String_from_cstr(WC_LIBC, "key");
+    int    v  = 1;
+    HashMap_put_move(&m, (u8*)&k1, (u8*)&v);
+    String big = String_from_cstr(WC_LIBC, "a key longer than the inline buffer!!");
+    v          = 2;
+    HashMap_put_move(&m, (u8*)&big, (u8*)&v);
+
+    String q1 = String_create(WC_LIBC); // built differently, same content
+    String_append_cstr(&q1, "k");
+    String_append_cstr(&q1, "ey");
+    String q2 = String_from_cstr(WC_LIBC, "a key longer than the inline buffer!!");
+
+    const int* r1 = (const int*)HashMap_get_ptr(&m, (u8*)&q1);
+    const int* r2 = (const int*)HashMap_get_ptr(&m, (u8*)&q2);
+    WC_ASSERT_NOT_NULL(r1);
+    WC_ASSERT_NOT_NULL(r2);
+    WC_ASSERT_EQ_INT(*r1, 1);
+    WC_ASSERT_EQ_INT(*r2, 2);
+
+    String_destroy(&q1);
+    String_destroy(&q2);
+    HashMap_destroy(&m);
+}
+
 static void test_map_create_of(void)
 {
-    HashMap m = MAP_CREATE_OF(int, double);
+    HashMap m = MAP_OF(int, double);
 
     int    k   = 7;
     double val = 3.5;
@@ -342,6 +372,7 @@ void macros_suite(void)
     WC_RUN(test_create_of_String_by_value);
     WC_RUN(test_create_of_String_by_pointer);
     WC_RUN(test_map_create_of);
+    WC_RUN(test_map_of_string_keys_hash_content);
     WC_RUN(test_vec_at_asserts_elem_size_passes_correct_t);
     WC_RUN(test_vec_front_back_assert_elem_size);
     WC_RUN(test_vec_foreach_if_else_prefix);

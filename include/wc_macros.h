@@ -4,6 +4,7 @@
 // _Generic association expressions must name declared
 // symbols in every TU that sees this header, even when the macro is never used.
 #include "common.h"
+#include "map_setup.h"
 #include "wc_helpers.h"
 
 
@@ -75,16 +76,32 @@
 #define VEC_CX(T, cap, ops)       VEC_CX_IN(WC_LIBC, T, cap, ops)
 #define VEC_EMPTY_CX(T, ops)      VEC_CX(T, 0, ops)
 
-// Ops picked automatically from T (see WC_OPS). Replaces VEC_CREATE_OF.
+// Ops picked automatically from T (see WC_OPS).
 #define VEC_OF_IN(A, T, cap) GenVec_create((A), (cap), sizeof(T), WC_OPS(T))
 #define VEC_OF(T, cap)       VEC_OF_IN(WC_LIBC, T, cap)
 
 // New vector of T on the same allocator as an existing vector `v`.
 #define VEC_LIKE(v, T, cap) GenVec_create((v)->alloc, (cap), sizeof(T), WC_OPS(T))
 
-#define MAP_OF_IN(A, K, V) HashMap_create((A), sizeof(K), sizeof(V), NULL, NULL, WC_OPS(K), WC_OPS(V))
+/* Key hash/compare picked from K, like WC_OPS. Owning keys must hash their
+ * CONTENT: hashing the raw String struct (pointer, capacity, allocator) makes
+ * every lookup miss. NULL = wyhash / memcmp over the key bytes (POD keys).
+ * GenVec keys have no content hash: pass explicit functions to HashMap_create. */
+#define WC_HASH_FN(K)                                \
+    _Generic((K*)0,                                  \
+        String*: (custom_hash_fn)wyhash_str,         \
+        String * *: (custom_hash_fn)wyhash_str_ptr,  \
+        default: (custom_hash_fn)NULL)
+
+#define WC_CMP_FN(K)                                 \
+    _Generic((K*)0,                                  \
+        String*: (wc_compare_fn)str_cmp,             \
+        String * *: (wc_compare_fn)str_cmp_ptr,      \
+        default: (wc_compare_fn)NULL)
+
+#define MAP_OF_IN(A, K, V) \
+    HashMap_create((A), sizeof(K), sizeof(V), WC_HASH_FN(K), WC_CMP_FN(K), WC_OPS(K), WC_OPS(V))
 #define MAP_OF(K, V)       MAP_OF_IN(WC_LIBC, K, V)
-#define MAP_CREATE_OF(K, V) MAP_OF(K, V)
 
 #define VEC_MAKE_OPS(copy, move, del) \
     (wc_container_ops)                \

@@ -3,10 +3,9 @@
 #include "wc_allocator.h"
 #include "wc_string.h"
 
-#include <stdalign.h>
-#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include "wc_poison.h" // must stay last: bans raw malloc/free below
 
 
 StrView StrView_from_String(String* str)

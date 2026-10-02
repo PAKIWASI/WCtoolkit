@@ -5,6 +5,7 @@
 
 #include <stdint.h>
 #include <string.h>
+#include "wc_poison.h" // must stay last: bans raw malloc/free below
 
 
 #define NODE_HEADER  ((u64)sizeof(ChainArenaNode))
@@ -245,10 +246,12 @@ static void chain_vt_free(void* ctx, void* ptr, size_t size, size_t align)
     }
 }
 
+// Positional on purpose: the field names `realloc`/`free` are poisoned in
+// library sources (wc_poison.h). Order matches wc_alloc_vtable.
 static const wc_alloc_vtable chain_vt = {
-    .alloc   = chain_vt_alloc,
-    .realloc = chain_vt_realloc,
-    .free    = chain_vt_free,
+    chain_vt_alloc,   // alloc
+    chain_vt_realloc, // realloc
+    chain_vt_free,    // free
 };
 
 wc_allocator ChainArena_allocator(ChainArena* arena)

@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "wc_poison.h" // must stay last: bans raw malloc/free below
 
 
 #define GENVEC_MIN_CAPACITY 4

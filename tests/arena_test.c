@@ -1,5 +1,7 @@
 #include "arena.h"
 #include "common.h"
+#include "gen_vector.h"
+#include "wc_macros.h"
 #include "wc_errno.h"
 #include "wc_test.h"
 #include "wc_test_allocator.h"
@@ -527,6 +529,85 @@ static void test_floor_allows_in_place_above_mark(void)
 
 /* ── Suite entry point ───────────────────────────────────────────────────── */
 
+
+// ARENA_SCOPE (plan 3.3) and typed helper macros
+
+static void test_arena_scope_basic(void)
+{
+    int sum = 0;
+    ARENA_SCOPE(tmp, nKB(1))
+    {
+        WC_ASSERT_NOT_NULL(tmp.ctx); // an Arena, not libc
+        GenVec v = VEC_OF_IN(tmp, int, 4);
+        for (int i = 0; i < 100; i++) { VEC_PUSH(&v, i); } // grows inside the arena
+        VEC_FOREACH(&v, int, x) { sum += *x; }
+        // no destroy: the arena goes away with the block (LSan would flag a leak)
+    }
+    WC_ASSERT_EQ_INT(sum, 4950);
+}
+
+static void test_arena_scope_nested_and_break(void)
+{
+    int reached = 0;
+    ARENA_SCOPE(outer, 256)
+    {
+        int* a = (int*)wc_alloc(outer, sizeof(int), alignof(int));
+        *a     = 1;
+        ARENA_SCOPE(inner, 256)
+        {
+            WC_ASSERT_TRUE(inner.ctx != outer.ctx); // distinct arenas, no name clash
+            int* b = (int*)wc_alloc(inner, sizeof(int), alignof(int));
+            *b     = 2;
+            reached += *a + *b;
+            break; // leaves only the inner scope, inner arena destroyed
+        }
+        reached += 10;
+    }
+    WC_ASSERT_EQ_INT(reached, 13);
+}
+
+static int scope_early_return(void)
+{
+    ARENA_SCOPE(tmp, 128)
+    {
+        char* p = (char*)wc_alloc(tmp, 16, 1);
+        p[0]    = 'x';
+        return p[0]; // cleanup still destroys the arena
+    }
+    return 0;
+}
+
+static void test_arena_scope_return(void)
+{
+    WC_ASSERT_EQ_INT(scope_early_return(), 'x');
+}
+
+static void test_arena_typed_macros(void)
+{
+    // ARENA_ALLOC_ZERO / _N / ARENA_PUSH_ARRAY used to declare `(T)* x`,
+    // which C parses as a cast: they did not compile when used.
+    Arena arena;
+    Arena_create(&arena, WC_LIBC, 512);
+
+    typedef struct { u64 a; u32 b; } pair;
+    pair* p = ARENA_ALLOC_ZERO(&arena, pair);
+    WC_ASSERT_NOT_NULL(p);
+    WC_ASSERT_EQ_U64(p->a, 0);
+    WC_ASSERT_EQ_U64((uintptr_t)p % alignof(pair), 0);
+
+    u32* z = ARENA_ALLOC_ZERO_N(&arena, u32, 8);
+    WC_ASSERT_NOT_NULL(z);
+    for (int i = 0; i < 8; i++) { WC_ASSERT_EQ_U64(z[i], 0); }
+
+    int  src[] = {4, 5, 6};
+    int* c     = ARENA_PUSH_ARRAY(&arena, int, src, 3);
+    WC_ASSERT_NOT_NULL(c);
+    WC_ASSERT_TRUE(c != src);
+    WC_ASSERT_EQ_INT(c[2], 6);
+
+    Arena_destroy(&arena);
+}
+
 void Arena_suite(void)
 {
     WC_SUITE("Arena");
@@ -570,4 +651,8 @@ void Arena_suite(void)
     WC_RUN(test_floor_free_inside_scratch_does_not_rewind_below_mark);
     WC_RUN(test_floor_nested_scopes);
     WC_RUN(test_floor_allows_in_place_above_mark);
+    WC_RUN(test_arena_scope_basic);
+    WC_RUN(test_arena_scope_nested_and_break);
+    WC_RUN(test_arena_scope_return);
+    WC_RUN(test_arena_typed_macros);
 }

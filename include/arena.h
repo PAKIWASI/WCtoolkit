@@ -139,6 +139,28 @@ ARENA_SCRATCH(&arena) {
 */
 
 
+// SCOPED ARENA
+//
+// ARENA_SCOPE(name, cap) { ... }
+// Creates a libc-backed Arena of `cap` bytes, exposes it inside the block as
+// `wc_allocator name`, and destroys it when the block exits (normal exit,
+// break, return or goto). Everything allocated from `name` dies with the
+// block: never let a container built on it escape. `break` leaves the scope.
+//
+//   ARENA_SCOPE(tmp, nKB(64)) {
+//       GenVec v = VEC_OF_IN(tmp, int, 16);
+//       ...                       // no destroy needed
+//   }
+#define ARENA_SCOPE(name, cap) ARENA_SCOPE_(name, (cap), WC_CAT(_asc_, __COUNTER__))
+#define ARENA_SCOPE_(name, cap, id)                                                              \
+    for (int WC_CAT(id, _once) = 1; WC_CAT(id, _once); WC_CAT(id, _once) = 0)                    \
+        for (Arena __attribute__((cleanup(Arena_destroy))) WC_CAT(id, _arena) = {0};             \
+             WC_CAT(id, _once); WC_CAT(id, _once) = 0)                                           \
+            for (wc_allocator name = (Arena_create(&WC_CAT(id, _arena), WC_LIBC, (cap)),         \
+                                      Arena_allocator(&WC_CAT(id, _arena)));                     \
+                 WC_CAT(id, _once); WC_CAT(id, _once) = 0)
+
+
 // USEFUL MACROS
 
 // Arena over an anonymous stack buffer of `nbytes` (lives until the enclosing block ends).
@@ -152,14 +174,14 @@ ARENA_SCRATCH(&arena) {
 // common for structs
 #define ARENA_ALLOC_ZERO(arena, T)                      \
     ({                                                  \
-        (T)* _az = ARENA_ALLOC(arena, T);               \
+        T*  _az = ARENA_ALLOC(arena, T);               \
         _az ? (T*)memset(_az, 0, sizeof(T)) : (T*)NULL; \
     })
 
 #define ARENA_ALLOC_ZERO_N(arena, T, n)                        \
     ({                                                         \
         u64 _azn = (u64)(n);                                   \
-        (T)* _az = ARENA_ALLOC_N(arena, T, _azn);              \
+        T*  _az = ARENA_ALLOC_N(arena, T, _azn);              \
         _az ? (T*)memset(_az, 0, sizeof(T) * _azn) : (T*)NULL; \
     })
 
@@ -167,7 +189,7 @@ ARENA_SCRATCH(&arena) {
 #define ARENA_PUSH_ARRAY(arena, T, src, count)     \
     ({                                             \
         u64 _apc  = (u64)(count);                  \
-        (T)* _dst = ARENA_ALLOC_N(arena, T, _apc); \
+        T*  _dst = ARENA_ALLOC_N(arena, T, _apc); \
         if (_dst) {                                \
             memcpy(_dst, (src), sizeof(T) * _apc); \
         }                                          \

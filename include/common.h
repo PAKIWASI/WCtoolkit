@@ -66,8 +66,12 @@ wc_fatal_report(const char* file, int line, const char* func, const char* fmt, .
         }                                                    \
     } while (0)
 
-// Unconditional fatal check: stays active under NDEBUG. Use for resource
-// failures (allocation) where continuing would corrupt memory (D5).
+// RULE (D5): FATAL_IF for allocation failure and zero-state (moved-from /
+// destroyed) mutation. CHECK_FATAL only for bounds and API misuse: it compiles
+// to nothing under NDEBUG, so a CHECK_FATAL on an allocation result means
+// Release builds carry on with a NULL pointer.
+//
+// Unconditional fatal check: stays active under NDEBUG.
 #define FATAL_IF(cond, fmt, ...)                              \
     do {                                                      \
         if (__builtin_expect(!!(cond), 0)) {                  \
@@ -75,6 +79,7 @@ wc_fatal_report(const char* file, int line, const char* func, const char* fmt, .
         }                                                     \
     } while (0)
 
+// Debug-only check for programmer errors (bounds, misuse). See RULE above.
 #ifdef NDEBUG
 #define CHECK_FATAL(cond, fmt, ...) ((void)0)
 #else
@@ -94,13 +99,9 @@ wc_fatal_report(const char* file, int line, const char* func, const char* fmt, .
     } while (0)
 
 
-#define MALLOC(size, cap, name)                \
-    ({                                         \
-        void* _mlcd = malloc((size) * (cap));  \
-        CHECK_FATAL(!_mlcd, "\"" #name "\""    \
-                            " malloc failed"); \
-        _mlcd;                                 \
-    })
+// token pasting that expands its arguments first (for __COUNTER__/__LINE__ names)
+#define WC_CAT_(a, b) a##b
+#define WC_CAT(a, b)  WC_CAT_(a, b)
 
 
 // TYPES

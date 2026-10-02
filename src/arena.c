@@ -5,6 +5,7 @@
 
 #include <stdint.h>
 #include <string.h>
+#include "wc_poison.h" // must stay last: bans raw malloc/free below
 
 
 // Region alignment requested from the backing allocator.
@@ -166,10 +167,12 @@ static void arena_vt_free(void* ctx, void* ptr, size_t size, size_t align)
     }
 }
 
+// Positional on purpose: the field names `realloc`/`free` are poisoned in
+// library sources (wc_poison.h). Order matches wc_alloc_vtable.
 static const wc_alloc_vtable arena_vt = {
-    .alloc   = arena_vt_alloc,
-    .realloc = arena_vt_realloc,
-    .free    = arena_vt_free,
+    arena_vt_alloc,   // alloc
+    arena_vt_realloc, // realloc
+    arena_vt_free,    // free
 };
 
 wc_allocator Arena_allocator(Arena* arena)

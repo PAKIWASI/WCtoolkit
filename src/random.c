@@ -5,6 +5,7 @@
 #include <bits/time.h>
 #include <stdint.h>
 #include <time.h>
+#include "wc_poison.h" // must stay last: bans raw malloc/free below
 
 
 

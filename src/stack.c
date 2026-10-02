@@ -2,6 +2,7 @@
 #include "common.h"
 #include "gen_vector.h"
 #include "wc_errno.h"
+#include "wc_poison.h" // must stay last: bans raw malloc/free below
 
 
 

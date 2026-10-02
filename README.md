@@ -1,57 +1,63 @@
 # WCtoolkit
 
-A C11 data-structures and utility toolkit built around explicit ownership and value semantics. No dependencies beyond libc.
+A C11 data-structures and utility toolkit built around explicit ownership, value semantics and explicit allocators. No dependencies beyond libc.
 
-Containers don't guess how to copy, move, or free your data: you tell them once via a small `container_ops` vtable, and every container (vector, map, set, stack, queue) reuses the same three callbacks. Plain-old-data types (`int`, `float`, flat structs) just pass `NULL` and get raw `memcpy`.
+Containers don't guess how to copy, move, or free your data. You tell them once with a small `wc_container_ops` vtable, and every container (vector, map, set, stack, queue) reuses the same three callbacks. Plain-old-data types (`int`, `float`, flat structs) pass `NULL` and get raw `memcpy`. Containers also don't guess where memory comes from: each one is created with a `wc_allocator` and uses it for everything.
 
 ```c
-static const container_ops String_ops = { str_copy, str_move, str_del };
+GenVec names = VEC_OF(String, 8);       // libc; ops picked from the type
 
-GenVec* names = GenVec_create(8, sizeof(String), &String_ops);
+VEC_PUSH_CSTR(&names, "Wasi");           // String built in names' allocator, moved in
+VEC_FOREACH(&names, String, s) { String_append_char(s, '!'); }
 
-VEC_PUSH_CSTR(names, "Wasi");          // heap String, moved in, zero copies
-VEC_FOREACH(names, String, s) { String_append_char(s, '!'); }
+String out = VEC_POP(&names, String);    // take ownership of the last element
+String_destroy(&out);
+GenVec_destroy(&names);                  // destroys remaining Strings, then the buffer
 
-String out;
-GenVec_pop(names, castptr(&out));      // take ownership of the last element
-String_destroy_stk(&out);
-
-GenVec_destroy(names);
+ARENA_SCOPE(tmp, nKB(4)) {               // same code, arena-backed, no destroys
+    GenVec words = VEC_OF_IN(tmp, String, 8);
+    VEC_PUSH_CSTR(&words, "scratch");
+}
 ```
 
 ## Design in three rules
 
 1. **Value semantics, not pointer chasing.** Elements live inline inside containers (a `GenVec` of `String` stores actual `String` structs contiguously), not scattered behind pointers. By-pointer storage is supported when you need stable addresses, but by-value is the default.
-2. **Every type has a heap and a Stack variant.** `GenVec_create` returns a heap pointer; `GenVec_create_stk` fills in a struct you own. `_destroy` frees the struct and its data; `_destroy_stk` frees only the data, leaving the struct reusable. The `_stk` suffix always means *you own the struct, the library only owns what's inside it*.
+2. **Every container stores its allocator.** `X_create(alloc, ...)` returns the container by value. `X_destroy(&x)` frees its contents through that allocator, never the struct itself, and leaves it zeroed. libc (`WC_LIBC`), `Arena`, `ChainArena`, a caller-owned buffer, or your own vtable all plug in the same way. There is no global allocator.
 3. **No hidden cost.** No garbage collection, no background threads, no implicit allocation. Growth factors and hash table load are compile-time constants you can override before including a header.
 
 ## API conventions
 
-- Receiver first**: `GenVec_push(vec, x)`, `GenVec_copy(dest, src)`, `GenVec_create_stk(vec, ...)` etc. The instance being acted on is always the first argument.
-- Moves take `T**` and null the source**: `String_move(dest, &src)` leaves `src == NULL`. `_move` variants (`push_move`, `insert_move`, `put_move`, ...) exist wherever ownership can transfer; plain variants copy.
-- `_copy` functions require a raw/uninitialized destination.** They overwrite `dest` field-by-field and never free or read what was there before. Copying into an already-populated container leaks its old buffer. This is documented at every `_copy` declaration.
+- **Allocator first, receiver first.** Constructors and copies take the allocator first: `GenVec_create(alloc, n, size, ops)`, `GenVec_copy(alloc, &src)`. Everything else takes the instance first: `GenVec_push(&v, x)`.
+- **Copies never inherit.** `X_copy(alloc, &src)` deep-copies into `alloc`, so an arena-backed container can be copied out to libc.
+- **Moves zero the source.** `X_move(&dest, &src)` and element moves (`GenVec_push_move(&v, (u8*)&s)`, `VEC_PUSH_MOVE(&v, s)`) leave the source zeroed.
+- **Zero state is dead.** A moved-from or destroyed container may only be destroyed or created again. Changing it is a fatal error in every build. `destroy` is safe on zeroed structs and can be called twice.
+- **Pinned arenas.** `Arena` and `ChainArena` are created in place (`Arena_create(&arena, backing, cap)`) and must never be moved or copied, because containers hold their address.
 - Lookups return `WC_NOT_FOUND`.
-- Constructors never return `NULL`, they abort on allocation failure (`CHECK_FATAL`), so call sites don't need to null-check. Expected runtime conditions (pop on empty, Arena full) instead set `wc_errno` and return `0`/`NULL`/`false`.
-- Heap allocators are `warn_unused_result`: dropping a `GenVec_create()` return value is a compiler warning, not a silent leak.
+- **Three error tiers.** `FATAL_IF` covers allocation failure and changes to a dead container, in every build. `CHECK_FATAL` covers bounds and API misuse, in debug builds only. `wc_errno` covers expected conditions (pop on empty, arena full).
+- Constructors are `warn_unused_result`: dropping a `GenVec_create()` return value is a compiler warning, not a silent leak.
 
-A type-checked macro layer (`VEC_PUSH`, `VEC_FOREACH`, `MAP_PUT`, ...) sits on top of the `u8*`-based C API, catching element-type mismatches at compile time. Macros never allocate or free on their own, they always expand to the underlying C calls, so you can drop to the plain API at any point with no behavior change.
+A type-checked macro layer (`VEC_PUSH`, `VEC_FOREACH`, `MAP_PUT`, ...) sits on top of the `u8*`-based C API and catches element-type mismatches at compile time. The plain forms use libc; the `_IN` forms take an allocator (`VEC_OF_IN(A, T, n)`, `MAP_OF_IN(A, K, V)`, `MATRIX_IN(A, m, n)`). Macros that build elements (`VEC_PUSH_CSTR`, `MAP_PUT_STR_*`, ...) use the container's allocator.
+
+Allocator lifetimes, scratch scopes, copy vs move and boxing are covered in [docs/allocators.md](docs/allocators.md). A runnable tour is in [examples/allocators.c](examples/allocators.c).
 
 ## Components
 
 | Component | Header | What it is |
 |---|---|---|
 | `GenVec` | `gen_vector.h` | Generic growable vector, the base every other container is built on |
-| `String` | `wc_string.h` | Growable string with small-string optimization (24-byte inline buffer) |
+| `String` | `wc_string.h` | Growable string with small-string optimization (64-byte struct, 31 chars inline) |
 | `HashMap` | `hashmap.h` | Open-addressed hash map, Robin Hood hashing |
 | `HashSet` | `hashset.h` | Open-addressed hash set, same hashing scheme as `HashMap` |
 | `Stack` / `Queue` | `stack.h` / `queue.h` | Thin `GenVec` wrapper / circular buffer |
 | `Arena` / `ChainArena` | `arena.h` / `chain_arena.h` | Bump allocator (fixed-size) and a chained, growable version |
 | `BitVec` | `bit_vector.h` | Growable bit array over `GenVec` |
-| `Matrixf` | `matrix.h` | Row-major float matrix: add/sub/scale/multiply/transpose/LU/determinant |
-| `StrView` / `StringStore` | `views.h` | Non-owning string slices, and an append-only interned string arena |
+| `Matrixf` | `matrix.h` | Row-major float matrix: add/sub/scale/multiply/transpose/LU/determinant (`matrix_generic.h` for other element types) |
+| `StrView` / `StringStore` | `views.h` | Non-owning string slices, and an append-only string store |
 | `fast_math` | `fast_math.h` | Low-precision, fast approximations of sqrt/log/sin/cos/exp/pow, for when you don't need libm's precision |
 | `random` | `random.h` | PCG pseudo-random generator |
-| `wc_errno` | `wc_errno.h` | The two-tier error model described above |
+| `wc_allocator` | `wc_allocator.h` | The allocator interface, libc backend, `wc_borrowed` |
+| `wc_errno` | `wc_errno.h` | Expected-condition error codes (the third error tier above) |
 
 Each container's header opens with a short doc comment describing its exact semantics, read that before reaching for the source.
 
@@ -64,6 +70,7 @@ cmake -B build -G Ninja        # or omit -G Ninja for Make
 cmake --build build
 ./build/tests                  # run the test suite
 ./build/main                   # scratch executable, src/main.c
+./build/example_allocators     # examples/allocators.c
 ```
 
 Build types (`-DCMAKE_BUILD_TYPE=...`):
@@ -76,7 +83,14 @@ Build types (`-DCMAKE_BUILD_TYPE=...`):
 
 ## Testing
 
-`ctest` (or `./build/tests` directly) runs ~400 unit tests across every component, plus a speed suite comparing POD vs. non-POD (owning) element paths for the hot operations (push, pop, clear, copy, hash map put/get). The test binary is built with AddressSanitizer and UndefinedBehaviorSanitizer by default — a clean run means no leaks, no UB, no out-of-bounds access.
+`ctest` runs four checks:
+
+- `unit_tests`: 500+ unit tests across every component, plus a speed suite comparing POD vs. non-POD (owning) element paths for the hot operations (push, pop, clear, copy, hash map put/get). Containers are exercised on libc, `Arena`, `Arena_create_buf`, `ChainArena` and a test allocator that checks leaks, double frees and free sizes. Allocation-failure and dead-state paths are tested by forking and asserting the child aborts.
+- `a5_realloc_n_compiles`: the typed realloc macro compiles under `-Werror`.
+- `no_raw_alloc`: no raw `malloc`/`calloc`/`realloc`/`free` in `src/` or `include/` outside the libc backend. Library sources also include `src/wc_poison.h`, which applies `#pragma GCC poison`.
+- `example_allocators`: the example program runs and checks its own results.
+
+The Debug build runs everything under AddressSanitizer and UndefinedBehaviorSanitizer. Run the suite in Release too: some fatal checks only differ there.
 
 ## License
 

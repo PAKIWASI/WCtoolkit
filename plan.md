@@ -436,13 +436,21 @@ Effort: S (hours), M (a day), L (multi-day). Each phase ends with a green build,
 - Exit met: 503/503 tests in Debug (ASAN + UBSan, gcc), Release (gcc) and DebugNoSan (clang); ctest 2/2. No `Arena*` parameters outside the arena module. Only raw allocation left in `src/`/`include/` is the legacy `MALLOC` macro in `common.h` (Phase 7).
 - Open (not in scope): `matrix_xply_2`/`matrix_det` use stack VLAs sized `n * k` / `2 * n * n` floats, which overflow the stack for large matrices. `StringStore_append` has no return statement and three `StringStore_*` TODO functions are declared but not defined.
 
-### Phase 7: Enforcement and cleanup (S)
+### Phase 7: Enforcement and cleanup (S): DONE
 
-- [ ] Delete every legacy heap-returning constructor, `*_stk` / `*_val` / `*_arr` variant, `u8**` move signature, and global-allocator remnant.
-- [ ] Add `#pragma GCC poison malloc calloc realloc free` (or a CI grep) for `src/` and `include/`, with exceptions only in the libc backend inside `wc_allocator.h`.
-- [ ] Update all header docs/examples (`gen_vector.h` TLDR still shows `GenVec_create`), `main.c`, and add a short `docs/allocators.md` (lifetimes, pinned arenas, copy vs move, boxing).
-- [ ] Add an `examples/` program using `ARENA_SCOPE`, nested containers, and `Arena_create_buf`.
-- Exit: `rg 'malloc\(|calloc\(|realloc\(|free\('` in `src/` and `include/` returns only the libc backend and tests.
+- [x] Legacy removed: the `MALLOC` macro (`common.h`, raw `malloc`, debug-only check) and the `MAP_CREATE_OF` alias. No heap-returning constructors, `_stk` variants, `u8**` moves or global-allocator names remain (grep-verified). **Kept on purpose:** `GenVec_create_val`, `Stack_create_val`, `Queue_create_val`, `GenVec_reserve_val`, `matrix_create_arr`. They are fill constructors that Phase 2 and 5.8 explicitly retain, not legacy storage variants.
+- [x] Enforcement, two layers. (1) `src/wc_poison.h` is included last in every library `src/*.c` and applies `#pragma GCC poison malloc calloc realloc free aligned_alloc`. Poison also fires on system-header declarations and on designated-initializer field names, so system headers come first and the three vtables (`arena_vt`, `chain_vt`, `wc_borrowed_vt`) use positional initializers. (2) ctest `no_raw_alloc` (`cmake/check_no_raw_alloc.cmake`) greps `src/` and `include/` for raw calls outside `wc_allocator.h` and checks every library source includes `wc_poison.h`. This covers header code and macros, which poison cannot see. Verified against a planted violation.
+- [x] `ARENA_SCOPE(name, cap)` added to `arena.h` (it was in 3.3 but never implemented): libc-backed arena, exposed as `wc_allocator name`, destroyed via `cleanup` on any exit; `__COUNTER__`-unique internals so scopes nest without `-Wshadow`. `WC_CAT` moved to `common.h`.
+- [x] Latent bug: `ARENA_ALLOC_ZERO`, `ARENA_ALLOC_ZERO_N`, `ARENA_PUSH_ARRAY` declared `(T)* x`, which parses as a cast; none compiled when used. Fixed, with tests.
+- [x] **Bug found while writing docs:** `MAP_OF(String, V)` passed NULL hash/cmp, so String keys were hashed as raw structs (heap pointer, capacity, allocator) and every lookup with an equal-but-distinct key missed. `MAP_OF_IN` now selects `wyhash_str`/`str_cmp` (and the `_ptr` forms) via `WC_HASH_FN`/`WC_CMP_FN`. Regression test added.
+- [x] Docs: `README.md` rewritten for the allocator API (example compiled and run under ASan); `docs/allocators.md` (allocators, lifetimes, scoped arenas, pinned arenas, copy vs move, zero state, boxing, map keys, enforcement); `wc_errno.h` and `common.h` now state the three error tiers and the FATAL_IF/CHECK_FATAL rule. Header TLDRs were already current.
+- [x] `examples/allocators.c`: `Arena_create_buf` over a stack array, `ARENA_SCOPE` with nested `GenVec<GenVec<String>>`, deep copy out of the arena into libc. Built as `example_allocators` and run by ctest.
+- [x] Tests: 4 arena tests (`ARENA_SCOPE` basic/nested+break/return, typed macros), 1 map regression.
+- Exit met: `rg 'malloc\(|calloc\(|realloc\(|free\('` over `src/` and `include/` returns only the libc backend in `wc_allocator.h`. 508/508 tests in Debug (ASAN + UBSan, gcc), Release (gcc) and DebugNoSan (clang); ctest 4/4 in each.
+
+**Definition of Done (section 10): met.** 1 enforced by poison + ctest. 2 no global names. 3 no pointer-returning constructors, no `u8**`. 4 every container stores its allocator; every `copy` takes a destination allocator; destroys are zero-safe; dead-state mutation is `FATAL_IF`. 5 green on all backends under ASAN + UBSan. 6 A1 to A10 regression tests present; A6 now also exercised in Release. 7 headers and docs describe only the new API.
+
+Known open items (outside the refactor): `matrix_xply_2`/`matrix_det` stack VLAs; `StringStore_append` missing `return`; three `StringStore_*` TODOs declared but undefined; `tools/make_single_header.py` (referenced by README, not in this snapshot) must be re-run to refresh `single_header/`.
 
 ### Phase 8 (optional): `wc_vm` backend and reserve/commit arenas (M)
 

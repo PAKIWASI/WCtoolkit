@@ -7,10 +7,15 @@
 /* wc_errno.h — Error reporting for WCtoolkit
  * ============================================
  *
- * Two tiers:
+ * Three tiers:
  *
- *   CHECK_FATAL  Programmer errors: null pointer, out of bounds, OOM.
- *                Crashes with a message. These are bugs, not conditions.
+ *   FATAL_IF     Resource failures and dead state, in EVERY build: an
+ *                allocator returned NULL, or a zeroed (moved-from/destroyed)
+ *                container was mutated. Continuing would corrupt memory.
+ *
+ *   CHECK_FATAL  Programmer errors: null pointer, out of bounds, size 0.
+ *                Crashes with a message in debug builds; compiled out under
+ *                NDEBUG. Never use it for allocation failure.
  *
  *   wc_errno     Expected conditions: pop on empty, Arena full.
  *                Function returns NULL / 0 / void. wc_errno says why.
