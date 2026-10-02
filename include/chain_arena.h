@@ -76,9 +76,9 @@ void ChainArena_clear(ChainArena* arena) __attribute__((nonnull(1)));
 
 // Allocation. NULL (wc_errno = WC_ERR_FULL) only if the backing allocator fails.
 
-u8* ChainArena_alloc_aligned(ChainArena* arena, u64 size, u64 align) __attribute__((nonnull(1), alloc_size(2)));
+void* ChainArena_alloc_aligned(ChainArena* arena, u64 size, u64 align) __attribute__((nonnull(1), alloc_size(2)));
 
-static inline __attribute__((nonnull(1), alloc_size(2))) u8* ChainArena_alloc(ChainArena* arena, u64 size)
+static inline __attribute__((nonnull(1), alloc_size(2))) void* ChainArena_alloc(ChainArena* arena, u64 size)
 {
     return ChainArena_alloc_aligned(arena, size, ARENA_DEFAULT_ALIGNMENT);
 }

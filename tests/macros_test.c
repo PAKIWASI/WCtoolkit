@@ -12,7 +12,7 @@
 
 /* -- Helpers --------------------------------------------------------------- */
 
-static u64 hash_int(const u8* key, u64 size)
+static u64 hash_int(const void* key, u64 size)
 {
     (void)size;
     return (u64)(*(const int*)key);
@@ -29,14 +29,14 @@ static int cmp_int(const void* a, const void* b, u64 size)
 /* -- Phase 1-D: SET_INSERT_MOVE ------------------------------------------- */
 
 /* move: transfer the int into the set slot, leave the source zeroed */
-static void int_move(u8* dest, u8* src)
+static void int_move(void* dest, void* src)
 {
     memcpy(dest, src, sizeof(int));
     memset(src, 0, sizeof(int));
 }
 
 /* del: the set stores the int by value; nothing extra to free */
-static void int_del(u8* elm)
+static void int_del(void* elm)
 {
     (void)elm;
 }
@@ -61,7 +61,7 @@ static void test_set_insert_move_compiles_and_works(void)
 
     /* element must be present in the set */
     int key = 42;
-    WC_EXPECT_TRUE(HashSet_has(&set, (u8*)&key));
+    WC_EXPECT_TRUE(HashSet_has(&set, &key));
 
     HashSet_destroy(&set);
 }
@@ -117,8 +117,8 @@ static void test_map_get_and_try_get(void)
 
     int k1 = 1, v1 = 10;
     int k2 = 2, v2 = 20;
-    HashMap_put(&m, (u8*)&k1, (u8*)&v1);
-    HashMap_put(&m, (u8*)&k2, (u8*)&v2);
+    HashMap_put(&m, &k1, &v1);
+    HashMap_put(&m, &k2, &v2);
 
     /* MAP_GET on hit */
     WC_EXPECT_EQ_INT(MAP_GET(&m, int, k1), 10);
@@ -156,7 +156,7 @@ static void test_set_foreach_and_from_vec(void)
 {
     GenVec v = GenVec_create(WC_LIBC, 4, sizeof(int), NULL);
     for (int i = 1; i <= 3; i++) {
-        GenVec_push(&v, (u8*)&i);
+        GenVec_push(&v, &i);
     }
 
     HashSet s = SET_FROM_VEC(&v, hash_int, cmp_int);
@@ -192,7 +192,7 @@ static void test_create_of_pod_uses_null_ops(void)
     GenVec v = VEC_OF(int, 8);
 
     int x = 42;
-    GenVec_push(&v, (u8*)&x);
+    GenVec_push(&v, &x);
     WC_EXPECT_EQ_INT(VEC_AT(&v, int, 0), 42);
 
     GenVec_destroy(&v);
@@ -240,18 +240,18 @@ static void test_map_of_string_keys_hash_content(void)
 
     String k1 = String_from_cstr(WC_LIBC, "key");
     int    v  = 1;
-    HashMap_put_move(&m, (u8*)&k1, (u8*)&v);
+    HashMap_put_move(&m, &k1, &v);
     String big = String_from_cstr(WC_LIBC, "a key longer than the inline buffer!!");
     v          = 2;
-    HashMap_put_move(&m, (u8*)&big, (u8*)&v);
+    HashMap_put_move(&m, &big, &v);
 
     String q1 = String_create(WC_LIBC); // built differently, same content
     String_append_cstr(&q1, "k");
     String_append_cstr(&q1, "ey");
     String q2 = String_from_cstr(WC_LIBC, "a key longer than the inline buffer!!");
 
-    const int* r1 = (const int*)HashMap_get_ptr(&m, (u8*)&q1);
-    const int* r2 = (const int*)HashMap_get_ptr(&m, (u8*)&q2);
+    const int* r1 = HashMap_get_ptr(&m, &q1);
+    const int* r2 = HashMap_get_ptr(&m, &q2);
     WC_EXPECT_NOT_NULL(r1);
     WC_EXPECT_NOT_NULL(r2);
     WC_EXPECT_EQ_INT(*r1, 1);
@@ -286,7 +286,7 @@ static void test_vec_at_asserts_elem_size_passes_correct_t(void)
      * the check and still return the element. */
     GenVec v = GenVec_create(WC_LIBC, 4, sizeof(int), NULL);
     for (int i = 1; i <= 3; i++) {
-        GenVec_push(&v, (u8*)&i);
+        GenVec_push(&v, &i);
     }
 
     int sum = VEC_AT(&v, int, 0) + VEC_AT(&v, int, 1) + VEC_AT(&v, int, 2);
@@ -302,7 +302,7 @@ static void test_vec_front_back_assert_elem_size(void)
 {
     GenVec v = GenVec_create(WC_LIBC, 4, sizeof(int), NULL);
     for (int i = 1; i <= 3; i++) {
-        GenVec_push(&v, (u8*)&i);
+        GenVec_push(&v, &i);
     }
 
     WC_EXPECT_EQ_INT(VEC_FRONT(&v, int), 1);
@@ -318,7 +318,7 @@ static void test_vec_foreach_if_else_prefix(void)
 {
     GenVec v = GenVec_create(WC_LIBC, 4, sizeof(int), NULL);
     for (int i = 1; i <= 3; i++) {
-        GenVec_push(&v, (u8*)&i);
+        GenVec_push(&v, &i);
     }
 
     int count = 0;
@@ -344,7 +344,7 @@ static void test_genvec_unsafe_getters_in_range(void)
 {
     GenVec v = GenVec_create(WC_LIBC, 4, sizeof(int), NULL);
     for (int i = 1; i <= 3; i++) {
-        GenVec_push(&v, (u8*)&i);
+        GenVec_push(&v, &i);
     }
 
     const u8* cp = GenVec_get_ptr_unsafe(&v, 1);

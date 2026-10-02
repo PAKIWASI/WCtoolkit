@@ -63,7 +63,7 @@ static void bench_push_pod(void)
 
     u64 t0 = ns_now();
     for (int i = 0; i < PUSH_N; i++) {
-        GenVec_push(&v, (u8*)&val);
+        GenVec_push(&v, &val);
     }
     u64 t1 = ns_now();
 
@@ -80,7 +80,7 @@ static void bench_push_cx(void)
     u64 t0 = ns_now();
     for (int i = 0; i < PUSH_N; i++) {
         String s = String_from_cstr(WC_LIBC, "hello");
-        GenVec_push(&v, (u8*)&s);
+        GenVec_push(&v, &s);
         String_destroy(&s); // push deep-copied it; we own the original
     }
     u64 t1 = ns_now();
@@ -106,7 +106,7 @@ static void bench_clear_pod(void)
 
     for (int r = 0; r < CLEAR_REP; r++) {
         GenVec v = GenVec_create(WC_LIBC, CLEAR_N, sizeof(int), NULL);
-        for (int i = 0; i < CLEAR_N; i++) { GenVec_push(&v, (u8*)&val);
+        for (int i = 0; i < CLEAR_N; i++) { GenVec_push(&v, &val);
 }
 
         u64 t0 = ns_now();
@@ -131,7 +131,7 @@ static void bench_clear_cx(void)
         GenVec v = GenVec_create(WC_LIBC, CLEAR_N, sizeof(String), &wc_str_ops);
         for (int i = 0; i < CLEAR_N; i++) {
             String s = String_from_cstr(WC_LIBC, "hi");
-            GenVec_push(&v, (u8*)&s);
+            GenVec_push(&v, &s);
             String_destroy(&s);
         }
         u64 t0 = ns_now();
@@ -158,7 +158,7 @@ static void bench_destroy_pod(void)
 
     for (int r = 0; r < DESTROY_REP; r++) {
         GenVec v = GenVec_create(WC_LIBC, DESTROY_N, sizeof(int), NULL);
-        for (int i = 0; i < DESTROY_N; i++) GenVec_push(&v, (u8*)&val);
+        for (int i = 0; i < DESTROY_N; i++) GenVec_push(&v, &val);
         u64 t0 = ns_now();
         GenVec_destroy(&v);
         u64 t1 = ns_now();
@@ -180,7 +180,7 @@ static void bench_destroy_cx(void)
         GenVec v = GenVec_create(WC_LIBC, DESTROY_N, sizeof(String), &wc_str_ops);
         for (int i = 0; i < DESTROY_N; i++) {
             String s = String_from_cstr(WC_LIBC, "world");
-            GenVec_push(&v, (u8*)&s);
+            GenVec_push(&v, &s);
             String_destroy(&s);
         }
         u64 t0 = ns_now();
@@ -208,7 +208,7 @@ static void bench_vec_copy_pod(void)
 {
     GenVec src = GenVec_create(WC_LIBC, COPY_N, sizeof(int), NULL);
     int val = 99;
-    for (int i = 0; i < COPY_N; i++) GenVec_push(&src, (u8*)&val);
+    for (int i = 0; i < COPY_N; i++) GenVec_push(&src, &val);
 
     GenVec dest;
     memset(&dest, 0, sizeof(dest));
@@ -235,7 +235,7 @@ static void bench_vec_copy_cx(void)
     GenVec src = GenVec_create(WC_LIBC, COPY_N, sizeof(String), &wc_str_ops);
     for (int i = 0; i < COPY_N; i++) {
         String s = String_from_cstr(WC_LIBC, "copy");
-        GenVec_push(&src, (u8*)&s);
+        GenVec_push(&src, &s);
         String_destroy(&s);
     }
 
@@ -271,7 +271,7 @@ static void bench_init_val_pod(void)
     int val = 42;
     u64 t0  = ns_now();
     for (int r = 0; r < INITVAL_REP; r++) {
-        GenVec v = GenVec_create_val(WC_LIBC, INITVAL_N, (u8*)&val, sizeof(int), NULL);
+        GenVec v = GenVec_create_val(WC_LIBC, INITVAL_N, &val, sizeof(int), NULL);
         GenVec_destroy(&v);
     }
     u64 t1 = ns_now();
@@ -285,7 +285,7 @@ static void bench_init_val_cx(void)
 
     u64 t0 = ns_now();
     for (int r = 0; r < INITVAL_REP; r++) {
-        GenVec v = GenVec_create_val(WC_LIBC, INITVAL_N, (u8*)&val, sizeof(String), &wc_str_ops);
+        GenVec v = GenVec_create_val(WC_LIBC, INITVAL_N, &val, sizeof(String), &wc_str_ops);
         GenVec_destroy(&v);
     }
     u64 t1 = ns_now();
@@ -309,7 +309,7 @@ static void bench_remove_range_pod(void)
 
     for (int r = 0; r < RANGE_REP; r++) {
         GenVec v = GenVec_create(WC_LIBC, RANGE_N, sizeof(int), NULL);
-        for (int i = 0; i < RANGE_N; i++) GenVec_push(&v, (u8*)&val);
+        for (int i = 0; i < RANGE_N; i++) GenVec_push(&v, &val);
         u64 t0 = ns_now();
         GenVec_remove_range(&v, 0, RANGE_N);
         u64 t1 = ns_now();
@@ -331,7 +331,7 @@ static void bench_remove_range_cx(void)
         GenVec v = GenVec_create(WC_LIBC, RANGE_N, sizeof(String), &wc_str_ops);
         for (int i = 0; i < RANGE_N; i++) {
             String s = String_from_cstr(WC_LIBC, "range");
-            GenVec_push(&v, (u8*)&s);
+            GenVec_push(&v, &s);
             String_destroy(&s);
         }
         u64 t0 = ns_now();
@@ -361,7 +361,7 @@ static void bench_map_put_pod(void)
 
     u64 t0 = ns_now();
     for (int i = 0; i < MAP_N; i++) {
-        HashMap_put(&map, (u8*)&i, (u8*)&i);
+        HashMap_put(&map, &i, &i);
     }
     u64 t1 = ns_now();
 
@@ -382,7 +382,7 @@ static void bench_map_put_cx(void)
         snprintf(buf, sizeof(buf), "key_%d", i);
         String k = String_from_cstr(WC_LIBC, buf);
         String v = String_from_cstr(WC_LIBC, "val");
-        HashMap_put(&map, (u8*)&k, (u8*)&v);
+        HashMap_put(&map, &k, &v);
         String_destroy(&k);
         String_destroy(&v);
     }
@@ -395,13 +395,13 @@ static void bench_map_put_cx(void)
 static void bench_map_get_pod(void)
 {
     HashMap map = HashMap_create(WC_LIBC, sizeof(int), sizeof(int), NULL, NULL, NULL, NULL);
-    for (int i = 0; i < MAP_N; i++) HashMap_put(&map, (u8*)&i, (u8*)&i);
+    for (int i = 0; i < MAP_N; i++) HashMap_put(&map, &i, &i);
 
     int out  = 0;
     int hits = 0;
     u64 t0   = ns_now();
     for (int i = 0; i < MAP_N; i++) {
-        hits += HashMap_get(&map, (u8*)&i, (u8*)&out);
+        hits += HashMap_get(&map, &i, &out);
     }
     u64 t1 = ns_now();
 
@@ -419,7 +419,7 @@ static void bench_map_get_cx(void)
         snprintf(buf, sizeof(buf), "key_%d", i);
         String k = String_from_cstr(WC_LIBC, buf);
         String v = String_from_cstr(WC_LIBC, "val");
-        HashMap_put(&map, (u8*)&k, (u8*)&v);
+        HashMap_put(&map, &k, &v);
         String_destroy(&k);
         String_destroy(&v);
     }
@@ -431,7 +431,7 @@ static void bench_map_get_cx(void)
         snprintf(buf, sizeof(buf), "key_%d", i);
         String k = String_from_cstr(WC_LIBC, buf);
         String out = String_create(WC_LIBC);
-        hits += HashMap_get(&map, (u8*)&k, (u8*)&out);
+        hits += HashMap_get(&map, &k, &out);
         String_destroy(&k);
         String_destroy(&out);
     }
@@ -456,7 +456,7 @@ static void bench_map_clear_pod(void)
 
     for (int r = 0; r < MCLR_REP; r++) {
         HashMap map = HashMap_create(WC_LIBC, sizeof(int), sizeof(int), NULL, NULL, NULL, NULL);
-        for (int i = 0; i < MCLR_N; i++) HashMap_put(&map, (u8*)&i, (u8*)&i);
+        for (int i = 0; i < MCLR_N; i++) HashMap_put(&map, &i, &i);
 
         u64 t0 = ns_now();
         HashMap_clear(&map);
@@ -483,7 +483,7 @@ static void bench_map_clear_cx(void)
             snprintf(buf, sizeof(buf), "k%d", i);
             String k = String_from_cstr(WC_LIBC, buf);
             String v = String_from_cstr(WC_LIBC, "v");
-            HashMap_put(&map, (u8*)&k, (u8*)&v);
+            HashMap_put(&map, &k, &v);
             String_destroy(&k);
             String_destroy(&v);
         }
@@ -511,11 +511,11 @@ static void bench_pop_pod(void)
 {
     GenVec v = GenVec_create(WC_LIBC, POP_N, sizeof(int), NULL);
     int val   = 1;
-    for (int i = 0; i < POP_N; i++) GenVec_push(&v, (u8*)&val);
+    for (int i = 0; i < POP_N; i++) GenVec_push(&v, &val);
 
     int out = 0;
     u64 t0  = ns_now();
-    for (int i = 0; i < POP_N; i++) GenVec_pop(&v, (u8*)&out);
+    for (int i = 0; i < POP_N; i++) GenVec_pop(&v, &out);
     u64 t1 = ns_now();
 
     WC_EXPECT_EQ_U64(v.size, 0);
@@ -528,7 +528,7 @@ static void bench_pop_cx(void)
     GenVec v = GenVec_create(WC_LIBC, POP_N, sizeof(String), &wc_str_ops);
     for (int i = 0; i < POP_N; i++) {
         String s = String_from_cstr(WC_LIBC, "pop");
-        GenVec_push(&v, (u8*)&s);
+        GenVec_push(&v, &s);
         String_destroy(&s);
     }
 
@@ -655,18 +655,18 @@ static void person_init(Person* p, int i)
     p->scores = GenVec_create(WC_LIBC, (u64)PERSON_SCORES_N, sizeof(int), NULL);
     for (int j = 0; j < PERSON_SCORES_N; j++) {
         int v = i + j;
-        GenVec_push(&p->scores, (u8*)&v);
+        GenVec_push(&p->scores, &v);
     }
 }
 
-static void person_del(u8* elm)
+static void person_del(void* elm)
 {
     Person* p = (Person*)elm;
     String_destroy(&p->name);
     GenVec_destroy(&p->scores);
 }
 
-static void person_copy(wc_allocator dst, u8* dest, const u8* src)
+static void person_copy(wc_allocator dst, void* dest, const void* src)
 {
     const Person* s = (const Person*)src;
     Person*       d = (Person*)dest;
@@ -675,7 +675,7 @@ static void person_copy(wc_allocator dst, u8* dest, const u8* src)
     d->scores = GenVec_copy(dst, &s->scores);
 }
 
-static void person_move(u8* dest, u8* src)
+static void person_move(void* dest, void* src)
 {
     memcpy(dest, src, sizeof(Person)); // name/scores buffers just change owner
     memset(src, 0, sizeof(Person));
@@ -697,14 +697,14 @@ static void bench_complex_push_copy(void)
 
     u64 t0 = ns_now();
     for (int i = 0; i < PERSON_N; i++) {
-        GenVec_push(&v, (u8*)&pool[i]); // copy path: deep-copies name + scores
+        GenVec_push(&v, &pool[i]); // copy path: deep-copies name + scores
     }
     u64 t1 = ns_now();
 
     WC_EXPECT_EQ_U64(v.size, (u64)PERSON_N);
     bench("push complex (copy: String+GenVec)", PERSON_N, t0, t1);
 
-    for (int i = 0; i < PERSON_N; i++) person_del((u8*)&pool[i]);
+    for (int i = 0; i < PERSON_N; i++) person_del(&pool[i]);
     free(pool);
     GenVec_destroy(&v);
 }
@@ -723,7 +723,7 @@ static void bench_complex_push_move(void)
 
     u64 t0 = ns_now();
     for (int i = 0; i < PERSON_N; i++) {
-        GenVec_push_move(&v, (u8*)&pool[i]); // move path: O(1) relocation, source zeroed
+        GenVec_push_move(&v, &pool[i]); // move path: O(1) relocation, source zeroed
     }
     u64 t1 = ns_now();
 
@@ -788,7 +788,7 @@ static void bench_ss_chain_Arena(void)
     u64  t0 = ns_now();
     for (int i = 0; i < STRSTORE_N; i++) {
         int   len = strstore_fmt(buf, sizeof(buf), i);
-        char* p   = (char*)ChainArena_alloc(&ca, (u64)len);
+        char* p   = ChainArena_alloc(&ca, (u64)len);
         memcpy(p, buf, (u64)len);
     }
     u64 t1 = ns_now();
@@ -807,7 +807,7 @@ static void bench_ss_Arena(void)
     u64  t0 = ns_now();
     for (int i = 0; i < STRSTORE_N; i++) {
         int   len = strstore_fmt(buf, sizeof(buf), i);
-        char* p   = (char*)Arena_alloc(&a, (u64)len);
+        char* p   = Arena_alloc(&a, (u64)len);
         memcpy(p, buf, (u64)len);
     }
     u64 t1 = ns_now();
@@ -848,7 +848,7 @@ static void bench_ss_String_sso(void)
     for (int i = 0; i < STRSTORE_N; i++) {
         strstore_fmt(buf, sizeof(buf), i);
         String s = String_from_cstr(WC_LIBC, buf);
-        GenVec_push(&v, (u8*)&s);
+        GenVec_push(&v, &s);
         String_destroy(&s);
     }
     u64 t1 = ns_now();

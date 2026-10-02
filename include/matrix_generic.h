@@ -41,7 +41,7 @@
     Matrix_##T matrix_create_##T(wc_allocator a, u64 m, u64 n)                    \
     {                                                                             \
         FATAL_IF(m == 0 || n == 0, "matrix_create_" #T ": dims must be > 0");     \
-        T* data = (T*)wc_alloc(a, MATRIX_BYTES(T, m, n), alignof(T));             \
+        T* data = wc_alloc(a, MATRIX_BYTES(T, m, n), alignof(T));             \
         FATAL_IF(!data, "matrix_create_" #T ": data allocation failed");          \
         return (Matrix_##T){.data = data, .m = m, .n = n, .alloc = a};            \
     }

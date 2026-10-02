@@ -26,7 +26,7 @@ StrView StrView_from_cstr(const char* cstr, u64 clen)
 
 StrView StrView_copy_cstr(wc_allocator a, const char* cstr, u64 clen)
 {
-    char* p = (char*)wc_alloc(a, clen + 1, 1); // +1 for the NUL terminator
+    char* p = wc_alloc(a, clen + 1, 1); // +1 for the NUL terminator
     FATAL_IF(!p, "StrView_copy_cstr: allocation of %llu bytes failed", (unsigned long long)clen + 1);
     memcpy(p, cstr, clen);
     p[clen] = '\0'; // terminate explicitly: cstr[clen] may not be NUL
@@ -56,7 +56,7 @@ void StrView_print(StrView sv)
 
 static StringStore_node* new_node(wc_allocator a)
 {
-    StringStore_node* node = (StringStore_node*)wc_alloc(a, sizeof(StringStore_node), NODE_ALIGN);
+    StringStore_node* node = wc_alloc(a, sizeof(StringStore_node), NODE_ALIGN);
     FATAL_IF(!node, "StringStore: node allocation failed");
     node->next                       = NULL; // must terminate the chain for StringStore_destroy
     node->buf[StringStore_NODE_SIZE] = 1;    // heap inactive

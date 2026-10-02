@@ -151,7 +151,7 @@ void ChainArena_clear(ChainArena* arena)
 
 // Allocation
 
-u8* ChainArena_alloc_aligned(ChainArena* arena, u64 size, u64 align)
+void* ChainArena_alloc_aligned(ChainArena* arena, u64 size, u64 align)
 {
     CHAIN_CHECK_LIVE(arena);
     WC_ASSERT(size != 0, "allocation size must be > 0");

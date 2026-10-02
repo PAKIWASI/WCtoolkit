@@ -193,16 +193,16 @@ static void test_golden_queue_hashmap_fixed_seed(void)
     for (int i = 0; i < 5000; i++) {
         u32 r = pcg32_rand();
         if ((r & 3) != 0 || Queue_size(&q) == 0) {
-            Queue_push(&q, cast(r));
+            Queue_push(&q, &(r));
         } else {
             u32 out = 0;
-            Queue_pop(&q, cast(out));
+            Queue_pop(&q, &(out));
             q_sum = golden_mix(q_sum, out);
         }
     }
     while (Queue_size(&q) > 0) {
         u32 out = 0;
-        Queue_pop(&q, cast(out));
+        Queue_pop(&q, &(out));
         q_sum = golden_mix(q_sum, out);
     }
     Queue_destroy(&q);
@@ -213,9 +213,9 @@ static void test_golden_queue_hashmap_fixed_seed(void)
         u32 k = pcg32_rand_bounded(3000);
         u64 v = pcg32_rand();
         if (pcg32_rand_bounded(5) == 0) {
-            HashMap_del(&m, cast(k), NULL);
+            HashMap_del(&m, &(k), NULL);
         } else {
-            HashMap_put(&m, cast(k), cast(v));
+            HashMap_put(&m, &(k), &(v));
         }
     }
     u64 m_sum = 0;

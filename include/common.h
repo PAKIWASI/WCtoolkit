@@ -28,7 +28,7 @@
 
 
 
-/*
+/* ════════════════════════════════════════════════════════════════════════
  * DIAGNOSTICS
  *
  * Every macro below is an EXPRESSION of type void (no do { } while (0)), so
@@ -61,7 +61,7 @@
  * `cold, noinline` functions defined once in wc_errno.c. The compiler moves
  * every failure branch (argument setup + call) out of the hot path into
  * .text.unlikely, so a check costs one compare and one not-taken branch.
-*/ 
+ * ════════════════════════════════════════════════════════════════════════ */
 
 #define WC_LIKELY(x)   __builtin_expect(!!(x), 1)
 #define WC_UNLIKELY(x) __builtin_expect(!!(x), 0)
@@ -73,7 +73,7 @@ __attribute__((cold, noinline, format(printf, 4, 5))) void
 wc_warn_report(const char* file, int line, const char* func, const char* fmt, ...);
 
 
-/* SURVIVES EVERY BUILD */
+/* ── SURVIVES EVERY BUILD ─────────────────────────────────────────────── */
 
 #define FATAL(fmt, ...) wc_fatal_report(__FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__)
 
@@ -94,13 +94,15 @@ wc_warn_report(const char* file, int line, const char* func, const char* fmt, ..
         (void)0;                                      \
     })
 
+// No branch hint on LOG_IF: a log condition is not an error path, so there is
+// no direction to predict. Let the hardware predictor or PGO decide.
 #define LOG(fmt, ...) \
     ((void)printf(WC_COLOR_CYAN "[LOG] %s(): " fmt "\n" WC_COLOR_RESET, __func__, ##__VA_ARGS__))
 
 #define LOG_IF(cond, fmt, ...) ((void)((cond) && (LOG(fmt, ##__VA_ARGS__), 0)))
 
 
-/* STRIPPED UNDER NDEBUG */
+/* ── STRIPPED UNDER NDEBUG ────────────────────────────────────────────── */
 
 #ifdef NDEBUG
 // Not evaluated (sizeof of an int expression), still compiled: a stale field
@@ -137,14 +139,14 @@ typedef uint64_t u64;
 
 // Deep-copy `src` INTO `dest`, allocating any owned resources from `dst`.
 // `dest` is uninitialised raw slot memory (plan 3.3).
-typedef void (*wc_copy_fn)(wc_allocator dst, u8* dest, const u8* src);
+typedef void (*wc_copy_fn)(wc_allocator dst, void* dest, const void* src);
 // Transfer ownership: `dest` takes over everything `src` owned; `src` is left
 // ZEROED (safe to destroy, not usable). Containers do memcpy + zero when NULL.
-typedef void (*wc_move_fn)(u8* dest, u8* src);
+typedef void (*wc_move_fn)(void* dest, void* src);
 // Release owned resources of the element (not the slot). Elements that own
 // memory store their own allocator, so no allocator argument is needed.
-typedef void (*wc_delete_fn)(u8* elm);
-typedef void (*wc_print_fn)(const u8* elm);
+typedef void (*wc_delete_fn)(void* elm);
+typedef void (*wc_print_fn)(const void* elm);
 typedef int (*wc_compare_fn)(const void* a, const void* b, u64 size);
 
 
@@ -165,17 +167,11 @@ typedef struct {
 #define WC_BOX_IN(A, T, init_fn, ...)                                      \
     ({                                                                     \
         wc_allocator _wbx_a = (A);                                         \
-        T*           _wbx_p = (T*)wc_alloc(_wbx_a, sizeof(T), alignof(T)); \
+        T*           _wbx_p = wc_alloc(_wbx_a, sizeof(T), alignof(T)); \
         FATAL_IF(!_wbx_p, "WC_BOX_IN(" #T "): allocation failed");         \
         *_wbx_p = init_fn(_wbx_a, __VA_ARGS__);                            \
         _wbx_p;                                                            \
     })
-
-
-// CASTING
-
-#define cast(x)    ((u8*)(&(x)))
-#define castptr(x) ((u8*)(x))
 
 
 // COMMON SIZES
@@ -222,27 +218,27 @@ static inline void print_hex(const u8* ptr, u64 size, u32 bytes_per_line)
 // TEST HELPERS
 
 // Generic print functions for primitive types
-static inline void wc_print_int(const u8* elm)
+static inline void wc_print_int(const void* elm)
 {
     printf("%d ", *(int*)elm);
 }
-static inline void wc_print_u32(const u8* elm)
+static inline void wc_print_u32(const void* elm)
 {
     printf("%u ", *(u32*)elm);
 }
-static inline void wc_print_u64(const u8* elm)
+static inline void wc_print_u64(const void* elm)
 {
     printf("%llu ", (unsigned long long)*(u64*)elm);
 }
-static inline void wc_print_float(const u8* elm)
+static inline void wc_print_float(const void* elm)
 {
     printf("%.2f ", (double)*(float*)elm);
 }
-static inline void wc_print_char(const u8* elm)
+static inline void wc_print_char(const void* elm)
 {
     printf("%c ", *(char*)elm);
 }
-static inline void wc_print_cstr(const u8* elm)
+static inline void wc_print_cstr(const void* elm)
 {
     printf("%s ", (const char*)elm);
 }

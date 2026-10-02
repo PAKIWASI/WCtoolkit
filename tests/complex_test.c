@@ -258,11 +258,11 @@ static void test_vecval_push_copy_independent(void)
     for (int i = 0; i < 3; i++) { VEC_PUSH(&inner, i); }
 
     /* push by copy — inner stays valid */
-    GenVec_push(&outer, (u8*)&inner);
+    GenVec_push(&outer, &inner);
 
     /* mutate original — stored copy must be independent */
     int x = 999;
-    GenVec_replace(&inner, 0, (u8*)&x);
+    GenVec_replace(&inner, 0, &x);
 
     GenVec* slot = VEC_AT_MUT(&outer, GenVec, 0);
     WC_EXPECT_EQ_INT(*(int*)GenVec_get_ptr(slot, 0), 0); /* copy untouched */
@@ -310,7 +310,7 @@ static void test_vecval_copy_outer(void)
     /* modify src inner — dest must be independent */
     GenVec* src_slot  = VEC_AT_MUT(&src, GenVec, 0);
     int     x         = 777;
-    GenVec_replace(src_slot, 0, (u8*)&x);
+    GenVec_replace(src_slot, 0, &x);
 
     GenVec* dest_slot = VEC_AT_MUT(&dest, GenVec, 0);
     WC_EXPECT_EQ_INT(*(int*)GenVec_get_ptr(dest_slot, 0), 0);
@@ -394,7 +394,7 @@ static void test_vecptr_copy_outer(void)
 
     /* modify src inner — dest copy must be independent */
     int x = 123;
-    GenVec_replace(VEC_AT(&src, GenVec*, 0), 0, (u8*)&x);
+    GenVec_replace(VEC_AT(&src, GenVec*, 0), 0, &x);
     WC_EXPECT_EQ_INT(*(int*)GenVec_get_ptr(VEC_AT(&dest, GenVec*, 0), 0), 5);
 
     GenVec_destroy(&src);
@@ -420,10 +420,10 @@ static void test_map_int_vec_put_move(void)
     for (int i = 0; i < 5; i++) { VEC_PUSH(&v, i); }
 
     int key = 10;
-    HashMap_put_val_move(&m, (u8*)&key, (u8*)&v);
+    HashMap_put_val_move(&m, &key, &v);
     WC_EXPECT_NULL(v.data); // moved-from: zeroed
 
-    GenVec* stored = (GenVec*)HashMap_get_ptr(&m, (u8*)&key);
+    GenVec* stored = (GenVec*)HashMap_get_ptr(&m, &key);
     WC_EXPECT_NOT_NULL(stored);
     WC_EXPECT_EQ_U64(GenVec_size(stored), 5);
     for (int i = 0; i < 5; i++) {
@@ -440,13 +440,13 @@ static void test_map_int_vec_copy_independence(void)
     for (int i = 0; i < 3; i++) { VEC_PUSH(&src, i); }
 
     int key = 1;
-    HashMap_put(&m, (u8*)&key, (u8*)&src);
+    HashMap_put(&m, &key, &src);
 
     /* mutate &src — stored copy must not be affected */
     int x = 999;
-    GenVec_replace(&src, 0, (u8*)&x);
+    GenVec_replace(&src, 0, &x);
 
-    GenVec* stored = (GenVec*)HashMap_get_ptr(&m, (u8*)&key);
+    GenVec* stored = (GenVec*)HashMap_get_ptr(&m, &key);
     WC_EXPECT_EQ_INT(*(int*)GenVec_get_ptr(stored, 0), 0);
 
     GenVec_destroy(&src);
@@ -464,7 +464,7 @@ static void test_map_str_str_macro(void)
     MAP_PUT_STR_STR(&m, "lang",  "C");
 
     String probe = String_from_cstr(WC_LIBC, "city");
-    String* val = (String*)HashMap_get_ptr(&m, (u8*)&probe);
+    String* val = (String*)HashMap_get_ptr(&m, &probe);
     WC_EXPECT_NOT_NULL(val);
     WC_EXPECT(String_equals_cstr(val, "Cairo"));
     String_destroy(&probe);
@@ -484,7 +484,7 @@ static void test_map_int_str_macro(void)
     MAP_PUT_INT_STR(&m, 3, "three");
 
     int key = 2;
-    String* val = (String*)HashMap_get_ptr(&m, (u8*)&key);
+    String* val = (String*)HashMap_get_ptr(&m, &key);
     WC_EXPECT_NOT_NULL(val);
     WC_EXPECT(String_equals_cstr(val, "two"));
     WC_EXPECT_EQ_U64(HashMap_size(&m), 3);

@@ -50,7 +50,7 @@ void Arena_create(Arena* arena, wc_allocator backing, u64 capacity) __attribute_
 
 // Initialise `arena` over caller-owned memory (a stack array, a static buffer...).
 // `buf` needs no particular alignment: allocations are aligned by address.
-void Arena_create_buf(Arena* arena, u8* buf, u64 size) __attribute__((nonnull(1, 2)));
+void Arena_create_buf(Arena* arena, void* buf, u64 size) __attribute__((nonnull(1, 2)));
 
 // Free the region through the backing allocator (only if owned) and zero the
 // struct. Safe on a zeroed or already-destroyed Arena.
@@ -63,10 +63,10 @@ void Arena_reset(Arena* arena) __attribute__((nonnull(1)));
 // Allocation. Return NULL and set wc_errno = WC_ERR_FULL when the arena is full.
 
 // Aligned to ARENA_DEFAULT_ALIGNMENT.
-u8* Arena_alloc(Arena* arena, u64 size) __attribute__((nonnull(1), alloc_size(2)));
+void* Arena_alloc(Arena* arena, u64 size) __attribute__((nonnull(1), alloc_size(2)));
 
 // `align` must be a power of two >= 1. Alignment is by ADDRESS (A2).
-u8* Arena_alloc_aligned(Arena* arena, u64 size, u64 align) __attribute__((nonnull(1), alloc_size(2)));
+void* Arena_alloc_aligned(Arena* arena, u64 size, u64 align) __attribute__((nonnull(1), alloc_size(2)));
 
 
 static inline __attribute__((nonnull(1))) u64 Arena_used(const Arena* arena)

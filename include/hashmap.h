@@ -65,28 +65,28 @@ void HashMap_move(HashMap* dest, HashMap* src) __attribute__((nonnull(1, 2)));
 
 // Insert or update — COPY semantics.
 // Returns 1 if key existed (updated), 0 if new key inserted.
-b8 HashMap_put(HashMap* map, const u8* key, const u8* val) __attribute__((nonnull(1, 2, 3)));
+b8 HashMap_put(HashMap* map, const void* key, const void* val) __attribute__((nonnull(1, 2, 3)));
 
 // Insert or update, MOVE semantics: key and val point at the caller's elements, both left zeroed
 // (a duplicate key is destroyed; the map keeps its own). move_fn optional (memcpy + zero).
 // Returns 1 if key existed (updated), 0 if new key inserted.
-b8 HashMap_put_move(HashMap* map, u8* key, u8* val) __attribute__((nonnull(1, 2, 3)));
+b8 HashMap_put_move(HashMap* map, void* key, void* val) __attribute__((nonnull(1, 2, 3)));
 
 // Mixed: key copied, val moved.
-b8 HashMap_put_val_move(HashMap* map, const u8* key, u8* val) __attribute__((nonnull(1, 2, 3)));
+b8 HashMap_put_val_move(HashMap* map, const void* key, void* val) __attribute__((nonnull(1, 2, 3)));
 
 // Mixed: key moved, val copied.
-b8 HashMap_put_key_move(HashMap* map, u8* key, const u8* val) __attribute__((nonnull(1, 2, 3)));
+b8 HashMap_put_key_move(HashMap* map, void* key, const void* val) __attribute__((nonnull(1, 2, 3)));
 
 // Get value for key — copies into val. Returns 1 if found, 0 if not.
-b8 HashMap_get(const HashMap* map, const u8* key, u8* val) __attribute__((nonnull(1, 2, 3)));
+b8 HashMap_get(const HashMap* map, const void* key, void* val) __attribute__((nonnull(1, 2, 3)));
 
 // Get pointer to value
-const u8* HashMap_get_ptr(const HashMap* map, const u8* key) __attribute__((nonnull(1, 2)));
+const void* HashMap_get_ptr(const HashMap* map, const void* key) __attribute__((nonnull(1, 2)));
 
-__attribute__((nonnull(1, 2))) static inline u8* HashMap_get_ptr_mut(HashMap* map, const u8* key)
+__attribute__((nonnull(1, 2))) static inline void* HashMap_get_ptr_mut(HashMap* map, const void* key)
 {
-    return (u8*)HashMap_get_ptr(map, key);
+    return (void*)HashMap_get_ptr(map, key);
 }
 
 // Bucket iteration accessors
@@ -95,16 +95,16 @@ __attribute__((nonnull(1))) static inline u64 HashMap_bucket_count(const HashMap
     return map->capacity;
 }
 
-b8        HashMap_bucket_occupied(const HashMap* map, u64 i) __attribute__((nonnull(1)));
-const u8* HashMap_bucket_key_ptr(const HashMap* map, u64 i) __attribute__((nonnull(1)));
-u8*       HashMap_bucket_val_ptr(HashMap* map, u64 i) __attribute__((nonnull(1)));
+b8          HashMap_bucket_occupied(const HashMap* map, u64 i) __attribute__((nonnull(1)));
+const void* HashMap_bucket_key_ptr(const HashMap* map, u64 i) __attribute__((nonnull(1)));
+void*       HashMap_bucket_val_ptr(HashMap* map, u64 i) __attribute__((nonnull(1)));
 
 // Delete key. If out is provided, value is copied to it before deletion.
 // Returns 1 if found and deleted, 0 if not found.
-b8 HashMap_del(HashMap* map, const u8* key, u8* out) __attribute__((nonnull(1, 2)));
+b8 HashMap_del(HashMap* map, const void* key, void* out) __attribute__((nonnull(1, 2)));
 
 // Check if key exists.
-b8 HashMap_has(const HashMap* map, const u8* key) __attribute__((nonnull(1, 2)));
+b8 HashMap_has(const HashMap* map, const void* key) __attribute__((nonnull(1, 2)));
 
 // Print all key-value pairs.
 void HashMap_print(const HashMap* map, wc_print_fn key_print, wc_print_fn val_print) __attribute__((nonnull(1, 2, 3)));

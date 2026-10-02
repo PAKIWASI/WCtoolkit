@@ -56,14 +56,14 @@ PriorityQueue PriorityQueue_from_vec(wc_allocator a, const GenVec* vec, wc_compa
     return pq;
 }
 
-void PriorityQueue_push(PriorityQueue* pq, u8* data)
+void PriorityQueue_push(PriorityQueue* pq, void* data)
 {
     u64 off = Queue_size(&pq->q); // logical index the new element will land at
     Queue_push(&pq->q, data);
     heapify_up(pq, off);
 }
 
-void PriorityQueue_pop(PriorityQueue* pq, u8* popped)
+void PriorityQueue_pop(PriorityQueue* pq, void* popped)
 {
     WC_ASSERT(!Queue_empty(&pq->q), "queue is empty");
 
@@ -85,7 +85,7 @@ void PriorityQueue_pop(PriorityQueue* pq, u8* popped)
     }
 }
 
-void PriorityQueue_remove(PriorityQueue* pq, u64 idx, u8* out)
+void PriorityQueue_remove(PriorityQueue* pq, u64 idx, void* out)
 {
     WC_ASSERT(!Queue_empty(&pq->q), "queue is empty");
     WC_ASSERT(idx < pq->q.size, "idx out of range");

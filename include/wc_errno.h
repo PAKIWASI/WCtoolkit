@@ -30,13 +30,13 @@
  * -----
  *   // Check a single call:
  *   wc_errno = WC_OK;
- *   u8* p = Arena_alloc(Arena, size);
+ *   void* p = Arena_alloc(Arena, size);
  *   if (!p && wc_errno == WC_ERR_FULL) { ... }
  *
  *   // Check a batch — wc_errno stays set if any call failed:
  *   wc_errno = WC_OK;
- *   float* a = (float*)Arena_alloc(Arena, 256);
- *   float* b = (float*)Arena_alloc(Arena, 256);
+ *   float* a = Arena_alloc(Arena, 256);
+ *   float* b = Arena_alloc(Arena, 256);
  *   if (wc_errno) { wc_perror("alloc"); }
  *
  *

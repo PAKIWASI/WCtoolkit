@@ -164,7 +164,7 @@ HashSet HashSet_copy(wc_allocator a, const HashSet* src)
 
 // Insert element — COPY semantics.
 // Returns 1 if already existed (no-op), 0 if newly inserted.
-b8 HashSet_insert(HashSet* set, const u8* elm)
+b8 HashSet_insert(HashSet* set, const void* elm)
 {
     FATAL_IF(set->capacity == 0, "HashSet_insert called on zero-state HashSet");
 
@@ -194,7 +194,7 @@ b8 HashSet_insert(HashSet* set, const u8* elm)
 
 // Insert element — MOVE semantics (elm is nulled on insert, or freed if duplicate).
 // Returns 1 if already existed (elm freed), 0 if newly inserted.
-b8 HashSet_insert_move(HashSet* set, u8* elm)
+b8 HashSet_insert_move(HashSet* set, void* elm)
 {
     FATAL_IF(set->capacity == 0, "HashSet_insert_move called on zero-state HashSet");
 
@@ -229,7 +229,7 @@ b8 HashSet_insert_move(HashSet* set, u8* elm)
 
 
 // Returns 1 if found, 0 if not.
-b8 HashSet_has(const HashSet* set, const u8* elm)
+b8 HashSet_has(const HashSet* set, const void* elm)
 {
     if (!set->capacity) {
         return 0;
@@ -240,7 +240,7 @@ b8 HashSet_has(const HashSet* set, const u8* elm)
     return res == FOUND;
 }
 
-const u8* HashSet_get_ptr(const HashSet* set, const u8* elm)
+const void* HashSet_get_ptr(const HashSet* set, const void* elm)
 {
     if (!set->capacity) {
         return NULL;
@@ -257,7 +257,7 @@ b8 HashSet_bucket_occupied(const HashSet* set, u64 i)
     return *GET_PSL(set, i) != BUCKET_EMPTY;
 }
 
-const u8* HashSet_bucket_elm_ptr(const HashSet* set, u64 i)
+const void* HashSet_bucket_elm_ptr(const HashSet* set, u64 i)
 {
     WC_ASSERT(i < set->capacity, "index out of bounds");
     return GET_ELM(set, i);
@@ -268,7 +268,7 @@ const u8* HashSet_bucket_elm_ptr(const HashSet* set, u64 i)
 // Uses Robin Hood backward-shift deletion to maintain the probe-sequence invariant
 // without tombstones: after removing a slot, shift subsequent entries back one
 // position as long as they have PSL > 1 (i.e. they are not at their home slot).
-b8 HashSet_remove(HashSet* set, const u8* elm)
+b8 HashSet_remove(HashSet* set, const void* elm)
 {
     FATAL_IF(set->capacity == 0, "HashSet_remove called on zero-state HashSet");
 

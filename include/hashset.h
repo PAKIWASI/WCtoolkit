@@ -60,21 +60,21 @@ void HashSet_move(HashSet* dest, HashSet* src) __attribute__((nonnull(1, 2)));
 
 // Insert element — COPY semantics.
 // Returns 1 if already existed (no-op), 0 if newly inserted.
-b8 HashSet_insert(HashSet* set, const u8* elm) __attribute__((nonnull(1, 2)));
+b8 HashSet_insert(HashSet* set, const void* elm) __attribute__((nonnull(1, 2)));
 
 // Insert element, MOVE semantics: *elm is moved in (or destroyed if already present) and zeroed.
 // Returns 1 if already existed (elm freed), 0 if newly inserted.
-b8 HashSet_insert_move(HashSet* set, u8* elm) __attribute__((nonnull(1, 2)));
+b8 HashSet_insert_move(HashSet* set, void* elm) __attribute__((nonnull(1, 2)));
 
 // Returns 1 if found, 0 if not.
-b8 HashSet_has(const HashSet* set, const u8* elm) __attribute__((nonnull(1, 2)));
+b8 HashSet_has(const HashSet* set, const void* elm) __attribute__((nonnull(1, 2)));
 
 // Get pointer to element in-place. Returns NULL if not found.
-const u8* HashSet_get_ptr(const HashSet* set, const u8* elm) __attribute__((nonnull(1, 2)));
+const void* HashSet_get_ptr(const HashSet* set, const void* elm) __attribute__((nonnull(1, 2)));
 
-__attribute__((nonnull(1, 2))) static inline u8* HashSet_get_ptr_mut(HashSet* set, const u8* elm)
+__attribute__((nonnull(1, 2))) static inline void* HashSet_get_ptr_mut(HashSet* set, const void* elm)
 {
-    return (u8*)HashSet_get_ptr(set, elm);
+    return (void*)HashSet_get_ptr(set, elm);
 }
 
 // Bucket iteration accessors
@@ -83,11 +83,11 @@ __attribute__((nonnull(1))) static inline u64 HashSet_bucket_count(const HashSet
     return set->capacity;
 }
 
-b8        HashSet_bucket_occupied(const HashSet* set, u64 i) __attribute__((nonnull(1)));
-const u8* HashSet_bucket_elm_ptr(const HashSet* set, u64 i) __attribute__((nonnull(1)));
+b8          HashSet_bucket_occupied(const HashSet* set, u64 i) __attribute__((nonnull(1)));
+const void* HashSet_bucket_elm_ptr(const HashSet* set, u64 i) __attribute__((nonnull(1)));
 
 // Returns 1 if found and removed, 0 if not found.
-b8 HashSet_remove(HashSet* set, const u8* elm) __attribute__((nonnull(1, 2)));
+b8 HashSet_remove(HashSet* set, const void* elm) __attribute__((nonnull(1, 2)));
 
 // Print all elements.
 void HashSet_print(const HashSet* set, wc_print_fn print) __attribute__((nonnull(1, 2)));

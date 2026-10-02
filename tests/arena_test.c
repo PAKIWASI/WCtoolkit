@@ -58,8 +58,8 @@ static void test_alloc_sequential_no_overlap(void)
 {
     Arena a;
     Arena_create(&a, WC_LIBC, nKB(4));
-    int* p1 = (int*)Arena_alloc(&a, sizeof(int));
-    int* p2 = (int*)Arena_alloc(&a, sizeof(int));
+    int* p1 = Arena_alloc(&a, sizeof(int));
+    int* p2 = Arena_alloc(&a, sizeof(int));
     WC_EXPECT_NOT_NULL(p1);
     WC_EXPECT_NOT_NULL(p2);
     *p1 = 111;
@@ -139,7 +139,7 @@ static void test_create_buf_owns_nothing(void)
     WC_EXPECT_EQ_U64(a.idx, 0);
     WC_EXPECT_FALSE(a.owns_base);
 
-    int* p = (int*)Arena_alloc(&a, sizeof(int));
+    int* p = Arena_alloc(&a, sizeof(int));
     WC_EXPECT_NOT_NULL(p);
     *p = 55;
     WC_EXPECT_EQ_INT(*p, 55);
@@ -376,11 +376,11 @@ static void test_scratch_outer_alloc_survives(void)
     Arena a;
     Arena_create(&a, WC_LIBC, nKB(4));
 
-    int* permanent = (int*)Arena_alloc(&a, sizeof(int));
+    int* permanent = Arena_alloc(&a, sizeof(int));
     *permanent     = 77;
 
     ARENA_SCRATCH(&a) {
-        int* tmp = (int*)Arena_alloc(&a, sizeof(int));
+        int* tmp = Arena_alloc(&a, sizeof(int));
         *tmp     = 999;
     }
 
@@ -551,12 +551,12 @@ static void test_arena_scope_nested_and_break(void)
     int reached = 0;
     ARENA_SCOPE(outer, 256)
     {
-        int* a = (int*)wc_alloc(outer, sizeof(int), alignof(int));
+        int* a = wc_alloc(outer, sizeof(int), alignof(int));
         *a     = 1;
         ARENA_SCOPE(inner, 256)
         {
             WC_EXPECT_TRUE(inner.ctx != outer.ctx); // distinct arenas, no name clash
-            int* b = (int*)wc_alloc(inner, sizeof(int), alignof(int));
+            int* b = wc_alloc(inner, sizeof(int), alignof(int));
             *b     = 2;
             reached += *a + *b;
             break; // leaves only the inner scope, inner arena destroyed
@@ -570,7 +570,7 @@ static int scope_early_return(void)
 {
     ARENA_SCOPE(tmp, 128)
     {
-        char* p = (char*)wc_alloc(tmp, 16, 1);
+        char* p = wc_alloc(tmp, 16, 1);
         p[0]    = 'x';
         return p[0]; // cleanup still destroys the arena
     }

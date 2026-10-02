@@ -20,17 +20,17 @@
  * ------------------------------------------
  *
  * BY VALUE  (slot holds the full struct, sizeof(T) bytes)
- *   copy_fn(wc_allocator dst, u8* dest, const u8* src)
+ *   copy_fn(wc_allocator dst, void* dest, const void* src)
  *     dest  — raw bytes of the slot (uninitialised — treat as blank)
  *     job   — deep-copy src into dest, allocating owned resources from `dst`
  *             (the container's allocator). DO NOT free dest first.
  *
- *   move_fn(u8* dest, u8* src)
+ *   move_fn(void* dest, void* src)
  *     job   — dest takes over everything src owned; leave src ZEROED.
  *             For plain structs this is memcpy + memset(0), which is also
  *             what containers do when move_fn is NULL.
  *
- *   del_fn(u8* elm)
+ *   del_fn(void* elm)
  *     job   — free owned resources (with the element's OWN stored allocator)
  *             but NOT elm itself → GenVec_destroy, String_destroy, ...
  *
@@ -58,12 +58,12 @@
  * str_del   — delegates to String_destroy() (frees heap buf via str->alloc, NOT the slot)
  * ══════════════════════════════════════════════════════════════════════════ */
 
-static inline void str_copy(wc_allocator dst, u8* dest, const u8* src)
+static inline void str_copy(wc_allocator dst, void* dest, const void* src)
 {
     *(String*)dest = String_copy(dst, (const String*)src);
 }
 
-static inline void str_move(u8* dest, u8* src)
+static inline void str_move(void* dest, void* src)
 {
     // Works for both SSO (copies stk[]) and heap mode (the heap pointer moves).
     // A zeroed String reads as heap mode with heap == NULL: destroy-safe.
@@ -71,12 +71,12 @@ static inline void str_move(u8* dest, u8* src)
     memset(src, 0, sizeof(String));
 }
 
-static inline void str_del(u8* elm)
+static inline void str_del(void* elm)
 {
     String_destroy((String*)elm);   // free data buffer via str->alloc, NOT the slot
 }
 
-static inline void str_print(const u8* elm)
+static inline void str_print(const void* elm)
 {
     String_print((const String*)elm);
 }
@@ -90,19 +90,19 @@ static inline void str_print(const u8* elm)
  * str_del_ptr  — destroy pointee via its own allocator, then free shell
  * ══════════════════════════════════════════════════════════════════════════ */
 
-static inline void str_copy_ptr(wc_allocator dst, u8* dest, const u8* src)
+static inline void str_copy_ptr(wc_allocator dst, void* dest, const void* src)
 {
     // Box a deep copy: shell and contents both from dst (D6)
     *(String**)dest = (String*)WC_BOX_IN(dst, String, String_copy, *(const String* const*)src);
 }
 
-static inline void str_move_ptr(u8* dest, u8* src)
+static inline void str_move_ptr(void* dest, void* src)
 {
     *(String**)dest = *(String**)src;
     *(String**)src  = NULL;
 }
 
-static inline void str_del_ptr(u8* elm)
+static inline void str_del_ptr(void* elm)
 {
     String* s = *(String**)elm;
     if (!s) {
@@ -114,7 +114,7 @@ static inline void str_del_ptr(u8* elm)
     wc_free(a, s, sizeof(String), alignof(String)); // free the shell
 }
 
-static inline void str_print_ptr(const u8* elm)
+static inline void str_print_ptr(const void* elm)
 {
     String_print(*(const String**)elm);
 }
@@ -136,22 +136,22 @@ static inline int str_cmp_ptr(const void* a, const void* b, u64 size)
  * 3.  GENVEC BY VALUE  (vec of vecs)
  * ══════════════════════════════════════════════════════════════════════════ */
 
-static inline void vec_copy(wc_allocator dst, u8* dest, const u8* src)
+static inline void vec_copy(wc_allocator dst, void* dest, const void* src)
 {
     *(GenVec*)dest = GenVec_copy(dst, (const GenVec*)src); // inner vec follows the outer container
 }
 
-static inline void vec_move(u8* dest, u8* src)
+static inline void vec_move(void* dest, void* src)
 {
     GenVec_move((GenVec*)dest, (GenVec*)src); // memcpy + zero src
 }
 
-static inline void vec_del(u8* elm)
+static inline void vec_del(void* elm)
 {
     GenVec_destroy((GenVec*)elm); // frees data with the inner vec's own allocator, NOT the slot
 }
 
-static inline void vec_print_int(const u8* elm)
+static inline void vec_print_int(const void* elm)
 {
     const GenVec* v = (const GenVec*)elm;
     printf("[");
@@ -167,19 +167,19 @@ static inline void vec_print_int(const u8* elm)
  * 4.  GENVEC BY POINTER  (slot holds GenVec*)
  * ══════════════════════════════════════════════════════════════════════════ */
 
-static inline void vec_copy_ptr(wc_allocator dst, u8* dest, const u8* src)
+static inline void vec_copy_ptr(wc_allocator dst, void* dest, const void* src)
 {
     // shell and contents both from dst: the shell allocator equals the child's (D6)
     *(GenVec**)dest = WC_BOX_IN(dst, GenVec, GenVec_copy, *(const GenVec* const*)src);
 }
 
-static inline void vec_move_ptr(u8* dest, u8* src)
+static inline void vec_move_ptr(void* dest, void* src)
 {
     *(GenVec**)dest = *(GenVec**)src;
     *(GenVec**)src  = NULL;
 }
 
-static inline void vec_del_ptr(u8* elm)
+static inline void vec_del_ptr(void* elm)
 {
     GenVec* v = *(GenVec**)elm;
     if (!v) {
@@ -190,9 +190,9 @@ static inline void vec_del_ptr(u8* elm)
     wc_free(a, v, sizeof(GenVec), alignof(GenVec));
 }
 
-static inline void vec_print_int_ptr(const u8* elm)
+static inline void vec_print_int_ptr(const void* elm)
 {
-    vec_print_int((const u8*)*(const GenVec**)elm);
+    vec_print_int(*(const GenVec**)elm);
 }
 
 

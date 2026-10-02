@@ -38,10 +38,10 @@ static void test_put_and_get(void)
 {
     HashMap m = int_map();
     int k = 1, v = 100;
-    HashMap_put(&m, (u8*)&k, (u8*)&v);
+    HashMap_put(&m, &k, &v);
 
     int out = 0;
-    WC_EXPECT_TRUE(HashMap_get(&m, (u8*)&k, (u8*)&out));
+    WC_EXPECT_TRUE(HashMap_get(&m, &k, &out));
     WC_EXPECT_EQ_INT(out, 100);
     HashMap_destroy(&m);
 }
@@ -50,12 +50,12 @@ static void test_put_update(void)
 {
     HashMap m = int_map();
     int k = 1, v1 = 10, v2 = 20;
-    HashMap_put(&m, (u8*)&k, (u8*)&v1);
-    b8 was_update = HashMap_put(&m, (u8*)&k, (u8*)&v2);
+    HashMap_put(&m, &k, &v1);
+    b8 was_update = HashMap_put(&m, &k, &v2);
     WC_EXPECT_TRUE(was_update);
 
     int out = 0;
-    HashMap_get(&m, (u8*)&k, (u8*)&out);
+    HashMap_get(&m, &k, &out);
     WC_EXPECT_EQ_INT(out, 20);
     WC_EXPECT_EQ_U64(HashMap_size(&m), 1);
     HashMap_destroy(&m);
@@ -65,9 +65,9 @@ static void test_has(void)
 {
     HashMap m = int_map();
     int k = 5, v = 0;
-    WC_EXPECT_FALSE(HashMap_has(&m, (u8*)&k));
-    HashMap_put(&m, (u8*)&k, (u8*)&v);
-    WC_EXPECT_TRUE(HashMap_has(&m, (u8*)&k));
+    WC_EXPECT_FALSE(HashMap_has(&m, &k));
+    HashMap_put(&m, &k, &v);
+    WC_EXPECT_TRUE(HashMap_has(&m, &k));
     HashMap_destroy(&m);
 }
 
@@ -75,9 +75,9 @@ static void test_del(void)
 {
     HashMap m = int_map();
     int k = 3, v = 42;
-    HashMap_put(&m, (u8*)&k, (u8*)&v);
-    WC_EXPECT_TRUE(HashMap_del(&m, (u8*)&k, NULL));
-    WC_EXPECT_FALSE(HashMap_has(&m, (u8*)&k));
+    HashMap_put(&m, &k, &v);
+    WC_EXPECT_TRUE(HashMap_del(&m, &k, NULL));
+    WC_EXPECT_FALSE(HashMap_has(&m, &k));
     WC_EXPECT_EQ_U64(HashMap_size(&m), 0);
     HashMap_destroy(&m);
 }
@@ -86,8 +86,8 @@ static void test_del_copies_out(void)
 {
     HashMap m = int_map();
     int k = 7, v = 99, out = 0;
-    HashMap_put(&m, (u8*)&k, (u8*)&v);
-    HashMap_del(&m, (u8*)&k, (u8*)&out);
+    HashMap_put(&m, &k, &v);
+    HashMap_del(&m, &k, &out);
     WC_EXPECT_EQ_INT(out, 99);
     HashMap_destroy(&m);
 }
@@ -96,7 +96,7 @@ static void test_del_missing_returns_false(void)
 {
     HashMap m = int_map();
     int k = 404;
-    WC_EXPECT_FALSE(HashMap_del(&m, (u8*)&k, NULL));
+    WC_EXPECT_FALSE(HashMap_del(&m, &k, NULL));
     HashMap_destroy(&m);
 }
 
@@ -104,7 +104,7 @@ static void test_del_on_empty_map(void)
 {
     HashMap m = int_map();
     int k = 1;
-    WC_EXPECT_FALSE(HashMap_del(&m, (u8*)&k, NULL));
+    WC_EXPECT_FALSE(HashMap_del(&m, &k, NULL));
     WC_EXPECT_EQ_U64(HashMap_size(&m), 0);
     HashMap_destroy(&m);
 }
@@ -113,15 +113,15 @@ static void test_get_ptr(void)
 {
     HashMap m = int_map();
     int k = 2, v = 55;
-    HashMap_put(&m, (u8*)&k, (u8*)&v);
-    int* ptr = (int*)HashMap_get_ptr(&m, (u8*)&k);
+    HashMap_put(&m, &k, &v);
+    int* ptr = (int*)HashMap_get_ptr(&m, &k);
     WC_EXPECT_NOT_NULL(ptr);
     WC_EXPECT_EQ_INT(*ptr, 55);
 
     // Mutate through ptr — must be visible via get
     *ptr = 66;
     int out = 0;
-    HashMap_get(&m, (u8*)&k, (u8*)&out);
+    HashMap_get(&m, &k, &out);
     WC_EXPECT_EQ_INT(out, 66);
     HashMap_destroy(&m);
 }
@@ -130,7 +130,7 @@ static void test_get_ptr_missing_returns_null(void)
 {
     HashMap m = int_map();
     int k = 999;
-    WC_EXPECT_NULL(HashMap_get_ptr(&m, (u8*)&k));
+    WC_EXPECT_NULL(HashMap_get_ptr(&m, &k));
     HashMap_destroy(&m);
 }
 
@@ -138,7 +138,7 @@ static void test_get_missing_returns_false(void)
 {
     HashMap m = int_map();
     int k = 999, out = 0;
-    WC_EXPECT_FALSE(HashMap_get(&m, (u8*)&k, (u8*)&out));
+    WC_EXPECT_FALSE(HashMap_get(&m, &k, &out));
     HashMap_destroy(&m);
 }
 
@@ -150,7 +150,7 @@ static void test_size_tracks_inserts(void)
 
     for (int i = 0; i < 10; i++) {
         int v = i * 10;
-        HashMap_put(&m, (u8*)&i, (u8*)&v);
+        HashMap_put(&m, &i, &v);
     }
     WC_EXPECT_EQ_U64(HashMap_size(&m), 10);
     WC_EXPECT_FALSE(HashMap_empty(&m));
@@ -162,12 +162,12 @@ static void test_resize_preserves_data(void)
     HashMap m = int_map();
     for (int i = 0; i < 50; i++) {
         int v = i * 2;
-        HashMap_put(&m, (u8*)&i, (u8*)&v);
+        HashMap_put(&m, &i, &v);
     }
     WC_EXPECT_EQ_U64(HashMap_size(&m), 50);
     for (int i = 0; i < 50; i++) {
         int out = 0;
-        WC_EXPECT_TRUE(HashMap_get(&m, (u8*)&i, (u8*)&out));
+        WC_EXPECT_TRUE(HashMap_get(&m, &i, &out));
         WC_EXPECT_EQ_INT(out, i * 2);
     }
     HashMap_destroy(&m);
@@ -180,16 +180,16 @@ static void test_del_correctness_after_many_deletes(void)
     HashMap m = int_map();
     for (int i = 0; i < 50; i++) {
         int v = i;
-        HashMap_put(&m, (u8*)&i, (u8*)&v);
+        HashMap_put(&m, &i, &v);
     }
     for (int i = 0; i < 48; i++) {
-        HashMap_del(&m, (u8*)&i, NULL);
+        HashMap_del(&m, &i, NULL);
     }
     WC_EXPECT_EQ_U64(HashMap_size(&m), 2);
 
     for (int i = 48; i < 50; i++) {
         int out = 0;
-        WC_EXPECT_TRUE(HashMap_get(&m, (u8*)&i, (u8*)&out));
+        WC_EXPECT_TRUE(HashMap_get(&m, &i, &out));
         WC_EXPECT_EQ_INT(out, i);
     }
     HashMap_destroy(&m);
@@ -205,13 +205,13 @@ static void test_del_reinsert(void)
     // Delete a key then reinsert it — must succeed and be findable
     HashMap m = int_map();
     int k = 42, v1 = 1, v2 = 2;
-    HashMap_put(&m, (u8*)&k, (u8*)&v1);
-    HashMap_del(&m, (u8*)&k, NULL);
-    WC_EXPECT_FALSE(HashMap_has(&m, (u8*)&k));
+    HashMap_put(&m, &k, &v1);
+    HashMap_del(&m, &k, NULL);
+    WC_EXPECT_FALSE(HashMap_has(&m, &k));
 
-    HashMap_put(&m, (u8*)&k, (u8*)&v2);
+    HashMap_put(&m, &k, &v2);
     int out = 0;
-    WC_EXPECT_TRUE(HashMap_get(&m, (u8*)&k, (u8*)&out));
+    WC_EXPECT_TRUE(HashMap_get(&m, &k, &out));
     WC_EXPECT_EQ_INT(out, 2);
     WC_EXPECT_EQ_U64(HashMap_size(&m), 1);
     HashMap_destroy(&m);
@@ -225,18 +225,18 @@ static void test_del_mid_chain(void)
     HashMap m = int_map();
     for (int i = 0; i < 20; i++) {
         int v = i * 10;
-        HashMap_put(&m, (u8*)&i, (u8*)&v);
+        HashMap_put(&m, &i, &v);
     }
 
     int mid = 5;
-    HashMap_del(&m, (u8*)&mid, NULL);
+    HashMap_del(&m, &mid, NULL);
 
     for (int i = 0; i < 20; i++) {
         if (i == mid) {
             continue;
         }
         int out = 0;
-        WC_EXPECT_TRUE(HashMap_get(&m, (u8*)&i, (u8*)&out));
+        WC_EXPECT_TRUE(HashMap_get(&m, &i, &out));
         WC_EXPECT_EQ_INT(out, i * 10);
     }
     HashMap_destroy(&m);
@@ -249,11 +249,11 @@ static void test_delete_reinsert_cycle(void)
     int k = 7;
     for (int cycle = 0; cycle < 20; cycle++) {
         int v = cycle;
-        HashMap_put(&m, (u8*)&k, (u8*)&v);
+        HashMap_put(&m, &k, &v);
         int out = 0;
-        HashMap_get(&m, (u8*)&k, (u8*)&out);
+        HashMap_get(&m, &k, &out);
         WC_EXPECT_EQ_INT(out, cycle);
-        HashMap_del(&m, (u8*)&k, NULL);
+        HashMap_del(&m, &k, NULL);
         WC_EXPECT_EQ_U64(HashMap_size(&m), 0);
     }
     HashMap_destroy(&m);
@@ -265,15 +265,15 @@ static void test_del_first_in_chain(void)
     HashMap m = int_map();
     for (int i = 0; i < 15; i++) {
         int v = i;
-        HashMap_put(&m, (u8*)&i, (u8*)&v);
+        HashMap_put(&m, &i, &v);
     }
     int head = 0;
-    HashMap_del(&m, (u8*)&head, NULL);
-    WC_EXPECT_FALSE(HashMap_has(&m, (u8*)&head));
+    HashMap_del(&m, &head, NULL);
+    WC_EXPECT_FALSE(HashMap_has(&m, &head));
 
     for (int i = 1; i < 15; i++) {
         int out = 0;
-        WC_EXPECT_TRUE(HashMap_get(&m, (u8*)&i, (u8*)&out));
+        WC_EXPECT_TRUE(HashMap_get(&m, &i, &out));
         WC_EXPECT_EQ_INT(out, i);
     }
     HashMap_destroy(&m);
@@ -285,22 +285,22 @@ static void test_del_all_then_reinsert(void)
     HashMap m = int_map();
     for (int i = 0; i < 20; i++) {
         int v = i;
-        HashMap_put(&m, (u8*)&i, (u8*)&v);
+        HashMap_put(&m, &i, &v);
     }
     for (int i = 0; i < 20; i++) {
-        HashMap_del(&m, (u8*)&i, NULL);
+        HashMap_del(&m, &i, NULL);
     }
     WC_EXPECT_EQ_U64(HashMap_size(&m), 0);
     WC_EXPECT_TRUE(HashMap_empty(&m));
 
     for (int i = 0; i < 20; i++) {
         int v = i * 3;
-        HashMap_put(&m, (u8*)&i, (u8*)&v);
+        HashMap_put(&m, &i, &v);
     }
     WC_EXPECT_EQ_U64(HashMap_size(&m), 20);
     for (int i = 0; i < 20; i++) {
         int out = 0;
-        WC_EXPECT_TRUE(HashMap_get(&m, (u8*)&i, (u8*)&out));
+        WC_EXPECT_TRUE(HashMap_get(&m, &i, &out));
         WC_EXPECT_EQ_INT(out, i * 3);
     }
     HashMap_destroy(&m);
@@ -316,7 +316,7 @@ static void test_clear_empties_map(void)
     HashMap m = int_map();
     for (int i = 0; i < 10; i++) {
         int v = i;
-        HashMap_put(&m, (u8*)&i, (u8*)&v);
+        HashMap_put(&m, &i, &v);
     }
     u64 cap_before = HashMap_capacity(&m);
     HashMap_clear(&m);
@@ -325,7 +325,7 @@ static void test_clear_empties_map(void)
     WC_EXPECT_TRUE(HashMap_empty(&m));
     WC_EXPECT_EQ_U64(HashMap_capacity(&m), cap_before); // capacity unchanged
     for (int i = 0; i < 10; i++) {
-        WC_EXPECT_FALSE(HashMap_has(&m, (u8*)&i));
+        WC_EXPECT_FALSE(HashMap_has(&m, &i));
     }
     HashMap_destroy(&m);
 }
@@ -335,18 +335,18 @@ static void test_clear_then_reuse(void)
     HashMap m = int_map();
     for (int i = 0; i < 10; i++) {
         int v = i;
-        HashMap_put(&m, (u8*)&i, (u8*)&v);
+        HashMap_put(&m, &i, &v);
     }
     HashMap_clear(&m);
 
     for (int i = 100; i < 110; i++) {
         int v = i * 2;
-        HashMap_put(&m, (u8*)&i, (u8*)&v);
+        HashMap_put(&m, &i, &v);
     }
     WC_EXPECT_EQ_U64(HashMap_size(&m), 10);
     for (int i = 100; i < 110; i++) {
         int out = 0;
-        WC_EXPECT_TRUE(HashMap_get(&m, (u8*)&i, (u8*)&out));
+        WC_EXPECT_TRUE(HashMap_get(&m, &i, &out));
         WC_EXPECT_EQ_INT(out, i * 2);
     }
     HashMap_destroy(&m);
@@ -358,7 +358,7 @@ static void test_clear_frees_String_vals(void)
     HashMap m = int_str_map();
     for (int i = 0; i < 5; i++) {
         String v = String_from_cstr(WC_LIBC, "owned");
-        HashMap_put_val_move(&m, (u8*)&i, (u8*)&v);
+        HashMap_put_val_move(&m, &i, &v);
         String_destroy(&v); // safe on zeroed
     }
     HashMap_clear(&m);
@@ -367,9 +367,9 @@ static void test_clear_frees_String_vals(void)
     // Map must still be usable after clearing owned-resource entries
     int k = 99;
     String v = String_from_cstr(WC_LIBC, "after_clear");
-    HashMap_put_val_move(&m, (u8*)&k, (u8*)&v);
+    HashMap_put_val_move(&m, &k, &v);
     String_destroy(&v); // safe on zeroed
-    WC_EXPECT_TRUE(HashMap_has(&m, (u8*)&k));
+    WC_EXPECT_TRUE(HashMap_has(&m, &k));
     HashMap_destroy(&m);
 }
 
@@ -392,7 +392,7 @@ static void test_copy_int_map(void)
     HashMap src = int_map();
     for (int i = 0; i < 10; i++) {
         int v = i * 3;
-        HashMap_put(&src, (u8*)&i, (u8*)&v);
+        HashMap_put(&src, &i, &v);
     }
 
     HashMap dest = HashMap_copy(WC_LIBC, &src);
@@ -400,7 +400,7 @@ static void test_copy_int_map(void)
 
     for (int i = 0; i < 10; i++) {
         int out = 0;
-        WC_EXPECT_TRUE(HashMap_get(&dest, (u8*)&i, (u8*)&out));
+        WC_EXPECT_TRUE(HashMap_get(&dest, &i, &out));
         WC_EXPECT_EQ_INT(out, i * 3);
     }
 
@@ -413,16 +413,16 @@ static void test_copy_independence(void)
     // Mutating dest must not affect src
     HashMap src = int_map();
     int k = 1, v = 10;
-    HashMap_put(&src, (u8*)&k, (u8*)&v);
+    HashMap_put(&src, &k, &v);
 
     HashMap dest = HashMap_copy(WC_LIBC, &src);
 
     int v2 = 99;
-    HashMap_put(&dest, (u8*)&k, (u8*)&v2);
+    HashMap_put(&dest, &k, &v2);
 
     int src_out = 0, dest_out = 0;
-    HashMap_get(&src,  (u8*)&k, (u8*)&src_out);
-    HashMap_get(&dest, (u8*)&k, (u8*)&dest_out);
+    HashMap_get(&src,  &k, &src_out);
+    HashMap_get(&dest, &k, &dest_out);
     WC_EXPECT_EQ_INT(src_out,  10);
     WC_EXPECT_EQ_INT(dest_out, 99);
 
@@ -444,7 +444,7 @@ static void test_copy_str_str_map(void)
     HashMap_destroy(&src); // src gone — dest must still be intact
 
     String k = String_from_cstr(WC_LIBC, "city");
-    String* found = (String*)HashMap_get_ptr(&dest, (u8*)&k);
+    String* found = (String*)HashMap_get_ptr(&dest, &k);
     WC_EXPECT_NOT_NULL(found);
     WC_EXPECT_TRUE(String_equals_cstr(found, "London"));
     String_destroy(&k);
@@ -467,13 +467,13 @@ static void test_copy_then_del_src_key(void)
     // Deleting from src after copy must not affect dest
     HashMap src = int_map();
     int k = 5, v = 50;
-    HashMap_put(&src, (u8*)&k, (u8*)&v);
+    HashMap_put(&src, &k, &v);
 
     HashMap dest = HashMap_copy(WC_LIBC, &src);
 
-    HashMap_del(&src, (u8*)&k, NULL);
-    WC_EXPECT_FALSE(HashMap_has(&src,  (u8*)&k));
-    WC_EXPECT_TRUE(HashMap_has(&dest, (u8*)&k));
+    HashMap_del(&src, &k, NULL);
+    WC_EXPECT_FALSE(HashMap_has(&src,  &k));
+    WC_EXPECT_TRUE(HashMap_has(&dest, &k));
 
     HashMap_destroy(&src);
     HashMap_destroy(&dest);
@@ -489,9 +489,9 @@ static void test_str_val_put_copy(void)
     HashMap m = int_str_map();
     int k = 1;
     String sv = String_from_cstr(WC_LIBC, "hello");
-    HashMap_put(&m, (u8*)&k, (u8*)&sv);
+    HashMap_put(&m, &k, &sv);
 
-    String* got = (String*)HashMap_get_ptr(&m, (u8*)&k);
+    String* got = (String*)HashMap_get_ptr(&m, &k);
     WC_EXPECT_NOT_NULL(got);
     WC_EXPECT_TRUE(String_equals_cstr(got, "hello"));
 
@@ -505,10 +505,10 @@ static void test_str_val_independence(void)
     HashMap m = int_str_map();
     int k = 1;
     String sv = String_from_cstr(WC_LIBC, "original");
-    HashMap_put(&m, (u8*)&k, (u8*)&sv);
+    HashMap_put(&m, &k, &sv);
     String_append_cstr(&sv, "_mutated");
 
-    String* stored = (String*)HashMap_get_ptr(&m, (u8*)&k);
+    String* stored = (String*)HashMap_get_ptr(&m, &k);
     WC_EXPECT_TRUE(String_equals_cstr(stored, "original"));
 
     String_destroy(&sv);
@@ -520,10 +520,10 @@ static void test_str_val_move(void)
     HashMap m   = int_str_map();
     int     k   = 2;
     String  src = String_from_cstr(WC_LIBC, "moved");
-    HashMap_put_val_move(&m, (u8*)&k, (u8*)&src);
+    HashMap_put_val_move(&m, &k, &src);
     String_destroy(&src); // moved-from: zeroed, safe destroy
 
-    String* stored = (String*)HashMap_get_ptr(&m, (u8*)&k);
+    String* stored = (String*)HashMap_get_ptr(&m, &k);
     WC_EXPECT_TRUE(String_equals_cstr(stored, "moved"));
     HashMap_destroy(&m);
 }
@@ -537,7 +537,7 @@ static void test_str_val_update_frees_old(void)
     MAP_PUT_INT_STR(&m, k, "second");
 
     WC_EXPECT_EQ_U64(HashMap_size(&m), 1);
-    String* stored = (String*)HashMap_get_ptr(&m, (u8*)&k);
+    String* stored = (String*)HashMap_get_ptr(&m, &k);
     WC_EXPECT_TRUE(String_equals_cstr(stored, "second"));
     HashMap_destroy(&m);
 }
@@ -550,10 +550,10 @@ static void test_str_val_move_updates_existing(void)
     MAP_PUT_INT_STR(&m, k, "old");
 
     String v = String_from_cstr(WC_LIBC, "new");
-    HashMap_put_val_move(&m, (u8*)&k, (u8*)&v);
+    HashMap_put_val_move(&m, &k, &v);
     String_destroy(&v); // moved-from: zeroed, safe destroy
 
-    String* stored = (String*)HashMap_get_ptr(&m, (u8*)&k);
+    String* stored = (String*)HashMap_get_ptr(&m, &k);
     WC_EXPECT_TRUE(String_equals_cstr(stored, "new"));
     WC_EXPECT_EQ_U64(HashMap_size(&m), 1);
     HashMap_destroy(&m);
@@ -567,7 +567,7 @@ static void test_str_val_del_with_out(void)
     MAP_PUT_INT_STR(&m, k, "goodbye");
 
     String out = String_create(WC_LIBC);
-    HashMap_del(&m, (u8*)&k, (u8*)&out);
+    HashMap_del(&m, &k, &out);
     WC_EXPECT_TRUE(String_equals_cstr(&out, "goodbye"));
 
     String_destroy(&out);
@@ -582,13 +582,13 @@ static void test_str_val_many_inserts_and_gets(void)
     for (int i = 0; i < 60; i++) {
         snprintf(buf, sizeof(buf), "value_%d", i);
         String v = String_from_cstr(WC_LIBC, buf);
-        HashMap_put_val_move(&m, (u8*)&i, (u8*)&v);
+        HashMap_put_val_move(&m, &i, &v);
         String_destroy(&v); // moved-from: zeroed, safe destroy
     }
     WC_EXPECT_EQ_U64(HashMap_size(&m), 60);
     for (int i = 0; i < 60; i++) {
         snprintf(buf, sizeof(buf), "value_%d", i);
-        String* stored = (String*)HashMap_get_ptr(&m, (u8*)&i);
+        String* stored = (String*)HashMap_get_ptr(&m, &i);
         WC_EXPECT_NOT_NULL(stored);
         WC_EXPECT_TRUE(String_equals_cstr(stored, buf));
     }
@@ -605,12 +605,12 @@ static void test_str_key_lookup(void)
     HashMap m  = str_str_map();
     String k1 = String_from_cstr(WC_LIBC, "name");
     String v1 = String_from_cstr(WC_LIBC, "Alice");
-    HashMap_put_move(&m, (u8*)&k1, (u8*)&v1);
+    HashMap_put_move(&m, &k1, &v1);
     String_destroy(&k1); // moved-from: zeroed, safe destroy
     String_destroy(&v1); // moved-from: zeroed, safe destroy
 
     String key = String_from_cstr(WC_LIBC, "name");
-    String* found = (String*)HashMap_get_ptr(&m, (u8*)&key);
+    String* found = (String*)HashMap_get_ptr(&m, &key);
     WC_EXPECT_NOT_NULL(found);
     WC_EXPECT_TRUE(String_equals_cstr(found, "Alice"));
 
@@ -622,7 +622,7 @@ static void test_str_key_miss(void)
 {
     HashMap m = str_str_map();
     String k = String_from_cstr(WC_LIBC, "missing");
-    WC_EXPECT_FALSE(HashMap_has(&m, (u8*)&k));
+    WC_EXPECT_FALSE(HashMap_has(&m, &k));
     String_destroy(&k);
     HashMap_destroy(&m);
 }
@@ -636,7 +636,7 @@ static void test_str_key_update_discards_dup_key(void)
 
     WC_EXPECT_EQ_U64(HashMap_size(&m), 1);
     String k = String_from_cstr(WC_LIBC, "lang");
-    String* v = (String*)HashMap_get_ptr(&m, (u8*)&k);
+    String* v = (String*)HashMap_get_ptr(&m, &k);
     WC_EXPECT_TRUE(String_equals_cstr(v, "C11"));
     String_destroy(&k);
     HashMap_destroy(&m);
@@ -648,8 +648,8 @@ static void test_str_key_del(void)
     MAP_PUT_STR_STR(&m, "fruit", "apple");
 
     String k = String_from_cstr(WC_LIBC, "fruit");
-    WC_EXPECT_TRUE(HashMap_del(&m, (u8*)&k, NULL));
-    WC_EXPECT_FALSE(HashMap_has(&m, (u8*)&k));
+    WC_EXPECT_TRUE(HashMap_del(&m, &k, NULL));
+    WC_EXPECT_FALSE(HashMap_has(&m, &k));
     WC_EXPECT_EQ_U64(HashMap_size(&m), 0);
     String_destroy(&k);
     HashMap_destroy(&m);
@@ -662,11 +662,11 @@ static void test_str_key_put_key_move(void)
     String   k = String_from_cstr(WC_LIBC, "animal");
     String   v = String_from_cstr(WC_LIBC, "cat");
 
-    HashMap_put_key_move(&m, (u8*)&k, (u8*)&v);
+    HashMap_put_key_move(&m, &k, &v);
     String_destroy(&k); // moved-from: zeroed, safe destroy
 
     String lookup = String_from_cstr(WC_LIBC, "animal");
-    String* stored = (String*)HashMap_get_ptr(&m, (u8*)&lookup);
+    String* stored = (String*)HashMap_get_ptr(&m, &lookup);
     WC_EXPECT_NOT_NULL(stored);
     WC_EXPECT_TRUE(String_equals_cstr(stored, "cat"));
 
@@ -690,7 +690,7 @@ static void test_str_str_resize_preserves_data(void)
         snprintf(key_buf, sizeof(key_buf), "key%d", i);
         snprintf(val_buf, sizeof(val_buf), "val%d", i);
         String k = String_from_cstr(WC_LIBC, key_buf);
-        String* v = (String*)HashMap_get_ptr(&m, (u8*)&k);
+        String* v = (String*)HashMap_get_ptr(&m, &k);
         WC_EXPECT_NOT_NULL(v);
         WC_EXPECT_TRUE(String_equals_cstr(v, val_buf));
         String_destroy(&k);
@@ -705,7 +705,7 @@ static void test_str_str_del_frees_both(void)
     MAP_PUT_STR_STR(&m, "x", "y");
 
     String k = String_from_cstr(WC_LIBC, "x");
-    WC_EXPECT_TRUE(HashMap_del(&m, (u8*)&k, NULL));
+    WC_EXPECT_TRUE(HashMap_del(&m, &k, NULL));
     WC_EXPECT_EQ_U64(HashMap_size(&m), 0);
     String_destroy(&k);
     HashMap_destroy(&m);
@@ -725,7 +725,7 @@ static void test_str_str_clear_frees_all(void)
     // Usable after clear
     MAP_PUT_STR_STR(&m, "after", "clear");
     String k = String_from_cstr(WC_LIBC, "after");
-    WC_EXPECT_TRUE(HashMap_has(&m, (u8*)&k));
+    WC_EXPECT_TRUE(HashMap_has(&m, &k));
     String_destroy(&k);
     HashMap_destroy(&m);
 }
@@ -741,13 +741,13 @@ static void test_hashmap_fill_past_several_resizes(void)
     const int count = 2000;
     for (int i = 0; i < count; i++) {
         int v = i * 5;
-        HashMap_put(&m, (u8*)&i, (u8*)&v);
+        HashMap_put(&m, &i, &v);
     }
     WC_EXPECT_EQ_U64(HashMap_size(&m), count);
 
     for (int i = 0; i < count; i++) {
         int out = 0;
-        WC_EXPECT_TRUE(HashMap_get(&m, (u8*)&i, (u8*)&out));
+        WC_EXPECT_TRUE(HashMap_get(&m, &i, &out));
         WC_EXPECT_EQ_INT(out, i * 5);
     }
     HashMap_destroy(&m);
@@ -762,7 +762,7 @@ static void test_hashmap_cross_alloc_copy(void)
     HashMap src = HashMap_create(al, sizeof(int), sizeof(int), NULL, NULL, NULL, NULL);
     for (int i = 0; i < 20; i++) {
         int v = i * 11;
-        HashMap_put(&src, (u8*)&i, (u8*)&v);
+        HashMap_put(&src, &i, &v);
     }
 
     // Copy from Arena to libc
@@ -775,7 +775,7 @@ static void test_hashmap_cross_alloc_copy(void)
 
     for (int i = 0; i < 20; i++) {
         int out = 0;
-        WC_EXPECT_TRUE(HashMap_get(&dest, (u8*)&i, (u8*)&out));
+        WC_EXPECT_TRUE(HashMap_get(&dest, &i, &out));
         WC_EXPECT_EQ_INT(out, i * 11);
     }
     HashMap_destroy(&dest);
@@ -785,7 +785,7 @@ static void test_hashmap_move(void)
 {
     HashMap src = int_map();
     int k = 10, v = 999;
-    HashMap_put(&src, (u8*)&k, (u8*)&v);
+    HashMap_put(&src, &k, &v);
 
     HashMap dest;
     HashMap_move(&dest, &src);
@@ -793,7 +793,7 @@ static void test_hashmap_move(void)
     WC_EXPECT_EQ_U64(src.capacity, 0);
     WC_EXPECT_EQ_U64(HashMap_size(&dest), 1);
     int out = 0;
-    WC_EXPECT_TRUE(HashMap_get(&dest, (u8*)&k, (u8*)&out));
+    WC_EXPECT_TRUE(HashMap_get(&dest, &k, &out));
     WC_EXPECT_EQ_INT(out, 999);
 
     HashMap_destroy(&src);  // safe on zeroed
@@ -806,7 +806,7 @@ static void die_mutating_zero_hashmap(void)
     HashMap m;
     memset(&m, 0, sizeof(m));
     int k = 1, v = 2;
-    HashMap_put(&m, (u8*)&k, (u8*)&v);
+    HashMap_put(&m, &k, &v);
 }
 
 static void test_hashmap_zero_state_fatal(void)

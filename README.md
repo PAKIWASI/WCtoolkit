@@ -30,14 +30,15 @@ ARENA_SCOPE(tmp, nKB(4)) {               // same code, arena-backed, no destroys
 
 - **Allocator first, receiver first.** Constructors and copies take the allocator first: `GenVec_create(alloc, n, size, ops)`, `GenVec_copy(alloc, &src)`. Everything else takes the instance first: `GenVec_push(&v, x)`.
 - **Copies never inherit.** `X_copy(alloc, &src)` deep-copies into `alloc`, so an arena-backed container can be copied out to libc.
-- **Moves zero the source.** `X_move(&dest, &src)` and element moves (`GenVec_push_move(&v, (u8*)&s)`, `VEC_PUSH_MOVE(&v, s)`) leave the source zeroed.
+- **Moves zero the source.** `X_move(&dest, &src)` and element moves (`GenVec_push_move(&v, &s)`, `VEC_PUSH_MOVE(&v, s)`) leave the source zeroed.
 - **Zero state is dead.** A moved-from or destroyed container may only be destroyed or created again. Changing it is a fatal error in every build. `destroy` is safe on zeroed structs and can be called twice.
 - **Pinned arenas.** `Arena` and `ChainArena` are created in place (`Arena_create(&arena, backing, cap)`) and must never be moved or copied, because containers hold their address.
+- **`void*` at the boundary, `u8*` inside.** Anything that points at one of your elements, or at untyped memory, is `void*` / `const void*`: element parameters and returns, callbacks, allocation results. No casts at call sites: `GenVec_push(&v, &x)`, `int* p = GenVec_get_ptr_mut(&v, i)`. `u8*` is only for byte buffers the library indexes (container storage, `Arena.base`) and byte-level helpers (`print_hex`, hash internals).
 - Lookups return `WC_NOT_FOUND`.
 - **Diagnostics, split by build.** Every macro is an expression. In every build: `FATAL_IF` for allocation failure and changes to a dead container, `WARN_IF` / `WARN_IF_RET` / `LOG_IF` to report and continue, plus unconditional `FATAL`, `WARN`, `LOG`. Debug only: `WC_ASSERT(invariant, msg)` for bounds and API misuse; under `NDEBUG` its condition is not evaluated. `wc_errno` covers expected conditions (pop on empty, arena full). Failure paths are `WC_UNLIKELY` and report through `cold` functions, so they sit outside hot code.
 - Constructors are `warn_unused_result`: dropping a `GenVec_create()` return value is a compiler warning, not a silent leak.
 
-A type-checked macro layer (`VEC_PUSH`, `VEC_FOREACH`, `MAP_PUT`, ...) sits on top of the `u8*`-based C API and catches element-type mismatches at compile time. The plain forms use libc; the `_IN` forms take an allocator (`VEC_OF_IN(A, T, n)`, `MAP_OF_IN(A, K, V)`, `MATRIX_IN(A, m, n)`). Macros that build elements (`VEC_PUSH_CSTR`, `MAP_PUT_STR_*`, ...) use the container's allocator.
+A type-checked macro layer (`VEC_PUSH`, `VEC_FOREACH`, `MAP_PUT`, ...) sits on top of the `void*`-based C API and catches element-type mismatches at compile time. The plain forms use libc; the `_IN` forms take an allocator (`VEC_OF_IN(A, T, n)`, `MAP_OF_IN(A, K, V)`, `MATRIX_IN(A, m, n)`). Macros that build elements (`VEC_PUSH_CSTR`, `MAP_PUT_STR_*`, ...) use the container's allocator.
 
 Allocator lifetimes, scratch scopes, copy vs move and boxing are covered in [docs/allocators.md](docs/allocators.md). A runnable tour is in [examples/allocators.c](examples/allocators.c).
 

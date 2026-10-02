@@ -17,7 +17,7 @@
 - Changing container algorithms (Robin Hood hashing, circular queue, heap logic).
 - Changing `fast_math`, `random` (they perform no allocation; confirmed by grep).
 - Virtual-memory arena backing (`wc_vm`) is **not** required for the refactor. It is scheduled as optional Phase 8, after the Definition of Done is met.
-- When to use explicit u8* and when to use void*
+- ~~When to use explicit u8* and when to use void*~~ Resolved after Phase 7: `void*` at the API boundary (element pointers, callbacks, allocation results), `u8*` inside (byte buffers the implementation indexes). See README "API conventions".
 
 ---
 
@@ -182,9 +182,10 @@ Vtable semantics:
 **Ownership: move, copy, delete**
 
 ```c
-typedef void (*wc_copy_fn)  (wc_allocator dst, u8* dest, const u8* src); // deep copy INTO allocator `dst`
-typedef void (*wc_move_fn)  (u8* dest, u8* src);                        // transfer; src left zeroed
-typedef void (*wc_delete_fn)(u8* elm);                                  // uses the element's own stored allocator
+typedef void (*wc_copy_fn)  (wc_allocator dst, void* dest, const void* src); // deep copy INTO allocator `dst`
+typedef void (*wc_move_fn)  (void* dest, void* src);                        // transfer; src left zeroed
+typedef void (*wc_delete_fn)(void* elm);                                    // uses the element's own stored allocator
+// (u8* in the original design; moved to void* by the boundary rule after Phase 7)
 ```
 
 - The `u8**` move protocol is removed everywhere (about 30 occurrences: `gen_vector.h`, `hashmap.h`, `hashset.h`, `queue.h`, `stack.h`, `wc_helpers.h`, `wc_macros.h`). It existed only to free heap shells.

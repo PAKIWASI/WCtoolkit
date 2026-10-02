@@ -18,7 +18,7 @@ Matrixf matrix_create(wc_allocator a, u64 m, u64 n)
     FATAL_IF(m == 0 || n == 0, "matrix_create: dims must be > 0 (got %llu x %llu)",
              (unsigned long long)m, (unsigned long long)n);
 
-    float* data = (float*)wc_alloc(a, MAT_BYTES(m, n), alignof(float));
+    float* data = wc_alloc(a, MAT_BYTES(m, n), alignof(float));
     FATAL_IF(!data, "matrix_create: data allocation failed");
 
     return (Matrixf){.data = data, .m = m, .n = n, .alloc = a};

@@ -19,11 +19,11 @@ void gen_vector_alloc_suite(void);
 static void workload(GenVec* v)
 {
     for (int i = 0; i < 300; i++) {
-        GenVec_push(v, cast(i));
+        GenVec_push(v, &(i));
     }
     int x = -1;
-    GenVec_insert(v, 0, cast(x));
-    GenVec_insert(v, 150, cast(x));
+    GenVec_insert(v, 0, &(x));
+    GenVec_insert(v, 150, &(x));
     GenVec_remove(v, 150, NULL);
     GenVec_remove(v, 0, NULL);
     GenVec_remove_range(v, 100, 50); // drop 100..149
@@ -88,7 +88,7 @@ static void test_workload_chain_arena(void)
     GenVec v = GenVec_create(ChainArena_allocator(&ca), 2, sizeof(int), NULL);
     workload(&v);
     for (int i = 0; i < 3000; i++) { // past one node: was fatal before A3
-        GenVec_push(&v, cast(i));
+        GenVec_push(&v, &(i));
     }
     GenVec_destroy(&v);
 
@@ -102,9 +102,9 @@ static void test_workload_chain_arena(void)
 static void test_buf_vector_fills_buffer_in_place(void)
 {
     int    buf[8];
-    GenVec v = GenVec_create_buf((u8*)buf, 8, sizeof(int), NULL);
+    GenVec v = GenVec_create_buf(buf, 8, sizeof(int), NULL);
     for (int i = 0; i < 8; i++) {
-        GenVec_push(&v, cast(i));
+        GenVec_push(&v, &(i));
     }
     WC_EXPECT(v.data == (u8*)buf);
     WC_EXPECT_EQ_INT(buf[7], 7);
@@ -115,9 +115,9 @@ static void test_buf_vector_fills_buffer_in_place(void)
 static void push_past_borrowed_capacity(void)
 {
     int    buf[2];
-    GenVec v = GenVec_create_buf((u8*)buf, 2, sizeof(int), NULL);
+    GenVec v = GenVec_create_buf(buf, 2, sizeof(int), NULL);
     for (int i = 0; i < 3; i++) {
-        GenVec_push(&v, cast(i)); // third push must die: a borrowed buffer cannot grow
+        GenVec_push(&v, &(i)); // third push must die: a borrowed buffer cannot grow
     }
 }
 
@@ -135,7 +135,7 @@ static void test_copy_arena_to_libc(void)
     Arena_create(&a, WC_LIBC, nKB(4));
     GenVec src = GenVec_create(Arena_allocator(&a), 4, sizeof(int), NULL);
     for (int i = 0; i < 20; i++) {
-        GenVec_push(&src, cast(i));
+        GenVec_push(&src, &(i));
     }
 
     GenVec dst = GenVec_copy(WC_LIBC, &src);
@@ -160,7 +160,7 @@ static void test_nested_copy_children_follow_destination(void)
     for (int r = 0; r < 6; r++) {
         GenVec inner = GenVec_create(al, 1, sizeof(int), NULL);
         for (int c = 0; c <= r; c++) {
-            GenVec_push(&inner, cast(c));
+            GenVec_push(&inner, &(c));
         }
         VEC_PUSH_MOVE(&outer, inner); // inner zeroed
         WC_EXPECT_NULL(inner.data);
@@ -173,7 +173,7 @@ static void test_nested_copy_children_follow_destination(void)
     GenVec copy = GenVec_copy(dst, &outer);
     WC_EXPECT(wc_test_alloc_owns(&ta, copy.data));
     for (u64 r = 0; r < 6; r++) {
-        const GenVec* in = (const GenVec*)GenVec_get_ptr(&copy, r);
+        const GenVec* in = GenVec_get_ptr(&copy, r);
         WC_EXPECT(wc_same(in->alloc, dst));
         WC_EXPECT(wc_test_alloc_owns(&ta, in->data));
         WC_EXPECT_EQ_U64(GenVec_size(in), r + 1);
@@ -196,7 +196,7 @@ static void test_boxed_children_free_with_their_own_allocator(void)
     GenVec outer = VEC_OF(GenVec*, 2); // outer on libc, children on the test allocator
     for (int i = 0; i < 5; i++) {
         GenVec* child = WC_BOX_IN(al, GenVec, GenVec_create, 4, sizeof(int), NULL);
-        GenVec_push(child, cast(i));
+        GenVec_push(child, &(i));
         WC_EXPECT(wc_test_alloc_owns(&ta, child));
         VEC_PUSH_MOVE(&outer, child);
         WC_EXPECT_NULL(child);
@@ -217,7 +217,7 @@ static void test_subarr_into_other_allocator(void)
     Arena_create(&a, WC_LIBC, nKB(4));
     GenVec src = GenVec_create(Arena_allocator(&a), 8, sizeof(int), NULL);
     for (int i = 0; i < 8; i++) {
-        GenVec_push(&src, cast(i));
+        GenVec_push(&src, &(i));
     }
     GenVec sub = GenVec_subarr(&src, WC_LIBC, 2, 3);
     Arena_destroy(&a);
@@ -292,7 +292,7 @@ static void push_after_move(void)
     GenVec b;
     GenVec_move(&b, &a);
     int x = 1;
-    GenVec_push(&a, cast(x)); // a is zeroed: must die, not allocate from libc
+    GenVec_push(&a, &(x)); // a is zeroed: must die, not allocate from libc
 }
 
 static void push_after_destroy(void)
@@ -300,7 +300,7 @@ static void push_after_destroy(void)
     GenVec a = GenVec_create(WC_LIBC, 4, sizeof(int), NULL);
     GenVec_destroy(&a);
     int x = 1;
-    GenVec_push(&a, cast(x));
+    GenVec_push(&a, &(x));
 }
 
 static void reserve_on_zeroed(void)
@@ -352,7 +352,7 @@ static u64 alloc_site_scenario(wc_test_alloc* ta)
 
     GenVec v = GenVec_create(al, 2, sizeof(int), NULL); // create
     for (int i = 0; i < 20; i++) {
-        GenVec_push(&v, cast(i)); // grow
+        GenVec_push(&v, &(i)); // grow
     }
     GenVec_reserve(&v, 100);                   // reserve
     GenVec_shrink_to_fit(&v);                  // shrink
@@ -360,7 +360,7 @@ static u64 alloc_site_scenario(wc_test_alloc* ta)
     GenVec s = GenVec_subarr(&v, al, 0, 5);    // subarr
 
     GenVec outer = VEC_OF_IN(al, GenVec, 1);
-    GenVec_push(&outer, cast(v));              // outer grow + nested element copy
+    GenVec_push(&outer, &(v));              // outer grow + nested element copy
 
     u64 attempts = ta->n_attempts;
     GenVec_destroy(&outer);

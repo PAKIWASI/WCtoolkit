@@ -179,7 +179,7 @@ void String_shrink_to_fit(String* s)
 
 char* String_to_cstr(wc_allocator a, const String* s)
 {
-    char* out = (char*)wc_alloc(a, s->size + 1, 1);
+    char* out = wc_alloc(a, s->size + 1, 1);
     FATAL_IF(!out, "String_to_cstr: allocation failed");
 
     if (s->size > 0) {
@@ -480,7 +480,7 @@ static inline void stk_to_heap(String* s)
     u64 new_cap = (u64)((float)s->capacity * STRING_GROWTH);
     if (new_cap == 0) { new_cap = STR_SSO_SIZE; }
 
-    char* new_data = (char*)wc_alloc(s->alloc, new_cap, 1);
+    char* new_data = wc_alloc(s->alloc, new_cap, 1);
     FATAL_IF(!new_data, "String stk_to_heap: allocation failed");
 
     memcpy(new_data, s->stk, s->size);
@@ -507,7 +507,7 @@ static inline void String_grow(String* s)
     u64 new_cap = (u64)((float)s->capacity * STRING_GROWTH);
     if (new_cap <= s->capacity) { new_cap = s->capacity + 1; }
 
-    char* new_data = (char*)wc_realloc(s->alloc, s->heap, s->capacity, new_cap, 1);
+    char* new_data = wc_realloc(s->alloc, s->heap, s->capacity, new_cap, 1);
     FATAL_IF(!new_data, "String_grow: realloc failed");
 
     s->heap     = new_data;
@@ -529,13 +529,13 @@ static inline void ensure_capacity(String* s, u64 needed)
     // currently in SSO but SSO cap is not enough
     if (IS_SSO(s)) {
         s->stk[STR_SSO_SIZE - 1] = '\0'; // switch to heap mode
-        char* new_data           = (char*)wc_alloc(s->alloc, new_cap, 1);
+        char* new_data           = wc_alloc(s->alloc, new_cap, 1);
         FATAL_IF(!new_data, "ensure_capacity: allocation failed");
         memcpy(new_data, s->stk, s->size);
         s->heap     = new_data;
         s->capacity = new_cap;
     } else {
-        char* new_data = (char*)wc_realloc(s->alloc, s->heap, s->capacity, new_cap, 1);
+        char* new_data = wc_realloc(s->alloc, s->heap, s->capacity, new_cap, 1);
         FATAL_IF(!new_data, "ensure_capacity: realloc failed");
         s->heap     = new_data;
         s->capacity = new_cap;

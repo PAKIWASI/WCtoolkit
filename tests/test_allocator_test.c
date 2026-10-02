@@ -266,7 +266,7 @@ static void test_genvec_copy_move_reset_are_leak_free(void)
         GenVec_reset(&c);
         WC_EXPECT_EQ_U64(GenVec_capacity(&c), 0);
         u64 x = 7;
-        GenVec_push(&c, cast(x)); // grows from 0 after reset, same allocator
+        GenVec_push(&c, &(x)); // grows from 0 after reset, same allocator
 
         GenVec_destroy(&a); // zero-safe
         GenVec_destroy(&b);
@@ -281,9 +281,9 @@ static void test_genvec_nested_is_leak_free(void)
         for (int i = 0; i < 10; i++) {
             GenVec inner = GenVec_create(al, 1, sizeof(int), NULL);
             for (int j = 0; j < i * 7; j++) {
-                GenVec_push(&inner, cast(j));
+                GenVec_push(&inner, &(j));
             }
-            GenVec_push(&outer, cast(inner)); // deep copy via wc_vec_ops into outer's allocator
+            GenVec_push(&outer, &(inner)); // deep copy via wc_vec_ops into outer's allocator
             GenVec_destroy(&inner);
         }
         GenVec copy = GenVec_copy(al, &outer);

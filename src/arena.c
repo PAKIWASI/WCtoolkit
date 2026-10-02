@@ -44,7 +44,7 @@ void Arena_create(Arena* arena, wc_allocator backing, u64 capacity)
     };
 }
 
-void Arena_create_buf(Arena* arena, u8* buf, u64 size)
+void Arena_create_buf(Arena* arena, void* buf, u64 size)
 {
     WC_ASSERT(size != 0, "size can't be zero");
 
@@ -83,12 +83,12 @@ void Arena_reset(Arena* arena)
 
 // Allocation
 
-u8* Arena_alloc(Arena* arena, u64 size)
+void* Arena_alloc(Arena* arena, u64 size)
 {
     return Arena_alloc_aligned(arena, size, ARENA_DEFAULT_ALIGNMENT);
 }
 
-u8* Arena_alloc_aligned(Arena* arena, u64 size, u64 align)
+void* Arena_alloc_aligned(Arena* arena, u64 size, u64 align)
 {
     ARENA_CHECK_LIVE(arena);
     WC_ASSERT(size != 0, "can't have allocation of size = 0");

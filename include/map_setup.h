@@ -6,7 +6,7 @@
 #include <string.h>
 
 
-typedef u64 (*custom_hash_fn)(const u8* key, u64 size);
+typedef u64 (*custom_hash_fn)(const void* key, u64 size);
 
 #define LOAD_FACTOR_GROW      0.75 // Robin Hood sweet spot
 #define HASHMAP_INIT_CAPACITY 16   // power-of-2 to avoid modulo
@@ -43,7 +43,7 @@ static inline u64 wymix(u64 a, u64 b)
     return (u64)(r) ^ (u64)(r >> 64);
 }
 
-static u64 wyhash(const u8* key, u64 len)
+static u64 wyhash(const void* key, u64 len)
 {
     const u64 seed = 0x517cc1b727220a95ULL;
     const u64 s0   = 0x2d358dccaa6c78a5ULL;
@@ -107,18 +107,18 @@ static inline int default_compare(const void* a, const void* b, u64 size)
 
 // wyhash variants for String
 
-__attribute__((unused)) static u64 wyhash_str(const u8* key, u64 size)
+__attribute__((unused)) static u64 wyhash_str(const void* key, u64 size)
 {
     (void)size;
     String* str = (String*)key;
-    return wyhash((const u8*)String_data_ptr(str), String_len(str));
+    return wyhash(String_data_ptr(str), String_len(str));
 }
 
-__attribute__((unused)) static u64 wyhash_str_ptr(const u8* key, u64 size)
+__attribute__((unused)) static u64 wyhash_str_ptr(const void* key, u64 size)
 {
     (void)size;
     String* str = *(String**)key;
-    return wyhash((const u8*)String_data_ptr(str), String_len(str));
+    return wyhash(String_data_ptr(str), String_len(str));
 }
 
 #define ALIGN8(size) (((u64)(size) + 7u) & ~7u)

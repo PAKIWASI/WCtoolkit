@@ -66,7 +66,7 @@ Arenas can sit on other allocators. `Arena_create(&a, backing, cap)` takes its r
 
 - **Copy is deep.** Nested elements are copied into the destination allocator through their `copy_fn`. Copying an arena-backed `GenVec<GenVec<String>>` into `WC_LIBC` produces a tree with no pointers back into the arena.
 - **Move is a memcpy plus a zero.** The destination must be raw or already destroyed, because move overwrites it without freeing it.
-- **Element moves take a pointer to the source element:** `GenVec_push_move(&v, (u8*)&s)` or `VEC_PUSH_MOVE(&v, s)`. `s` is zeroed afterwards.
+- **Element moves take a pointer to the source element:** `GenVec_push_move(&v, &s)` or `VEC_PUSH_MOVE(&v, s)`. `s` is zeroed afterwards.
 
 ### Zero state is dead
 

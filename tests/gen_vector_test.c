@@ -17,7 +17,7 @@ static GenVec int_vec(u64 cap)
 static void push_ints(GenVec* v, int count)
 {
     for (int i = 0; i < count; i++) {
-        GenVec_push(v, (u8*)&i);
+        GenVec_push(v, &i);
     }
 }
 
@@ -44,7 +44,7 @@ static void test_init_with_cap(void)
 static void test_init_val(void)
 {
     int     val = 42;
-    GenVec v   = GenVec_create_val(WC_LIBC, 5, (u8*)&val, sizeof(int), NULL);
+    GenVec v   = GenVec_create_val(WC_LIBC, 5, &val, sizeof(int), NULL);
     WC_EXPECT_EQ_U64(GenVec_size(&v), 5);
     for (u64 i = 0; i < 5; i++) {
         WC_EXPECT_EQ_INT(*(int*)GenVec_get_ptr(&v, i), 42);
@@ -107,9 +107,9 @@ static void test_pop_copies_value(void)
 {
     GenVec v   = int_vec(4);
     int     val = 99;
-    GenVec_push(&v, (u8*)&val);
+    GenVec_push(&v, &val);
     int out = 0;
-    GenVec_pop(&v, (u8*)&out);
+    GenVec_pop(&v, &out);
     WC_EXPECT_EQ_INT(out, 99);
     GenVec_destroy(&v);
 }
@@ -131,9 +131,9 @@ static void test_get_copies(void)
 {
     GenVec v   = int_vec(4);
     int     val = 7;
-    GenVec_push(&v, (u8*)&val);
+    GenVec_push(&v, &val);
     int out = 0;
-    GenVec_get(&v, 0, (u8*)&out);
+    GenVec_get(&v, 0, &out);
     WC_EXPECT_EQ_INT(out, 7);
     GenVec_destroy(&v);
 }
@@ -155,7 +155,7 @@ static void test_insert_front(void)
     GenVec v = int_vec(4);
     push_ints(&v, 3); /* 0 1 2 */
     int x = 99;
-    GenVec_insert(&v, 0, (u8*)&x);
+    GenVec_insert(&v, 0, &x);
     WC_EXPECT_EQ_U64(GenVec_size(&v), 4);
     WC_EXPECT_EQ_INT(*(int*)GenVec_get_ptr(&v, 0), 99);
     WC_EXPECT_EQ_INT(*(int*)GenVec_get_ptr(&v, 1), 0);
@@ -167,7 +167,7 @@ static void test_insert_mid(void)
     GenVec v = int_vec(4);
     push_ints(&v, 4); /* 0 1 2 3 */
     int x = 55;
-    GenVec_insert(&v, 2, (u8*)&x);
+    GenVec_insert(&v, 2, &x);
     WC_EXPECT_EQ_INT(*(int*)GenVec_get_ptr(&v, 2), 55);
     WC_EXPECT_EQ_INT(*(int*)GenVec_get_ptr(&v, 3), 2);
     GenVec_destroy(&v);
@@ -214,7 +214,7 @@ static void test_replace(void)
     GenVec v = int_vec(4);
     push_ints(&v, 3); /* 0 1 2 */
     int x = 77;
-    GenVec_replace(&v, 1, (u8*)&x);
+    GenVec_replace(&v, 1, &x);
     WC_EXPECT_EQ_INT(*(int*)GenVec_get_ptr(&v, 0), 0);
     WC_EXPECT_EQ_INT(*(int*)GenVec_get_ptr(&v, 1), 77);
     WC_EXPECT_EQ_INT(*(int*)GenVec_get_ptr(&v, 2), 2);
@@ -245,7 +245,7 @@ static void test_reserve_val(void)
 {
     GenVec v   = int_vec(0);
     int     val = 5;
-    GenVec_reserve_val(&v, 10, (u8*)&val);
+    GenVec_reserve_val(&v, 10, &val);
     WC_EXPECT_EQ_U64(GenVec_size(&v), 10);
     for (u64 i = 0; i < 10; i++) {
         WC_EXPECT_EQ_INT(*(int*)GenVec_get_ptr(&v, i), 5);
@@ -295,7 +295,7 @@ static void test_copy(void)
 
     /* independence: modify src, dest must be unaffected */
     int x = 999;
-    GenVec_replace(&src, 0, (u8*)&x);
+    GenVec_replace(&src, 0, &x);
     WC_EXPECT_EQ_INT(*(int*)GenVec_get_ptr(&dest, 0), 0);
 
     GenVec_destroy(&src);
@@ -341,7 +341,7 @@ static void test_insert_multi(void)
 {
     GenVec v     = int_vec(4);
     int     arr[] = {10, 20, 30};
-    GenVec_insert_multi(&v, 0, (u8*)arr, 3);
+    GenVec_insert_multi(&v, 0, arr, 3);
     WC_EXPECT_EQ_U64(GenVec_size(&v), 3);
     WC_EXPECT_EQ_INT(*(int*)GenVec_get_ptr(&v, 0), 10);
     WC_EXPECT_EQ_INT(*(int*)GenVec_get_ptr(&v, 1), 20);
@@ -354,7 +354,7 @@ static void test_insert_multi_mid(void)
     GenVec v = int_vec(8);
     push_ints(&v, 3); /* 0 1 2 */
     int arr[] = {10, 20};
-    GenVec_insert_multi(&v, 1, (u8*)arr, 2);
+    GenVec_insert_multi(&v, 1, arr, 2);
     /* expected: 0 10 20 1 2 */
     WC_EXPECT_EQ_U64(GenVec_size(&v), 5);
     WC_EXPECT_EQ_INT(*(int*)GenVec_get_ptr(&v, 0), 0);
@@ -372,7 +372,7 @@ static void test_swap_pop_middle(void)
     GenVec v = GenVec_create(WC_LIBC, 4, sizeof(int), NULL);
     for (int i = 0; i < 4; i++) { VEC_PUSH(&v, i); } /* 0 1 2 3 */
     int out = 0;
-    GenVec_swap_pop(&v, 1, (u8*)&out); /* remove 1, last (3) fills its slot */
+    GenVec_swap_pop(&v, 1, &out); /* remove 1, last (3) fills its slot */
     WC_EXPECT_EQ_INT(out, 1);
     WC_EXPECT_EQ_U64(GenVec_size(&v), 3);
     /* element at [1] is now 3 */
@@ -443,7 +443,7 @@ static void test_find_hit(void)
     GenVec v = GenVec_create(WC_LIBC, 8, sizeof(int), NULL);
     for (int i = 0; i < 8; i++) { VEC_PUSH(&v, i); }
     int target = 5;
-    WC_EXPECT_EQ_U64(GenVec_find(&v, (u8*)&target, NULL), 5);
+    WC_EXPECT_EQ_U64(GenVec_find(&v, &target, NULL), 5);
     GenVec_destroy(&v);
 }
 
@@ -453,7 +453,7 @@ static void test_find_first_occurrence(void)
     for (int i = 0; i < 4; i++) { VEC_PUSH(&v, i); }
     for (int i = 0; i < 4; i++) { VEC_PUSH(&v, i); } /* duplicate 0..3 */
     int target = 2;
-    WC_EXPECT_EQ_U64(GenVec_find(&v, (u8*)&target, NULL), 2); /* first occurrence */
+    WC_EXPECT_EQ_U64(GenVec_find(&v, &target, NULL), 2); /* first occurrence */
     GenVec_destroy(&v);
 }
 
@@ -462,7 +462,7 @@ static void test_find_miss(void)
     GenVec v = GenVec_create(WC_LIBC, 4, sizeof(int), NULL);
     for (int i = 0; i < 4; i++) { VEC_PUSH(&v, i); }
     int target = 99;
-    WC_EXPECT_EQ_U64(GenVec_find(&v, (u8*)&target, NULL), WC_NOT_FOUND);
+    WC_EXPECT_EQ_U64(GenVec_find(&v, &target, NULL), WC_NOT_FOUND);
     GenVec_destroy(&v);
 }
 
@@ -470,7 +470,7 @@ static void test_find_empty_vec(void)
 {
     GenVec v = GenVec_create(WC_LIBC, 4, sizeof(int), NULL);
     int target = 0;
-    WC_EXPECT_EQ_U64(GenVec_find(&v, (u8*)&target, NULL), WC_NOT_FOUND);
+    WC_EXPECT_EQ_U64(GenVec_find(&v, &target, NULL), WC_NOT_FOUND);
     GenVec_destroy(&v);
 }
 
@@ -506,7 +506,7 @@ static void test_subarr_independent(void)
     for (int i = 0; i < 4; i++) { VEC_PUSH(&v, i); }
     GenVec sub = GenVec_subarr(&v, WC_LIBC, 0, 4);
     int x = 999;
-    GenVec_replace(&v, 0, (u8*)&x);
+    GenVec_replace(&v, 0, &x);
     WC_EXPECT_EQ_INT(VEC_AT(&sub, int, 0), 0); /* sub unaffected */
     GenVec_destroy(&v);
     GenVec_destroy(&sub);
@@ -545,7 +545,7 @@ static void test_push_move_zeroes_src(void)
 {
     GenVec  v = VEC_OF_STR(4);
     String  s = String_from_cstr(WC_LIBC, "owned");
-    GenVec_push_move(&v, (u8*)&s);
+    GenVec_push_move(&v, &s);
     WC_EXPECT_EQ_U64(s.size, 0); // moved-from String is zeroed
     WC_EXPECT_NULL(s.heap);
     String_destroy(&s);          // zero-safe no-op
@@ -563,7 +563,7 @@ static void test_insert_move_front(void)
     VEC_PUSH_CSTR(&v, "b");
     VEC_PUSH_CSTR(&v, "c");
     String  s = String_from_cstr(WC_LIBC, "a");
-    GenVec_insert_move(&v, 0, (u8*)&s);
+    GenVec_insert_move(&v, 0, &s);
     WC_EXPECT_EQ_U64(s.size, 0);
     String_destroy(&s);
     WC_EXPECT_EQ_U64(GenVec_size(&v), 3);
@@ -580,7 +580,7 @@ static void test_replace_move_frees_old(void)
     GenVec v = VEC_OF_STR(4);
     VEC_PUSH_CSTR(&v, "old");
     String  s = String_from_cstr(WC_LIBC, "new");
-    GenVec_replace_move(&v, 0, (u8*)&s);
+    GenVec_replace_move(&v, 0, &s);
     WC_EXPECT_EQ_U64(s.size, 0);
     String_destroy(&s);
     WC_EXPECT(String_equals_cstr(VEC_AT_MUT(&v, String, 0), "new"));
@@ -595,7 +595,7 @@ static void test_remove_with_out(void)
     GenVec v = GenVec_create(WC_LIBC, 4, sizeof(int), NULL);
     for (int i = 0; i < 4; i++) { VEC_PUSH(&v, i); } /* 0 1 2 3 */
     int out = 0;
-    GenVec_remove(&v, 1, (u8*)&out);
+    GenVec_remove(&v, 1, &out);
     WC_EXPECT_EQ_INT(out, 1);
     WC_EXPECT_EQ_U64(GenVec_size(&v), 3);
     GenVec_destroy(&v);
@@ -608,7 +608,7 @@ static void test_init_val_stk(void)
 {
     GenVec v;
     int val = 7;
-    v = GenVec_create_val(WC_LIBC, 5, (u8*)&val, sizeof(int), NULL);
+    v = GenVec_create_val(WC_LIBC, 5, &val, sizeof(int), NULL);
     WC_EXPECT_EQ_U64(GenVec_size(&v), 5);
     for (u64 i = 0; i < 5; i++) {
         WC_EXPECT_EQ_INT(VEC_AT(&v, int, i), 7);
