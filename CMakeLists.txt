@@ -127,34 +127,30 @@ target_compile_options(main PRIVATE ${WC_WARN_FLAGS})
 
 
 # Test executable
+# Tests: one tests/test_*.c per component, all registered through utest.h.
+# Debug build (default) runs them under ASan + UBSan.
+file(GLOB TEST_SOURCES CONFIGURE_DEPENDS tests/test_*.c)
 add_executable(tests
-    tests/test_main.c
-    tests/string_test.c
-    tests/arena_test.c
-    tests/gen_vector_test.c
-    tests/hashmap_test.c
-    tests/hashset_test.c
-    tests/stack_queue_test.c
-    tests/matrix_test.c
-    tests/matrix_generic_test.c
-    tests/bit_vector_test.c
-    tests/fast_math_test.c
-    tests/complex_test.c
-    tests/macros_test.c
-    tests/test_views.c
-    tests/speed_test.c
+    tests/main.c
     tests/wc_test_allocator.c
-    tests/test_allocator_test.c
-    tests/allocator_core_test.c
-    tests/chain_arena_test.c
-    tests/gen_vector_alloc_test.c
-    tests/regression_test.c
-    tests/diag_test.c
+    ${TEST_SOURCES}
     ${LIB_SOURCES}
 )
 target_include_directories(tests PRIVATE include tests)
 target_compile_options(tests PRIVATE ${WC_WARN_FLAGS})
 target_link_libraries(tests m)
+
+
+# Benchmarks: one tests/bench_*.c per component, registered through ubench.h.
+# Meaningful only in a Release build (Debug runs them under the sanitizers).
+file(GLOB BENCH_SOURCES CONFIGURE_DEPENDS tests/bench_*.c)
+add_executable(bench
+    ${BENCH_SOURCES}
+    ${LIB_SOURCES}
+)
+target_include_directories(bench PRIVATE include tests)
+target_compile_options(bench PRIVATE ${WC_WARN_FLAGS})
+target_link_libraries(bench m)
 
 
 # Example projects

@@ -2,151 +2,177 @@
 
 [Back to README](../README.md)
 
-The tests live in `tests/` and build into one binary, `./build/tests`. They use a small harness (`tests/wc_test.h`), a death-test helper (`tests/wc_test_fatal.h`) and a checking allocator (`tests/wc_test_allocator.h`). None of these are part of the library.
+Everything lives in `tests/`: one test file and at most one benchmark file per component.
+
+| File | What it is |
+|---|---|
+| `test_<component>.c` | The tests for one component, for example `test_hashmap.c` |
+| `bench_<component>.c` | Benchmarks for one component |
+| `main.c`, `bench_main.c` | One-line entry points for the two binaries |
+| `utest.h`, `ubench.h` | [utest.h](https://github.com/sheredom/utest.h) and [ubench.h](https://github.com/sheredom/ubench.h), single-header, public domain, vendored unchanged |
+| `test_support.h` | Includes `utest.h` and adds `EXPECT_DIES` |
+| `bench_support.h` | Includes `ubench.h`, sets `N`, shared strings |
+| `wc_test_allocator.c/.h` | The checking allocator |
+
+## Running
 
 ```sh
-cmake --build build && ./build/tests                    # Debug: ASan + UBSan
-cmake -B build-rel -DCMAKE_BUILD_TYPE=Release && cmake --build build-rel && ./build-rel/tests
+cmake -B build && cmake --build build
+./build/tests                              # all tests, under ASan + UBSan
+./build/tests --filter=hashmap.*           # one component
+./build/tests --list-tests
+
+cmake -B build-rel -DCMAKE_BUILD_TYPE=Release && cmake --build build-rel
+./build-rel/tests                          # the same tests, with asserts stripped
+./build-rel/bench                          # benchmarks: Release only
+./build-rel/bench --filter=memory.* --output=bench.csv
 ```
 
-**Run both.** Release strips `WC_ASSERT` and turns on `-O3 -ffast-math`. Some bugs show up only there, such as a check that should survive Release but was written as an assert. The suite also includes a benchmark section (`speed_test.c`) comparing plain-data and owning element paths.
+**Run the tests in both Debug and Release.** Release strips `WC_ASSERT` and enables `-O3 -ffast-math`, and some bugs only show there.
+
+**Run benchmarks only in Release.** Debug numbers are measured under the sanitizers and mean nothing. Under Debug, ubench may also take minutes to reach a stable result.
 
 ## Writing a test
 
-Each test is a `static void` function with no arguments. Each suite runs its tests and is called from `tests/test_main.c`.
+Add a `UTEST(component, name)` to the component's file. That's all: it registers itself, and CMake picks up any new `tests/test_*.c` automatically.
 
 <!-- check: syntax-only, tests -->
 ```c
-#include "wc_test.h"
+#include "test_support.h"
 #include "wc_macros.h"
 
-static void test_push_and_read(void)
+UTEST(gen_vector, push_then_read)
 {
     GenVec v = VEC(int, 2);
     VEC_PUSH(&v, 7);
-    WC_EXPECT_EQ_U64(GenVec_size(&v), 1);
-    WC_EXPECT_EQ_INT(VEC_AT(&v, int, 0), 7);
+    EXPECT_EQ(GenVec_size(&v), 1u);
+    EXPECT_EQ(VEC_AT(&v, int, 0), 7);
     GenVec_destroy(&v);
-}
-
-void my_suite(void);
-void my_suite(void)
-{
-    WC_SUITE("My feature");
-    WC_RUN(test_push_and_read);
 }
 ```
 
-Then:
-1. Declare and call `my_suite()` in `tests/test_main.c`.
-2. Add the file to the `tests` target in `CMakeLists.txt`.
+`EXPECT_*` records a failure and continues the test. `ASSERT_*` records it and stops the test. The ones in use:
 
-### Checks
-
-Checks are **non-fatal**: a failure is counted and printed, and the test keeps running, so one run shows every failure. That's why they're `WC_EXPECT_*`. `WC_ASSERT` is the library's aborting invariant check, which is a different thing (see [Diagnostics](diagnostics.md)).
-
-| Macro | Passes when |
+| Check | Passes when |
 |---|---|
-| `WC_EXPECT(cond)`, `WC_EXPECT_TRUE(cond)` | `cond` is true |
-| `WC_EXPECT_FALSE(cond)` | `cond` is false |
-| `WC_EXPECT_EQ_INT(a, b)`, `WC_EXPECT_NEQ_INT(a, b)` | Compared as `long long`; prints both values on failure |
-| `WC_EXPECT_EQ_U64(a, b)` | Compared as `unsigned long long` |
-| `WC_EXPECT_EQ_STR(a, b)` | `strcmp(a, b) == 0` |
-| `WC_EXPECT_NULL(p)`, `WC_EXPECT_NOT_NULL(p)` | |
+| `EXPECT_TRUE(c)`, `EXPECT_FALSE(c)` | `c` is true / false |
+| `EXPECT_EQ(a, b)`, `EXPECT_NE(a, b)` | `a == b` / `a != b`; prints both values on failure |
+| `EXPECT_LT`, `EXPECT_LE`, `EXPECT_GT`, `EXPECT_GE` | The comparison holds |
+| `EXPECT_STREQ(a, b)` | `strcmp(a, b) == 0` |
+| `EXPECT_NEAR(a, b, eps)` | `a` and `b` differ by at most `eps` |
+| `EXPECT_DIES(fn)` | `fn()` terminates; see below |
 
-### Running
+`EXPECT_EQ` compares in the types you give it. Comparing an unsigned value with a signed literal is a `-Wsign-compare` warning, so write `1u`, or cast: `EXPECT_EQ(GenVec_size(&v), (u64)n)`.
 
-| Macro | Meaning |
-|---|---|
-| `WC_SUITE("name")` | Prints a suite header |
-| `WC_RUN(fn)` | Runs one test; prints `OK` or `FAIL (n assertion(s))` |
-| `WC_RUN_XFAIL(fn)` | Runs a test for a **known, unfixed** defect. A failure prints `XFAIL` and counts as passed. A pass prints `XPASS` and counts as **failed**, telling you to switch it to `WC_RUN`. |
-| `WC_REPORT()` | Prints the summary; returns `0` if everything passed. Use it as `main`'s return value. |
-
-Exactly one file defines `WC_TEST_MAIN` before including `wc_test.h`: that's `test_main.c`, which owns the counters.
+A check only works directly inside a `UTEST` body. A helper function should return a result, which the test then checks: `EXPECT_TRUE(workload(&v))`.
 
 ## Death tests
 
-`WC_EXPECT_DIES(fn)` runs `void fn(void)` in a forked child with its output silenced, and passes if the child terminates by a non-zero exit or a signal. Use it for `FATAL_IF` and `WC_ASSERT` paths.
+`EXPECT_DIES(fn)` runs `void fn(void)` in a forked child with its output silenced, and passes if the child terminates (non-zero exit or a signal). Use it for `FATAL_IF` and `WC_ASSERT` paths.
 
 <!-- check: syntax-only, tests -->
 ```c
-#include "wc_test.h"
-#include "wc_test_fatal.h"
+#include "test_support.h"
 #include "wc_macros.h"
-
-#include <string.h>
 
 static void push_after_destroy(void)
 {
     GenVec v = VEC(int, 2);
     GenVec_destroy(&v);
     int x = 1;
-    GenVec_push(&v, &x);           // FATAL_IF: dead container
+    GenVec_push(&v, &x);                   // FATAL_IF: dead container
 }
 
 static void out_of_range(void)
 {
     GenVec v = VEC(int, 2);
-    (void)GenVec_get_ptr(&v, 5);   // WC_ASSERT: Debug only
+    (void)GenVec_get_ptr(&v, 5);           // WC_ASSERT: Debug only
 }
 
-static void test_deaths(void)
+UTEST(gen_vector, misuse_dies)
 {
-    WC_EXPECT_DIES(push_after_destroy);   // dies in every build
+    EXPECT_DIES(push_after_destroy);       // in every build
 #ifndef NDEBUG
-    WC_EXPECT_DIES(out_of_range);         // asserts don't exist in Release
+    EXPECT_DIES(out_of_range);             // asserts don't exist in Release
 #endif
 }
 ```
 
 Death tests need `fork()`, so they're POSIX only.
 
-## The test allocator
+## The checking allocator
 
-`wc_test_alloc` wraps any allocator and checks every call against a record of live blocks. Run a container on it to prove it's leak-free and calls `free` with the right sizes:
+`wc_test_alloc` wraps any allocator and checks every call against a record of live blocks. Run a container on it to prove it's leak-free and frees with the right sizes:
 
 <!-- check: syntax-only, tests -->
 ```c
-#include "wc_test.h"
-#include "wc_test_allocator.h"
+#include "test_support.h"
 #include "wc_macros.h"
+#include "wc_test_allocator.h"
 
-static void test_vector_is_leak_free(void)
+UTEST(gen_vector, strings_leak_free)
 {
     wc_test_alloc ta;
-    wc_test_alloc_init(&ta, WC_LIBC);                 // any backing allocator
+    wc_test_alloc_init(&ta, WC_LIBC);
     wc_allocator a = wc_test_alloc_allocator(&ta);
 
     GenVec v = VEC_OF_IN(a, String, 2);
     for (int i = 0; i < 50; i++) { VEC_PUSH_CSTR(&v, "a string long enough for the heap"); }
     GenVec_destroy(&v);
 
-    WC_EXPECT_EQ_U64(ta.n_errors, 0);
-    WC_EXPECT_EQ_U64(wc_test_alloc_destroy(&ta), 0);  // returns the number of leaked blocks
+    EXPECT_EQ(ta.n_errors, 0u);
+    EXPECT_EQ(wc_test_alloc_destroy(&ta), 0u);     // number of leaked blocks
 }
 ```
 
-It detects:
+It catches:
 - double frees, and reallocs of freed blocks;
 - pointers it never handed out;
-- `free` / `realloc` called with a size or alignment different from the block's last allocation;
+- `free` / `realloc` with a size or alignment different from the block's last allocation;
 - zero-size allocations, non-power-of-two alignments, and misaligned blocks from the backing allocator.
-
-It also provides:
 
 | Feature | How |
 |---|---|
 | Counters | `ta.n_alloc`, `ta.n_realloc`, `ta.n_free`, `ta.live_blocks`, `ta.live_bytes`, `ta.peak_bytes` |
-| Fault injection | `wc_test_alloc_fail_at(&ta, n, sticky)`: the `n`-th allocation returns `NULL` (and every later one, if `sticky`) |
+| Fault injection | `wc_test_alloc_fail_at(&ta, n, sticky)`: the `n`-th allocation returns `NULL` (and every later one if `sticky`) |
 | Ownership | `wc_test_alloc_owns(&ta, p)` |
-| Memory patterns | New bytes are filled with `0xBE`, freed bytes poisoned with `0xDD` |
-| Leak report | `wc_test_alloc_destroy` prints each leaked block, frees it, and returns the count |
+| Memory patterns | New bytes filled with `0xBE`, freed bytes poisoned with `0xDD` |
+| Leak report | `wc_test_alloc_destroy` prints each leaked block, frees it, returns the count |
 
-By default a contract violation prints and aborts (`WC_TA_ABORT`). Set `ta.mode = WC_TA_RECORD` to count errors instead; the allocator's own tests use this.
+A contract violation prints and aborts by default. Set `ta.mode = WC_TA_RECORD` to count errors instead; the allocator's own tests do this.
 
-Fault injection pairs with death tests: fail the `n`-th allocation inside a forked child, and check that the container aborts cleanly instead of using `NULL`. `tests/gen_vector_alloc_test.c` does this for every allocation a workload makes.
+## Writing a benchmark
+
+Add a `UBENCH(component, name)` to `tests/bench_<component>.c`. ubench repeats the body until the timing is stable, then reports the mean and a 99% confidence interval. Each body works on `N` (1000) elements, so results read as "time per 1000".
+
+<!-- check: syntax-only, tests -->
+```c
+#include "bench_support.h"
+
+UBENCH(gen_vector, push_int)
+{
+    GenVec v = VEC(int, 0);
+    for (int i = 0; i < N; i++) { VEC_PUSH(&v, i); }
+    UBENCH_DO_NOTHING(v.data);                    // keep the work from being optimized away
+    GenVec_destroy(&v);
+}
+
+UBENCH_EX(gen_vector, copy_int)                   // setup outside the timed part
+{
+    GenVec src = VEC(int, N);
+    for (int i = 0; i < N; i++) { VEC_PUSH(&src, i); }
+    UBENCH_DO_BENCHMARK()
+    {
+        GenVec c = GenVec_copy(WC_LIBC, &src);
+        UBENCH_DO_NOTHING(c.data);
+        GenVec_destroy(&c);
+    }
+    GenVec_destroy(&src);
+}
+```
+
+Each benchmark comes in pairs where it makes a point: plain data vs an owning type (`push_int` / `push_string`), copy vs move (`push_struct_copy` / `push_struct_move`), or one allocator vs another (`memory.*`).
 
 ## Known gaps
 
-- The HashMap and HashSet zero-state death tests are inside `#if WC_HAS_FORK`, and nothing defines `WC_HAS_FORK`. They are compiled out until it is defined.
+- The HashMap and HashSet zero-state death tests sit inside `#if WC_HAS_FORK`, and nothing defines `WC_HAS_FORK`, so they're compiled out.

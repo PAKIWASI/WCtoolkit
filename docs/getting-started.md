@@ -16,6 +16,7 @@ cmake --build build
 ./build/tests                       # unit tests
 ./build/example_allocators          # examples/allocators.c
 ./build/main                        # scratch program, src/main.c
+./build/bench                       # benchmarks: build Release for real numbers
 ```
 
 CMake prefers Clang and falls back to GCC. Pass `-DCMAKE_C_COMPILER=gcc` to choose.
@@ -28,7 +29,7 @@ Pass `-DCMAKE_BUILD_TYPE=<type>`:
 |---|---|---|
 | `Debug` (default) | `-O0`, AddressSanitizer + UndefinedBehaviorSanitizer | Day-to-day development and tests |
 | `DebugNoSan` | `-O0`, no sanitizers | `gdb` / `lldb` sessions |
-| `Release` | `-O3 -DNDEBUG -march=native -ffast-math` | Benchmarks and shipping |
+| `Release` | `-O3 -DNDEBUG -march=native -ffast-math` | Benchmarks (`./build-rel/bench`) and shipping |
 
 `Release` defines `NDEBUG`, which strips every `WC_ASSERT`. Run the tests in both `Debug` and `Release`: some behavior differs between them by design. See [Diagnostics](diagnostics.md).
 

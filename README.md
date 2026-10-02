@@ -40,8 +40,11 @@ int main(void)
 
 ```sh
 cmake -B build -G Ninja && cmake --build build
-./build/tests                 # unit tests
+./build/tests                 # unit tests (utest.h), under ASan + UBSan
 ./build/example_allocators    # examples/allocators.c
+
+cmake -B build-rel -DCMAKE_BUILD_TYPE=Release && cmake --build build-rel
+./build-rel/bench             # benchmarks (ubench.h), Release only
 ```
 
 ## Documentation
@@ -57,7 +60,7 @@ cmake -B build -G Ninja && cmake --build build
 | [Macros](docs/macros.md) | The type-checked macro layer |
 | [Diagnostics](docs/diagnostics.md) | `FATAL_IF`, `WC_ASSERT`, `WARN_IF`, `LOG`, `wc_errno`, Debug vs Release |
 | [Math](docs/math.md) | Matrices, `fast_math`, random numbers |
-| [Testing](docs/testing.md) | The test harness, death tests, test allocator |
+| [Testing](docs/testing.md) | Tests and benchmarks: layout, running, writing, death tests, checking allocator |
 
 ## License
 
