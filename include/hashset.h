@@ -44,16 +44,15 @@ _Static_assert(sizeof(HashSet) == 88, "HashSet must be 88 bytes");
 // Create a new HashSet by value.
 // hash_fn and cmp_fn default to wyhash / default_compare if NULL.
 // ops: pass NULL for POD types.
-HashSet HashSet_create(wc_allocator a, u32 elm_size, custom_hash_fn hash_fn, wc_compare_fn cmp_fn, const wc_container_ops* ops)
-    __attribute__((warn_unused_result));
+HashSet HashSet_create(wc_allocator a, u32 elm_size, custom_hash_fn hash_fn, wc_compare_fn cmp_fn,
+                       const wc_container_ops* ops) __attribute__((warn_unused_result));
 
 // Destroy all elements and free internal buffers via set->alloc.
 // Safe on zeroed/moved-from sets. Leaves struct zeroed.
 void HashSet_destroy(HashSet* set) __attribute__((nonnull(1)));
 
 // Deep copy src into a new HashSet allocated from `a`.
-HashSet HashSet_copy(wc_allocator a, const HashSet* src)
-    __attribute__((nonnull(2), warn_unused_result));
+HashSet HashSet_copy(wc_allocator a, const HashSet* src) __attribute__((nonnull(2), warn_unused_result));
 
 // Transfer ownership from src to dest. src is left zeroed.
 void HashSet_move(HashSet* dest, HashSet* src) __attribute__((nonnull(1, 2)));

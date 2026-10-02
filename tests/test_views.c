@@ -1,5 +1,6 @@
 #include "arena.h"
 #include "common.h"
+#include "utest.h"
 #include "views.h"
 #include "wc_allocator.h"
 #include "wc_string.h"

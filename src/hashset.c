@@ -27,12 +27,19 @@
 #define SWAP_ELM(set)  ((set)->scratch + (set)->elm_size)
 
 
-// ---------------------------------------------------------------------------
 // Private size helpers (parallel to hashmap.c)
-// ---------------------------------------------------------------------------
-static inline u64 set_elms_size(u64 cap, u32 elm_size) { return cap * (u64)elm_size; }
-static inline u64 set_psls_size(u64 cap)               { return cap * sizeof(u8); }
-static inline u64 set_scratch_size(u32 elm_size)       { return 2 * (u64)elm_size; }
+static inline u64 set_elms_size(u64 cap, u32 elm_size)
+{
+    return cap * (u64)elm_size;
+}
+static inline u64 set_psls_size(u64 cap)
+{
+    return cap * sizeof(u8);
+}
+static inline u64 set_scratch_size(u32 elm_size)
+{
+    return 2 * (u64)elm_size;
+}
 
 
 /*
@@ -49,8 +56,8 @@ static inline void set_maybe_resize(HashSet* set);
 ====================PUBLIC FUNCTIONS====================
 */
 
-HashSet HashSet_create(wc_allocator a, u32 elm_size, custom_hash_fn hash_fn,
-                       wc_compare_fn cmp_fn, const wc_container_ops* ops)
+HashSet HashSet_create(wc_allocator a, u32 elm_size, custom_hash_fn hash_fn, wc_compare_fn cmp_fn,
+                       const wc_container_ops* ops)
 {
     WC_ASSERT(elm_size != 0, "elm_size can't be 0");
 
@@ -72,9 +79,9 @@ HashSet HashSet_create(wc_allocator a, u32 elm_size, custom_hash_fn hash_fn,
     set.elm_size = elm_size;
 
     set.hash_fn = hash_fn ? hash_fn : wyhash;
-    set.cmp_fn  = cmp_fn  ? cmp_fn  : default_compare;
+    set.cmp_fn  = cmp_fn ? cmp_fn : default_compare;
 
-    set.ops  = ops;
+    set.ops   = ops;
     set.alloc = a;
 
     return set;
@@ -88,7 +95,7 @@ void HashSet_destroy(HashSet* set)
         return;
     }
 
-    wc_allocator a = set->alloc;
+    wc_allocator a     = set->alloc;
     wc_delete_fn e_del = SET_DEL(set->ops);
 
     if (e_del) {
@@ -100,8 +107,8 @@ void HashSet_destroy(HashSet* set)
         }
     }
 
-    wc_free(a, set->elms,   set_elms_size(set->capacity, set->elm_size), 1);
-    wc_free(a, set->psls,   set_psls_size(set->capacity), 1);
+    wc_free(a, set->elms, set_elms_size(set->capacity, set->elm_size), 1);
+    wc_free(a, set->psls, set_psls_size(set->capacity), 1);
     wc_free(a, set->scratch, set_scratch_size(set->elm_size), 1);
 
     memset(set, 0, sizeof(*set));
@@ -111,7 +118,7 @@ void HashSet_destroy(HashSet* set)
 void HashSet_move(HashSet* dest, HashSet* src)
 {
     memcpy(dest, src, sizeof(HashSet));
-    memset(src,  0,   sizeof(HashSet));
+    memset(src, 0, sizeof(HashSet));
 }
 
 
@@ -367,8 +374,7 @@ static u64 set_lookup(const HashSet* set, const u8* elm, LOOKUP_RES* res, u8* ou
     u64 idx = SET_IDX(set, elm);
     u8  psl = 1; // stored PSL=1 means real probe distance 0 (home slot)
 
-    for (u64 i = idx;; i = SET_NEXT(set, i))
-    {
+    for (u64 i = idx;; i = SET_NEXT(set, i)) {
         u8 slot_psl = *GET_PSL(set, i);
         *out_psl    = psl;
 
@@ -408,8 +414,7 @@ static void set_insert(HashSet* set, u8* elm, u8 psl, u64 idx)
         memcpy(cur, elm, set->elm_size);
     }
 
-    for (u64 i = idx;; i = SET_NEXT(set, i))
-    {
+    for (u64 i = idx;; i = SET_NEXT(set, i)) {
         u8 slot_psl = *GET_PSL(set, i);
 
         if (slot_psl == BUCKET_EMPTY) {
@@ -432,9 +437,11 @@ static void set_insert(HashSet* set, u8* elm, u8 psl, u64 idx)
 
             // The evicted entry is now in swp; swap roles so cur always
             // points to the element being placed and swp is the free buffer.
-            u8* tmp = cur; cur = swp; swp = tmp;
-            psl = tmp_psl + 1; // +1: evicted entry moves one slot further from home
-            continue;          // skip the unconditional psl++ below
+            u8* tmp = cur;
+            cur     = swp;
+            swp     = tmp;
+            psl     = tmp_psl + 1; // +1: evicted entry moves one slot further from home
+            continue;              // skip the unconditional psl++ below
         }
 
         psl++;

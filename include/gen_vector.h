@@ -139,7 +139,7 @@ const void* GenVec_get_ptr_unsafe(const GenVec* vec, u64 i) __attribute__((nonnu
 
 static inline __attribute__((nonnull(1))) void* GenVec_get_ptr_mut_unsafe(GenVec* vec, u64 i)
 {
-    return (vec->data + (i * ((vec)->data_size)));
+    return (vec->data + (i * vec->data_size));
 }
 
 // Replace element at index i with data (cleans up old element).
@@ -179,7 +179,8 @@ const void* GenVec_back(const GenVec* vec) __attribute__((nonnull(1)));
 u64 GenVec_find(const GenVec* vec, void* elm, wc_compare_fn cmp_fn) __attribute__((nonnull(1, 2)));
 
 // New vector (storage from `alloc`) holding deep copies of [start, start + len).
-GenVec GenVec_subarr(const GenVec* vec, wc_allocator alloc, u64 start, u64 len) __attribute__((nonnull(1), warn_unused_result));
+GenVec GenVec_subarr(const GenVec* vec, wc_allocator alloc, u64 start, u64 len)
+    __attribute__((nonnull(1), warn_unused_result));
 
 
 // Utility

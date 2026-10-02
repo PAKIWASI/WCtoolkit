@@ -20,7 +20,8 @@ int main(void)
         VEC_PUSH(&v, i);
     }
 
-    GenVec_print(&v, wc_print_int); putchar('\n');
+    GenVec_print(&v, wc_print_int);
+    putchar('\n');
 
     print_hex(a.base, nKB(1), 32);
 

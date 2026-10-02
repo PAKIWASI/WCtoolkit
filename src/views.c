@@ -3,6 +3,8 @@
 #include "wc_allocator.h"
 #include "wc_string.h"
 
+#include <stdalign.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -142,9 +144,4 @@ StrView StringStore_cstr(StringStore* ss, const char* cstr, u64 clen)
 
 
 
-StrView StringStore_append(StringStore* ss, StrView sv1, StrView sv2)
-{
-}
-
-
-
+StrView StringStore_append(StringStore* ss, StrView sv1, StrView sv2) {}

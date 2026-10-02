@@ -2,21 +2,22 @@
 #include "chain_arena.h"
 #include "common.h"
 #include "gen_vector.h"
-#include "hashmap.h"
-#include "queue.h"
-#include "random.h"
+#include "test_support.h"
+#include "utest.h"
 #include "wc_allocator.h"
 #include "wc_errno.h"
 #include "wc_macros.h"
 #include "wc_string.h"
-#include "test_support.h"
 #include "wc_test_allocator.h"
 
 #include <stdalign.h>
 #include <stdint.h>
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
 
 
-// Helpers 
+// Helpers
 
 // Simple int vec — no copy/move/del needed
 static GenVec int_vec(u64 cap)
@@ -32,7 +33,7 @@ static void push_ints(GenVec* v, int count)
 }
 
 
-// Init 
+// Init
 
 UTEST(gen_vector, init_zero_cap)
 {
@@ -53,7 +54,7 @@ UTEST(gen_vector, init_with_cap)
 
 UTEST(gen_vector, init_val)
 {
-    int     val = 42;
+    int    val = 42;
     GenVec v   = GenVec_create_val(WC_LIBC, 5, &val, sizeof(int), NULL);
     EXPECT_EQ(GenVec_size(&v), 5u);
     for (u64 i = 0; i < 5; i++) {
@@ -82,7 +83,7 @@ UTEST(gen_vector, init_arr)
 }
 
 
-// Push / Pop 
+// Push / Pop
 
 UTEST(gen_vector, push_grows_size)
 {
@@ -116,7 +117,7 @@ UTEST(gen_vector, pop_reduces_size)
 UTEST(gen_vector, pop_copies_value)
 {
     GenVec v   = int_vec(4);
-    int     val = 99;
+    int    val = 99;
     GenVec_push(&v, &val);
     int out = 0;
     GenVec_pop(&v, &out);
@@ -125,7 +126,7 @@ UTEST(gen_vector, pop_copies_value)
 }
 
 
-// Get 
+// Get
 
 UTEST(gen_vector, get_ptr)
 {
@@ -140,7 +141,7 @@ UTEST(gen_vector, get_ptr)
 UTEST(gen_vector, get_copies)
 {
     GenVec v   = int_vec(4);
-    int     val = 7;
+    int    val = 7;
     GenVec_push(&v, &val);
     int out = 0;
     GenVec_get(&v, 0, &out);
@@ -158,7 +159,7 @@ UTEST(gen_vector, front_back)
 }
 
 
-// Insert / Remove 
+// Insert / Remove
 
 UTEST(gen_vector, insert_front)
 {
@@ -217,7 +218,7 @@ UTEST(gen_vector, remove_range)
 }
 
 
-// Replace 
+// Replace
 
 UTEST(gen_vector, replace)
 {
@@ -232,7 +233,7 @@ UTEST(gen_vector, replace)
 }
 
 
-// Reserve 
+// Reserve
 
 UTEST(gen_vector, reserve_grows_capacity)
 {
@@ -254,7 +255,7 @@ UTEST(gen_vector, reserve_does_not_shrink)
 UTEST(gen_vector, reserve_val)
 {
     GenVec v   = int_vec(0);
-    int     val = 5;
+    int    val = 5;
     GenVec_reserve_val(&v, 10, &val);
     EXPECT_EQ(GenVec_size(&v), 10u);
     for (u64 i = 0; i < 10; i++) {
@@ -264,7 +265,7 @@ UTEST(gen_vector, reserve_val)
 }
 
 
-// Clear / Reset 
+// Clear / Reset
 
 UTEST(gen_vector, clear_keeps_capacity)
 {
@@ -289,7 +290,7 @@ UTEST(gen_vector, reset_frees_memory)
 }
 
 
-// Copy / Move 
+// Copy / Move
 
 UTEST(gen_vector, copy)
 {
@@ -339,18 +340,18 @@ UTEST(gen_vector, move_zeroes_src)
 
     EXPECT_TRUE((src.data) == NULL); // src is left zeroed
     EXPECT_EQ(src.data_size, 0u);
-    GenVec_destroy(&src);     // zero-safe
+    GenVec_destroy(&src); // zero-safe
     EXPECT_EQ(GenVec_size(&dest), 4u);
     GenVec_destroy(&dest);
 }
 
 
-// insert_multi 
+// insert_multi
 
 UTEST(gen_vector, insert_multi)
 {
     GenVec v     = int_vec(4);
-    int     arr[] = {10, 20, 30};
+    int    arr[] = {10, 20, 30};
     GenVec_insert_multi(&v, 0, arr, 3);
     EXPECT_EQ(GenVec_size(&v), 3u);
     EXPECT_EQ(*(int*)GenVec_get_ptr(&v, 0), 10);
@@ -375,12 +376,14 @@ UTEST(gen_vector, insert_multi_mid)
     GenVec_destroy(&v);
 }
 
-// swap_pop 
+// swap_pop
 
 UTEST(gen_vector, swap_pop_middle)
 {
     GenVec v = GenVec_create(WC_LIBC, 4, sizeof(int), NULL);
-    for (int i = 0; i < 4; i++) { VEC_PUSH(&v, i); } /* 0 1 2 3 */
+    for (int i = 0; i < 4; i++) {
+        VEC_PUSH(&v, i);
+    } /* 0 1 2 3 */
     int out = 0;
     GenVec_swap_pop(&v, 1, &out); /* remove 1, last (3) fills its slot */
     EXPECT_EQ(out, 1);
@@ -395,7 +398,9 @@ UTEST(gen_vector, swap_pop_middle)
 UTEST(gen_vector, swap_pop_last)
 {
     GenVec v = GenVec_create(WC_LIBC, 4, sizeof(int), NULL);
-    for (int i = 0; i < 4; i++) { VEC_PUSH(&v, i); }
+    for (int i = 0; i < 4; i++) {
+        VEC_PUSH(&v, i);
+    }
     GenVec_swap_pop(&v, 3, NULL); /* last element — just shrinks */
     EXPECT_EQ(GenVec_size(&v), 3u);
     EXPECT_EQ(VEC_AT(&v, int, 2), 2);
@@ -405,7 +410,7 @@ UTEST(gen_vector, swap_pop_last)
 UTEST(gen_vector, swap_pop_single_element)
 {
     GenVec v = GenVec_create(WC_LIBC, 4, sizeof(int), NULL);
-    int x = 99;
+    int    x = 99;
     VEC_PUSH(&v, x);
     GenVec_swap_pop(&v, 0, NULL);
     EXPECT_EQ(GenVec_size(&v), 0u);
@@ -413,12 +418,14 @@ UTEST(gen_vector, swap_pop_single_element)
 }
 
 
-// swap 
+// swap
 
 UTEST(gen_vector, swap_two_elements)
 {
     GenVec v = GenVec_create(WC_LIBC, 4, sizeof(int), NULL);
-    for (int i = 0; i < 4; i++) { VEC_PUSH(&v, i); } /* 0 1 2 3 */
+    for (int i = 0; i < 4; i++) {
+        VEC_PUSH(&v, i);
+    } /* 0 1 2 3 */
     GenVec_swap(&v, 0, 3);
     EXPECT_EQ(VEC_AT(&v, int, 0), 3);
     EXPECT_EQ(VEC_AT(&v, int, 3), 0);
@@ -429,7 +436,9 @@ UTEST(gen_vector, swap_two_elements)
 UTEST(gen_vector, swap_same_index_noop)
 {
     GenVec v = GenVec_create(WC_LIBC, 4, sizeof(int), NULL);
-    for (int i = 0; i < 3; i++) { VEC_PUSH(&v, i); }
+    for (int i = 0; i < 3; i++) {
+        VEC_PUSH(&v, i);
+    }
     GenVec_swap(&v, 1, 1);
     EXPECT_EQ(VEC_AT(&v, int, 1), 1);
     GenVec_destroy(&v);
@@ -438,7 +447,9 @@ UTEST(gen_vector, swap_same_index_noop)
 UTEST(gen_vector, swap_adjacent)
 {
     GenVec v = GenVec_create(WC_LIBC, 4, sizeof(int), NULL);
-    for (int i = 0; i < 4; i++) { VEC_PUSH(&v, i); }
+    for (int i = 0; i < 4; i++) {
+        VEC_PUSH(&v, i);
+    }
     GenVec_swap(&v, 1, 2);
     EXPECT_EQ(VEC_AT(&v, int, 1), 2);
     EXPECT_EQ(VEC_AT(&v, int, 2), 1);
@@ -446,12 +457,14 @@ UTEST(gen_vector, swap_adjacent)
 }
 
 
-// find 
+// find
 
 UTEST(gen_vector, find_hit)
 {
     GenVec v = GenVec_create(WC_LIBC, 8, sizeof(int), NULL);
-    for (int i = 0; i < 8; i++) { VEC_PUSH(&v, i); }
+    for (int i = 0; i < 8; i++) {
+        VEC_PUSH(&v, i);
+    }
     int target = 5;
     EXPECT_EQ(GenVec_find(&v, &target, NULL), 5u);
     GenVec_destroy(&v);
@@ -460,8 +473,12 @@ UTEST(gen_vector, find_hit)
 UTEST(gen_vector, find_first_occurrence)
 {
     GenVec v = GenVec_create(WC_LIBC, 8, sizeof(int), NULL);
-    for (int i = 0; i < 4; i++) { VEC_PUSH(&v, i); }
-    for (int i = 0; i < 4; i++) { VEC_PUSH(&v, i); } /* duplicate 0..3 */
+    for (int i = 0; i < 4; i++) {
+        VEC_PUSH(&v, i);
+    }
+    for (int i = 0; i < 4; i++) {
+        VEC_PUSH(&v, i);
+    } /* duplicate 0..3 */
     int target = 2;
     EXPECT_EQ(GenVec_find(&v, &target, NULL), 2u); /* first occurrence */
     GenVec_destroy(&v);
@@ -470,7 +487,9 @@ UTEST(gen_vector, find_first_occurrence)
 UTEST(gen_vector, find_miss)
 {
     GenVec v = GenVec_create(WC_LIBC, 4, sizeof(int), NULL);
-    for (int i = 0; i < 4; i++) { VEC_PUSH(&v, i); }
+    for (int i = 0; i < 4; i++) {
+        VEC_PUSH(&v, i);
+    }
     int target = 99;
     EXPECT_EQ(GenVec_find(&v, &target, NULL), WC_NOT_FOUND);
     GenVec_destroy(&v);
@@ -478,19 +497,21 @@ UTEST(gen_vector, find_miss)
 
 UTEST(gen_vector, find_empty_vec)
 {
-    GenVec v = GenVec_create(WC_LIBC, 4, sizeof(int), NULL);
-    int target = 0;
+    GenVec v      = GenVec_create(WC_LIBC, 4, sizeof(int), NULL);
+    int    target = 0;
     EXPECT_EQ(GenVec_find(&v, &target, NULL), WC_NOT_FOUND);
     GenVec_destroy(&v);
 }
 
 
-// subarr 
+// subarr
 
 UTEST(gen_vector, subarr_middle)
 {
     GenVec v = GenVec_create(WC_LIBC, 6, sizeof(int), NULL);
-    for (int i = 0; i < 6; i++) { VEC_PUSH(&v, i); } /* 0..5 */
+    for (int i = 0; i < 6; i++) {
+        VEC_PUSH(&v, i);
+    } /* 0..5 */
     GenVec sub = GenVec_subarr(&v, WC_LIBC, 2, 3); /* [2, 3, 4] */
     EXPECT_EQ(GenVec_size(&sub), 3u);
     EXPECT_EQ(VEC_AT(&sub, int, 0), 2);
@@ -503,9 +524,11 @@ UTEST(gen_vector, subarr_middle)
 UTEST(gen_vector, subarr_clamps_to_end)
 {
     GenVec v = GenVec_create(WC_LIBC, 4, sizeof(int), NULL);
-    for (int i = 0; i < 4; i++) { VEC_PUSH(&v, i); }
+    for (int i = 0; i < 4; i++) {
+        VEC_PUSH(&v, i);
+    }
     GenVec sub = GenVec_subarr(&v, WC_LIBC, 2, 100); /* len exceeds bounds */
-    EXPECT_EQ(GenVec_size(&sub), 2u); /* clamped: [2, 3] */
+    EXPECT_EQ(GenVec_size(&sub), 2u);                /* clamped: [2, 3] */
     GenVec_destroy(&v);
     GenVec_destroy(&sub);
 }
@@ -513,9 +536,11 @@ UTEST(gen_vector, subarr_clamps_to_end)
 UTEST(gen_vector, subarr_independent)
 {
     GenVec v = GenVec_create(WC_LIBC, 4, sizeof(int), NULL);
-    for (int i = 0; i < 4; i++) { VEC_PUSH(&v, i); }
+    for (int i = 0; i < 4; i++) {
+        VEC_PUSH(&v, i);
+    }
     GenVec sub = GenVec_subarr(&v, WC_LIBC, 0, 4);
-    int x = 999;
+    int    x   = 999;
     GenVec_replace(&v, 0, &x);
     EXPECT_EQ(VEC_AT(&sub, int, 0), 0); /* sub unaffected */
     GenVec_destroy(&v);
@@ -523,12 +548,14 @@ UTEST(gen_vector, subarr_independent)
 }
 
 
-// shrink_to_fit 
+// shrink_to_fit
 
 UTEST(gen_vector, shrink_to_fit_reduces_capacity)
 {
     GenVec v = GenVec_create(WC_LIBC, 100, sizeof(int), NULL);
-    for (int i = 0; i < 5; i++) { VEC_PUSH(&v, i); }
+    for (int i = 0; i < 5; i++) {
+        VEC_PUSH(&v, i);
+    }
     GenVec_shrink_to_fit(&v);
     EXPECT_TRUE(GenVec_capacity(&v) <= 10); /* <= max(5, GENVEC_MIN_CAPACITY) */
     EXPECT_EQ(GenVec_size(&v), 5u);
@@ -541,7 +568,9 @@ UTEST(gen_vector, shrink_to_fit_reduces_capacity)
 UTEST(gen_vector, shrink_to_fit_already_tight)
 {
     GenVec v = GenVec_create(WC_LIBC, 4, sizeof(int), NULL);
-    for (int i = 0; i < 4; i++) { VEC_PUSH(&v, i); }
+    for (int i = 0; i < 4; i++) {
+        VEC_PUSH(&v, i);
+    }
     u64 cap_before = GenVec_capacity(&v);
     GenVec_shrink_to_fit(&v);
     EXPECT_EQ(GenVec_capacity(&v), cap_before);
@@ -549,30 +578,30 @@ UTEST(gen_vector, shrink_to_fit_already_tight)
 }
 
 
-// push_move 
+// push_move
 
 UTEST(gen_vector, push_move_zeroes_src)
 {
-    GenVec  v = VEC_OF_STR(4);
-    String  s = String_from_cstr(WC_LIBC, "owned");
+    GenVec v = VEC_OF_STR(4);
+    String s = String_from_cstr(WC_LIBC, "owned");
     GenVec_push_move(&v, &s);
     EXPECT_EQ(s.size, 0u); // moved-from String is zeroed
     EXPECT_TRUE((s.heap) == NULL);
-    String_destroy(&s);          // zero-safe no-op
+    String_destroy(&s); // zero-safe no-op
     EXPECT_EQ(GenVec_size(&v), 1u);
     EXPECT_TRUE(String_equals_cstr(VEC_AT_MUT(&v, String, 0), "owned"));
     GenVec_destroy(&v);
 }
 
 
-// insert_move 
+// insert_move
 
 UTEST(gen_vector, insert_move_front)
 {
     GenVec v = VEC_OF_STR(4);
     VEC_PUSH_CSTR(&v, "b");
     VEC_PUSH_CSTR(&v, "c");
-    String  s = String_from_cstr(WC_LIBC, "a");
+    String s = String_from_cstr(WC_LIBC, "a");
     GenVec_insert_move(&v, 0, &s);
     EXPECT_EQ(s.size, 0u);
     String_destroy(&s);
@@ -583,13 +612,13 @@ UTEST(gen_vector, insert_move_front)
 }
 
 
-// replace_move 
+// replace_move
 
 UTEST(gen_vector, replace_move_frees_old)
 {
     GenVec v = VEC_OF_STR(4);
     VEC_PUSH_CSTR(&v, "old");
-    String  s = String_from_cstr(WC_LIBC, "new");
+    String s = String_from_cstr(WC_LIBC, "new");
     GenVec_replace_move(&v, 0, &s);
     EXPECT_EQ(s.size, 0u);
     String_destroy(&s);
@@ -598,12 +627,14 @@ UTEST(gen_vector, replace_move_frees_old)
 }
 
 
-// remove with out-copy 
+// remove with out-copy
 
 UTEST(gen_vector, remove_with_out)
 {
     GenVec v = GenVec_create(WC_LIBC, 4, sizeof(int), NULL);
-    for (int i = 0; i < 4; i++) { VEC_PUSH(&v, i); } /* 0 1 2 3 */
+    for (int i = 0; i < 4; i++) {
+        VEC_PUSH(&v, i);
+    } /* 0 1 2 3 */
     int out = 0;
     GenVec_remove(&v, 1, &out);
     EXPECT_EQ(out, 1);
@@ -612,13 +643,13 @@ UTEST(gen_vector, remove_with_out)
 }
 
 
-// init_val_stk 
+// init_val_stk
 
 UTEST(gen_vector, init_val_stk)
 {
     GenVec v;
-    int val = 7;
-    v = GenVec_create_val(WC_LIBC, 5, &val, sizeof(int), NULL);
+    int    val = 7;
+    v          = GenVec_create_val(WC_LIBC, 5, &val, sizeof(int), NULL);
     EXPECT_EQ(GenVec_size(&v), 5u);
     for (u64 i = 0; i < 5; i++) {
         EXPECT_EQ(VEC_AT(&v, int, i), 7);
@@ -627,13 +658,18 @@ UTEST(gen_vector, init_val_stk)
 }
 
 
-// VEC_FOREACH 
+// VEC_FOREACH
 
 UTEST(gen_vector, vec_foreach_mutates)
 {
     GenVec v = GenVec_create(WC_LIBC, 4, sizeof(int), NULL);
-    for (int i = 0; i < 4; i++) { VEC_PUSH(&v, i); }
-    VEC_FOREACH(&v, int, p) { (*p) *= 2; }
+    for (int i = 0; i < 4; i++) {
+        VEC_PUSH(&v, i);
+    }
+    VEC_FOREACH(&v, int, p)
+    {
+        (*p) *= 2;
+    }
     EXPECT_EQ(VEC_AT(&v, int, 0), 0);
     EXPECT_EQ(VEC_AT(&v, int, 1), 2);
     EXPECT_EQ(VEC_AT(&v, int, 2), 4);
@@ -643,9 +679,13 @@ UTEST(gen_vector, vec_foreach_mutates)
 
 UTEST(gen_vector, vec_foreach_empty)
 {
-    GenVec v    = GenVec_create(WC_LIBC, 4, sizeof(int), NULL);
-    int     count = 0;
-    VEC_FOREACH(&v, int, p) { count++; (void)p; }
+    GenVec v     = GenVec_create(WC_LIBC, 4, sizeof(int), NULL);
+    int    count = 0;
+    VEC_FOREACH(&v, int, p)
+    {
+        count++;
+        (void)p;
+    }
     EXPECT_EQ(count, 0);
     GenVec_destroy(&v);
 }
@@ -663,8 +703,8 @@ UTEST(gen_vector, pop_empty_sets_errno)
 
 UTEST(gen_vector, front_empty_sets_errno)
 {
-    GenVec v = GenVec_create(WC_LIBC, 4, sizeof(int), NULL);
-    wc_errno = WC_OK;
+    GenVec v    = GenVec_create(WC_LIBC, 4, sizeof(int), NULL);
+    wc_errno    = WC_OK;
     const u8* p = GenVec_front(&v);
     EXPECT_TRUE((p) == NULL);
     EXPECT_EQ(wc_errno, (wc_err)WC_ERR_EMPTY);
@@ -673,8 +713,8 @@ UTEST(gen_vector, front_empty_sets_errno)
 
 UTEST(gen_vector, back_empty_sets_errno)
 {
-    GenVec v = GenVec_create(WC_LIBC, 4, sizeof(int), NULL);
-    wc_errno = WC_OK;
+    GenVec v    = GenVec_create(WC_LIBC, 4, sizeof(int), NULL);
+    wc_errno    = WC_OK;
     const u8* p = GenVec_back(&v);
     EXPECT_TRUE((p) == NULL);
     EXPECT_EQ(wc_errno, (wc_err)WC_ERR_EMPTY);
@@ -689,11 +729,11 @@ UTEST(gen_vector, back_empty_sets_errno)
 static int workload(GenVec* v)
 {
     for (int i = 0; i < 300; i++) {
-        GenVec_push(v, &(i));
+        GenVec_push(v, &i);
     }
     int x = -1;
-    GenVec_insert(v, 0, &(x));
-    GenVec_insert(v, 150, &(x));
+    GenVec_insert(v, 0, &x);
+    GenVec_insert(v, 150, &x);
     GenVec_remove(v, 150, NULL);
     GenVec_remove(v, 0, NULL);
     GenVec_remove_range(v, 100, 50); // drop 100..149
@@ -763,7 +803,7 @@ UTEST(gen_vector, workload_chain_arena)
     GenVec v = GenVec_create(ChainArena_allocator(&ca), 2, sizeof(int), NULL);
     EXPECT_TRUE(workload(&v));
     for (int i = 0; i < 3000; i++) { // past one node: was fatal before A3
-        GenVec_push(&v, &(i));
+        GenVec_push(&v, &i);
     }
     GenVec_destroy(&v);
 
@@ -779,7 +819,7 @@ UTEST(gen_vector, buf_vector_fills_buffer_in_place)
     int    buf[8];
     GenVec v = GenVec_create_buf(buf, 8, sizeof(int), NULL);
     for (int i = 0; i < 8; i++) {
-        GenVec_push(&v, &(i));
+        GenVec_push(&v, &i);
     }
     EXPECT_TRUE(v.data == (u8*)buf);
     EXPECT_EQ(buf[7], 7);
@@ -792,7 +832,7 @@ static void push_past_borrowed_capacity(void)
     int    buf[2];
     GenVec v = GenVec_create_buf(buf, 2, sizeof(int), NULL);
     for (int i = 0; i < 3; i++) {
-        GenVec_push(&v, &(i)); // third push must die: a borrowed buffer cannot grow
+        GenVec_push(&v, &i); // third push must die: a borrowed buffer cannot grow
     }
 }
 
@@ -810,7 +850,7 @@ UTEST(gen_vector, copy_arena_to_libc)
     Arena_create(&a, WC_LIBC, nKB(4));
     GenVec src = GenVec_create(Arena_allocator(&a), 4, sizeof(int), NULL);
     for (int i = 0; i < 20; i++) {
-        GenVec_push(&src, &(i));
+        GenVec_push(&src, &i);
     }
 
     GenVec dst = GenVec_copy(WC_LIBC, &src);
@@ -835,7 +875,7 @@ UTEST(gen_vector, nested_copy_children_follow_destination)
     for (int r = 0; r < 6; r++) {
         GenVec inner = GenVec_create(al, 1, sizeof(int), NULL);
         for (int c = 0; c <= r; c++) {
-            GenVec_push(&inner, &(c));
+            GenVec_push(&inner, &c);
         }
         VEC_PUSH_MOVE(&outer, inner); // inner zeroed
         EXPECT_TRUE((inner.data) == NULL);
@@ -871,7 +911,7 @@ UTEST(gen_vector, boxed_children_free_with_their_own_allocator)
     GenVec outer = VEC_OF(GenVec*, 2); // outer on libc, children on the test allocator
     for (int i = 0; i < 5; i++) {
         GenVec* child = WC_BOX_IN(al, GenVec, GenVec_create, 4, sizeof(int), NULL);
-        GenVec_push(child, &(i));
+        GenVec_push(child, &i);
         EXPECT_TRUE(wc_test_alloc_owns(&ta, child));
         VEC_PUSH_MOVE(&outer, child);
         EXPECT_TRUE((child) == NULL);
@@ -892,7 +932,7 @@ UTEST(gen_vector, subarr_into_other_allocator)
     Arena_create(&a, WC_LIBC, nKB(4));
     GenVec src = GenVec_create(Arena_allocator(&a), 8, sizeof(int), NULL);
     for (int i = 0; i < 8; i++) {
-        GenVec_push(&src, &(i));
+        GenVec_push(&src, &i);
     }
     GenVec sub = GenVec_subarr(&src, WC_LIBC, 2, 3);
     Arena_destroy(&a);
@@ -967,7 +1007,7 @@ static void push_after_move(void)
     GenVec b;
     GenVec_move(&b, &a);
     int x = 1;
-    GenVec_push(&a, &(x)); // a is zeroed: must die, not allocate from libc
+    GenVec_push(&a, &x); // a is zeroed: must die, not allocate from libc
 }
 
 static void push_after_destroy(void)
@@ -975,7 +1015,7 @@ static void push_after_destroy(void)
     GenVec a = GenVec_create(WC_LIBC, 4, sizeof(int), NULL);
     GenVec_destroy(&a);
     int x = 1;
-    GenVec_push(&a, &(x));
+    GenVec_push(&a, &x);
 }
 
 static void reserve_on_zeroed(void)
@@ -1027,15 +1067,15 @@ static u64 alloc_site_scenario(wc_test_alloc* ta)
 
     GenVec v = GenVec_create(al, 2, sizeof(int), NULL); // create
     for (int i = 0; i < 20; i++) {
-        GenVec_push(&v, &(i)); // grow
+        GenVec_push(&v, &i); // grow
     }
-    GenVec_reserve(&v, 100);                   // reserve
-    GenVec_shrink_to_fit(&v);                  // shrink
-    GenVec c = GenVec_copy(al, &v);            // copy
-    GenVec s = GenVec_subarr(&v, al, 0, 5);    // subarr
+    GenVec_reserve(&v, 100);                // reserve
+    GenVec_shrink_to_fit(&v);               // shrink
+    GenVec c = GenVec_copy(al, &v);         // copy
+    GenVec s = GenVec_subarr(&v, al, 0, 5); // subarr
 
     GenVec outer = VEC_OF_IN(al, GenVec, 1);
-    GenVec_push(&outer, &(v));              // outer grow + nested element copy
+    GenVec_push(&outer, &v); // outer grow + nested element copy
 
     u64 attempts = ta->n_attempts;
     GenVec_destroy(&outer);

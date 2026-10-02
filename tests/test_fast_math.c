@@ -1,5 +1,5 @@
 #include "fast_math.h"
-#include "test_support.h"
+#include "utest.h"
 
 #include <math.h>
 
@@ -15,9 +15,9 @@
  *   fast_ceil  — exact integer arithmetic: exact
 */
 
-#define EPS_TIGHT  1e-4f   // relative tolerance for sqrt, exp, log
-#define EPS_TRIG   1e-3f   // absolute tolerance for sin, cos (Taylor accumulates)
-#define EPS_EXACT  0.0f    // ceil must be bit-exact with ceilf
+#define EPS_TIGHT 1e-4f // relative tolerance for sqrt, exp, log
+#define EPS_TRIG  1e-3f // absolute tolerance for sin, cos (Taylor accumulates)
+#define EPS_EXACT 0.0f  // ceil must be bit-exact with ceilf
 
 // Relative error: |got - ref| / (|ref| + guard)
 static int rel_close(float got, float ref, float eps)
@@ -139,7 +139,7 @@ UTEST(fast_math, log_small_positive)
 UTEST(fast_math, log_nonpositive_returns_sentinel)
 {
     // implementation returns -1e10f for x <= 0
-    EXPECT_TRUE(fast_log(0.0f)  < -1e9f);
+    EXPECT_TRUE(fast_log(0.0f) < -1e9f);
     EXPECT_TRUE(fast_log(-1.0f) < -1e9f);
 }
 
@@ -447,7 +447,7 @@ UTEST(fast_math, pow_fractional_exponent)
 UTEST(fast_math, pow_general)
 {
     float bases[] = {1.5f, 2.7f, 0.8f};
-    float exps[] = {2.2f, -1.1f, 0.5f};
+    float exps[]  = {2.2f, -1.1f, 0.5f};
     for (int i = 0; i < 3; i++) {
         for (int j = 0; j < 3; j++) {
             EXPECT_TRUE(rel_close(fast_pow(bases[i], exps[j]), powf(bases[i], exps[j]), EPS_TIGHT));
@@ -472,7 +472,7 @@ UTEST(fast_math, pow_negative_base)
     // Integer exponents should work
     EXPECT_TRUE(rel_close(fast_pow(-2.0f, 2.0f), 4.0f, EPS_TIGHT));
     EXPECT_TRUE(rel_close(fast_pow(-2.0f, 3.0f), -8.0f, EPS_TIGHT));
-    
+
     // Fractional exponents with negative base: implementation returns 0
     // (consistent with fast_sqrt and fast_log returning sentinels)
     EXPECT_TRUE(fast_pow(-2.0f, 0.5f) == 0.0f);

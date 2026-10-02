@@ -7,14 +7,13 @@
 #include <string.h>
 
 
-#define NODE_HEADER  ((u64)sizeof(ChainArenaNode))
-#define NODE_ALIGN   WC_MAX_ALIGN
-#define REGULAR_CAP  ((u64)CHAIN_ARENA_NODE_SIZE - NODE_HEADER)
+#define NODE_HEADER ((u64)sizeof(ChainArenaNode))
+#define NODE_ALIGN  WC_MAX_ALIGN
+#define REGULAR_CAP ((u64)CHAIN_ARENA_NODE_SIZE - NODE_HEADER)
 
 _Static_assert(CHAIN_ARENA_NODE_SIZE > sizeof(ChainArenaNode) + 64, "CHAIN_ARENA_NODE_SIZE too small");
 
-#define CHAIN_CHECK_LIVE(a) \
-    WC_ASSERT((a)->self == (a), "ChainArena used after destroy, or copied/moved after create")
+#define CHAIN_CHECK_LIVE(a) WC_ASSERT((a)->self == (a), "ChainArena used after destroy, or copied/moved after create")
 
 
 // Node helpers
@@ -208,7 +207,7 @@ static void* chain_vt_realloc(void* ctx, void* ptr, size_t old_size, size_t new_
     // Same rule as Arena: growing a block that predates the innermost scratch
     // scope would leave it dangling (or truncated) at scope end.
     WC_ASSERT(new_size <= old_size || !is_below_floor(arena, p),
-                "growing a block allocated before the current scratch scope (it would dangle at scope end)");
+              "growing a block allocated before the current scratch scope (it would dangle at scope end)");
 
     if (is_top(arena, p, old_size)) {
         ChainArenaNode* t   = arena->tail;

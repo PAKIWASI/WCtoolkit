@@ -1,11 +1,9 @@
 #include "arena.h"
 #include "common.h"
 #include "queue.h"
-#include "stack.h"
+#include "utest.h"
 #include "wc_allocator.h"
 #include "wc_errno.h"
-#include "wc_macros.h"
-#include "test_support.h"
 #include "wc_test_allocator.h"
 
 
@@ -22,8 +20,9 @@ UTEST(queue, push_pop_fifo)
 {
     Queue q      = int_Queue(4);
     int   vals[] = {1, 2, 3};
-    for (int i = 0; i < 3; i++)
+    for (int i = 0; i < 3; i++) {
         Queue_push(&q, &vals[i]);
+    }
 
     int out;
     Queue_pop(&q, &out);
@@ -102,8 +101,9 @@ UTEST(queue, reset)
 {
     Queue q = int_Queue(4);
     int   x = 1;
-    for (int i = 0; i < 4; i++)
+    for (int i = 0; i < 4; i++) {
         Queue_push(&q, &x);
+    }
     Queue_reset(&q);
     EXPECT_EQ(Queue_size(&q), 0u);
     EXPECT_TRUE(Queue_empty(&q));
@@ -117,8 +117,9 @@ UTEST(queue, copy_move)
     wc_allocator a = wc_test_alloc_allocator(&ta);
 
     Queue src = Queue_create(a, 4, sizeof(int), NULL);
-    for (int i = 0; i < 4; i++)
+    for (int i = 0; i < 4; i++) {
         Queue_push(&src, &i);
+    }
 
     /* copy into libc */
     Queue dst = Queue_copy(WC_LIBC, &src);
@@ -150,13 +151,13 @@ UTEST(queue, arena_wrap)
     /* interleave pushes and pops to force wrap-around */
     for (int round = 0; round < 3; round++) {
         for (int i = 0; i < 8; i++) {
-            int v = round * 10 + i;
+            int v = (round * 10) + i;
             Queue_push(&q, &v);
         }
         for (int i = 0; i < 8; i++) {
             int out = 0;
             Queue_pop(&q, &out);
-            EXPECT_EQ(out, round * 10 + i);
+            EXPECT_EQ(out, (round * 10) + i);
         }
     }
 

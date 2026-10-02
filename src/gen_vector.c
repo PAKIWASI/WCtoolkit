@@ -14,13 +14,12 @@
 // MACROS
 
 // get ptr to elm at index i
-#define GET_PTR(vec, i) ((vec->data) + ((u64)(i) * ((vec)->data_size)))
+#define GET_PTR(vec, i) (((vec)->data) + ((u64)(i) * ((vec)->data_size)))
 // get total size in bytes for i elements
 #define GET_SCALED(vec, i) ((u64)(i) * ((vec)->data_size))
 
 // Growth is amortized: rare by construction, so the hint is known-correct.
-#define MAYBE_GROW(vec) \
-    ((void)(WC_UNLIKELY(!(vec)->data || (vec)->size >= (vec)->capacity) && (GenVec_grow(vec), 0)))
+#define MAYBE_GROW(vec) ((void)(WC_UNLIKELY(!(vec)->data || (vec)->size >= (vec)->capacity) && (GenVec_grow(vec), 0)))
 
 // smallest safe alignment for this element size
 #define DATA_ALIGN(vec) wc_align_for_size((vec)->data_size)
@@ -228,7 +227,8 @@ void GenVec_shrink_to_fit(GenVec* vec)
         return;
     }
 
-    u8* new_data = wc_realloc(vec->alloc, vec->data, GET_SCALED(vec, curr_cap), GET_SCALED(vec, min_cap), DATA_ALIGN(vec));
+    u8* new_data =
+        wc_realloc(vec->alloc, vec->data, GET_SCALED(vec, curr_cap), GET_SCALED(vec, min_cap), DATA_ALIGN(vec));
     FATAL_IF(!new_data, "GenVec_shrink_to_fit: realloc failed");
 
     vec->data     = new_data;

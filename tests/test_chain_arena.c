@@ -1,31 +1,27 @@
-#include "arena.h"
 #include "chain_arena.h"
 #include "common.h"
-#include "gen_vector.h"
-#include "hashmap.h"
-#include "queue.h"
-#include "random.h"
-#include "wc_allocator.h"
-#include "wc_macros.h"
 #include "test_support.h"
+#include "utest.h"
+#include "wc_allocator.h"
 #include "wc_test_allocator.h"
 
 #include <stdalign.h>
 #include <stdint.h>
+#include <string.h>
 
 
 // Every test runs on a test allocator: node frees must match node allocs exactly.
-#define WITH_CHAIN(ca, ta)            \
-    wc_test_alloc ta;                 \
-    wc_test_alloc_init(&ta, WC_LIBC); \
-    ChainArena ca;                    \
-    ChainArena_create(&ca, wc_test_alloc_allocator(&ta))
+#define WITH_CHAIN(ca, ta)              \
+    wc_test_alloc ta;                   \
+    wc_test_alloc_init(&(ta), WC_LIBC); \
+    ChainArena ca;                      \
+    ChainArena_create(&(ca), wc_test_alloc_allocator(&(ta)))
 
-#define END_CHAIN(ca, ta)                                \
-    ({                                                   \
-        ChainArena_destroy(&ca);                         \
-        EXPECT_EQ(ta.n_errors, 0u);                \
-        EXPECT_EQ(wc_test_alloc_destroy(&ta), 0u); \
+#define END_CHAIN(ca, ta)                            \
+    ({                                               \
+        ChainArena_destroy(&(ca));                   \
+        EXPECT_EQ((ta).n_errors, 0u);                \
+        EXPECT_EQ(wc_test_alloc_destroy(&(ta)), 0u); \
     })
 
 static u64 node_count(const ChainArena* ca)
@@ -194,7 +190,8 @@ UTEST(chain_arena, scratch_across_node_boundary_frees_new_nodes)
     u64 blocks = ta.live_blocks;
     u64 used   = ChainArena_used(&ca);
 
-    CHAIN_ARENA_SCRATCH(&ca) {
+    CHAIN_ARENA_SCRATCH(&ca)
+    {
         for (int i = 0; i < 30; i++) {
             ChainArena_alloc(&ca, 1000); // spans several nodes
         }
@@ -216,7 +213,8 @@ static void grow_outer_block_inside_chain_scratch(void)
     ChainArena_create(&ca, WC_LIBC);
     wc_allocator al = ChainArena_allocator(&ca);
     u8*          v  = wc_alloc(al, 64, 8);
-    CHAIN_ARENA_SCRATCH(&ca) {
+    CHAIN_ARENA_SCRATCH(&ca)
+    {
         v = wc_realloc(al, v, 64, 512, 8);
     }
     (void)v;
@@ -232,7 +230,8 @@ static void grow_block_from_earlier_node_inside_chain_scratch(void)
     for (int i = 0; i < 10; i++) {
         ChainArena_alloc(&ca, 1000); // v's node is no longer the tail
     }
-    CHAIN_ARENA_SCRATCH(&ca) {
+    CHAIN_ARENA_SCRATCH(&ca)
+    {
         v = wc_realloc(al, v, 64, 512, 8);
     }
     (void)v;
@@ -251,7 +250,8 @@ UTEST(chain_arena, floor_grow_outer_block_inside_scratch)
     wc_allocator al = ChainArena_allocator(&ca);
     u8*          v  = wc_alloc(al, 64, 8);
     u64          u  = ChainArena_used(&ca);
-    CHAIN_ARENA_SCRATCH(&ca) {
+    CHAIN_ARENA_SCRATCH(&ca)
+    {
         EXPECT_TRUE(wc_realloc(al, v, 64, 512, 8) != v); // never in place past the mark
     }
     EXPECT_EQ(ChainArena_used(&ca), u);
@@ -265,7 +265,8 @@ UTEST(chain_arena, floor_free_inside_scratch_does_not_rewind)
     wc_allocator al    = ChainArena_allocator(&ca);
     u8*          outer = wc_alloc(al, 64, 8);
     u64          u     = ChainArena_used(&ca);
-    CHAIN_ARENA_SCRATCH(&ca) {
+    CHAIN_ARENA_SCRATCH(&ca)
+    {
         wc_free(al, outer, 64, 8);
         EXPECT_EQ(ChainArena_used(&ca), u);
         u8* t = wc_alloc(al, 16, 8);

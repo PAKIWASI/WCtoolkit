@@ -46,8 +46,8 @@
              This determines which of 2^63 possible random sequences to Use
 */
 typedef struct {
-    u64 state;    // RNG state - advances with each random number generated
-    u64 inc;      // Sequence selector - must be odd (ensures full period LCG)
+    u64 state; // RNG state - advances with each random number generated
+    u64 inc;   // Sequence selector - must be odd (ensures full period LCG)
 } WC_Pcg32;
 
 

@@ -1,11 +1,10 @@
 #include "arena.h"
 #include "common.h"
+#include "utest.h"
 #include "wc_allocator.h"
 #include "wc_string.h"
-#include "test_support.h"
 #include "wc_test_allocator.h"
 
-#include <stdlib.h>
 #include <string.h>
 
 
@@ -241,7 +240,7 @@ UTEST(string, copy_independence)
 
 UTEST(string, move_nulls_src)
 {
-    String src  = String_from_cstr(WC_LIBC, "move me");
+    String src = String_from_cstr(WC_LIBC, "move me");
     String dest;
     String_move(&dest, &src);
     EXPECT_EQ(src.capacity, 0u); // moved-from String is zeroed
@@ -437,8 +436,8 @@ UTEST(string, data_ptr_mutation)
 
 UTEST(string, temp_cstr_read)
 {
-    String s          = String_from_cstr(WC_LIBC, "test");
-    u64    len_before = String_len(&s);
+    String s            = String_from_cstr(WC_LIBC, "test");
+    u64    len_before   = String_len(&s);
     char   captured[16] = {0};
 
     String_ensure_null_term(&s);
@@ -621,7 +620,7 @@ UTEST(string, arena_and_cross_alloc_copy)
     Arena_create(&a, WC_LIBC, 4096);
 
     const char* long_str = "a long string beyond sso to force arena heap allocation 12345678901234567890";
-    String s = String_from_cstr(Arena_allocator(&a), long_str);
+    String      s        = String_from_cstr(Arena_allocator(&a), long_str);
     EXPECT_FALSE(String_is_sso(&s));
     EXPECT_TRUE(String_equals_cstr(&s, long_str));
 

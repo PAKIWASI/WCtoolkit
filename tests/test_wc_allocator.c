@@ -1,9 +1,11 @@
 #include "common.h"
+#include "utest.h"
 #include "wc_allocator.h"
-#include "test_support.h"
 #include "wc_test_allocator.h"
 
+#include <stdalign.h>
 #include <stdint.h>
+#include <string.h>
 
 
 // These tests hand stack buffers to allocators on purpose (wc_borrowed, foreign
@@ -176,8 +178,8 @@ UTEST(allocator, borrowed_never_allocates_or_frees)
     u8 buf[32] = {1, 2, 3};
     EXPECT_TRUE((wc_alloc(wc_borrowed, 16, 8)) == NULL);
     EXPECT_TRUE((wc_realloc(wc_borrowed, buf, 32, 64, 8)) == NULL); // growth fails
-    EXPECT_EQ(buf[2], 3);                              // buffer untouched
-    wc_free(wc_borrowed, buf, 32, 8);                        // no-op (ASAN would catch a real free)
+    EXPECT_EQ(buf[2], 3);                                           // buffer untouched
+    wc_free(wc_borrowed, buf, 32, 8);                               // no-op (ASAN would catch a real free)
     EXPECT_EQ(buf[0], 1);
 }
 
@@ -198,7 +200,7 @@ UTEST(allocator, align_for_size)
 
 UTEST(allocator, same)
 {
-    int x = 0, y = 0;
+    int          x = 0, y = 0;
     wc_allocator a = {.vt = &noreal_vt, .ctx = &x};
     wc_allocator b = {.vt = &noreal_vt, .ctx = &y};
     EXPECT_TRUE(wc_same(a, a));

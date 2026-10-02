@@ -1,6 +1,7 @@
 #include "queue.h"
 #include "common.h"
 #include "gen_vector.h"
+#include "wc_allocator.h"
 #include "wc_errno.h"
 
 #include <stdio.h>
@@ -30,9 +31,8 @@
 // Shrink only above the 4-slot floor and below QUEUE_SHRINK_AT load.
 // (The old do/while form hid a `return` that left the caller; both call
 // sites are the last statement of their function, so this is equivalent.)
-#define Q_MAYBE_SHRINK(q)                                                                 \
-    ((void)(WC_UNLIKELY((q)->arr.capacity > 4 &&                                          \
-                        (float)(q)->size / (float)(q)->arr.capacity < QUEUE_SHRINK_AT) && \
+#define Q_MAYBE_SHRINK(q)                                                                                          \
+    ((void)(WC_UNLIKELY((q)->arr.capacity > 4 && (float)(q)->size / (float)(q)->arr.capacity < QUEUE_SHRINK_AT) && \
             (Queue_shrink((q)), 0)))
 
 

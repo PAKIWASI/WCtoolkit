@@ -2,13 +2,15 @@
 #include "common.h"
 #include "hashset.h"
 #include "map_setup.h"
+#include "test_support.h"
+#include "utest.h"
+#include "wc_allocator.h"
 #include "wc_helpers.h"
 #include "wc_macros.h"
 #include "wc_string.h"
-#include "test_support.h"
 
 #include <stdio.h>
-#include <stdlib.h>
+#include <string.h>
 
 
 /* ── Set constructors ────────────────────────────────────────────────────── */
@@ -31,7 +33,7 @@ static HashSet str_set(void)
 UTEST(hashset, insert_and_has)
 {
     HashSet s = int_set();
-    int x = 42;
+    int     x = 42;
     EXPECT_FALSE(HashSet_has(&s, &x));
     HashSet_insert(&s, &x);
     EXPECT_TRUE(HashSet_has(&s, &x));
@@ -40,19 +42,19 @@ UTEST(hashset, insert_and_has)
 
 UTEST(hashset, insert_returns_existed)
 {
-    HashSet s = int_set();
-    int x = 5;
-    b8 first  = HashSet_insert(&s, &x);
-    b8 second = HashSet_insert(&s, &x);
-    EXPECT_FALSE(first);  // new insert
-    EXPECT_TRUE(second);  // already existed
+    HashSet s      = int_set();
+    int     x      = 5;
+    b8      first  = HashSet_insert(&s, &x);
+    b8      second = HashSet_insert(&s, &x);
+    EXPECT_FALSE(first); // new insert
+    EXPECT_TRUE(second); // already existed
     HashSet_destroy(&s);
 }
 
 UTEST(hashset, insert_duplicate_no_growth)
 {
     HashSet s = int_set();
-    int x = 10;
+    int     x = 10;
     HashSet_insert(&s, &x);
     HashSet_insert(&s, &x);
     HashSet_insert(&s, &x);
@@ -63,7 +65,7 @@ UTEST(hashset, insert_duplicate_no_growth)
 UTEST(hashset, has_missing_returns_false)
 {
     HashSet s = int_set();
-    int x = 999;
+    int     x = 999;
     EXPECT_FALSE(HashSet_has(&s, &x));
     HashSet_destroy(&s);
 }
@@ -71,7 +73,7 @@ UTEST(hashset, has_missing_returns_false)
 UTEST(hashset, remove)
 {
     HashSet s = int_set();
-    int x = 7;
+    int     x = 7;
     HashSet_insert(&s, &x);
     EXPECT_TRUE(HashSet_remove(&s, &x));
     EXPECT_FALSE(HashSet_has(&s, &x));
@@ -82,7 +84,7 @@ UTEST(hashset, remove)
 UTEST(hashset, remove_missing_returns_false)
 {
     HashSet s = int_set();
-    int x = 999;
+    int     x = 999;
     EXPECT_FALSE(HashSet_remove(&s, &x));
     HashSet_destroy(&s);
 }
@@ -90,7 +92,7 @@ UTEST(hashset, remove_missing_returns_false)
 UTEST(hashset, remove_on_empty_set)
 {
     HashSet s = int_set();
-    int x = 1;
+    int     x = 1;
     EXPECT_FALSE(HashSet_remove(&s, &x));
     EXPECT_EQ(HashSet_size(&s), 0u);
     HashSet_destroy(&s);
@@ -161,7 +163,7 @@ UTEST(hashset, remove_reinsert)
 {
     // Remove an element then re-insert it — must succeed and be findable
     HashSet s = int_set();
-    int x = 42;
+    int     x = 42;
     HashSet_insert(&s, &x);
     HashSet_remove(&s, &x);
     EXPECT_FALSE(HashSet_has(&s, &x));
@@ -197,7 +199,7 @@ UTEST(hashset, remove_reinsert_cycle)
 {
     // Repeated remove+insert must not corrupt or leak
     HashSet s = int_set();
-    int x = 7;
+    int     x = 7;
     for (int cycle = 0; cycle < 20; cycle++) {
         HashSet_insert(&s, &x);
         EXPECT_TRUE(HashSet_has(&s, &x));
@@ -346,7 +348,7 @@ UTEST(hashset, copy_independence)
 {
     // Inserting into dest must not affect src
     HashSet src = int_set();
-    int x = 1;
+    int     x   = 1;
     HashSet_insert(&src, &x);
 
     HashSet dest = HashSet_copy(WC_LIBC, &src);
@@ -354,7 +356,7 @@ UTEST(hashset, copy_independence)
     int y = 99;
     HashSet_insert(&dest, &y);
 
-    EXPECT_FALSE(HashSet_has(&src,  &y)); // src unaffected
+    EXPECT_FALSE(HashSet_has(&src, &y)); // src unaffected
     EXPECT_TRUE(HashSet_has(&dest, &x)); // dest has original
     EXPECT_TRUE(HashSet_has(&dest, &y)); // dest has new
 
@@ -365,8 +367,8 @@ UTEST(hashset, copy_independence)
 UTEST(hashset, copy_str_set)
 {
     // Deep copy: destroying src must not corrupt dest's String data
-    HashSet src = str_set();
-    const char* words[] = { "alpha", "beta", "gamma" };
+    HashSet     src     = str_set();
+    const char* words[] = {"alpha", "beta", "gamma"};
     for (int i = 0; i < 3; i++) {
         String sv = String_from_cstr(WC_LIBC, words[i]);
         HashSet_insert(&src, &sv);
@@ -401,13 +403,13 @@ UTEST(hashset, copy_then_remove_src_elm)
 {
     // Removing from src after copy must not affect dest
     HashSet src = int_set();
-    int x = 5;
+    int     x   = 5;
     HashSet_insert(&src, &x);
 
     HashSet dest = HashSet_copy(WC_LIBC, &src);
 
     HashSet_remove(&src, &x);
-    EXPECT_FALSE(HashSet_has(&src,  &x));
+    EXPECT_FALSE(HashSet_has(&src, &x));
     EXPECT_TRUE(HashSet_has(&dest, &x));
 
     HashSet_destroy(&src);
@@ -422,10 +424,10 @@ UTEST(hashset, copy_then_remove_src_elm)
 UTEST(hashset, str_insert_move_nulls_ptr)
 {
     HashSet s  = str_set();
-    String   s1 = String_from_cstr(WC_LIBC, "hello");
+    String  s1 = String_from_cstr(WC_LIBC, "hello");
     HashSet_insert_move(&s, &s1);
     EXPECT_EQ(s1.size, 0u); // ownership transferred: source zeroed
-    String_destroy(&s1);          // safe on zeroed
+    String_destroy(&s1);    // safe on zeroed
 
     String probe = String_from_cstr(WC_LIBC, "hello");
     EXPECT_TRUE(HashSet_has(&s, &probe));
@@ -437,7 +439,7 @@ UTEST(hashset, str_insert_copy_leaves_src_valid)
 {
     // Source String must still be valid and unchanged after copy insert
     HashSet s  = str_set();
-    String   s1 = String_from_cstr(WC_LIBC, "world");
+    String  s1 = String_from_cstr(WC_LIBC, "world");
     HashSet_insert(&s, &s1);
 
     EXPECT_TRUE(String_equals_cstr(&s1, "world"));
@@ -448,8 +450,8 @@ UTEST(hashset, str_insert_copy_leaves_src_valid)
 UTEST(hashset, str_insert_copy_independence)
 {
     // Mutating source String after copy insert must not affect stored copy
-    HashSet s = str_set();
-    String   sv = String_from_cstr(WC_LIBC, "original");
+    HashSet s  = str_set();
+    String  sv = String_from_cstr(WC_LIBC, "original");
     HashSet_insert(&s, &sv);
     String_append_cstr(&sv, "_mutated");
 
@@ -463,8 +465,8 @@ UTEST(hashset, str_insert_copy_independence)
 
 UTEST(hashset, str_has_miss)
 {
-    HashSet s = str_set();
-    String probe = String_from_cstr(WC_LIBC, "missing");
+    HashSet s     = str_set();
+    String  probe = String_from_cstr(WC_LIBC, "missing");
     EXPECT_FALSE(HashSet_has(&s, &probe));
     String_destroy(&probe);
     HashSet_destroy(&s);
@@ -472,10 +474,10 @@ UTEST(hashset, str_has_miss)
 
 UTEST(hashset, str_no_duplicates)
 {
-    HashSet s = str_set();
-    String   sv = String_from_cstr(WC_LIBC, "dup");
-    b8 first  = HashSet_insert(&s, &sv);
-    b8 second = HashSet_insert(&s, &sv);
+    HashSet s      = str_set();
+    String  sv     = String_from_cstr(WC_LIBC, "dup");
+    b8      first  = HashSet_insert(&s, &sv);
+    b8      second = HashSet_insert(&s, &sv);
     EXPECT_FALSE(first);
     EXPECT_TRUE(second);
     EXPECT_EQ(HashSet_size(&s), 1u);
@@ -486,16 +488,16 @@ UTEST(hashset, str_no_duplicates)
 UTEST(hashset, str_insert_move_duplicate_frees_elm)
 {
     // insert_move on a duplicate must free the incoming pointer
-    HashSet s = str_set();
-    String   sv = String_from_cstr(WC_LIBC, "dup");
+    HashSet s  = str_set();
+    String  sv = String_from_cstr(WC_LIBC, "dup");
     HashSet_insert(&s, &sv);
 
-    String dup = String_from_cstr(WC_LIBC, "dup");
-    b8 existed = HashSet_insert_move(&s, &dup);
+    String dup     = String_from_cstr(WC_LIBC, "dup");
+    b8     existed = HashSet_insert_move(&s, &dup);
     EXPECT_TRUE(existed);
     EXPECT_EQ(dup.size, 0u); // duplicate destroyed and zeroed
     EXPECT_TRUE((dup.heap) == NULL);
-    String_destroy(&dup);          // safe on zeroed
+    String_destroy(&dup); // safe on zeroed
     EXPECT_EQ(HashSet_size(&s), 1u);
 
     String_destroy(&sv);
@@ -505,7 +507,7 @@ UTEST(hashset, str_insert_move_duplicate_frees_elm)
 UTEST(hashset, str_remove)
 {
     HashSet s  = str_set();
-    String   s1 = String_from_cstr(WC_LIBC, "remove_me");
+    String  s1 = String_from_cstr(WC_LIBC, "remove_me");
     HashSet_insert_move(&s, &s1);
     String_destroy(&s1); // moved-from: zeroed, safe on zeroed
 
@@ -520,7 +522,7 @@ UTEST(hashset, str_remove)
 UTEST(hashset, str_resize_preserves_membership)
 {
     HashSet s = str_set();
-    char buf[16];
+    char    buf[16];
     for (int i = 0; i < 40; i++) {
         snprintf(buf, sizeof(buf), "word%d", i);
         String sv = String_from_cstr(WC_LIBC, buf);
@@ -541,8 +543,8 @@ UTEST(hashset, str_resize_preserves_membership)
 UTEST(hashset, str_remove_frees_elm)
 {
     // remove must call del_fn on owned String before clearing the slot
-    HashSet s = str_set();
-    String sv = String_from_cstr(WC_LIBC, "owned");
+    HashSet s  = str_set();
+    String  sv = String_from_cstr(WC_LIBC, "owned");
     HashSet_insert(&s, &sv);
     String_destroy(&sv);
 
@@ -582,9 +584,9 @@ UTEST(hashset, str_clear_then_reuse)
 
 UTEST(hashset, insert_move_nulls_src)
 {
-    HashSet s  = HashSet_create(WC_LIBC, sizeof(String), wyhash_str, str_cmp, &wc_str_ops);
-    String   el = String_from_cstr(WC_LIBC, "owned");
-    b8 existed  = HashSet_insert_move(&s, &el);
+    HashSet s       = HashSet_create(WC_LIBC, sizeof(String), wyhash_str, str_cmp, &wc_str_ops);
+    String  el      = String_from_cstr(WC_LIBC, "owned");
+    b8      existed = HashSet_insert_move(&s, &el);
     String_destroy(&el); // moved-from: zeroed, safe destroy
     EXPECT_FALSE(existed);
     EXPECT_EQ(HashSet_size(&s), 1u);
@@ -597,14 +599,14 @@ UTEST(hashset, insert_move_nulls_src)
 
 UTEST(hashset, insert_move_duplicate_frees_incoming)
 {
-    HashSet s  = HashSet_create(WC_LIBC, sizeof(String), wyhash_str, str_cmp, &wc_str_ops);
+    HashSet s = HashSet_create(WC_LIBC, sizeof(String), wyhash_str, str_cmp, &wc_str_ops);
     SET_INSERT_CSTR(&s, "dup");
 
-    String el  = String_from_cstr(WC_LIBC, "dup");
-    b8 existed = HashSet_insert_move(&s, &el);
-    EXPECT_TRUE(existed);         /* already in set */
-    EXPECT_EQ(el.size, 0u);    /* incoming consumed and zeroed */
-    String_destroy(&el);             /* safe on zeroed */
+    String el      = String_from_cstr(WC_LIBC, "dup");
+    b8     existed = HashSet_insert_move(&s, &el);
+    EXPECT_TRUE(existed);   /* already in set */
+    EXPECT_EQ(el.size, 0u); /* incoming consumed and zeroed */
+    String_destroy(&el);    /* safe on zeroed */
     EXPECT_EQ(HashSet_size(&s), 1u);
     HashSet_destroy(&s);
 }
@@ -643,23 +645,30 @@ UTEST(hashset, clear_empty_set_noop)
 UTEST(hashset, set_foreach_visits_all)
 {
     HashSet s = HashSet_create(WC_LIBC, sizeof(int), NULL, NULL, NULL);
-    for (int i = 0; i < 8; i++) { HashSet_insert(&s, &i); }
+    for (int i = 0; i < 8; i++) {
+        HashSet_insert(&s, &i);
+    }
 
     int count = 0, sum = 0;
-    SET_FOREACH(&s, int, el) {
+    SET_FOREACH(&s, int, el)
+    {
         count++;
         sum += *el;
     }
     EXPECT_EQ(count, 8);
-    EXPECT_EQ(sum, 0+1+2+3+4+5+6+7);
+    EXPECT_EQ(sum, 0 + 1 + 2 + 3 + 4 + 5 + 6 + 7);
     HashSet_destroy(&s);
 }
 
 UTEST(hashset, set_foreach_empty)
 {
-    HashSet s  = HashSet_create(WC_LIBC, sizeof(int), NULL, NULL, NULL);
-    int count   = 0;
-    SET_FOREACH(&s, int, el) { count++; (void)el; }
+    HashSet s     = HashSet_create(WC_LIBC, sizeof(int), NULL, NULL, NULL);
+    int     count = 0;
+    SET_FOREACH(&s, int, el)
+    {
+        count++;
+        (void)el;
+    }
     EXPECT_EQ(count, 0);
     HashSet_destroy(&s);
 }
@@ -667,11 +676,16 @@ UTEST(hashset, set_foreach_empty)
 UTEST(hashset, set_foreach_after_remove)
 {
     HashSet s = HashSet_create(WC_LIBC, sizeof(int), NULL, NULL, NULL);
-    for (int i = 0; i < 8; i++) { HashSet_insert(&s, &i); }
-    for (int i = 0; i < 4; i++) { HashSet_remove(&s, &i); }
+    for (int i = 0; i < 8; i++) {
+        HashSet_insert(&s, &i);
+    }
+    for (int i = 0; i < 4; i++) {
+        HashSet_remove(&s, &i);
+    }
 
     int count = 0;
-    SET_FOREACH(&s, int, el) {
+    SET_FOREACH(&s, int, el)
+    {
         EXPECT_TRUE(*el >= 4);
         count++;
     }
@@ -686,7 +700,7 @@ UTEST(hashset, set_foreach_after_remove)
 
 UTEST(hashset, fill_past_several_resizes)
 {
-    HashSet s = int_set();
+    HashSet   s     = int_set();
     const int count = 2000;
     for (int i = 0; i < count; i++) {
         HashSet_insert(&s, &i);
@@ -727,7 +741,7 @@ UTEST(hashset, cross_alloc_copy)
 UTEST(hashset, move)
 {
     HashSet src = int_set();
-    int x = 42;
+    int     x   = 42;
     HashSet_insert(&src, &x);
 
     HashSet dest;
@@ -737,7 +751,7 @@ UTEST(hashset, move)
     EXPECT_EQ(HashSet_size(&dest), 1u);
     EXPECT_TRUE(HashSet_has(&dest, &x));
 
-    HashSet_destroy(&src);  // safe on zeroed
+    HashSet_destroy(&src); // safe on zeroed
     HashSet_destroy(&dest);
 }
 

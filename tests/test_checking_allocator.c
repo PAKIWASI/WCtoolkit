@@ -1,12 +1,12 @@
 #include "arena.h"
 #include "common.h"
 #include "gen_vector.h"
+#include "utest.h"
 #include "wc_allocator.h"
 #include "wc_macros.h"
-#include "test_support.h"
 #include "wc_test_allocator.h"
-
-#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
 
 
 // These tests hand stack buffers to allocators on purpose (wc_borrowed, foreign
@@ -80,7 +80,7 @@ UTEST(checking_allocator, ta_detects_double_free)
 {
     wc_test_alloc ta;
     wc_test_alloc_init(&ta, WC_LIBC);
-    ta.mode          = WC_TA_RECORD;
+    ta.mode        = WC_TA_RECORD;
     wc_allocator a = wc_test_alloc_allocator(&ta);
 
     u8* p = wc_alloc(a, 32, 16);
@@ -95,7 +95,7 @@ UTEST(checking_allocator, ta_detects_foreign_pointer)
 {
     wc_test_alloc ta;
     wc_test_alloc_init(&ta, WC_LIBC);
-    ta.mode          = WC_TA_RECORD;
+    ta.mode        = WC_TA_RECORD;
     wc_allocator a = wc_test_alloc_allocator(&ta);
 
     u8 stack_buf[32];
@@ -111,7 +111,7 @@ UTEST(checking_allocator, ta_detects_size_and_align_mismatch)
 {
     wc_test_alloc ta;
     wc_test_alloc_init(&ta, WC_LIBC);
-    ta.mode          = WC_TA_RECORD;
+    ta.mode        = WC_TA_RECORD;
     wc_allocator a = wc_test_alloc_allocator(&ta);
 
     u8* p = wc_alloc(a, 40, 16);
@@ -217,14 +217,14 @@ UTEST(checking_allocator, ta_over_arena_backing)
 
 /* ── GenVec through the test allocator (explicit allocator, no global) ──── */
 
-#define WITH_TEST_ALLOC(ta_name, al_name, body)                   \
-    ({                                                            \
-        wc_test_alloc ta_name;                                    \
-        wc_test_alloc_init(&ta_name, WC_LIBC);                    \
-        wc_allocator al_name = wc_test_alloc_allocator(&ta_name); \
-        body;                                                     \
-        EXPECT_EQ(ta_name.n_errors, 0u);                    \
-        EXPECT_EQ(wc_test_alloc_destroy(&ta_name), 0u);     \
+#define WITH_TEST_ALLOC(ta_name, al_name, body)                     \
+    ({                                                              \
+        wc_test_alloc ta_name;                                      \
+        wc_test_alloc_init(&(ta_name), WC_LIBC);                    \
+        wc_allocator al_name = wc_test_alloc_allocator(&(ta_name)); \
+        body;                                                       \
+        EXPECT_EQ((ta_name).n_errors, 0u);                          \
+        EXPECT_EQ(wc_test_alloc_destroy(&(ta_name)), 0u);           \
     })
 
 UTEST(checking_allocator, genvec_lifecycle_is_leak_free)

@@ -35,6 +35,7 @@
 
 #include "common.h"
 #include "wc_allocator.h"
+#include <stddef.h>
 
 #define WC_TA_FILL   0xBE
 #define WC_TA_POISON 0xDD
@@ -45,7 +46,7 @@ typedef enum {
 } wc_ta_error_mode;
 
 typedef struct {
-    void*  ptr;   // NULL = empty slot, WC_TA_TOMBSTONE = deleted
+    void*  ptr; // NULL = empty slot, WC_TA_TOMBSTONE = deleted
     size_t size;
     size_t align;
 } wc_ta_block;
@@ -56,7 +57,7 @@ typedef struct {
     // live-block table (open addressing, libc-backed, never uses `backing`)
     wc_ta_block* blocks;
     u64          cap;
-    u64          used;      // live + tombstones
+    u64          used; // live + tombstones
     u64          live_blocks;
 
     // stats

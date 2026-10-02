@@ -57,8 +57,7 @@ HashMap HashMap_create(wc_allocator a, u32 key_size, u32 val_size, custom_hash_f
 void HashMap_destroy(HashMap* map) __attribute__((nonnull(1)));
 
 // Deep copy src into a new HashMap allocated from `a`.
-HashMap HashMap_copy(wc_allocator a, const HashMap* src)
-    __attribute__((nonnull(2), warn_unused_result));
+HashMap HashMap_copy(wc_allocator a, const HashMap* src) __attribute__((nonnull(2), warn_unused_result));
 
 // Transfer ownership from src to dest. src is left zeroed.
 void HashMap_move(HashMap* dest, HashMap* src) __attribute__((nonnull(1, 2)));

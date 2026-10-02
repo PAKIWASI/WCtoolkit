@@ -1,5 +1,8 @@
 #include "wc_test_allocator.h"
+#include "common.h"
+#include "wc_allocator.h"
 
+#include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>

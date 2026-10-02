@@ -29,7 +29,8 @@ _Static_assert(sizeof(Matrixf) == 40, "Matrixf layout: data + m + n + 16-byte al
 Matrixf matrix_create(wc_allocator a, u64 m, u64 n) __attribute__((warn_unused_result));
 
 // m x n matrix from `a`, filled from a row-major array of m * n floats.
-Matrixf matrix_create_arr(wc_allocator a, u64 m, u64 n, const float* arr) __attribute__((nonnull(4), warn_unused_result));
+Matrixf matrix_create_arr(wc_allocator a, u64 m, u64 n, const float* arr)
+    __attribute__((nonnull(4), warn_unused_result));
 
 // Wrap caller-owned memory (stack array, static buffer). Uses wc_borrowed:
 // destroy frees nothing. `data` must outlive the matrix.
@@ -75,11 +76,13 @@ float matrix_get_elm(const Matrixf* mat, u64 i, u64 j) __attribute__((nonnull(1)
 
 // Matrix addition: out = a + b
 // out must NOT alias a or b (restrict enables auto-vectorization)
-void matrix_add(Matrixf* restrict out, const Matrixf* restrict a, const Matrixf* restrict b) __attribute__((nonnull(1, 2, 3)));
+void matrix_add(Matrixf* restrict out, const Matrixf* restrict a, const Matrixf* restrict b)
+    __attribute__((nonnull(1, 2, 3)));
 
 // Matrix subtraction: out = a - b
 // out must NOT alias a or b (restrict enables auto-vectorization)
-void matrix_sub(Matrixf* restrict out, const Matrixf* restrict a, const Matrixf* restrict b) __attribute__((nonnull(1, 2, 3)));
+void matrix_sub(Matrixf* restrict out, const Matrixf* restrict a, const Matrixf* restrict b)
+    __attribute__((nonnull(1, 2, 3)));
 
 // Scalar multiplication: mat = mat * val
 void matrix_scale(Matrixf* restrict mat, float val) __attribute__((nonnull(1)));
@@ -95,13 +98,15 @@ void matrix_div(Matrixf* restrict mat, float val) __attribute__((nonnull(1)));
 // (m×k) * (k×n) = (m×n)
 // out must NOT alias a or b
 // Uses blocked ikj multiplication for cache efficiency (good for small-medium matrices)
-void matrix_xply(Matrixf* restrict out, const Matrixf* restrict a, const Matrixf* restrict b) __attribute__((nonnull(1, 2, 3)));
+void matrix_xply(Matrixf* restrict out, const Matrixf* restrict a, const Matrixf* restrict b)
+    __attribute__((nonnull(1, 2, 3)));
 
 // Matrix multiplication variant 2: out = a × b
 // Transposes b internally for better cache locality
 // Takes more memory but can be faster for large matrices
 // out must NOT alias a or b
-void matrix_xply_2(Matrixf* restrict out, const Matrixf* restrict a, const Matrixf* restrict b) __attribute__((nonnull(1, 2, 3)));
+void matrix_xply_2(Matrixf* restrict out, const Matrixf* restrict a, const Matrixf* restrict b)
+    __attribute__((nonnull(1, 2, 3)));
 
 
 
@@ -114,7 +119,8 @@ void matrix_T(Matrixf* restrict out, const Matrixf* restrict mat) __attribute__(
 
 // LU Decomposition: mat = L × U
 // Decomposes square matrix into Lower and Upper triangular matrices
-void matrix_LU_Decomp(Matrixf* restrict L, Matrixf* restrict U, const Matrixf* restrict mat) __attribute__((nonnull(1, 2, 3)));
+void matrix_LU_Decomp(Matrixf* restrict L, Matrixf* restrict U, const Matrixf* restrict mat)
+    __attribute__((nonnull(1, 2, 3)));
 
 // Calculate determinant using LU decomposition
 float matrix_det(const Matrixf* mat) __attribute__((nonnull(1)));

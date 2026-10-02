@@ -1,7 +1,7 @@
 #include "bit_vector.h"
 #include "common.h"
+#include "utest.h"
 #include "wc_allocator.h"
-#include "test_support.h"
 
 
 /* ── Creation / destruction ──────────────────────────────────────────────── */

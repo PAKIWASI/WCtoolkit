@@ -4,9 +4,11 @@
 #include "hashset.h"
 #include "queue.h"
 #include "stack.h"
+#include "test_support.h"
+#include "utest.h"
+#include "wc_allocator.h"
 #include "wc_macros.h"
 #include "wc_string.h"
-#include "test_support.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -43,7 +45,7 @@ static void int_del(void* elm)
     (void)elm;
 }
 
-static const wc_container_ops int_move_ops = { NULL, int_move, int_del };
+static const wc_container_ops int_move_ops = {NULL, int_move, int_del};
 
 /*
  * Before the fix, SET_INSERT_MOVE referenced (vec) instead of (set),
@@ -100,7 +102,8 @@ UTEST(macros, Stack_macros)
     EXPECT_EQ(STACK_AT(&s, int, 1), 200);
 
     int sum = 0;
-    STACK_FOREACH(&s, int, p) {
+    STACK_FOREACH(&s, int, p)
+    {
         sum += *p;
     }
     EXPECT_EQ(sum, 300);
@@ -128,23 +131,25 @@ UTEST(macros, map_get_and_try_get)
 
     /* MAP_TRY_GET */
     int out = 0;
-    b8 hit = MAP_TRY_GET(&m, int, k1, &out);
+    b8  hit = MAP_TRY_GET(&m, int, k1, &out);
     EXPECT_TRUE(hit);
     EXPECT_EQ(out, 10);
 
     int miss_k = 999;
-    b8 miss = MAP_TRY_GET(&m, int, miss_k, &out);
+    b8  miss   = MAP_TRY_GET(&m, int, miss_k, &out);
     EXPECT_FALSE(miss);
 
     /* MAP_FOREACH_KEY / VAL */
     int key_sum = 0;
-    MAP_FOREACH_KEY(&m, int, k) {
+    MAP_FOREACH_KEY(&m, int, k)
+    {
         key_sum += *k;
     }
     EXPECT_EQ(key_sum, 3);
 
     int val_sum = 0;
-    MAP_FOREACH_VAL(&m, int, v) {
+    MAP_FOREACH_VAL(&m, int, v)
+    {
         val_sum += *v;
     }
     EXPECT_EQ(val_sum, 30);
@@ -165,7 +170,8 @@ UTEST(macros, set_foreach_and_from_vec)
     EXPECT_EQ(HashSet_size(&s), 3u);
 
     int sum = 0;
-    SET_FOREACH(&s, int, elm) {
+    SET_FOREACH(&s, int, elm)
+    {
         sum += *elm;
     }
     EXPECT_EQ(sum, 6);
@@ -315,7 +321,8 @@ UTEST(macros, vec_foreach_if_else_prefix)
     // leading if/else must still compile: the foreach is a plain for loop with
     // no dangling-statement traps
     if (v.size > 0) {
-        VEC_FOREACH(&v, int, p) {
+        VEC_FOREACH(&v, int, p)
+        {
             count++;
         }
     } else {
@@ -340,7 +347,7 @@ UTEST(macros, genvec_unsafe_getters_in_range)
     const u8* cp = GenVec_get_ptr_unsafe(&v, 1);
     EXPECT_EQ(*(const int*)cp, 2);
 
-    u8* mp = GenVec_get_ptr_mut_unsafe(&v, 2);
+    u8* mp    = GenVec_get_ptr_mut_unsafe(&v, 2);
     *(int*)mp = 30;
     EXPECT_EQ(VEC_AT(&v, int, 2), 30);
 
@@ -452,7 +459,7 @@ UTEST(macros, vec_foreach_break_stops)
             break;
         }
     }
-    EXPECT_EQ(visited, 2);           // used to be 5: break acted like continue
+    EXPECT_EQ(visited, 2); // used to be 5: break acted like continue
     GenVec_destroy(&v);
 }
 
@@ -485,14 +492,16 @@ UTEST(macros, vec_foreach_nested_break_ends_inner_only)
             pairs++;
         }
     }
-    EXPECT_EQ(pairs, 1 + 2 + 3);     // b runs up to a, for each a
+    EXPECT_EQ(pairs, 1 + 2 + 3); // b runs up to a, for each a
     GenVec_destroy(&v);
 }
 
 UTEST(macros, stack_foreach_break_stops)
 {
     Stack s = STACK_CREATE(int, 4);
-    for (int i = 0; i < 4; i++) { STACK_PUSH(&s, i); }
+    for (int i = 0; i < 4; i++) {
+        STACK_PUSH(&s, i);
+    }
     int visited = 0;
     STACK_FOREACH(&s, int, x)
     {
@@ -508,7 +517,9 @@ UTEST(macros, stack_foreach_break_stops)
 UTEST(macros, map_foreach_break_stops)
 {
     HashMap m = MAP_OF(int, int);
-    for (int i = 0; i < 10; i++) { MAP_PUT(&m, i, i); }
+    for (int i = 0; i < 10; i++) {
+        MAP_PUT(&m, i, i);
+    }
 
     int keys = 0;
     MAP_FOREACH_KEY(&m, int, k)
@@ -528,7 +539,11 @@ UTEST(macros, map_foreach_break_stops)
     EXPECT_EQ(vals, 1);
 
     int all = 0;
-    MAP_FOREACH_KEY(&m, int, k) { (void)k; all++; }   // empty buckets are skipped
+    MAP_FOREACH_KEY(&m, int, k)
+    {
+        (void)k;
+        all++;
+    } // empty buckets are skipped
     EXPECT_EQ(all, 10);
     HashMap_destroy(&m);
 }
@@ -536,7 +551,9 @@ UTEST(macros, map_foreach_break_stops)
 UTEST(macros, set_foreach_break_stops)
 {
     HashSet s = HashSet_create(WC_LIBC, sizeof(int), NULL, NULL, NULL);
-    for (int i = 0; i < 10; i++) { SET_INSERT(&s, i); }
+    for (int i = 0; i < 10; i++) {
+        SET_INSERT(&s, i);
+    }
     int visited = 0;
     SET_FOREACH(&s, int, x)
     {
@@ -553,8 +570,16 @@ UTEST(macros, foreach_on_empty_runs_zero_times)
     GenVec  v = VEC(int, 0);
     HashMap m = MAP_OF(int, int);
     int     n = 0;
-    VEC_FOREACH(&v, int, x) { (void)x; n++; }
-    MAP_FOREACH_VAL(&m, int, x) { (void)x; n++; }
+    VEC_FOREACH(&v, int, x)
+    {
+        (void)x;
+        n++;
+    }
+    MAP_FOREACH_VAL(&m, int, x)
+    {
+        (void)x;
+        n++;
+    }
     EXPECT_EQ(n, 0);
     GenVec_destroy(&v);
     HashMap_destroy(&m);

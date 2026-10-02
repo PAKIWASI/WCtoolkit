@@ -2,6 +2,7 @@
 #include "common.h"
 #include "gen_vector.h"
 #include "queue.h"
+#include "wc_allocator.h"
 
 #include <stdio.h>
 

@@ -1,6 +1,7 @@
 #include "matrix.h"
 #include "common.h"
 #include "wc_allocator.h"
+#include <stdalign.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -14,8 +15,8 @@
 
 Matrixf matrix_create(wc_allocator a, u64 m, u64 n)
 {
-    FATAL_IF(m == 0 || n == 0, "matrix_create: dims must be > 0 (got %llu x %llu)",
-             (unsigned long long)m, (unsigned long long)n);
+    FATAL_IF(m == 0 || n == 0, "matrix_create: dims must be > 0 (got %llu x %llu)", (unsigned long long)m,
+             (unsigned long long)n);
 
     float* data = wc_alloc(a, MAT_BYTES(m, n), alignof(float));
     FATAL_IF(!data, "matrix_create: data allocation failed");
@@ -58,8 +59,7 @@ void matrix_set_val_arr2(Matrixf* mat, u64 m, u64 n, const float** arr2)
 {
     MAT_LIVE(mat, "matrix_set_val_arr2");
     WC_ASSERT(*arr2, "*arr is null");
-    WC_ASSERT(m == mat->m && n == mat->n,
-                "mat dimentions dont match passed arr2");
+    WC_ASSERT(m == mat->m && n == mat->n, "mat dimentions dont match passed arr2");
 
     u64 idx = 0;
     for (u64 i = 0; i < m; i++) {
@@ -86,13 +86,12 @@ float matrix_get_elm(const Matrixf* mat, u64 i, u64 j)
 void matrix_add(Matrixf* restrict out, const Matrixf* restrict a, const Matrixf* restrict b)
 {
     MAT_LIVE(out, "matrix_add");
-    WC_ASSERT(a->m == b->m && a->n == b->n && a->m == out->m && a->n == out->n,
-                "a, b, out mat dimentions dont match");
+    WC_ASSERT(a->m == b->m && a->n == b->n && a->m == out->m && a->n == out->n, "a, b, out mat dimentions dont match");
 
     u64 total = MATRIX_TOTAL(a);
 
-    for (u64 i = 0; i < total; i++) { 
-        out->data[i] = a->data[i] + b->data[i]; 
+    for (u64 i = 0; i < total; i++) {
+        out->data[i] = a->data[i] + b->data[i];
     }
 }
 
@@ -101,13 +100,12 @@ void matrix_sub(Matrixf* restrict out, const Matrixf* restrict a, const Matrixf*
 {
     MAT_LIVE(out, "matrix_sub");
     // FIXED: Added dimension check for 'out' matrix
-    WC_ASSERT(a->m == b->m && a->n == b->n && a->m == out->m && a->n == out->n,
-                "a, b, out mat dimentions dont match");
+    WC_ASSERT(a->m == b->m && a->n == b->n && a->m == out->m && a->n == out->n, "a, b, out mat dimentions dont match");
 
     u64 total = MATRIX_TOTAL(a);
 
-    for (u64 i = 0; i < total; i++) { 
-        out->data[i] = a->data[i] - b->data[i]; 
+    for (u64 i = 0; i < total; i++) {
+        out->data[i] = a->data[i] - b->data[i];
     }
 }
 
@@ -116,10 +114,8 @@ void matrix_sub(Matrixf* restrict out, const Matrixf* restrict a, const Matrixf*
 void matrix_xply(Matrixf* restrict out, const Matrixf* restrict a, const Matrixf* restrict b)
 {
     MAT_LIVE(out, "matrix_xply");
-    WC_ASSERT(a->n == b->m,
-                "incompatible matrix dimensions for multiplication");
-    WC_ASSERT(out->m == a->m && out->n == b->n,
-                "output matrix has wrong dimensions");
+    WC_ASSERT(a->n == b->m, "incompatible matrix dimensions for multiplication");
+    WC_ASSERT(out->m == a->m && out->n == b->n, "output matrix has wrong dimensions");
 
     u64 m = a->m; // rows of A
     u64 k = a->n; // cols of A = rows of B
@@ -137,8 +133,7 @@ void matrix_xply(Matrixf* restrict out, const Matrixf* restrict a, const Matrixf
             for (u64 j = 0; j < n; j += BLOCK_SIZE) {
                 // Block boundaries
                 u64 i_max = (i + BLOCK_SIZE < m) ? i + BLOCK_SIZE : m;
-                u64 k_max =
-                    (k_outer + BLOCK_SIZE < k) ? k_outer + BLOCK_SIZE : k;
+                u64 k_max = (k_outer + BLOCK_SIZE < k) ? k_outer + BLOCK_SIZE : k;
                 u64 j_max = (j + BLOCK_SIZE < n) ? j + BLOCK_SIZE : n;
                 // Multiply this block
                 for (u64 ii = i; ii < i_max; ii++) {
@@ -146,15 +141,13 @@ void matrix_xply(Matrixf* restrict out, const Matrixf* restrict a, const Matrixf
 
                         float a_val = a->data[IDX(a, ii, kk)];
                         for (u64 jj = j; jj < j_max; jj++) {
-                            out->data[IDX(out, ii, jj)] +=
-                                a_val * b->data[IDX(b, kk, jj)];
+                            out->data[IDX(out, ii, jj)] += a_val * b->data[IDX(b, kk, jj)];
                         }
                     }
                 }
             }
         }
     }
-
 }
 
 
@@ -164,8 +157,7 @@ void matrix_xply_2(Matrixf* restrict out, const Matrixf* restrict a, const Matri
 {
     MAT_LIVE(out, "matrix_xply_2");
     WC_ASSERT(a->n == b->m, "incompatible matrix dimensions");
-    WC_ASSERT(out->m == a->m && out->n == b->n,
-                "output matrix has wrong dimensions");
+    WC_ASSERT(out->m == a->m && out->n == b->n, "output matrix has wrong dimensions");
 
     u64 m = a->m;
     u64 k = a->n;
@@ -201,7 +193,6 @@ void matrix_xply_2(Matrixf* restrict out, const Matrixf* restrict a, const Matri
             }
         }
     }
-
 }
 
 /*
@@ -222,7 +213,9 @@ void matrix_LU_Decomp(Matrixf* restrict L, Matrixf* restrict U, const Matrixf* r
     memset(L->data, 0, sizeof(float) * n * n);
     memset(U->data, 0, sizeof(float) * n * n);
     // L main diagonal is 1
-    for (u64 i = 0; i < n; i++) { L->data[IDX(L, i, i)] = 1; }
+    for (u64 i = 0; i < n; i++) {
+        L->data[IDX(L, i, i)] = 1;
+    }
 
 
     // Build U and L row by row
@@ -248,8 +241,7 @@ void matrix_LU_Decomp(Matrixf* restrict L, Matrixf* restrict U, const Matrixf* r
                 WC_ASSERT(0, "Matrix is singular - LU decomposition failed");
             }
 
-            L->data[IDX(L, k, i)] =
-                (MATRIX_AT(mat, k, i) - sum) / U->data[IDX(U, i, i)];
+            L->data[IDX(L, k, i)] = (MATRIX_AT(mat, k, i) - sum) / U->data[IDX(U, i, i)];
         }
     }
 }
@@ -283,7 +275,9 @@ float matrix_det(const Matrixf* mat)
 
     // Calculate determinant as product of U's diagonal
     float det = 1;
-    for (u64 i = 0; i < n; i++) { det *= U.data[IDX(&U, i, i)]; }
+    for (u64 i = 0; i < n; i++) {
+        det *= U.data[IDX(&U, i, i)];
+    }
 
     return det;
 }
@@ -292,8 +286,7 @@ float matrix_det(const Matrixf* mat)
 void matrix_T(Matrixf* restrict out, const Matrixf* restrict mat)
 {
     MAT_LIVE(out, "matrix_T");
-    WC_ASSERT(mat->m == out->n && mat->n == out->m,
-                "incompatible matrix dimensions");
+    WC_ASSERT(mat->m == out->n && mat->n == out->m, "incompatible matrix dimensions");
 
     // Block size for cache optimization (tune based on cache line size)
     const u64 BLOCK_SIZE = 16; // TODO: user adjustable macro?
@@ -321,7 +314,9 @@ void matrix_scale(Matrixf* restrict mat, float val)
 {
     MAT_LIVE(mat, "matrix_scale");
     u64 total = MATRIX_TOTAL(mat);
-    for (u64 i = 0; i < total; i++) { mat->data[i] *= val; }
+    for (u64 i = 0; i < total; i++) {
+        mat->data[i] *= val;
+    }
 }
 
 
@@ -331,7 +326,9 @@ void matrix_div(Matrixf* restrict mat, float val)
     WC_ASSERT(val != 0, "division by zero!");
 
     u64 total = MATRIX_TOTAL(mat);
-    for (u64 i = 0; i < total; i++) { mat->data[i] /= val; }
+    for (u64 i = 0; i < total; i++) {
+        mat->data[i] /= val;
+    }
 }
 
 Matrixf matrix_copy(wc_allocator a, const Matrixf* src)
@@ -356,8 +353,10 @@ void matrix_print(const Matrixf* mat)
     // Single linear loop O(n)
     for (u64 i = 0; i < total; i++) {
         // Print row separator
-        if (i % mat->n == 0) {           // divide by columns to detect new row
-            if (i > 0) { putchar('|'); } // Close previous row
+        if (i % mat->n == 0) { // divide by columns to detect new row
+            if (i > 0) {
+                putchar('|');
+            } // Close previous row
             putchar('\n');
             putchar('|');
             putchar(' ');

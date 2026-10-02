@@ -1,7 +1,11 @@
-#include "bench_support.h"
 #include "arena.h"
+#include "bench_support.h"
 #include "chain_arena.h"
+#include "common.h"
+#include "ubench.h"
 #include "views.h"
+#include "wc_allocator.h"
+#include "wc_string.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -19,7 +23,9 @@ UBENCH(memory, malloc_each)
         memcpy(ptrs[i], WORD, sizeof(WORD));
     }
     UBENCH_DO_NOTHING(ptrs[N - 1]);
-    for (int i = 0; i < N; i++) { free(ptrs[i]); }
+    for (int i = 0; i < N; i++) {
+        free(ptrs[i]);
+    }
 }
 
 UBENCH(memory, arena)
@@ -49,7 +55,9 @@ UBENCH(memory, chain_arena)
 UBENCH(memory, string_store)
 {
     StringStore ss = StringStore_create(WC_LIBC);
-    for (int i = 0; i < N; i++) { (void)StringStore_cstr(&ss, WORD, sizeof(WORD) - 1); }
+    for (int i = 0; i < N; i++) {
+        (void)StringStore_cstr(&ss, WORD, sizeof(WORD) - 1);
+    }
     UBENCH_DO_NOTHING(ss.head);
     StringStore_destroy(&ss);
 }
@@ -57,7 +65,7 @@ UBENCH(memory, string_store)
 UBENCH(memory, string_inline)
 {
     for (int i = 0; i < N; i++) {
-        String s = String_from_cstr(WC_LIBC, WORD);   // fits in 31 chars: no allocation
+        String s = String_from_cstr(WC_LIBC, WORD); // fits in 31 chars: no allocation
         UBENCH_DO_NOTHING(&s);
         String_destroy(&s);
     }

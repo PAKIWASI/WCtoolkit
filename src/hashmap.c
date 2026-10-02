@@ -35,10 +35,22 @@
 #define SWAP_KEY(map)  ((map)->scratch + ALIGN8((map)->key_size) + (map)->val_size)
 #define SWAP_VAL(map)  ((map)->scratch + ALIGN8((map)->key_size) + (map)->val_size + ALIGN8((map)->key_size))
 
-static inline u64 map_keys_size(u64 cap, u32 key_size) { return cap * (u64)key_size; }
-static inline u64 map_psls_size(u64 cap) { return cap * sizeof(u8); }
-static inline u64 map_vals_size(u64 cap, u32 val_size) { return cap * (u64)val_size; }
-static inline u64 map_scratch_size(u32 key_size, u32 val_size) { return 2 * (ALIGN8(key_size) + (u64)val_size); }
+static inline u64 map_keys_size(u64 cap, u32 key_size)
+{
+    return cap * (u64)key_size;
+}
+static inline u64 map_psls_size(u64 cap)
+{
+    return cap * sizeof(u8);
+}
+static inline u64 map_vals_size(u64 cap, u32 val_size)
+{
+    return cap * (u64)val_size;
+}
+static inline u64 map_scratch_size(u32 key_size, u32 val_size)
+{
+    return 2 * (ALIGN8(key_size) + (u64)val_size);
+}
 
 // Move one element into `dest`: move_fn if provided, else memcpy. `src` is left zeroed.
 static inline void move_into(const wc_container_ops* ops, u32 size, u8* dest, u8* src)
@@ -704,11 +716,11 @@ static void map_resize(HashMap* map, u64 new_capacity)
         new_capacity = HASHMAP_INIT_CAPACITY;
     }
 
-    u8* old_keys = map->keys;
-    u8* old_psls = map->psls;
-    u8* old_vals = map->vals;
-    u64 old_cap  = map->capacity;
-    wc_allocator a = map->alloc;
+    u8*          old_keys = map->keys;
+    u8*          old_psls = map->psls;
+    u8*          old_vals = map->vals;
+    u64          old_cap  = map->capacity;
+    wc_allocator a        = map->alloc;
 
     map->keys = wc_alloc(a, map_keys_size(new_capacity, map->key_size), 8);
     FATAL_IF(!map->keys, "map_resize: keys alloc failed");

@@ -41,9 +41,9 @@
  *            allocator (shell allocator == child allocator, plan D6)
  */
 
-#include "wc_string.h"
 #include "common.h"
 #include "gen_vector.h"
+#include "wc_string.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -73,7 +73,7 @@ static inline void str_move(void* dest, void* src)
 
 static inline void str_del(void* elm)
 {
-    String_destroy((String*)elm);   // free data buffer via str->alloc, NOT the slot
+    String_destroy((String*)elm); // free data buffer via str->alloc, NOT the slot
 }
 
 static inline void str_print(const void* elm)
@@ -110,7 +110,7 @@ static inline void str_del_ptr(void* elm)
     }
     // Read allocator before destroy zeroes the struct
     wc_allocator a = s->alloc;
-    String_destroy(s);                             // free heap buffer via s->alloc
+    String_destroy(s);                              // free heap buffer via s->alloc
     wc_free(a, s, sizeof(String), alignof(String)); // free the shell
 }
 
@@ -157,7 +157,9 @@ static inline void vec_print_int(const void* elm)
     printf("[");
     for (u64 i = 0; i < v->size; i++) {
         printf("%d", *(int*)GenVec_get_ptr(v, i));
-        if (i + 1 < v->size) { printf(", "); }
+        if (i + 1 < v->size) {
+            printf(", ");
+        }
     }
     printf("]");
 }
@@ -207,10 +209,10 @@ static inline void vec_print_int_ptr(const void* elm)
  *   HashMap m = HashMap_create(WC_LIBC, ..., &wc_str_ops, &wc_str_ops);
  * ══════════════════════════════════════════════════════════════════════════ */
 
-static const wc_container_ops wc_str_ops     = { str_copy,     str_move,     str_del     };
-static const wc_container_ops wc_str_ptr_ops = { str_copy_ptr, str_move_ptr, str_del_ptr };
-static const wc_container_ops wc_vec_ops     = { vec_copy,     vec_move,     vec_del     };
-static const wc_container_ops wc_vec_ptr_ops = { vec_copy_ptr, vec_move_ptr, vec_del_ptr };
+static const wc_container_ops wc_str_ops     = {str_copy, str_move, str_del};
+static const wc_container_ops wc_str_ptr_ops = {str_copy_ptr, str_move_ptr, str_del_ptr};
+static const wc_container_ops wc_vec_ops     = {vec_copy, vec_move, vec_del};
+static const wc_container_ops wc_vec_ptr_ops = {vec_copy_ptr, vec_move_ptr, vec_del_ptr};
 
 // NOTE: sizeof(String) == 64, sizeof(GenVec) == 56 (D9 detail):
 // the old _Static_assert(sizeof(String) == sizeof(GenVec)) is intentionally removed.

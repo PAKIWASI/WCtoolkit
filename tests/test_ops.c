@@ -2,10 +2,12 @@
 #include "gen_vector.h"
 #include "hashmap.h"
 #include "map_setup.h"
+#include "utest.h"
+#include "wc_allocator.h"
 #include "wc_helpers.h"
 #include "wc_macros.h"
 #include "wc_string.h"
-#include "test_support.h"
+#include <stdalign.h>
 
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -20,7 +22,7 @@
 UTEST(ops, strval_push_copy_independent)
 {
     GenVec v = VEC_OF_STR(4);
-    String  s = String_from_cstr(WC_LIBC, "hello");
+    String s = String_from_cstr(WC_LIBC, "hello");
 
     VEC_PUSH(&v, s);
     VEC_PUSH(&v, s);
@@ -41,7 +43,7 @@ UTEST(ops, strval_push_move_nulls_src)
     VEC_PUSH_MOVE(&v, s); // by-value vec: move the String itself
 
     EXPECT_EQ(s.size, 0u); // moved-from String is zeroed
-    String_destroy(&s);          // safe on zeroed
+    String_destroy(&s);    // safe on zeroed
     EXPECT_TRUE(String_equals_cstr(VEC_AT_MUT(&v, String, 0), "world"));
     GenVec_destroy(&v);
 }
@@ -66,7 +68,8 @@ UTEST(ops, strval_foreach_mutates_in_place)
     VEC_PUSH_CSTR(&v, "one");
     VEC_PUSH_CSTR(&v, "two");
 
-    VEC_FOREACH(&v, String, s) {
+    VEC_FOREACH(&v, String, s)
+    {
         String_append_char(s, '!');
     }
 
@@ -126,7 +129,8 @@ UTEST(ops, strval_triggers_growth)
     }
     EXPECT_EQ(GenVec_size(&v), 20u);
     /* all elements must survive multiple reallocations */
-    VEC_FOREACH(&v, String, s) {
+    VEC_FOREACH(&v, String, s)
+    {
         EXPECT_TRUE(String_equals_cstr(s, "x"));
     }
     GenVec_destroy(&v);
@@ -173,8 +177,8 @@ UTEST(ops, strptr_push_move_nulls_src)
 UTEST(ops, strptr_address_stable_after_growth)
 {
     /* key advantage of Strategy B: address of String doesn't change on realloc */
-    GenVec  v    = VEC_OF_STR_PTR(2);
-    String* s    = WC_BOX_IN(WC_LIBC, String, String_from_cstr, "stable");
+    GenVec  v = VEC_OF_STR_PTR(2);
+    String* s = WC_BOX_IN(WC_LIBC, String, String_from_cstr, "stable");
     VEC_PUSH_MOVE(&v, s);
     String* addr = VEC_AT(&v, String*, 0); /* address of the heap String */
 
@@ -194,7 +198,8 @@ UTEST(ops, strptr_foreach_dereference)
     VEC_PUSH_CSTR(&v, "one");
     VEC_PUSH_CSTR(&v, "two");
 
-    VEC_FOREACH(&v, String*, sp) {   /* sp is String** */
+    VEC_FOREACH(&v, String*, sp)
+    { /* sp is String** */
         String_append_char(*sp, '!');
     }
 
@@ -211,9 +216,9 @@ UTEST(ops, strptr_replace_slot_pointer)
     /* VEC_AT_MUT gives String** — we can replace which String the slot points to */
     String** slot        = VEC_AT_MUT(&v, String*, 0);
     String*  replacement = WC_BOX_IN(WC_LIBC, String, String_from_cstr, "new");
-    String_destroy(*slot);  /* free old String */
+    String_destroy(*slot); /* free old String */
     wc_free(WC_LIBC, *slot, sizeof(String), alignof(String));
-    *slot = replacement;    /* put new String* in slot */
+    *slot = replacement; /* put new String* in slot */
 
     EXPECT_TRUE(String_equals_cstr(VEC_AT(&v, String*, 0), "new"));
     GenVec_destroy(&v);
@@ -235,7 +240,9 @@ UTEST(ops, vecval_push_move)
     GenVec outer = VEC_OF_VEC(4);
 
     GenVec inner = VEC_OF_INT(8);
-    for (int i = 0; i < 5; i++) { VEC_PUSH(&inner, i); }
+    for (int i = 0; i < 5; i++) {
+        VEC_PUSH(&inner, i);
+    }
 
     VEC_PUSH_VEC(&outer, inner); /* inner zeroed, data lives in the outer slot */
     EXPECT_TRUE((inner.data) == NULL);
@@ -255,7 +262,9 @@ UTEST(ops, vecval_push_copy_independent)
     GenVec outer = VEC_OF_VEC(4);
 
     GenVec inner = VEC_OF_INT(4);
-    for (int i = 0; i < 3; i++) { VEC_PUSH(&inner, i); }
+    for (int i = 0; i < 3; i++) {
+        VEC_PUSH(&inner, i);
+    }
 
     /* push by copy — inner stays valid */
     GenVec_push(&outer, &inner);
@@ -301,15 +310,17 @@ UTEST(ops, vecval_copy_outer)
     GenVec src = VEC_OF_VEC(4);
     for (int row = 0; row < 3; row++) {
         GenVec inner = VEC_OF_INT(4);
-        for (int i = 0; i < 3; i++) { VEC_PUSH(&inner, i); }
+        for (int i = 0; i < 3; i++) {
+            VEC_PUSH(&inner, i);
+        }
         VEC_PUSH_VEC(&src, inner);
     }
 
     GenVec dest = GenVec_copy(WC_LIBC, &src);
 
     /* modify src inner — dest must be independent */
-    GenVec* src_slot  = VEC_AT_MUT(&src, GenVec, 0);
-    int     x         = 777;
+    GenVec* src_slot = VEC_AT_MUT(&src, GenVec, 0);
+    int     x        = 777;
     GenVec_replace(src_slot, 0, &x);
 
     GenVec* dest_slot = VEC_AT_MUT(&dest, GenVec, 0);
@@ -325,7 +336,7 @@ UTEST(ops, vecval_triggers_growth)
 
     for (int i = 0; i < 20; i++) {
         GenVec inner = VEC_OF_INT(2);
-        int v = i;
+        int    v     = i;
         VEC_PUSH(&inner, v);
         VEC_PUSH_VEC(&outer, inner);
     }
@@ -417,7 +428,9 @@ UTEST(ops, map_int_vec_put_move)
 {
     HashMap m = int_vec_map();
     GenVec  v = VEC_OF_INT(4);
-    for (int i = 0; i < 5; i++) { VEC_PUSH(&v, i); }
+    for (int i = 0; i < 5; i++) {
+        VEC_PUSH(&v, i);
+    }
 
     int key = 10;
     HashMap_put_val_move(&m, &key, &v);
@@ -437,7 +450,9 @@ UTEST(ops, map_int_vec_copy_independence)
 {
     HashMap m   = int_vec_map();
     GenVec  src = VEC_OF_INT(4);
-    for (int i = 0; i < 3; i++) { VEC_PUSH(&src, i); }
+    for (int i = 0; i < 3; i++) {
+        VEC_PUSH(&src, i);
+    }
 
     int key = 1;
     HashMap_put(&m, &key, &src);
@@ -455,16 +470,14 @@ UTEST(ops, map_int_vec_copy_independence)
 
 UTEST(ops, map_str_str_macro)
 {
-    HashMap m = HashMap_create(
-        WC_LIBC, sizeof(String), sizeof(String),
-        wyhash_str, str_cmp, &wc_str_ops, &wc_str_ops);
+    HashMap m = HashMap_create(WC_LIBC, sizeof(String), sizeof(String), wyhash_str, str_cmp, &wc_str_ops, &wc_str_ops);
 
-    MAP_PUT_STR_STR(&m, "name",  "Alice");
-    MAP_PUT_STR_STR(&m, "city",  "Cairo");
-    MAP_PUT_STR_STR(&m, "lang",  "C");
+    MAP_PUT_STR_STR(&m, "name", "Alice");
+    MAP_PUT_STR_STR(&m, "city", "Cairo");
+    MAP_PUT_STR_STR(&m, "lang", "C");
 
-    String probe = String_from_cstr(WC_LIBC, "city");
-    String* val = (String*)HashMap_get_ptr(&m, &probe);
+    String  probe = String_from_cstr(WC_LIBC, "city");
+    String* val   = (String*)HashMap_get_ptr(&m, &probe);
     EXPECT_TRUE((val) != NULL);
     EXPECT_TRUE(String_equals_cstr(val, "Cairo"));
     String_destroy(&probe);
@@ -475,15 +488,13 @@ UTEST(ops, map_str_str_macro)
 
 UTEST(ops, map_int_str_macro)
 {
-    HashMap m = HashMap_create(
-        WC_LIBC, sizeof(int), sizeof(String),
-        NULL, NULL, NULL, &wc_str_ops);
+    HashMap m = HashMap_create(WC_LIBC, sizeof(int), sizeof(String), NULL, NULL, NULL, &wc_str_ops);
 
     MAP_PUT_INT_STR(&m, 1, "one");
     MAP_PUT_INT_STR(&m, 2, "two");
     MAP_PUT_INT_STR(&m, 3, "three");
 
-    int key = 2;
+    int     key = 2;
     String* val = (String*)HashMap_get_ptr(&m, &key);
     EXPECT_TRUE((val) != NULL);
     EXPECT_TRUE(String_equals_cstr(val, "two"));
@@ -509,8 +520,8 @@ UTEST(ops, strategy_a_b_same_content)
     }
 
     for (int i = 0; i < 4; i++) {
-        String* a = VEC_AT_MUT(&by_val, String,  (u64)i);
-        String* b = VEC_AT    (&by_ptr, String*, (u64)i);
+        String* a = VEC_AT_MUT(&by_val, String, (u64)i);
+        String* b = VEC_AT(&by_ptr, String*, (u64)i);
         EXPECT_TRUE(String_equals(a, b));
     }
 
@@ -520,12 +531,14 @@ UTEST(ops, strategy_a_b_same_content)
 
 UTEST(ops, strategy_b_pointer_outlives_growth)
 {
-    GenVec v   = VEC_OF_STR_PTR(2);
+    GenVec v = VEC_OF_STR_PTR(2);
     VEC_PUSH_CSTR(&v, "anchor");
     String* anchor = VEC_AT(&v, String*, 0);
 
     /* force 10x growth */
-    for (int i = 0; i < 60; i++) { VEC_PUSH_CSTR(&v, "x"); }
+    for (int i = 0; i < 60; i++) {
+        VEC_PUSH_CSTR(&v, "x");
+    }
 
     /* anchor still points to the same heap String, content intact */
     EXPECT_TRUE(VEC_AT(&v, String*, 0) == anchor);

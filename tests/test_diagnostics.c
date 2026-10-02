@@ -1,5 +1,6 @@
 #include "common.h"
 #include "test_support.h"
+#include "utest.h"
 
 #include <stdio.h>
 #include <unistd.h>
@@ -48,7 +49,10 @@ static void quiet_end(int saved_out, int saved_err)
 
 /* ── survives every build ──────────────────────────────────────────── */
 
-static void fatal_if_true(void) { FATAL_IF(count(1), "boom"); }
+static void fatal_if_true(void)
+{
+    FATAL_IF(count(1), "boom");
+}
 
 UTEST(diagnostics, fatal_if_dies_in_every_build)
 {
@@ -97,7 +101,10 @@ UTEST(diagnostics, warn_if_ret_returns_from_caller)
 
 /* ── stripped under NDEBUG ─────────────────────────────────────────── */
 
-static void assert_false(void) { WC_ASSERT(count(0), "invariant broken"); }
+static void assert_false(void)
+{
+    WC_ASSERT(count(0), "invariant broken");
+}
 
 UTEST(diagnostics, assert_true_passes)
 {
@@ -132,12 +139,16 @@ UTEST(diagnostics, macros_are_expressions)
     // comma operator, ternary arms, and a statement-expression value
     int y = (WC_ASSERT(x == 3, "x"), FATAL_IF(x != 3, "x"), WARN_IF(0, "w"), LOG_IF(0, "l"), x + 1);
     x > 0 ? WC_ASSERT(x > 0, "pos") : FATAL_IF(1, "neg");
-    int z = ({ WC_ASSERT(y == 4, "y"); y * 2; });
+    int z = ({
+        WC_ASSERT(y == 4, "y");
+        y * 2;
+    });
     // unbraced if/else: no dangling-else or stray-semicolon issues
-    if (z == 8)
+    if (z == 8) {
         WARN_IF(0, "no");
-    else
+    } else {
         FATAL_IF(1, "unreachable");
+    }
     quiet_end(so, se);
     EXPECT_EQ(y, 4);
     EXPECT_EQ(z, 8);

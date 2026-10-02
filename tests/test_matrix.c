@@ -1,8 +1,9 @@
 #include "arena.h"
 #include "common.h"
 #include "matrix.h"
-#include "wc_allocator.h"
 #include "test_support.h"
+#include "utest.h"
+#include "wc_allocator.h"
 #include "wc_test_allocator.h"
 
 #include <math.h>
@@ -18,7 +19,9 @@
 static int mat_eq(const Matrixf* m, const float* expected, float eps)
 {
     for (u64 i = 0; i < m->m * m->n; i++) {
-        if (fabsf(m->data[i] - expected[i]) > eps) { return 0; }
+        if (fabsf(m->data[i] - expected[i]) > eps) {
+            return 0;
+        }
     }
     return 1;
 }
@@ -47,7 +50,7 @@ UTEST(matrix, create_arr)
     float   arr[6] = {1, 2, 3, 4, 5, 6};
     Matrixf m      = matrix_create_arr(WC_LIBC, 2, 3, arr);
     EXPECT_TRUE(memcmp(m.data, arr, sizeof(arr)) == 0); // bit-identical
-    EXPECT_TRUE(m.data != arr);                    // owns a copy
+    EXPECT_TRUE(m.data != arr);                         // owns a copy
     matrix_destroy(&m);
 }
 
@@ -58,7 +61,7 @@ UTEST(matrix, create_buf_borrows)
     EXPECT_EQ(m.m, 2u);
     EXPECT_EQ(m.n, 3u);
     EXPECT_TRUE(m.data == data); // must point at the provided array
-    matrix_destroy(&m);             // frees nothing (wc_borrowed): ASAN would flag a stack free
+    matrix_destroy(&m);          // frees nothing (wc_borrowed): ASAN would flag a stack free
     EXPECT_TRUE(is_zeroed(&m));
 }
 
@@ -129,7 +132,7 @@ UTEST(matrix, copy_across_allocators)
     Matrixf src  = matrix_create_arr(Arena_allocator(&arena), 2, 2, (float[]){1, 2, 3, 4});
     Matrixf dest = matrix_copy(WC_LIBC, &src);
     EXPECT_TRUE(dest.alloc.vt == NULL); // libc
-    Arena_destroy(&arena);                 // src's memory gone; dest must survive
+    Arena_destroy(&arena);              // src's memory gone; dest must survive
     float expected[] = {1, 2, 3, 4};
     EXPECT_TRUE(mat_eq(&dest, expected, FLOAT_EPS));
     matrix_destroy(&dest);
@@ -298,8 +301,8 @@ UTEST(matrix, double_transpose)
     // (A^T)^T = A
     Matrixf a      = matrix_create_arr(WC_LIBC, 2, 3, (float[]){1, 2, 3, 4, 5, 6});
     float   t1d[6] = {0}, t2d[6] = {0};
-    Matrixf t1     = matrix_create_buf(3, 2, t1d);
-    Matrixf t2     = matrix_create_buf(2, 3, t2d);
+    Matrixf t1 = matrix_create_buf(3, 2, t1d);
+    Matrixf t2 = matrix_create_buf(2, 3, t2d);
     matrix_T(&t1, &a);
     matrix_T(&t2, &t1);
     EXPECT_TRUE(mat_eq(&t2, a.data, FLOAT_EPS));
@@ -314,9 +317,9 @@ UTEST(matrix, lu_reconstruct)
     // L * U must equal original matrix
     Matrixf m     = matrix_create_arr(WC_LIBC, 3, 3, (float[]){2, 1, 1, 4, 3, 3, 8, 7, 9});
     float   Ld[9] = {0}, Ud[9] = {0}, prod_d[9] = {0};
-    Matrixf L     = matrix_create_buf(3, 3, Ld);
-    Matrixf U     = matrix_create_buf(3, 3, Ud);
-    Matrixf prod  = matrix_create_buf(3, 3, prod_d);
+    Matrixf L    = matrix_create_buf(3, 3, Ld);
+    Matrixf U    = matrix_create_buf(3, 3, Ud);
+    Matrixf prod = matrix_create_buf(3, 3, prod_d);
 
     matrix_LU_Decomp(&L, &U, &m);
     matrix_xply(&prod, &L, &U);
@@ -356,8 +359,8 @@ UTEST(matrix, arena_backed)
 {
     Arena arena;
     Arena_create(&arena, WC_LIBC, nKB(4));
-    wc_allocator al = Arena_allocator(&arena);
-    Matrixf      m  = matrix_create_arr(al, 2, 2, (float[]){1, 2, 3, 4});
+    wc_allocator al         = Arena_allocator(&arena);
+    Matrixf      m          = matrix_create_arr(al, 2, 2, (float[]){1, 2, 3, 4});
     float        expected[] = {1, 2, 3, 4};
     EXPECT_TRUE(mat_eq(&m, expected, FLOAT_EPS));
     u64 used = arena.idx;

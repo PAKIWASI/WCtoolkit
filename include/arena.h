@@ -174,14 +174,14 @@ ARENA_SCRATCH(&arena) {
 // common for structs
 #define ARENA_ALLOC_ZERO(arena, T)                      \
     ({                                                  \
-        T* _az = ARENA_ALLOC(arena, T);                 \
+        (T)* _az = ARENA_ALLOC(arena, T);                 \
         _az ? (T*)memset(_az, 0, sizeof(T)) : (T*)NULL; \
     })
 
 #define ARENA_ALLOC_ZERO_N(arena, T, n)                        \
     ({                                                         \
         u64 _azn = (u64)(n);                                   \
-        T*  _az  = ARENA_ALLOC_N(arena, T, _azn);              \
+        (T)*  _az  = ARENA_ALLOC_N(arena, T, _azn);              \
         _az ? (T*)memset(_az, 0, sizeof(T) * _azn) : (T*)NULL; \
     })
 
@@ -189,7 +189,7 @@ ARENA_SCRATCH(&arena) {
 #define ARENA_PUSH_ARRAY(arena, T, src, count)     \
     ({                                             \
         u64 _apc = (u64)(count);                   \
-        T*  _dst = ARENA_ALLOC_N(arena, T, _apc);  \
+        (T)*  _dst = ARENA_ALLOC_N(arena, T, _apc);  \
         if (_dst) {                                \
             memcpy(_dst, (src), sizeof(T) * _apc); \
         }                                          \

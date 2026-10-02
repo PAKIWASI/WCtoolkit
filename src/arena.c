@@ -132,7 +132,7 @@ static void* arena_vt_realloc(void* ctx, void* ptr, size_t old_size, size_t new_
     // arena's own invariant (nothing below the mark moves or resizes in place);
     // this check makes the caller's bug loud in debug builds.
     WC_ASSERT(new_size <= old_size || p >= arena->base + arena->floor,
-                "growing a block allocated before the current scratch scope (it would dangle at scope end)");
+              "growing a block allocated before the current scratch scope (it would dangle at scope end)");
 
     // p keeps its alignment when it stays in place: no re-alignment needed.
     if (arena_is_top(arena, p, old_size)) {

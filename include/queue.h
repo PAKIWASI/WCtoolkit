@@ -16,7 +16,8 @@ typedef struct { // Circular Queue
 _Static_assert(sizeof(Queue) == 80, "Queue size mismatch");
 
 
-Queue Queue_create(wc_allocator a, u64 n, u32 data_size, const wc_container_ops* ops) __attribute__((warn_unused_result));
+Queue Queue_create(wc_allocator a, u64 n, u32 data_size, const wc_container_ops* ops)
+    __attribute__((warn_unused_result));
 Queue Queue_create_val(wc_allocator a, u64 n, const void* val, u32 data_size, const wc_container_ops* ops)
     __attribute__((nonnull(3), warn_unused_result));
 

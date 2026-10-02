@@ -1,11 +1,10 @@
 #include "arena.h"
 #include "common.h"
-#include "queue.h"
 #include "stack.h"
+#include "utest.h"
 #include "wc_allocator.h"
 #include "wc_errno.h"
 #include "wc_macros.h"
-#include "test_support.h"
 #include "wc_test_allocator.h"
 
 
@@ -31,8 +30,9 @@ UTEST(stack, push_pop_lifo)
 {
     Stack s      = int_Stack(4);
     int   vals[] = {1, 2, 3};
-    for (int i = 0; i < 3; i++)
+    for (int i = 0; i < 3; i++) {
         Stack_push(&s, &vals[i]);
+    }
 
     int out;
     Stack_pop(&s, &out);
@@ -65,7 +65,7 @@ UTEST(stack, peek_empty_sets_errno)
 
 UTEST(stack, peek_ptr_empty_sets_errno)
 {
-    Stack     s = int_Stack(4);
+    Stack s     = int_Stack(4);
     wc_errno    = WC_OK;
     const u8* p = Stack_peek_ptr(&s);
     EXPECT_TRUE((p) == NULL);
@@ -89,8 +89,9 @@ UTEST(stack, clear)
 {
     Stack s = int_Stack(4);
     int   x = 5;
-    for (int i = 0; i < 4; i++)
+    for (int i = 0; i < 4; i++) {
         Stack_push(&s, &x);
+    }
     Stack_clear(&s);
     EXPECT_EQ(Stack_size(&s), 0u);
     EXPECT_TRUE(Stack_empty(&s));
@@ -100,8 +101,9 @@ UTEST(stack, clear)
 UTEST(stack, growth)
 {
     Stack s = int_Stack(2);
-    for (int i = 0; i < 20; i++)
+    for (int i = 0; i < 20; i++) {
         Stack_push(&s, &i);
+    }
     EXPECT_EQ(Stack_size(&s), 20u);
     /* LIFO: last pushed = 19 */
     EXPECT_EQ(*(int*)Stack_peek_ptr(&s), 19);
@@ -115,8 +117,9 @@ UTEST(stack, copy_move)
     wc_allocator a = wc_test_alloc_allocator(&ta);
 
     Stack src = Stack_create(a, 4, sizeof(int), NULL);
-    for (int i = 0; i < 4; i++)
+    for (int i = 0; i < 4; i++) {
         Stack_push(&src, &i);
+    }
 
     /* copy into libc */
     Stack dst = Stack_copy(WC_LIBC, &src);
@@ -143,8 +146,9 @@ UTEST(stack, arena)
     Arena_create(&a, WC_LIBC, 4096);
 
     Stack s = Stack_create(Arena_allocator(&a), 8, sizeof(int), NULL);
-    for (int i = 0; i < 8; i++)
+    for (int i = 0; i < 8; i++) {
         Stack_push(&s, &i);
+    }
 
     EXPECT_EQ(Stack_size(&s), 8u);
     EXPECT_EQ(*(int*)Stack_peek_ptr(&s), 7);

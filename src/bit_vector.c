@@ -50,7 +50,7 @@ void BitVec_clear(BitVec* bvec, u64 i)
     u64 bit_index  = i % 8;
 
     u8* byte = GenVec_get_ptr_mut(&bvec->arr, byte_index);
-    *byte &= (u8)~(1u << bit_index);
+    *byte &= (u8) ~(1u << bit_index);
 }
 
 // Test bit i (returns 1 or 0)

@@ -2,11 +2,6 @@
 #define BENCH_SUPPORT_H
 
 // Shared by every benchmark file.
-#include "ubench.h"
-#include "wc_macros.h"
-
-#include <stdio.h>
-
 // Each benchmark iteration works on N elements, so results read as "per N".
 #define N 1000
 
