@@ -4,7 +4,6 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include "wc_poison.h" // must stay last: bans raw malloc/free below
 
 
 

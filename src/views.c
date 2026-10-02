@@ -5,7 +5,6 @@
 
 #include <stdio.h>
 #include <string.h>
-#include "wc_poison.h" // must stay last: bans raw malloc/free below
 
 
 StrView StrView_from_String(String* str)

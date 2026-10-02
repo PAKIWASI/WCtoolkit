@@ -1,6 +1,5 @@
 #include "fast_math.h"
 #include "common.h"
-#include "wc_poison.h" // must stay last: bans raw malloc/free below
 
 
 

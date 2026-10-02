@@ -1,6 +1,6 @@
 # WCtoolkit
 
-A C11 data-structures toolkit with explicit ownership and explicit allocators. No dependencies beyond libc.
+A C11 data-structures toolkit with explicit ownership and allocators. No dependencies beyond libc.
 
 ```c
 #include "arena.h"

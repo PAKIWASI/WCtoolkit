@@ -39,8 +39,7 @@ String String_create(wc_allocator a) __attribute__((warn_unused_result));
 String String_from_cstr(wc_allocator a, const char* cstr) __attribute__((warn_unused_result));
 
 // Create a deep copy of `other` into allocator `a`.
-String String_from_String(wc_allocator a, const String* other)
-    __attribute__((nonnull(2), warn_unused_result));
+String String_from_String(wc_allocator a, const String* other) __attribute__((nonnull(2), warn_unused_result));
 
 // Destroy the String's internal buffer (does NOT free the String struct).
 // Safe on a zeroed/moved-from String.
@@ -70,8 +69,7 @@ void String_shrink_to_fit(String* str) __attribute__((nonnull(1)));
 
 // Return a buffer (allocated from `a`) holding a NUL-terminated copy — caller
 // must free with wc_free(a, ptr, str->size + 1, 1).
-char* String_to_cstr(wc_allocator a, const String* str)
-    __attribute__((nonnull(2), warn_unused_result));
+char* String_to_cstr(wc_allocator a, const String* str) __attribute__((nonnull(2), warn_unused_result));
 
 void String_to_cstr_buf(const String* str, char* buff, u64 n) __attribute__((nonnull(1, 2)));
 
@@ -114,12 +112,12 @@ __attribute__((nonnull(1))) static inline void String_clear(String* str)
 __attribute__((nonnull(1))) static inline char String_char_at(const String* str, u64 i)
 {
     WC_ASSERT(i < str->size, "index out of bounds");
-    return ((str->stk[STR_SSO_SIZE - 1] != '\0') ? (str)->stk : (str)->heap)[i];
+    return ((str->stk[STR_SSO_SIZE - 1] != '\0') ? str->stk : str->heap)[i];
 }
 
 __attribute__((nonnull(1))) static inline char String_char_at_unsafe(const String* str, u64 i)
 {
-    return ((str->stk[STR_SSO_SIZE - 1] != '\0') ? (str)->stk : (str)->heap)[i];
+    return ((str->stk[STR_SSO_SIZE - 1] != '\0') ? str->stk : str->heap)[i];
 }
 
 __attribute__((nonnull(1))) static inline void String_set_char(String* str, u64 i, char c)

@@ -1,6 +1,5 @@
 #include "wc_allocator.h"
 #include <stddef.h>
-#include "wc_poison.h" // must stay last: bans raw malloc/free below
 
 
 

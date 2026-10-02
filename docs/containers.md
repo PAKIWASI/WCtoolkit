@@ -122,7 +122,6 @@ int main(void)
 | `PriorityQueue_push`, `PriorityQueue_pop(pq, out)`, `PriorityQueue_remove(pq, i, out)` | O(log n) |
 | `PriorityQueue_peek`, `PriorityQueue_get(pq, i)`, `PriorityQueue_size` | O(1) |
 
-Don't use `x - y` as a comparison: it overflows for large values.
 
 ## HashMap
 

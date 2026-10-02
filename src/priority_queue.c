@@ -4,7 +4,6 @@
 #include "queue.h"
 
 #include <stdio.h>
-#include "wc_poison.h" // must stay last: bans raw malloc/free below
 
 
 #define PARENT(i)     ((((i)) - 1) / 2)

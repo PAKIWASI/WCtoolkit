@@ -4,7 +4,6 @@
 
 Every container takes a `wc_allocator` when it's created, stores it, and uses it for every allocation, reallocation and free it makes. There is no global allocator.
 
-<!-- not compiled: reference declarations -->
 ```c
 typedef struct {
     const wc_alloc_vtable* vt;   // NULL means libc
@@ -171,7 +170,6 @@ Debug builds catch it: each arena stores its own address and checks it on every 
 
 Provide a vtable and a context pointer:
 
-<!-- not compiled: reference declarations -->
 ```c
 typedef struct {
     void* (*alloc)  (void* ctx, size_t size, size_t align);

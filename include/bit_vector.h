@@ -3,6 +3,7 @@
 
 #include "common.h"
 #include "gen_vector.h"
+#include "wc_allocator.h"
 
 
 // BitVec embeds a GenVec<u8> directly (no heap shell).
@@ -27,9 +28,15 @@ void BitVec_pop(BitVec* bvec) __attribute__((nonnull(1)));
 void BitVec_print(BitVec* bvec, u64 byteI) __attribute__((nonnull(1)));
 
 // get the no of BITS in the vector
-static inline __attribute__((nonnull(1))) u64 BitVec_size_bits(const BitVec* bvec)  { return bvec->size;              }
+static inline __attribute__((nonnull(1))) u64 BitVec_size_bits(const BitVec* bvec)
+{
+    return bvec->size;
+}
 // get the no of BYTES in the vector
-static inline __attribute__((nonnull(1))) u64 BitVec_size_bytes(const BitVec* bvec) { return GenVec_size(&bvec->arr); }
+static inline __attribute__((nonnull(1))) u64 BitVec_size_bytes(const BitVec* bvec)
+{
+    return GenVec_size(&bvec->arr);
+}
 
 
 #endif // BIT_VECTOR_H

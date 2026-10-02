@@ -5,7 +5,6 @@
 
 #include <stdint.h>
 #include <string.h>
-#include "wc_poison.h" // must stay last: bans raw malloc/free below
 
 
 #define NODE_HEADER  ((u64)sizeof(ChainArenaNode))

@@ -6,7 +6,6 @@ Containers never guess how to copy, move or free your data. You describe it once
 
 ## The ops table
 
-<!-- not compiled: reference declarations -->
 ```c
 typedef struct {
     wc_copy_fn   copy_fn;   // deep copy src into dest, allocating from `dst`
@@ -121,7 +120,7 @@ int main(void)
     GenVec v = VEC_OF(String*, 4);
 
     String* s = WC_BOX_IN(WC_LIBC, String, String_from_cstr, "hello");
-    // == a shell from WC_LIBC holding String_from_cstr(WC_LIBC, "hello")
+    // a shell from WC_LIBC holding String_from_cstr(WC_LIBC, "hello")
     VEC_PUSH_MOVE(&v, s);            // the slot owns the pointer; s is NULL now
 
     GenVec_destroy(&v);              // destroys the String, then frees the shell

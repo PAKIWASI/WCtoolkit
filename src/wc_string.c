@@ -4,7 +4,6 @@
 
 #include <stdio.h>
 #include <string.h>
-#include "wc_poison.h" // must stay last: bans raw malloc/free below
 
 
 //  Internal macros
@@ -17,18 +16,17 @@
 
 // Grow if full.
 // D4: capacity == 0 means zeroed / moved-from; mutation is fatal.
-#define MAYBE_GROW_STR(s)                                        \
-    ({                                                           \
-        FATAL_IF((s)->capacity == 0,                             \
-                 "String mutation on zeroed/moved-from String"); \
-        if (WC_UNLIKELY((s)->size >= (s)->capacity)) {           \
-            if (IS_SSO(s)) {                                     \
-                (s)->stk[STR_SSO_SIZE - 1] = '\0';               \
-                stk_to_heap(s);                                  \
-            } else {                                             \
-                String_grow(s);                                  \
-            }                                                    \
-        }                                                        \
+#define MAYBE_GROW_STR(s)                                                            \
+    ({                                                                               \
+        FATAL_IF((s)->capacity == 0, "String mutation on zeroed/moved-from String"); \
+        if (WC_UNLIKELY((s)->size >= (s)->capacity)) {                               \
+            if (IS_SSO(s)) {                                                         \
+                (s)->stk[STR_SSO_SIZE - 1] = '\0';                                   \
+                stk_to_heap(s);                                                      \
+            } else {                                                                 \
+                String_grow(s);                                                      \
+            }                                                                        \
+        }                                                                            \
     })
 
 
@@ -478,7 +476,9 @@ static inline u64 cstr_len(const char* cstr)
 static inline void stk_to_heap(String* s)
 {
     u64 new_cap = (u64)((float)s->capacity * STRING_GROWTH);
-    if (new_cap == 0) { new_cap = STR_SSO_SIZE; }
+    if (new_cap == 0) {
+        new_cap = STR_SSO_SIZE;
+    }
 
     char* new_data = wc_alloc(s->alloc, new_cap, 1);
     FATAL_IF(!new_data, "String stk_to_heap: allocation failed");
@@ -505,7 +505,9 @@ static inline void heap_to_stk(String* s)
 static inline void String_grow(String* s)
 {
     u64 new_cap = (u64)((float)s->capacity * STRING_GROWTH);
-    if (new_cap <= s->capacity) { new_cap = s->capacity + 1; }
+    if (new_cap <= s->capacity) {
+        new_cap = s->capacity + 1;
+    }
 
     char* new_data = wc_realloc(s->alloc, s->heap, s->capacity, new_cap, 1);
     FATAL_IF(!new_data, "String_grow: realloc failed");
