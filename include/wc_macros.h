@@ -470,6 +470,7 @@ Usage:
 
 // Put (COPY semantics): plain-data key and value (E2)
 
+// TODO: isn't this a copy in here? typeof(key) _mk = (key);
 #define MAP_PUT(map, key, val)                                         \
     ({                                                                 \
         WC_REQUIRE_POD(typeof(key), "MAP_PUT key");                    \
@@ -481,7 +482,7 @@ Usage:
         HashMap_put((map), (const void*)&_mk, (const void*)&_mv);      \
     })
 
-// Deep-copy both from LVALUES: any types, you keep both (B8).
+// Deep-copy both from LVALUES: any types, you keep both
 #define MAP_PUT_COPY(map, klval, vlval)                                       \
     ({                                                                        \
         WC_ASSERT_SIZE(sizeof(klval), (map)->key_size, "MAP_PUT_COPY key");   \

@@ -16,7 +16,7 @@
 #include <stdalign.h>
 #include <stdarg.h>
 #include <stdio.h>
-#include <stdlib.h>
+// #include <stdlib.h>
 
 // ANSI Color Codes
 #define WC_COLOR_RESET  "\033[0m"

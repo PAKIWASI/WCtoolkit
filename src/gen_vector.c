@@ -514,6 +514,7 @@ void GenVec_print(const GenVec* vec, wc_print_fn fn)
     printf("[ ");
     for (u64 i = 0; i < vec->size; i++) {
         fn(GET_PTR(vec, i));
+        putchar(' ');
     }
     putchar(']');
 }
