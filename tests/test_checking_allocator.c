@@ -9,7 +9,7 @@
 #include <string.h>
 
 
-// These tests hand stack buffers to allocators on purpose (wc_borrowed, foreign
+// These tests hand stack buffers to allocators on purpose (WC_BORROWED, foreign
 // pointer detection). The pointer never reaches libc, but GCC cannot prove the
 // vtable is non-NULL and warns about the libc branch.
 #pragma GCC diagnostic ignored "-Wfree-nonheap-object"
@@ -20,7 +20,7 @@ UTEST(checking_allocator, ta_counts_and_bytes)
 {
     wc_test_alloc ta;
     wc_test_alloc_init(&ta, WC_LIBC);
-    wc_allocator a = wc_test_alloc_allocator(&ta);
+    const wc_allocator* a = wc_test_alloc_allocator(&ta);
 
     u8* p = wc_alloc(a, 100, 16);
     u8* q = wc_alloc(a, 50, 16);
@@ -47,13 +47,13 @@ UTEST(checking_allocator, ta_fill_and_realloc_preserves)
 {
     wc_test_alloc ta;
     wc_test_alloc_init(&ta, WC_LIBC);
-    wc_allocator a = wc_test_alloc_allocator(&ta);
+    const wc_allocator* a = wc_test_alloc_allocator(&ta);
 
     u8* p = wc_alloc(a, 8, 16);
     EXPECT_EQ(p[0], WC_TA_FILL);
     EXPECT_EQ(p[7], WC_TA_FILL);
 
-    static const char bytes8[8] = "abcdefgh"; // 8 bytes, not a C string
+    static const char bytes8[8] = {'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'}; // 8 bytes, not a C string
     memcpy(p, bytes8, sizeof(bytes8));
     u8* q = wc_realloc(a, p, 8, 16, 16);
     EXPECT_TRUE(q != p); // always moves, so stale-pointer bugs surface
@@ -69,7 +69,7 @@ UTEST(checking_allocator, ta_detects_leak)
 {
     wc_test_alloc ta;
     wc_test_alloc_init(&ta, WC_LIBC);
-    wc_allocator a = wc_test_alloc_allocator(&ta);
+    const wc_allocator* a = wc_test_alloc_allocator(&ta);
 
     (void)wc_alloc(a, 32, 16);
     (void)wc_alloc(a, 64, 16);
@@ -85,7 +85,7 @@ UTEST(checking_allocator, ta_detects_double_free)
     wc_test_alloc ta;
     wc_test_alloc_init(&ta, WC_LIBC);
     ta.mode        = WC_TA_RECORD;
-    wc_allocator a = wc_test_alloc_allocator(&ta);
+    const wc_allocator* a = wc_test_alloc_allocator(&ta);
 
     u8* p = wc_alloc(a, 32, 16);
     wc_free(a, p, 32, 16);
@@ -101,7 +101,7 @@ UTEST(checking_allocator, ta_detects_foreign_pointer)
     wc_test_alloc ta;
     wc_test_alloc_init(&ta, WC_LIBC);
     ta.mode        = WC_TA_RECORD;
-    wc_allocator a = wc_test_alloc_allocator(&ta);
+    const wc_allocator* a = wc_test_alloc_allocator(&ta);
 
     u8 stack_buf[32];
     wc_free(a, stack_buf, 32, 16);
@@ -120,7 +120,7 @@ UTEST(checking_allocator, ta_detects_size_and_align_mismatch)
     wc_test_alloc ta;
     wc_test_alloc_init(&ta, WC_LIBC);
     ta.mode        = WC_TA_RECORD;
-    wc_allocator a = wc_test_alloc_allocator(&ta);
+    const wc_allocator* a = wc_test_alloc_allocator(&ta);
 
     u8* p = wc_alloc(a, 40, 16);
 
@@ -161,7 +161,7 @@ UTEST(checking_allocator, ta_fail_nth)
 {
     wc_test_alloc ta;
     wc_test_alloc_init(&ta, WC_LIBC);
-    wc_allocator a = wc_test_alloc_allocator(&ta);
+    const wc_allocator* a = wc_test_alloc_allocator(&ta);
     wc_test_alloc_fail_at(&ta, 2, 0);
 
     u8* p1 = wc_alloc(a, 8, 16);
@@ -187,7 +187,7 @@ UTEST(checking_allocator, ta_table_survives_churn)
     // many live blocks + frees: exercises table growth and tombstone reuse
     wc_test_alloc ta;
     wc_test_alloc_init(&ta, WC_LIBC);
-    wc_allocator a = wc_test_alloc_allocator(&ta);
+    const wc_allocator* a = wc_test_alloc_allocator(&ta);
 
     enum { N = 2000 };
     static u8* ptrs[N];
@@ -215,7 +215,7 @@ UTEST(checking_allocator, ta_over_arena_backing)
 
     wc_test_alloc ta;
     wc_test_alloc_init(&ta, Arena_allocator(&arena));
-    wc_allocator a = wc_test_alloc_allocator(&ta);
+    const wc_allocator* a = wc_test_alloc_allocator(&ta);
 
     u8* p = wc_alloc(a, 24, 16);
     EXPECT_TRUE((p) != NULL);
@@ -234,7 +234,7 @@ UTEST(checking_allocator, ta_over_arena_backing)
     ({                                                              \
         wc_test_alloc ta_name;                                      \
         wc_test_alloc_init(&(ta_name), WC_LIBC);                    \
-        wc_allocator al_name = wc_test_alloc_allocator(&(ta_name)); \
+        const wc_allocator* al_name = wc_test_alloc_allocator(&(ta_name)); \
         body;                                                       \
         EXPECT_EQ((ta_name).n_errors, 0u);                          \
         EXPECT_EQ(wc_test_alloc_destroy(&(ta_name)), 0u);           \

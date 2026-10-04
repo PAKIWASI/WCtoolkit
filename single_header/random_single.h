@@ -20,8 +20,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define WC_MAX_ALIGN alignof(max_align_t)
 
+#define WC_MAX_ALIGN alignof(max_align_t)
 
 /* libc fallbacks */
 
@@ -42,7 +42,6 @@ static inline void* wc_libc_alloc(size_t n, size_t align)
 #endif
 }
 
-// NOLINTBEGIN(clang-analyzer-unix.Malloc): only libc blocks reach libc; the analyzer cannot see that arena allocators always set vt
 static inline void wc_libc_free(void* p, size_t align)
 {
 #ifdef _MSC_VER
@@ -54,9 +53,7 @@ static inline void wc_libc_free(void* p, size_t align)
     (void)align;
     free(p); // POSIX/glibc: fine for both
 }
-// NOLINTEND(clang-analyzer-unix.Malloc)
 
-// NOLINTBEGIN(clang-analyzer-unix.Malloc): as above
 static inline void* wc_libc_realloc(void* p, size_t old_n, size_t n, size_t align)
 {
     if (align <= WC_MAX_ALIGN) {
@@ -72,7 +69,6 @@ static inline void* wc_libc_realloc(void* p, size_t old_n, size_t n, size_t alig
     wc_libc_free(p, align);
     return q;
 }
-// NOLINTEND(clang-analyzer-unix.Malloc)
 
 
 
@@ -82,8 +78,12 @@ static inline void* wc_libc_realloc(void* p, size_t old_n, size_t n, size_t alig
  * No global allocator exists: every data structure receives its allocator at
  * construction, stores it, and uses it for every allocation.
  *
- * An allocator is a (vtable, ctx) pair, 16 bytes, passed and stored BY VALUE.
- * A zero-initialised allocator is libc: `WC_LIBC`.
+ * An allocator is a (vtable, ctx) pair. It is passed and stored as `const wc_allocator*`
+ *   - the pointer is never NULL; libc is WC_LIBC, nothing else.
+ *   - the pointed-to allocator must outlive every container that stores it.
+ *     WC_LIBC and WC_BORROWED are static; Arena, ChainArena and wc_test_alloc
+ *     embed their own allocator, so the arena's lifetime covers it
+ *   - `const`: a call never changes the (vt, ctx) pair; ctx is what mutates
  *
  * Contract (the wc_* wrappers enforce it, backends may rely on it):
  *   - callbacks are never called with p == NULL or size == 0
@@ -97,7 +97,6 @@ static inline void* wc_libc_realloc(void* p, size_t old_n, size_t n, size_t alig
  *   - wc_realloc(a, p, old, 0, ..) frees p and returns NULL
  *
 */
-
 typedef struct {
     void* (*alloc)(void* ctx, size_t size, size_t align);
     void* (*realloc)(void* ctx, void* p, size_t old_size, size_t new_size, size_t align); // may be NULL
@@ -105,56 +104,61 @@ typedef struct {
 } wc_alloc_vtable;
 
 typedef struct {
-    const wc_alloc_vtable* vt;  // NULL => libc
+    const wc_alloc_vtable* vt;  // NULL => libc (only ever true for wc_libc)
     void*                  ctx; // Arena*, ChainArena*, test allocator, ...
 } wc_allocator;
 
-_Static_assert(sizeof(wc_allocator) == 16, "wc_allocator must stay 16 bytes (stored by value in every container)");
+_Static_assert(sizeof(wc_allocator) == 16, "wc_allocator must stay 16 bytes");
 
-#define WC_LIBC ((wc_allocator){0})
+// The libc allocator. Defined once in wc_allocator.c.
+extern const wc_allocator wc_libc;
+#define WC_LIBC (&wc_libc)
 
 // Non-owning allocator: alloc -> NULL, free -> no-op. A container built on it
 // wraps caller memory, cannot grow, and frees nothing on destroy.
 extern const wc_allocator wc_borrowed;
+#define WC_BORROWED (&wc_borrowed)
 
-static inline int wc_is_libc(wc_allocator a)
+static inline __attribute__((nonnull(1))) int wc_is_libc(const wc_allocator* a)
 {
-    return a.vt == NULL;
+    return a->vt == NULL;
 }
 
-static inline int wc_same(wc_allocator a, wc_allocator b)
+// Same backend and same context: memory from one may be freed through the other.
+static inline __attribute__((nonnull(1, 2))) int wc_same(const wc_allocator* a, const wc_allocator* b)
 {
-    return a.vt == b.vt && a.ctx == b.ctx;
+    return a == b || (a->vt == b->vt && a->ctx == b->ctx);
 }
 
 #define WC_ALLOC_ASSERT_ALIGN(align) \
     assert((align) != 0 && ((align) & ((align) - 1)) == 0 && "align must be a power of two >= 1")
 
-static inline void* wc_alloc(wc_allocator a, size_t n, size_t align)
+static inline __attribute__((nonnull(1))) void* wc_alloc(const wc_allocator* a, size_t n, size_t align)
 {
     WC_ALLOC_ASSERT_ALIGN(align);
     if (n == 0 || n > (size_t)PTRDIFF_MAX) { // > PTRDIFF_MAX: overflowed size (see wc_mul)
         return NULL;
     }
-    return a.vt ? a.vt->alloc(a.ctx, n, align) : wc_libc_alloc(n, align);
+    return a->vt ? a->vt->alloc(a->ctx, n, align) : wc_libc_alloc(n, align);
 }
 
-static inline void wc_free(wc_allocator a, void* p, size_t n, size_t align)
+static inline __attribute__((nonnull(1))) void wc_free(const wc_allocator* a, void* p, size_t n, size_t align)
 {
     WC_ALLOC_ASSERT_ALIGN(align);
     if (!p) {
         return;
     }
-    if (!a.vt) {
+    if (!a->vt) {
         wc_libc_free(p, align);
         return;
     }
-    if (a.vt->free) {
-        a.vt->free(a.ctx, p, n, align);
+    if (a->vt->free) {
+        a->vt->free(a->ctx, p, n, align);
     }
 }
 
-static inline void* wc_realloc(wc_allocator a, void* p, size_t old_n, size_t n, size_t align)
+static inline __attribute__((nonnull(1))) void* wc_realloc(const wc_allocator* a, void* p, size_t old_n, size_t n,
+                                                           size_t align)
 {
     WC_ALLOC_ASSERT_ALIGN(align);
     if (!p) {
@@ -167,15 +171,15 @@ static inline void* wc_realloc(wc_allocator a, void* p, size_t old_n, size_t n, 
     if (n > (size_t)PTRDIFF_MAX) {
         return NULL; // overflowed size: fail, p stays valid
     }
-    if (!a.vt) {
+    if (!a->vt) {
         return wc_libc_realloc(p, old_n, n, align);
     }
-    if (a.vt->realloc) {
-        return a.vt->realloc(a.ctx, p, old_n, n, align);
+    if (a->vt->realloc) {
+        return a->vt->realloc(a->ctx, p, old_n, n, align);
     }
 
     // backend without realloc: emulate
-    void* q = a.vt->alloc(a.ctx, n, align);
+    void* q = a->vt->alloc(a->ctx, n, align);
     if (!q) {
         return NULL; // p left untouched
     }
@@ -193,7 +197,7 @@ static inline size_t wc_mul(size_t count, size_t size)
     return (int)__builtin_mul_overflow(count, size, &r) ? SIZE_MAX : r;
 }
 
-// Smallest safe alignment for elements of `elm_size` bytes (plan D7): the
+// Smallest safe alignment for elements of `elm_size` bytes: the
 // largest power of two dividing elm_size, capped at WC_MAX_ALIGN. Valid because
 // sizeof(T) is always a multiple of alignof(T).
 static inline size_t wc_align_for_size(size_t elm_size)
@@ -206,15 +210,17 @@ static inline size_t wc_align_for_size(size_t elm_size)
 }
 
 
-/* typed helpers (allocator first) */
+/* typed helpers (allocator first)
+ * Free takes the POINTER, not a type: size and align come from *p, so a wrong
+ * type can't be passed*/
 
-#define WC_NEW(a, T)            ((T*)wc_alloc((a), sizeof(T), alignof(T)))
-#define WC_NEW_N(a, T, n)       ((T*)wc_alloc((a), wc_mul((n), sizeof(T)), alignof(T)))
-#define WC_DELETE(a, T, p)      wc_free((a), (p), sizeof(T), alignof(T))
-#define WC_DELETE_N(a, T, p, n) wc_free((a), (p), wc_mul((n), sizeof(T)), alignof(T))
-#define WC_REALLOC_N(a, T, p, old_n, n) \
-    ((T*)wc_realloc((a), (p), wc_mul((old_n), sizeof(T)), wc_mul((n), sizeof(T)), alignof(T)))
-
+#define WC_NEW(a, T)      ((T*)wc_alloc((a), sizeof(T), alignof(T)))
+#define WC_NEW_N(a, T, n) ((T*)wc_alloc((a), wc_mul((n), sizeof(T)), alignof(T)))
+#define WC_REALLOC_N(a, p, old_n, n)                                                               \
+    ((__typeof__(p))wc_realloc((a), (p), wc_mul((old_n), sizeof(*(p))), wc_mul((n), sizeof(*(p))), \
+                               alignof(__typeof__(*(p)))))
+#define WC_FREE(a, p)      (wc_free((a), (p), sizeof(*(p)), alignof(__typeof__(*(p)))))
+#define WC_FREE_N(a, p, n) (wc_free((a), (p), wc_mul((n), sizeof(*(p))), alignof(__typeof__(*(p)))))
 
 
 #endif // WC_ALLOCATOR_H
@@ -254,22 +260,26 @@ static inline size_t wc_align_for_size(size_t elm_size)
 /*
  * DIAGNOSTICS
  *
- * Every macro below is an EXPRESSION of type void (no do { } while (0)), so
- * it composes anywhere: statements, comma expressions, ({ }) blocks, ?:.
- *
  *   SURVIVES EVERY BUILD (Debug and Release)
  *     FATAL(fmt, ...)                 abort with a message
+ *
  *     FATAL_IF(cond, fmt, ...)        abort if cond is TRUE. Absolute failures
  *                                     only: allocation failed, mutation of a
  *                                     zeroed (moved-from/destroyed) container.
+ *
  *     WARN(fmt, ...)                  print a warning to stderr, continue
+ *
  *     WARN_IF(cond, fmt, ...)         warn if cond is TRUE, continue
+ *
  *     WARN_IF_RET(cond, ret, fmt, ...) warn and `return ret` if cond is TRUE
- *                                     (GNU statement expression: it can return)
- *     LOG(fmt, ...)                   print to stdout
+ *                                     (GNU statement expression can return)
+ *
+ *     LOG(fmt, ...)                   print to stderr
+ *
  *     LOG_IF(cond, fmt, ...)          log if cond is TRUE
  *
  *   STRIPPED UNDER NDEBUG (Release)
+ *
  *     WC_ASSERT(cond, fmt, ...)       abort if cond is FALSE. cond is the
  *                                     INVARIANT (`i < size`), not the failure.
  *                                     For programmer errors: bounds, API misuse.
@@ -278,7 +288,7 @@ static inline size_t wc_align_for_size(size_t elm_size)
  *
  * The rule: if continuing past the failure would corrupt memory even in a
  * correct program (an allocator returned NULL), use FATAL_IF. If the failure
- * means the CALLER has a bug, use WC_ASSERT. Never WC_ASSERT an allocation.
+ * means the CALLER has a bug, use WC_ASSERT
  *
  * Branch prediction: failure paths are WC_UNLIKELY, and the reporters are
  * `cold, noinline` functions defined once in wc_errno.c. The compiler moves
@@ -291,6 +301,14 @@ static inline size_t wc_align_for_size(size_t elm_size)
 
 __attribute__((cold, noinline, noreturn, format(printf, 4, 5))) void
 wc_fatal_report(const char* file, int line, const char* func, const char* fmt, ...);
+
+/* Fatal handler. Every FATAL / FATAL_IF formats its message and calls the
+ * installed handler. The handler must not return: abort, exit, or longjmp out
+ * (tests can verify that something FATALs). If it does return, the program
+ * exits. NULL restores the default (print to stderr, exit(EXIT_FAILURE)).
+ * Returns the previous handler. Set it once at startup: it is not thread-local. */
+typedef void (*wc_fatal_fn)(const char* file, int line, const char* func, const char* msg);
+wc_fatal_fn wc_set_fatal_handler(wc_fatal_fn fn);
 
 __attribute__((cold, noinline, format(printf, 4, 5))) void wc_warn_report(const char* file, int line, const char* func,
                                                                           const char* fmt, ...);
@@ -315,8 +333,9 @@ __attribute__((cold, noinline, format(printf, 4, 5))) void wc_warn_report(const 
         (void)0;                                      \
     })
 
-
-#define LOG(fmt, ...) ((void)printf(WC_COLOR_CYAN "[LOG] %s(): " fmt "\n" WC_COLOR_RESET, __func__, ##__VA_ARGS__))
+// stderr, like WARN/FATAL: diagnostics never mix into program output.
+#define LOG(fmt, ...) \
+    ((void)fprintf(stderr, WC_COLOR_CYAN "[LOG] %s(): " fmt "\n" WC_COLOR_RESET, __func__, ##__VA_ARGS__))
 
 #define LOG_IF(cond, fmt, ...) ((void)((cond) && (LOG(fmt, ##__VA_ARGS__), 0)))
 
@@ -334,7 +353,9 @@ __attribute__((cold, noinline, format(printf, 4, 5))) void wc_warn_report(const 
 #endif
 
 
-// token pasting that expands its arguments first (for __COUNTER__/__LINE__ names)
+// Token pasting that expands its arguments first. `a##b` pastes BEFORE expansion,
+// so WC_CAT_(x, __LINE__) gives `x__LINE__`; the extra level expands __LINE__ to
+// 42 first and then pastes, giving `x42`. Used for __COUNTER__/__LINE__ names.
 #define WC_CAT_(a, b) a##b
 #define WC_CAT(a, b)  WC_CAT_(a, b)
 
@@ -345,36 +366,48 @@ __attribute__((cold, noinline, format(printf, 4, 5))) void wc_warn_report(const 
 #include <stdint.h>
 
 typedef uint8_t  u8;
-typedef uint8_t  b8;
 typedef uint16_t u16;
 typedef uint32_t u32;
 typedef uint64_t u64;
 
+typedef int8_t  i8;
+typedef int16_t i16;
+typedef int32_t i32;
+typedef int64_t i64;
+
+// we are using unsigned indices/sizes
 #define WC_NOT_FOUND ((u64) - 1)
 
 
 // GENERIC FUNCTIONS
 
 
+/* ELEMENT OPS
+ *
+ * Memory rule B5: every element is TRIVIALLY RELOCATABLE. A container may move
+ * an element to another address with a raw memcpy (growth, insert/remove shifts,
+ * hash table shuffles, queue compaction, taking an element out) and never asks
+ * the element first. A type that holds a pointer to itself, or that something
+ * outside points into, cannot be stored by value: store it by pointer.
+ *
+ */
+
 // Deep-copy `src` INTO `dest`, allocating any owned resources from `dst`.
-// `dest` is uninitialised raw slot memory (plan 3.3).
-typedef void (*wc_copy_fn)(wc_allocator dst, void* dest, const void* src);
-// Transfer ownership: `dest` takes over everything `src` owned; `src` is left
-// ZEROED (safe to destroy, not usable). Containers do memcpy + zero when NULL.
-typedef void (*wc_move_fn)(void* dest, void* src);
+// `dest` is uninitialised raw slot memory: never read or free it (B3).
+// Called ONLY when both sides keep the value (B8).
+typedef void (*wc_copy_fn)(const wc_allocator* dst, void* dest, const void* src);
 // Release owned resources of the element (not the slot). Elements that own
-// memory store their own allocator, so no allocator argument is needed.
+// memory store their own allocator, so no allocator argument is needed (B2).
 typedef void (*wc_delete_fn)(void* elm);
 typedef void (*wc_print_fn)(const void* elm);
 typedef int (*wc_compare_fn)(const void* a, const void* b, u64 size);
 
 
-// Vtable: one instance shared across all vectors of the same type.
-// Pass NULL for any callback not needed.
-// For POD types, pass NULL for the whole ops pointer.
+// vtable: one instance shared across all objects of the same type.
+// Pass NULL for any callback not needed (no copy_fn: copies are memcpy;
+// no del_fn: nothing is freed per element). For plain data pass NULL ops.
 typedef struct {
     wc_copy_fn   copy_fn; // Deep copy function for owned resources (or NULL)
-    wc_move_fn   move_fn; // Transfer ownership and null original (or NULL)
     wc_delete_fn del_fn;  // Cleanup function for owned resources (or NULL)
 } wc_container_ops;
 
@@ -383,13 +416,12 @@ typedef struct {
 //   GenVec* v = WC_BOX_IN(A, GenVec, GenVec_create, 8, sizeof(int), NULL);
 // Invariant: the shell comes from the same allocator the child stores, so a
 // by-pointer delete can free the shell with the child's own allocator.
-#define WC_BOX_IN(A, T, init_fn, ...)                                  \
-    ({                                                                 \
-        wc_allocator _wbx_a = (A);                                     \
-        T*           _wbx_p = wc_alloc(_wbx_a, sizeof(T), alignof(T)); \
-        FATAL_IF(!_wbx_p, "WC_BOX_IN(" #T "): allocation failed");     \
-        *_wbx_p = init_fn(_wbx_a, __VA_ARGS__);                        \
-        _wbx_p;                                                        \
+#define WC_BOX_IN(A, T, init_fn, ...)                              \
+    ({                                                             \
+        T* _wbx_p = wc_alloc(A, sizeof(T), alignof(T));            \
+        FATAL_IF(!_wbx_p, "WC_BOX_IN(" #T "): allocation failed"); \
+        *_wbx_p = init_fn(A, __VA_ARGS__);                         \
+        _wbx_p;                                                    \
     })
 
 
@@ -474,7 +506,6 @@ static inline void wc_print_cstr(const void* elm)
 
 
 /* wc_errno.h — Error reporting for WCtoolkit
- * ============================================
  *
  * Three tiers:
  *
@@ -700,27 +731,29 @@ float fast_pow(float base, float exp);
 
 /*
    PCG32 Random Number Generator State
-   
-   This structure holds the internal state of the RNG. Users typically don't
-   need to interact with this directly - just use the global RNG functions.
-   
+
+   Every function takes the generator explicitly: there is no global RNG, so
+   independent generators (one per thread, one per subsystem) never interfere.
+
    Fields:
-     state - The 64-bit internal state (all possible values)
-     inc   - The increment/sequence selector (MUST be ODD for full period)
-             This determines which of 2^63 possible random sequences to Use
+     state     - The 64-bit internal state (all possible values)
+     inc       - The increment/sequence selector (MUST be ODD for full period)
+                 This determines which of 2^63 possible random sequences to use
+     spare     - The second Box-Muller value, cached for the next gaussian call
+     has_spare - Whether `spare` holds a value
 */
 typedef struct {
-    u64 state; // RNG state - advances with each random number generated
-    u64 inc;   // Sequence selector - must be odd (ensures full period LCG)
+    u64   state;     // RNG state - advances with each random number generated
+    u64   inc;       // Sequence selector - must be odd (ensures full period LCG)
+    float spare;     // cached second gaussian
+    bool  has_spare; // 1 if spare is valid
 } WC_Pcg32;
 
-
 // Default initializer with pre-chosen values for state and increment.
-#define PCG32_INITIALIZER                            \
-    {                                                \
-        0x853c49e6748fea9bULL, 0xda3e39cb94b95bdbULL \
+#define PCG32_INITIALIZER                                        \
+    {                                                            \
+        .state = 0x853c49e6748fea9bULL, .inc = 0xda3e39cb94b95bdbULL \
     }
-
 
 
 // SEEDING FUNCTIONS
@@ -736,7 +769,7 @@ typedef struct {
      seed - Initial seed value (any 64-bit value works)
      seq  - Sequence selector (chooses which of 2^63 random sequences to use)
 */
-void pcg32_rand_seed(u64 seed, u64 seq);
+void pcg32_rand_seed(WC_Pcg32* rng, u64 seed, u64 seq) __attribute__((nonnull(1)));
 
 
 /*
@@ -748,7 +781,7 @@ void pcg32_rand_seed(u64 seed, u64 seq);
    Note: If called multiple times in the same second, will produce the
          same sequence. Use pcg32_rand_seed_time_hp() for finer precision.
 */
-void pcg32_rand_seed_time(void);
+void pcg32_rand_seed_time(WC_Pcg32* rng) __attribute__((nonnull(1)));
 
 
 // INTEGER RANDOM GENERATION
@@ -764,7 +797,7 @@ void pcg32_rand_seed_time(void);
    
    Returns: Random u32 in range [0, 4294967295]
 */
-u32 pcg32_rand(void);
+u32 pcg32_rand(WC_Pcg32* rng) __attribute__((nonnull(1)));
 
 
 /*
@@ -777,7 +810,7 @@ u32 pcg32_rand(void);
    
    Returns: Random u32 in range [0, bound-1]
 */
-u32 pcg32_rand_bounded(u32 bound);
+u32 pcg32_rand_bounded(WC_Pcg32* rng, u32 bound) __attribute__((nonnull(1)));
 
 
 // FLOATING POINT UNIFORM DISTRIBUTION
@@ -790,7 +823,7 @@ u32 pcg32_rand_bounded(u32 bound);
    
    Returns: Random float in range [0.0, 1.0) - note: 0.0 possible, 1.0 never
  */
-float pcg32_rand_float(void);
+float pcg32_rand_float(WC_Pcg32* rng) __attribute__((nonnull(1)));
 
 
 /*
@@ -801,7 +834,7 @@ float pcg32_rand_float(void);
    
    Returns: Random double in [0.0, 1.0) with ~15-16 digits of precision
 */
-double pcg32_rand_double(void);
+double pcg32_rand_double(WC_Pcg32* rng) __attribute__((nonnull(1)));
 
 
 /*
@@ -817,7 +850,7 @@ double pcg32_rand_double(void);
    
    Returns: Random float in [min, max)
 */
-float pcg32_rand_float_range(float min, float max);
+float pcg32_rand_float_range(WC_Pcg32* rng, float min, float max) __attribute__((nonnull(1)));
 
 
 /*
@@ -831,7 +864,7 @@ float pcg32_rand_float_range(float min, float max);
    
    Returns: Random double in [min, max)
 */
-double pcg32_rand_double_range(double min, double max);
+double pcg32_rand_double_range(WC_Pcg32* rng, double min, double max) __attribute__((nonnull(1)));
 
 
 // GAUSSIAN (NORMAL) DISTRIBUTION
@@ -860,7 +893,7 @@ double pcg32_rand_double_range(double min, double max);
    
    Returns: Random float from N(0, 1) distribution
 */
-float pcg32_rand_gaussian(void);
+float pcg32_rand_gaussian(WC_Pcg32* rng) __attribute__((nonnull(1)));
 
 
 /*
@@ -883,7 +916,7 @@ float pcg32_rand_gaussian(void);
    
    Returns: Random float from N(mean, stddev²) distribution
 */
-float pcg32_rand_gaussian_custom(float mean, float stddev);
+float pcg32_rand_gaussian_custom(WC_Pcg32* rng, float mean, float stddev) __attribute__((nonnull(1)));
 
 
 
@@ -900,7 +933,12 @@ float pcg32_rand_gaussian_custom(float mean, float stddev);
 
 
 
-/* wc_borrowed: non-owning allocator (plan 3.2) */
+/* wc_libc: the only allocator with vt == NULL */
+
+const wc_allocator wc_libc = {.vt = NULL, .ctx = NULL};
+
+
+/* wc_borrowed: non-owning allocator */
 
 static void* wc_borrowed_alloc(void* ctx, size_t size, size_t align)
 {
@@ -940,7 +978,6 @@ const wc_allocator wc_borrowed = {.vt = &wc_borrowed_vt, .ctx = NULL};
 #include <stdlib.h>
 
 
-
 /* One definition of the thread-local error variable.
  * Every translation unit that includes wc_error.h sees the extern declaration.
  * This file provides the actual storage.
@@ -952,21 +989,34 @@ _Thread_local wc_err wc_errno = WC_OK;
  * the compiler places them, and every branch that calls them, away from hot
  * code. Both write to stderr so diagnostics never mix into program output. */
 
-// NOLINTBEGIN(clang-analyzer-valist.Uninitialized): false positive: va_start precedes vfprintf
+// The installed fatal handler; NULL means the default (print + exit).
+static wc_fatal_fn g_fatal_handler = NULL;
+
+wc_fatal_fn wc_set_fatal_handler(wc_fatal_fn fn)
+{
+    wc_fatal_fn prev = g_fatal_handler;
+    g_fatal_handler  = fn;
+    return prev;
+}
+
 void wc_fatal_report(const char* file, int line, const char* func, const char* fmt, ...)
 {
     fflush(stdout); // keep ordering with anything already printed
-    fprintf(stderr, WC_COLOR_RED "[FATAL] %s:%d:%s(): ", file, line, func);
+
+    char    msg[512];
     va_list args;
     va_start(args, fmt);
-    vfprintf(stderr, fmt, args);
+    vsnprintf(msg, sizeof(msg), fmt, args);
     va_end(args);
-    fprintf(stderr, "\n" WC_COLOR_RESET);
-    exit(EXIT_FAILURE);
-}
-// NOLINTEND(clang-analyzer-valist.Uninitialized)
 
-// NOLINTBEGIN(clang-analyzer-valist.Uninitialized): as above
+    if (g_fatal_handler) {
+        g_fatal_handler(file, line, func, msg); // must not return
+    } else {
+        fprintf(stderr, WC_COLOR_RED "[FATAL] %s:%d:%s(): %s\n" WC_COLOR_RESET, file, line, func, msg);
+    }
+    exit(EXIT_FAILURE); // default, and the backstop for a handler that returns
+}
+
 void wc_warn_report(const char* file, int line, const char* func, const char* fmt, ...)
 {
     fflush(stdout);
@@ -977,7 +1027,6 @@ void wc_warn_report(const char* file, int line, const char* func, const char* fm
     va_end(args);
     fprintf(stderr, "\n" WC_COLOR_RESET);
 }
-// NOLINTEND(clang-analyzer-valist.Uninitialized)
 
 #endif /* WC_WC_ERRNO_IMPL */
 
@@ -1262,7 +1311,7 @@ float fast_pow(float base, float exp)
 
 
     // negative exponents
-    b8 is_negative_exp = 0;
+    bool is_negative_exp = 0;
     if (exp < 0.0f) {
         is_negative_exp = 1;
         exp             = -exp;
@@ -1314,44 +1363,29 @@ float fast_pow(float base, float exp)
 
 
 
-#include <bits/time.h>
 #include <stdint.h>
 #include <time.h>
 
 
 
-static void pcg32_rand_seed_r(WC_Pcg32* rng, u64 seed, u64 seq);
-static u32  pcg32_rand_r(WC_Pcg32* rng);
-static u32  pcg32_rand_bounded_r(WC_Pcg32* rng, u32 bound);
-
-
-
-// Initialize global state
-static WC_Pcg32 global_rng = PCG32_INITIALIZER;
-
-
-void pcg32_rand_seed_r(WC_Pcg32* rng, u64 seed, u64 seq)
+void pcg32_rand_seed(WC_Pcg32* rng, u64 seed, u64 seq)
 {
-    rng->state = 0;
+    rng->state     = 0;
+    rng->has_spare = false;
+    rng->spare     = 0.0F;
     //Set increment from sequence number.
     //Left shift by 1 and OR with 1 ensures it's always odd
     //(required for the LCG to have full period).
     rng->inc = (seq << 1) | 1;
     // Run the generator once to scramble the initial state.
-    pcg32_rand_r(rng);
+    pcg32_rand(rng);
     // Mix in the seed value to the state.
     rng->state += seed;
     // Run the generator again to further scramble.
-    pcg32_rand_r(rng);
+    pcg32_rand(rng);
 }
 
-// public
-void pcg32_rand_seed(u64 seed, u64 seq)
-{
-    pcg32_rand_seed_r(&global_rng, seed, seq);
-}
-
-u32 pcg32_rand_r(WC_Pcg32* rng)
+u32 pcg32_rand(WC_Pcg32* rng)
 {
     // Save old state
     u64 oldstate = rng->state;
@@ -1377,14 +1411,7 @@ u32 pcg32_rand_r(WC_Pcg32* rng)
     return (xorshifted >> rot) | (xorshifted << ((-rot) & 31));
 }
 
-u32 pcg32_rand(void)
-{
-    return pcg32_rand_r(&global_rng);
-}
-
-
-
-u32 pcg32_rand_bounded_r(WC_Pcg32* rng, u32 bound)
+u32 pcg32_rand_bounded(WC_Pcg32* rng, u32 bound)
 {
     // To avoid bias, we need to make the range of the RNG a multiple of
     // bound, which we do by dropping output less than a threshold.
@@ -1410,20 +1437,16 @@ u32 pcg32_rand_bounded_r(WC_Pcg32* rng, u32 bound)
     // practice, bounds are typically small and only a tiny amount of the range
     // is eliminated.
     for (;;) {
-        uint32_t r = pcg32_rand_r(rng);
+        uint32_t r = pcg32_rand(rng);
         if (r >= threshold) {
             return r % bound;
         }
     }
 }
 
-u32 pcg32_rand_bounded(u32 bound)
-{
-    return pcg32_rand_bounded_r(&global_rng, bound);
-}
 
 
-void pcg32_rand_seed_time(void)
+void pcg32_rand_seed_time(WC_Pcg32* rng)
 {
     // Get current time in seconds since epoch
     time_t t = time(NULL);
@@ -1434,27 +1457,27 @@ void pcg32_rand_seed_time(void)
     u64 seed = (u64)t;
     u64 seq  = (u64)t ^ 0xda3e39cb94b95bdbULL; // XOR with a constant for variation
 
-    pcg32_rand_seed(seed, seq);
+    pcg32_rand_seed(rng, seed, seq);
 }
 
 
-float pcg32_rand_float(void)
+float pcg32_rand_float(WC_Pcg32* rng)
 {
     // Method 1: Divide by 2^32
     // This gives uniform distribution in [0, 1)
     // 0x1.0p-32f is the float literal for 2^-32 (1.0 * 2^-32)
-    return (float)pcg32_rand() * 0x1.0p-32f;
+    return (float)pcg32_rand(rng) * 0x1.0p-32f;
 }
 
-double pcg32_rand_double(void)
+double pcg32_rand_double(WC_Pcg32* rng)
 {
     // Combine two 32-bit random numbers for 53 bits of precision
     // (double has 53 bits of mantissa precision)
 
     // Get upper 27 bits from first random number
-    u32 a = pcg32_rand() >> 5; // Use top 27 bits
+    u32 a = pcg32_rand(rng) >> 5; // Use top 27 bits
     // Get lower 26 bits from second random number
-    u32 b = pcg32_rand() >> 6; // Use top 26 bits
+    u32 b = pcg32_rand(rng) >> 6; // Use top 26 bits
 
     // Combine into 53-bit value and scale to [0, 1)
     // 0x1.0p-53 is the double literal for 2^-53
@@ -1462,35 +1485,31 @@ double pcg32_rand_double(void)
 }
 
 // Generate a float in range [min, max)
-float pcg32_rand_float_range(float min, float max)
+float pcg32_rand_float_range(WC_Pcg32* rng, float min, float max)
 {
     // Scale [0, 1) to [min, max)
-    return min + (pcg32_rand_float() * (max - min));
+    return min + (pcg32_rand_float(rng) * (max - min));
 }
 
 // Generate a double in range [min, max)
-double pcg32_rand_double_range(double min, double max)
+double pcg32_rand_double_range(WC_Pcg32* rng, double min, double max)
 {
     // Scale [0, 1) to [min, max)
-    return min + (pcg32_rand_double() * (max - min));
+    return min + (pcg32_rand_double(rng) * (max - min));
 }
 
 
 
 // Box-Muller transform to generate Gaussian random numbers
 // This generates TWO independent Gaussian values from TWO uniform randoms
-// We cache one value for the next call to avoid wasting computation
+// We cache one value IN THE GENERATOR for its next call.
 
-// TODO: This breaks with multiple RNG instances
-static float gaussian_spare_float = 0.0f;
-static b8    has_spare_float      = false;
-
-float pcg32_rand_gaussian(void)
+float pcg32_rand_gaussian(WC_Pcg32* rng)
 {
     // If we have a cached value from previous call, use it
-    if (has_spare_float) {
-        has_spare_float = false;
-        return gaussian_spare_float;
+    if (rng->has_spare) {
+        rng->has_spare = false;
+        return rng->spare;
     }
 
     // Box-Muller transform
@@ -1503,10 +1522,10 @@ float pcg32_rand_gaussian(void)
     // Get two random numbers in (0, 1)
     // We avoid exactly 0 for u1 because ln(0) is undefined
     do {
-        u1 = pcg32_rand_float();
+        u1 = pcg32_rand_float(rng);
     } while (u1 == 0.0f);
 
-    u2 = pcg32_rand_float();
+    u2 = pcg32_rand_float(rng);
 
     // Calculate the Box-Muller transform
     // sqrt(-2 * ln(u1))
@@ -1521,17 +1540,17 @@ float pcg32_rand_gaussian(void)
     float z1 = mag * fast_sin(angle);
 
     // Save one for next call
-    gaussian_spare_float = z1;
-    has_spare_float      = true;
+    rng->spare     = z1;
+    rng->has_spare = true;
 
     // Return the other
     return z0;
 }
 
-float pcg32_rand_gaussian_custom(float mean, float stddev)
+float pcg32_rand_gaussian_custom(WC_Pcg32* rng, float mean, float stddev)
 {
     // Standard normal * stddev + mean
-    return (pcg32_rand_gaussian() * stddev) + mean;
+    return (pcg32_rand_gaussian(rng) * stddev) + mean;
 }
 
 

@@ -5,12 +5,24 @@
 #include "wc_macros.h"
 #include "wc_string.h"
 #include <stdio.h>
+#include <stdlib.h>
 
 // ubench.h registers each benchmark with realloc() inside the UBENCH macro
 // NOLINTBEGIN(bugprone-suspicious-realloc-usage)
 UBENCH(hashmap, put_int)
 {
     HashMap m = MAP_OF(int, int);
+    for (int i = 0; i < N; i++) {
+        MAP_PUT(&m, i, i);
+    }
+    UBENCH_DO_NOTHING(m.keys);
+    HashMap_destroy(&m);
+}
+
+UBENCH(hashmap, put_int_reserved)
+{
+    HashMap m = MAP_OF(int, int);
+    HashMap_reserve(&m, N);
     for (int i = 0; i < N; i++) {
         MAP_PUT(&m, i, i);
     }
@@ -50,7 +62,7 @@ UBENCH_EX(hashmap, get_int)
 UBENCH_EX(hashmap, get_string)
 {
     HashMap m = MAP_OF(String, int);
-    String  keys[N];
+    String* keys = malloc(sizeof(String) * N); // N strings are too big for the stack
     char    buf[32];
     for (int i = 0; i < N; i++) {
         snprintf(buf, sizeof(buf), "key_%d", i);
@@ -68,10 +80,13 @@ UBENCH_EX(hashmap, get_string)
     for (int i = 0; i < N; i++) {
         String_destroy(&keys[i]);
     }
+    free(keys);
     HashMap_destroy(&m);
 }
 
-UBENCH(hashmap, clear_string)
+// Times fill + clear + destroy together (HashMap_clear alone cannot be re-run on an
+// emptied map). The fill dominates: snprintf, a key String, a heap-allocated value copy.
+UBENCH(hashmap, fill_clear_string)
 {
     HashMap m = MAP_OF(String, String);
     char    key[32];

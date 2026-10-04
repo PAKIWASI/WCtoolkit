@@ -52,7 +52,8 @@ typedef struct {
 } wc_ta_block;
 
 typedef struct {
-    wc_allocator backing; // where memory really comes from
+    const wc_allocator* backing; // where memory really comes from
+    wc_allocator        self;    // this checker as an allocator: {vt, this}
 
     // live-block table (open addressing, libc-backed, never uses `backing`)
     wc_ta_block* blocks;
@@ -70,7 +71,7 @@ typedef struct {
 
     // fault injection: fail the Nth attempt (1-based). 0 = never.
     u64 fail_at;
-    b8  fail_sticky; // 1: every attempt >= fail_at fails
+    bool  fail_sticky; // 1: every attempt >= fail_at fails
 
     // errors
     wc_ta_error_mode mode;
@@ -80,22 +81,26 @@ typedef struct {
 
 
 // backing: WC_LIBC, Arena_allocator(&a), ...
-void wc_test_alloc_init(wc_test_alloc* ta, wc_allocator backing);
+void wc_test_alloc_init(wc_test_alloc* ta, const wc_allocator* backing);
 
 // Returns the number of leaked blocks (0 = clean) and prints a report of each.
 // Releases leaked blocks through the backing allocator so ASAN stays quiet.
 u64 wc_test_alloc_destroy(wc_test_alloc* ta);
 
-wc_allocator wc_test_alloc_allocator(wc_test_alloc* ta);
+// Points into `ta`: valid until wc_test_alloc_destroy.
+static inline const wc_allocator* wc_test_alloc_allocator(wc_test_alloc* ta)
+{
+    return &ta->self;
+}
 
-static inline void wc_test_alloc_fail_at(wc_test_alloc* ta, u64 n, b8 sticky)
+static inline void wc_test_alloc_fail_at(wc_test_alloc* ta, u64 n, bool sticky)
 {
     ta->fail_at     = n;
     ta->fail_sticky = sticky;
 }
 
 // Is `p` a live block of this allocator?
-b8 wc_test_alloc_owns(const wc_test_alloc* ta, const void* p);
+bool wc_test_alloc_owns(const wc_test_alloc* ta, const void* p);
 
 // The three callbacks (exposed so tests can build custom vtables around them)
 void* wc_test_alloc_cb_alloc(void* ctx, size_t size, size_t align);

@@ -20,13 +20,22 @@ All defined in `common.h`. Every one is an expression of type `void`, so it work
 
 | Macro | Behavior |
 |---|---|
-| `FATAL(fmt, ...)` | Print `[FATAL] file:line:func(): message` to stderr, exit with `EXIT_FAILURE` |
+| `FATAL(fmt, ...)` | Call the fatal handler. The default prints `[FATAL] file:line:func(): message` to stderr and exits with `EXIT_FAILURE`. |
 | `FATAL_IF(cond, fmt, ...)` | `FATAL` if `cond` is **true** |
 | `WARN(fmt, ...)` | Print `[WARN] ...` to stderr, continue |
 | `WARN_IF(cond, fmt, ...)` | `WARN` if `cond` is true |
 | `WARN_IF_RET(cond, ret, fmt, ...)` | `WARN` and `return ret` from the **calling function** if `cond` is true. Leave `ret` empty in a `void` function. |
-| `LOG(fmt, ...)` | Print `[LOG] func(): message` to stdout |
+| `LOG(fmt, ...)` | Print `[LOG] func(): message` to stderr, like every other diagnostic |
 | `LOG_IF(cond, fmt, ...)` | `LOG` if `cond` is true |
+
+### Custom fatal handler
+
+```c
+typedef void (*wc_fatal_fn)(const char* file, int line, const char* func, const char* msg);
+wc_fatal_fn wc_set_fatal_handler(wc_fatal_fn fn);   // returns the previous one; NULL = default
+```
+
+Every `FATAL` formats its message and calls the installed handler. The handler must not return: abort, exit, or `longjmp` out (that's how a test can check that something is fatal without forking). If it does return, the program exits anyway. The handler is global, not thread-local: set it once at startup.
 
 ### Removed under `NDEBUG`
 

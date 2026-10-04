@@ -7,36 +7,34 @@
 #include <stdalign.h>
 #include <string.h>
 
+// TODO: arena should be a one of the default allocators. it should not take an allocator. it should allocate using mmap directly
+
 
 /*
  * Arena: single-block bump allocator with a fixed capacity.
  *
- * PINNED: `Arena_allocator(a)` hands out the arena's address as the allocator
- * ctx, so an Arena must not be moved or copied after Arena_create*. Every entry
- * point checks `self == a` in debug builds to catch copies and use after destroy.
+ * PINNED: `Arena_allocator(a)` hands out a pointer into the arena, whose ctx is
+ * the arena's address, so an Arena must not be moved or copied after
+ * Arena_create*. Debug builds check `self.ctx == arena` on every call.
  *
- * In-place ops (plan D10): realloc grows/shrinks the LAST block in place and
+ * In-place ops: realloc grows/shrinks the LAST block in place and
  * free rewinds the LAST block, but only for blocks at or above `floor`.
  * A scratch scope raises the floor to the current position, so blocks created
  * before the scope are never extended past (or rewound below) the scope's mark.
  */
 typedef struct Arena {
-    wc_allocator        backing; // where `base` came from (unused when !owns_base)
+    const wc_allocator* backing; // where `base` came from (WC_BORROWED: caller's buffer)
     u8*                 base;
-    u64                 size;      // capacity in bytes
-    u64                 idx;       // next free offset
-    u64                 floor;     // in-place realloc/free never touch blocks below this
-    const struct Arena* self;      // == this arena while live; NULL after destroy
-    b8                  owns_base; // 0 for Arena_create_buf // TODO: remove this non-owning bullshit
+    u64                 size;  // capacity in bytes
+    u64                 idx;   // next free offset
+    u64                 floor; // in-place realloc/free never touch blocks below this
+    wc_allocator        self;  // this arena as an allocator: {arena_vt, this} (rule A4)
 } Arena;
 
-_Static_assert(sizeof(Arena) == 64, "Arena is one cache line");
+_Static_assert(sizeof(Arena) == 56, "Arena must be 56 bytes");
 
 
-// Tweakable settings // TODO: isnt this the same as the alignment def in wc_allocator.h?
-#ifndef ARENA_DEFAULT_ALIGNMENT
-#define ARENA_DEFAULT_ALIGNMENT (sizeof(void*)) // 8 bytes
-#endif
+// Tweakable settings
 #ifndef ARENA_DEFAULT_SIZE
 #define ARENA_DEFAULT_SIZE (nKB(4)) // 4 KB
 #endif
@@ -46,10 +44,9 @@ _Static_assert(sizeof(Arena) == 64, "Arena is one cache line");
 
 // Initialise `arena` in place with `capacity` bytes taken from `backing`
 // (capacity 0 -> ARENA_DEFAULT_SIZE). Fatal if the backing allocation fails.
-void Arena_create(Arena* arena, wc_allocator backing, u64 capacity) __attribute__((nonnull(1)));
+void Arena_create(Arena* arena, const wc_allocator* backing, u64 capacity) __attribute__((nonnull(1, 2)));
 
-// Initialise `arena` over caller-owned memory (a stack array, a static buffer...).
-// `buf` needs no particular alignment: allocations are aligned by address.
+// Initialise `arena` in place over caller-owned memory. Destroy frees nothing.
 void Arena_create_buf(Arena* arena, void* buf, u64 size) __attribute__((nonnull(1, 2)));
 
 // Free the region through the backing allocator (only if owned) and zero the
@@ -62,7 +59,7 @@ void Arena_reset(Arena* arena) __attribute__((nonnull(1)));
 
 // Allocation. Return NULL and set wc_errno = WC_ERR_FULL when the arena is full.
 
-// Aligned to ARENA_DEFAULT_ALIGNMENT.
+// Aligned to WC_MAX_ALIGN, like malloc. Pass an alignment to pack tighter.
 void* Arena_alloc(Arena* arena, u64 size) __attribute__((nonnull(1), alloc_size(2)));
 
 // `align` must be a power of two >= 1. Alignment is by ADDRESS (A2).
@@ -83,8 +80,12 @@ static inline __attribute__((nonnull(1))) u64 Arena_remaining(const Arena* arena
 // Allocator views
 
 // The arena as a wc_allocator: in-place realloc of the last block, last-block
-// free, everything else is bump + copy.
-wc_allocator Arena_allocator(Arena* arena) __attribute__((nonnull(1)));
+// free, everything else is bump + copy. Points INTO the arena, so it lives
+// exactly as long as the arena does.
+static inline __attribute__((nonnull(1), returns_nonnull)) const wc_allocator* Arena_allocator(Arena* arena)
+{
+    return &arena->self;
+}
 
 
 
@@ -96,7 +97,7 @@ typedef struct {
     u64    prev_floor; // floor to restore at scope end
 } ArenaScratch;
 
-// Save the position and raise the floor to it (D10). Scopes nest; end them in LIFO order.
+// Save the position and raise the floor to it. Scopes nest: end them in LIFO order.
 static inline __attribute__((nonnull(1))) ArenaScratch Arena_scratch_begin(Arena* arena)
 {
     ArenaScratch s = {.arena = arena, .mark = arena->idx, .prev_floor = arena->floor};
@@ -143,7 +144,7 @@ ARENA_SCRATCH(&arena) {
 //
 // ARENA_SCOPE(name, cap) { ... }
 // Creates a libc-backed Arena of `cap` bytes, exposes it inside the block as
-// `wc_allocator name`, and destroys it when the block exits (normal exit,
+// `const wc_allocator* name`, and destroys it when the block exits (normal exit,
 // break, return or goto). Everything allocated from `name` dies with the
 // block: never let a container built on it escape. `break` leaves the scope.
 //
@@ -152,11 +153,11 @@ ARENA_SCRATCH(&arena) {
 //       ...                       // no destroy needed
 //   }
 #define ARENA_SCOPE(name, cap) ARENA_SCOPE_(name, (cap), WC_CAT(_asc_, __COUNTER__))
-#define ARENA_SCOPE_(name, cap, id)                                                                                                                            \
-    for (int WC_CAT(id, _once) = 1; WC_CAT(id, _once); WC_CAT(id, _once) = 0)                                                                                  \
-        for (Arena __attribute__((cleanup(Arena_destroy))) WC_CAT(id, _arena) = {0}; WC_CAT(id, _once);                                                        \
-             WC_CAT(id, _once)                                                = 0)                                                                             \
-            for (wc_allocator name =                                                                            \
+#define ARENA_SCOPE_(name, cap, id)                                                                             \
+    for (int WC_CAT(id, _once) = 1; WC_CAT(id, _once); WC_CAT(id, _once) = 0)                                   \
+        for (Arena __attribute__((cleanup(Arena_destroy))) WC_CAT(id, _arena) = {0}; WC_CAT(id, _once);         \
+             WC_CAT(id, _once)                                                = 0)                              \
+            for (const wc_allocator* name =                                                                     \
                      (Arena_create(&WC_CAT(id, _arena), WC_LIBC, (cap)), Arena_allocator(&WC_CAT(id, _arena))); \
                  WC_CAT(id, _once); WC_CAT(id, _once) = 0)
 

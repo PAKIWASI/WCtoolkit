@@ -38,11 +38,9 @@ INTERNAL = {"common", "wc_errno", "map_setup"}
 # common.h includes wc_allocator.h.
 CORE = ["wc_allocator", "common", "wc_errno"]
 
-# Edges the #include graph can't see. wc_macros.h expands to HashMap_*,
-# HashSet_*, Queue_* and Stack_* calls without including their headers.
-EXTRA_DEPS = {
-    "wc_macros": ["hashmap", "hashset", "queue", "stack"],
-}
+# Edges the #include graph can't see. wc_macros.h now includes every header it
+# names (its _Generic owning-type checks need the types), so none are needed.
+EXTRA_DEPS = {}
 
 # Never part of the library.
 EXCLUDED_SOURCES = {"main"}

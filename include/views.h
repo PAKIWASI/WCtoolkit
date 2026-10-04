@@ -23,10 +23,10 @@ StrView StrView_from_cstr(const char* cstr, u64 clen) __attribute__((nonnull(1))
 // view it. LIFETIME: the view borrows from `a`. With an arena it lives until
 // the arena is reset/destroyed; with any freeing allocator (libc, test
 // allocator) release it with StrView_free_copy using the same allocator.
-StrView StrView_copy_cstr(wc_allocator a, const char* cstr, u64 clen) __attribute__((nonnull(2)));
+StrView StrView_copy_cstr(const wc_allocator* a, const char* cstr, u64 clen) __attribute__((nonnull(1, 2)));
 
 // Release a view returned by StrView_copy_cstr(a, ...). No-op on arenas.
-void StrView_free_copy(wc_allocator a, StrView sv);
+void StrView_free_copy(const wc_allocator* a, StrView sv) __attribute__((nonnull(1)));
 
 void StrView_print(StrView sv);
 
@@ -48,20 +48,20 @@ typedef struct StringStore_node {
 
 // append-only, immutable String storage with a chain Arena-like backing
 // you get StrViews over the immutable Strings
-// Nodes and overflow buffers come from `alloc`, which the store keeps (40 bytes).
+// Nodes and overflow buffers come from `alloc`, which the store keeps (32 bytes).
 // Views stay valid until StringStore_destroy. Zeroed store is dead: only
 // destroy or re-create it; StringStore_cstr on it is an unconditional FATAL.
 typedef struct {
-    StringStore_node* tail;
-    StringStore_node* head;
-    wc_allocator      alloc;
-    u32               tail_off; // how much of the tail node is used
-    u32               num;      // total number of nodes
+    StringStore_node*   tail;
+    StringStore_node*   head;
+    const wc_allocator* alloc;
+    u32                 tail_off; // how much of the tail node is used
+    u32                 num;      // total number of nodes
 } StringStore;
 
-_Static_assert(sizeof(StringStore) == 40, "StringStore layout: 2 ptrs + allocator + 2 u32");
+_Static_assert(sizeof(StringStore) == 32, "StringStore layout: 2 ptrs + allocator ptr + 2 u32");
 
-StringStore StringStore_create(wc_allocator a) __attribute__((warn_unused_result));
+StringStore StringStore_create(const wc_allocator* a) __attribute__((nonnull(1), warn_unused_result));
 // Frees every node through ss->alloc and zeroes the struct. Safe on zeroed stores.
 void StringStore_destroy(StringStore* ss) __attribute__((nonnull(1)));
 
@@ -73,10 +73,5 @@ StrView StringStore_append(StringStore* ss, StrView sv1, StrView sv2) __attribut
 // Store sv followed by clen bytes of cstr as one new string.
 StrView StringStore_append_cstr(StringStore* ss, StrView sv, const char* cstr, u64 clen) __attribute__((nonnull(1, 3)));
 
-// TODO: not implemented yet (declared only; calling them fails to link).
-// pass in StrViews...
-StrView StringStore_path_join(StringStore* ss, ...);
-// pass in path1, len1, path2, len2,...
-StrView StringStore_path_join_cstr(StringStore* ss, ...);
 
 #endif // WC_VIEWS_H

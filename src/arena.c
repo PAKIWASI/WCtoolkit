@@ -7,62 +7,57 @@
 #include <string.h>
 
 
-// Region alignment requested from the backing allocator.
+// Region alignment requested from the alloc allocator.
 #define ARENA_BASE_ALIGN WC_MAX_ALIGN
 
-// Debug-only liveness check: catches use after destroy and use of a copied Arena
-// (a copy's `self` still points at the original).
-#define ARENA_CHECK_LIVE(a) WC_ASSERT((a)->self == (a), "Arena used after destroy, or copied/moved after create")
+
+static const wc_alloc_vtable arena_vt;
+
+#define ARENA_CHECK_LIVE(a) WC_ASSERT((a)->self.ctx == (a), "Arena used after destroy, or copied/moved after create")
 
 
 // Lifecycle
 
-void Arena_create(Arena* arena, wc_allocator backing, u64 capacity)
+void Arena_create(Arena* arena, const wc_allocator* backing, u64 capacity)
 {
     if (capacity == 0) {
         capacity = ARENA_DEFAULT_SIZE;
     }
 
     u8* base = wc_alloc(backing, capacity, ARENA_BASE_ALIGN);
-    FATAL_IF(!base, "Arena base allocation of %llu bytes failed", (unsigned long long)capacity); // D5: unconditional
+    FATAL_IF(!base, "Arena base allocation of %llu bytes failed", (unsigned long long)capacity);
 
     *arena = (Arena){
-        .backing   = backing,
-        .base      = base,
-        .size      = capacity,
-        .idx       = 0,
-        .floor     = 0,
-        .self      = arena,
-        .owns_base = 1,
+        .backing = backing,
+        .base    = base,
+        .size    = capacity,
+        .idx     = 0,
+        .floor   = 0,
+        .self    = {.vt = &arena_vt, .ctx = arena},
     };
 }
 
 void Arena_create_buf(Arena* arena, void* buf, u64 size)
 {
-    WC_ASSERT(size != 0, "size can't be zero");
+    FATAL_IF(size == 0, "Arena_create_buf: size can't be 0");
 
     *arena = (Arena){
-        .backing   = wc_borrowed,
-        .base      = buf,
-        .size      = size,
-        .idx       = 0,
-        .floor     = 0,
-        .self      = arena,
-        .owns_base = 0,
+        .backing = WC_BORROWED, // destroy hands the buffer back to nobody
+        .base    = buf,
+        .size    = size,
+        .idx     = 0,
+        .floor   = 0,
+        .self    = {.vt = &arena_vt, .ctx = arena},
     };
 }
 
 void Arena_destroy(Arena* arena)
 {
-    if (arena->self == NULL) {
+    if (arena->self.ctx == NULL) {
         return; // zeroed or already destroyed
     }
     ARENA_CHECK_LIVE(arena);
-
-    if (arena->owns_base) {
-        wc_allocator backing = arena->backing; // read before zeroing
-        wc_free(backing, arena->base, arena->size, ARENA_BASE_ALIGN);
-    }
+    wc_free(arena->backing, arena->base, arena->size, ARENA_BASE_ALIGN);
     memset(arena, 0, sizeof(*arena));
 }
 
@@ -78,7 +73,7 @@ void Arena_reset(Arena* arena)
 
 void* Arena_alloc(Arena* arena, u64 size)
 {
-    return Arena_alloc_aligned(arena, size, ARENA_DEFAULT_ALIGNMENT);
+    return Arena_alloc_aligned(arena, size, WC_MAX_ALIGN);
 }
 
 void* Arena_alloc_aligned(Arena* arena, u64 size, u64 align)
@@ -87,7 +82,7 @@ void* Arena_alloc_aligned(Arena* arena, u64 size, u64 align)
     WC_ASSERT(size != 0, "can't have allocation of size = 0");
     WC_ASSERT(align != 0 && (align & (align - 1)) == 0, "alignment must be a power of two");
 
-    // Align the ADDRESS, not the offset (A2): the base itself may be unaligned.
+    // Align the ADDRESS, not the offset: the base itself may be unaligned.
     uintptr_t base    = (uintptr_t)arena->base;
     uintptr_t cur     = base + arena->idx;
     uintptr_t aligned = (cur + (align - 1)) & ~(uintptr_t)(align - 1);
@@ -104,9 +99,9 @@ void* Arena_alloc_aligned(Arena* arena, u64 size, u64 align)
 // Allocator backend
 
 // Is [p, p + size) the last block, at or above the floor?
-static inline b8 arena_is_top(const Arena* arena, const u8* p, u64 size)
+static inline bool arena_is_top(const Arena* arena, const u8* p, u64 size)
 {
-    return p >= arena->base + arena->floor && p + size == arena->base + arena->idx;
+    return (p >= arena->base + arena->floor && p + size == arena->base + arena->idx) != 0;
 }
 
 static void* arena_vt_alloc(void* ctx, size_t size, size_t align)
@@ -165,9 +160,3 @@ static const wc_alloc_vtable arena_vt = {
     .realloc = arena_vt_realloc,
     .free    = arena_vt_free,
 };
-
-wc_allocator Arena_allocator(Arena* arena)
-{
-    ARENA_CHECK_LIVE(arena);
-    return (wc_allocator){.vt = &arena_vt, .ctx = arena};
-}

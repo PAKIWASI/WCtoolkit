@@ -114,7 +114,7 @@ UTEST(queue, copy_move)
 {
     wc_test_alloc ta;
     wc_test_alloc_init(&ta, WC_LIBC);
-    wc_allocator a = wc_test_alloc_allocator(&ta);
+    const wc_allocator* a = wc_test_alloc_allocator(&ta);
 
     Queue src = Queue_create(a, 4, sizeof(int), NULL);
     for (int i = 0; i < 4; i++) {

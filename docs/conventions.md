@@ -13,14 +13,14 @@ Every type in the toolkit follows the same rules. Learn them once and the whole 
 |---|---|---|
 | `_move` | Takes ownership of the argument and zeroes it | `GenVec_push_move` |
 | `_mut` | Returns a mutable pointer (the plain form returns `const`) | `GenVec_get_ptr_mut` |
-| `_unsafe` | No bounds check, not even in Debug | `GenVec_get_ptr_unsafe` |
+| `_unsafe` | No bounds check, not even in Debug. For hot loops where the index is already proven. | `GenVec_get_ptr_unsafe` |
 | `_val` | Fills with copies of one value | `GenVec_create_val` |
 | `_buf` | Wraps memory you own; never frees it | `GenVec_create_buf` |
 | `_IN` (macros) | Takes an allocator; the plain form uses libc | `VEC_OF_IN` |
 
 ## Argument order
 
-The allocator comes first when a function allocates something new. The instance being acted on comes first everywhere else.
+The allocator (a `const wc_allocator*`, never `NULL`) comes first when a function allocates something new. The instance being acted on comes first everywhere else.
 
 ```c
 GenVec v = GenVec_create(WC_LIBC, 8, sizeof(int), NULL);   // allocator first
@@ -50,17 +50,19 @@ GenVec_destroy(&v);
 - Copies are deep: nested elements are copied into the destination allocator.
 - Move is a `memcpy` followed by zeroing the source. `dst` must be raw or already destroyed, because move overwrites it without freeing.
 - Element-level moves take a pointer to your element and zero it: `GenVec_push_move(&v, &s)`.
+- Taking an element out (`pop`, `remove`, `del`) moves it to you: no copy. A copy only happens when both sides keep the value. See [Ownership](ownership.md#copy-move-take-out) and [Memory rules](memory-rules.md).
 
 ## Zero state is dead
 
 A zeroed container, whether moved-from or destroyed, may only be destroyed or created again. Any change to it aborts in **every** build (`FATAL_IF`). Reading is allowed and sees an empty container.
 
-This rule exists so a moved-from container can't quietly start allocating through `WC_LIBC`, which is what its zeroed allocator field means, instead of the arena it came from.
+A zeroed container's allocator pointer is `NULL`, so allocating through it would crash with no context. The `FATAL_IF` turns that into a clear message, in Release too.
 
 | Type | Zero-state check |
 |---|---|
 | `GenVec`, `Stack`, `Queue`, `PriorityQueue`, `BitVec` | `data_size == 0` |
 | `String`, `HashMap`, `HashSet` | `capacity == 0` |
+| `Arena`, `ChainArena` | `self.ctx == NULL` |
 | `Matrixf` | `m == 0` |
 | `StringStore` | `tail == NULL` |
 
@@ -80,10 +82,10 @@ You never need to cast at a call site. The type check lives in the [macro layer]
 ## Return values
 
 - Lookups that fail return `WC_NOT_FOUND`: `GenVec_find`, `String_find_cstr`.
-- `put` / `insert` return `b8`: `1` if the key already existed, `0` if it was new.
-- `del` / `remove` return `b8`: `1` if something was removed.
+- `put` / `insert` return `bool`: `1` if the key already existed, `0` if it was new.
+- `del` / `remove` return `bool`: `1` if something was removed.
 - Expected runtime conditions (pop on empty, arena full) set `wc_errno` and return early. Programmer errors abort. See [Diagnostics](diagnostics.md).
 
 ## Types
 
-`common.h` defines `u8`, `u16`, `u32`, `u64` and `b8` (a `u8` used as a boolean), plus `KB`, `MB`, `nKB(n)` and `nMB(n)` for sizes.
+`common.h` defines `u8`, `u16`, `u32`, `u64` and `bool` (a `u8` used as a boolean), plus `KB`, `MB`, `nKB(n)` and `nMB(n)` for sizes.

@@ -8,20 +8,18 @@
 #include <string.h>
 
 
-// These tests hand stack buffers to allocators on purpose (wc_borrowed, foreign
+// These tests hand stack buffers to allocators on purpose (WC_BORROWED, foreign
 // pointer detection). The pointer never reaches libc, but GCC cannot prove the
 // vtable is non-NULL and warns about the libc branch.
 #pragma GCC diagnostic ignored "-Wfree-nonheap-object"
 
 /* ── libc (WC_LIBC) ──────────────────────────────────────────────────────── */
 
-UTEST(allocator, libc_is_zero_initialised_allocator)
+UTEST(allocator, libc_is_the_only_null_vtable)
 {
-    wc_allocator z;
-    memset(&z, 0, sizeof(z));
-    EXPECT_TRUE(wc_is_libc(z));
     EXPECT_TRUE(wc_is_libc(WC_LIBC));
-    EXPECT_FALSE(wc_is_libc(wc_borrowed));
+    EXPECT_TRUE(WC_LIBC->vt == NULL);
+    EXPECT_FALSE(wc_is_libc(WC_BORROWED));
 }
 
 UTEST(allocator, libc_alloc_realloc_free)
@@ -70,7 +68,7 @@ UTEST(allocator, zero_size_never_reaches_backend)
 {
     wc_test_alloc ta;
     wc_test_alloc_init(&ta, WC_LIBC);
-    wc_allocator a = wc_test_alloc_allocator(&ta);
+    const wc_allocator* a = wc_test_alloc_allocator(&ta);
 
     EXPECT_TRUE((wc_alloc(a, 0, 8)) == NULL);
     EXPECT_EQ(ta.n_attempts, 0u);
@@ -81,7 +79,7 @@ UTEST(allocator, realloc_null_is_alloc_and_zero_is_free)
 {
     wc_test_alloc ta;
     wc_test_alloc_init(&ta, WC_LIBC);
-    wc_allocator a = wc_test_alloc_allocator(&ta);
+    const wc_allocator* a = wc_test_alloc_allocator(&ta);
 
     u8* p = wc_realloc(a, NULL, 0, 32, 8);
     EXPECT_TRUE((p) != NULL);
@@ -101,7 +99,7 @@ UTEST(allocator, small_alignment_passes_through)
     // D7: wrappers no longer raise align to WC_MAX_ALIGN
     wc_test_alloc ta;
     wc_test_alloc_init(&ta, WC_LIBC);
-    wc_allocator a = wc_test_alloc_allocator(&ta);
+    const wc_allocator* a = wc_test_alloc_allocator(&ta);
 
     u8* p = wc_alloc(a, 12, 4);
     wc_free(a, p, 12, 4); // must match exactly: 4, not 16
@@ -116,7 +114,7 @@ UTEST(allocator, typed_macros_and_overflow)
 {
     wc_test_alloc ta;
     wc_test_alloc_init(&ta, WC_LIBC);
-    wc_allocator a = wc_test_alloc_allocator(&ta);
+    const wc_allocator* a = wc_test_alloc_allocator(&ta);
 
     u64* v = WC_NEW_N(a, u64, 8);
     EXPECT_TRUE((v) != NULL);
@@ -124,7 +122,7 @@ UTEST(allocator, typed_macros_and_overflow)
         return;
     }
     v[7] = 42;
-    v    = WC_REALLOC_N(a, u64, v, 8, 16); // this is the A5 shape, now well-formed
+    v    = WC_REALLOC_N(a, v, 8, 16); // this is the A5 shape, now well-formed
     if (!v) {
         EXPECT_TRUE((v) != NULL);
         return;
@@ -132,14 +130,14 @@ UTEST(allocator, typed_macros_and_overflow)
     EXPECT_EQ(v[7], 42u);
 
     // overflowing count fails cleanly and leaves v alive (no wrap to a small size)
-    EXPECT_TRUE((WC_REALLOC_N(a, u64, v, 16, SIZE_MAX / 4)) == NULL);
+    EXPECT_TRUE((WC_REALLOC_N(a, v, 16, SIZE_MAX / 4)) == NULL);
     EXPECT_TRUE(wc_test_alloc_owns(&ta, v));
     EXPECT_TRUE((WC_NEW_N(a, u64, SIZE_MAX / 2)) == NULL);
 
-    WC_DELETE_N(a, u64, v, 16);
+    WC_FREE_N(a, v, 16);
 
     int* one = WC_NEW(a, int);
-    WC_DELETE(a, int, one);
+    WC_FREE(a, one);
 
     EXPECT_EQ(ta.n_errors, 0u);
     EXPECT_EQ(wc_test_alloc_destroy(&ta), 0u);
@@ -161,10 +159,11 @@ UTEST(allocator, missing_realloc_is_emulated)
 {
     wc_test_alloc ta;
     wc_test_alloc_init(&ta, WC_LIBC);
-    wc_allocator a = {.vt = &noreal_vt, .ctx = &ta};
+    const wc_allocator  noreal = {.vt = &noreal_vt, .ctx = &ta};
+    const wc_allocator* a      = &noreal;
 
     u8*               p           = wc_alloc(a, 16, 8);
-    static const char bytes16[16] = "0123456789abcdef"; // 16 bytes, not a C string
+    static const char bytes16[16] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'}; // 16 bytes, not a C string
     memcpy(p, bytes16, sizeof(bytes16));
     u8* q = wc_realloc(a, p, 16, 64, 8);
     EXPECT_TRUE(memcmp(q, "0123456789abcdef", 16) == 0);
@@ -176,15 +175,15 @@ UTEST(allocator, missing_realloc_is_emulated)
 }
 
 
-/* ── wc_borrowed ─────────────────────────────────────────────────────────── */
+/* ── WC_BORROWED ─────────────────────────────────────────────────────────── */
 
 UTEST(allocator, borrowed_never_allocates_or_frees)
 {
     u8 buf[32] = {1, 2, 3};
-    EXPECT_TRUE((wc_alloc(wc_borrowed, 16, 8)) == NULL);
-    EXPECT_TRUE((wc_realloc(wc_borrowed, buf, 32, 64, 8)) == NULL); // growth fails
+    EXPECT_TRUE((wc_alloc(WC_BORROWED, 16, 8)) == NULL);
+    EXPECT_TRUE((wc_realloc(WC_BORROWED, buf, 32, 64, 8)) == NULL); // growth fails
     EXPECT_EQ(buf[2], 3);                                           // buffer untouched
-    wc_free(wc_borrowed, buf, 32, 8);                               // no-op (ASAN would catch a real free)
+    wc_free(WC_BORROWED, buf, 32, 8);                               // no-op (ASAN would catch a real free)
     EXPECT_EQ(buf[0], 1);
 }
 
@@ -206,9 +205,13 @@ UTEST(allocator, align_for_size)
 UTEST(allocator, same)
 {
     int          x = 0, y = 0;
-    wc_allocator a = {.vt = &noreal_vt, .ctx = &x};
-    wc_allocator b = {.vt = &noreal_vt, .ctx = &y};
+    const wc_allocator  ax = {.vt = &noreal_vt, .ctx = &x};
+    const wc_allocator  ax2 = {.vt = &noreal_vt, .ctx = &x}; // a different object, same allocator
+    const wc_allocator  ay = {.vt = &noreal_vt, .ctx = &y};
+    const wc_allocator* a  = &ax;
+    const wc_allocator* b  = &ay;
     EXPECT_TRUE(wc_same(a, a));
+    EXPECT_TRUE(wc_same(a, &ax2));
     EXPECT_FALSE(wc_same(a, b));
     EXPECT_TRUE(wc_same(WC_LIBC, WC_LIBC));
 }

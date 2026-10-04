@@ -9,11 +9,16 @@
 
 #define MAT_BYTES(m, n) wc_mul(wc_mul((m), (n)), sizeof(float))
 
+// Tile edge for the blocked transpose.
+#ifndef WC_MAT_BLOCK
+#define WC_MAT_BLOCK 16
+#endif
+
 // D4: a zeroed matrix is dead. Unconditional in every build.
 #define MAT_LIVE(mat, fn) FATAL_IF((mat)->m == 0, fn " on zeroed/moved-from matrix")
 
 
-Matrixf matrix_create(wc_allocator a, u64 m, u64 n)
+Matrixf matrix_create(const wc_allocator* a, u64 m, u64 n)
 {
     FATAL_IF(m == 0 || n == 0, "matrix_create: dims must be > 0 (got %llu x %llu)", (unsigned long long)m,
              (unsigned long long)n);
@@ -24,7 +29,7 @@ Matrixf matrix_create(wc_allocator a, u64 m, u64 n)
     return (Matrixf){.data = data, .m = m, .n = n, .alloc = a};
 }
 
-Matrixf matrix_create_arr(wc_allocator a, u64 m, u64 n, const float* arr)
+Matrixf matrix_create_arr(const wc_allocator* a, u64 m, u64 n, const float* arr)
 {
     Matrixf mat = matrix_create(a, m, n);
     memcpy(mat.data, arr, sizeof(float) * m * n);
@@ -34,13 +39,13 @@ Matrixf matrix_create_arr(wc_allocator a, u64 m, u64 n, const float* arr)
 Matrixf matrix_create_buf(u64 m, u64 n, float* data)
 {
     FATAL_IF(m == 0 || n == 0, "matrix_create_buf: dims must be > 0");
-    return (Matrixf){.data = data, .m = m, .n = n, .alloc = wc_borrowed};
+    return (Matrixf){.data = data, .m = m, .n = n, .alloc = WC_BORROWED};
 }
 
 void matrix_destroy(Matrixf* mat)
 {
     if (mat->data) {
-        wc_allocator a = mat->alloc; // read before zeroing
+        const wc_allocator* a = mat->alloc; // read before zeroing
         wc_free(a, mat->data, MAT_BYTES(mat->m, mat->n), alignof(float));
     }
     memset(mat, 0, sizeof(*mat));
@@ -283,13 +288,89 @@ float matrix_det(const Matrixf* mat)
 }
 
 
+/*
+    In-place Gauss-Jordan with partial pivoting.
+    For each column k: pick the row with the largest |a[i][k]| at or below k,
+    swap it up, scale the pivot row so the pivot becomes 1 (storing 1/pivot in
+    its place), and eliminate column k from every other row. Each row swap is
+    recorded; undoing them as COLUMN swaps in reverse order leaves the inverse.
+*/
+bool matrix_inv(Matrixf* restrict out, const Matrixf* restrict mat)
+{
+    MAT_LIVE(out, "matrix_inv");
+    WC_ASSERT(mat->m == mat->n, "only square matrices have an inverse");
+    WC_ASSERT(out->m == mat->m && out->n == mat->n, "out dimensions don't match");
+
+    const u64 n = mat->n;
+    float*    a = out->data;
+    memcpy(a, mat->data, sizeof(float) * n * n);
+
+    u64 piv[n]; // row swapped into position k
+
+    for (u64 k = 0; k < n; k++) {
+        u64   p    = k;
+        float best = a[(k * n) + k] < 0 ? -a[(k * n) + k] : a[(k * n) + k];
+        for (u64 i = k + 1; i < n; i++) {
+            float v = a[(i * n) + k] < 0 ? -a[(i * n) + k] : a[(i * n) + k];
+            if (v > best) {
+                best = v;
+                p    = i;
+            }
+        }
+        if (best == 0.0F) {
+            return false; // singular
+        }
+
+        piv[k] = p;
+        if (p != k) {
+            for (u64 j = 0; j < n; j++) {
+                float t          = a[(k * n) + j];
+                a[(k * n) + j]   = a[(p * n) + j];
+                a[(p * n) + j]   = t;
+            }
+        }
+
+        float inv_p    = 1.0F / a[(k * n) + k];
+        a[(k * n) + k] = 1.0F;
+        for (u64 j = 0; j < n; j++) {
+            a[(k * n) + j] *= inv_p;
+        }
+
+        for (u64 i = 0; i < n; i++) {
+            if (i == k) {
+                continue;
+            }
+            float f        = a[(i * n) + k];
+            a[(i * n) + k] = 0.0F;
+            if (f != 0.0F) {
+                for (u64 j = 0; j < n; j++) {
+                    a[(i * n) + j] -= f * a[(k * n) + j];
+                }
+            }
+        }
+    }
+
+    // undo the row swaps as column swaps, last first
+    for (u64 k = n; k-- > 0;) {
+        if (piv[k] != k) {
+            for (u64 i = 0; i < n; i++) {
+                float t                = a[(i * n) + k];
+                a[(i * n) + k]         = a[(i * n) + piv[k]];
+                a[(i * n) + piv[k]]    = t;
+            }
+        }
+    }
+    return true;
+}
+
+
 void matrix_T(Matrixf* restrict out, const Matrixf* restrict mat)
 {
     MAT_LIVE(out, "matrix_T");
     WC_ASSERT(mat->m == out->n && mat->n == out->m, "incompatible matrix dimensions");
 
-    // Block size for cache optimization (tune based on cache line size)
-    const u64 BLOCK_SIZE = 16; // TODO: user adjustable macro?
+    // Block size for cache optimization (tune with -DWC_MAT_BLOCK=n)
+    const u64 BLOCK_SIZE = WC_MAT_BLOCK;
 
     // Blocked transpose: process matrix in BLOCK_SIZE x BLOCK_SIZE tiles
     for (u64 i = 0; i < mat->m; i += BLOCK_SIZE) {
@@ -331,7 +412,7 @@ void matrix_div(Matrixf* restrict mat, float val)
     }
 }
 
-Matrixf matrix_copy(wc_allocator a, const Matrixf* src)
+Matrixf matrix_copy(const wc_allocator* a, const Matrixf* src)
 {
     MAT_LIVE(src, "matrix_copy");
     return matrix_create_arr(a, src->m, src->n, src->data);

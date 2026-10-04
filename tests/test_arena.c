@@ -22,7 +22,7 @@ UTEST(arena, create_default_size)
     EXPECT_TRUE((a.base) != NULL);
     EXPECT_EQ(a.idx, 0u);
     EXPECT_EQ(a.size, ARENA_DEFAULT_SIZE);
-    EXPECT_TRUE(a.self == &a);
+    EXPECT_TRUE(a.self.ctx == &a); // the embedded allocator points at this arena
     Arena_destroy(&a);
 }
 
@@ -79,7 +79,7 @@ UTEST(arena, destroy_is_zero_safe_and_idempotent)
     Arena_create(&a, WC_LIBC, 64);
     Arena_destroy(&a);
     EXPECT_TRUE((a.base) == NULL);
-    EXPECT_TRUE(a.self == NULL);
+    EXPECT_TRUE(a.self.ctx == NULL);
     Arena_destroy(&a); // second destroy: no-op
 }
 
@@ -137,7 +137,7 @@ UTEST(arena, create_buf_owns_nothing)
     Arena_create_buf(&a, buf, sizeof(buf));
     EXPECT_EQ(a.size, 256u);
     EXPECT_EQ(a.idx, 0u);
-    EXPECT_FALSE(a.owns_base);
+    EXPECT_TRUE(a.backing == WC_BORROWED); // destroy hands the buffer back to nobody
 
     int* p = Arena_alloc(&a, sizeof(int));
     EXPECT_TRUE((p) != NULL);
@@ -168,14 +168,14 @@ UTEST(arena, alloc_aligned)
     Arena_destroy(&a);
 }
 
-UTEST(arena, default_alloc_8byte_aligned)
+UTEST(arena, default_alloc_max_aligned)
 {
     Arena a;
     Arena_create(&a, WC_LIBC, nKB(4));
     Arena_alloc(&a, 1);
     u8* ptr = Arena_alloc(&a, 8);
     EXPECT_TRUE((ptr) != NULL);
-    EXPECT_EQ((uintptr_t)ptr % ARENA_DEFAULT_ALIGNMENT, 0u);
+    EXPECT_EQ((uintptr_t)ptr % WC_MAX_ALIGN, 0u); // like malloc
     Arena_destroy(&a);
 }
 
@@ -272,7 +272,7 @@ UTEST(arena, realloc_last_block_grows_in_place)
 {
     Arena a;
     Arena_create(&a, WC_LIBC, nKB(1));
-    wc_allocator al = Arena_allocator(&a);
+    const wc_allocator* al = Arena_allocator(&a);
 
     u8* p = wc_alloc(al, 16, 8);
     memset(p, 'x', 16);
@@ -291,10 +291,10 @@ UTEST(arena, realloc_non_last_block_copies)
 {
     Arena a;
     Arena_create(&a, WC_LIBC, nKB(1));
-    wc_allocator al = Arena_allocator(&a);
+    const wc_allocator* al = Arena_allocator(&a);
 
     u8*               p           = wc_alloc(al, 16, 8);
-    static const char bytes16[16] = "0123456789abcdef"; // 16 bytes, not a C string
+    static const char bytes16[16] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'}; // 16 bytes, not a C string
     memcpy(p, bytes16, sizeof(bytes16));
     u8* other = wc_alloc(al, 8, 8); // p is no longer on top
     (void)other;
@@ -312,7 +312,7 @@ UTEST(arena, realloc_too_big_fails_and_keeps_block)
 {
     Arena a;
     Arena_create(&a, WC_LIBC, 128);
-    wc_allocator al = Arena_allocator(&a);
+    const wc_allocator* al = Arena_allocator(&a);
 
     u8* p = wc_alloc(al, 64, 8);
     memset(p, 7, 64);
@@ -327,7 +327,7 @@ UTEST(arena, free_rewinds_only_last_block)
 {
     Arena a;
     Arena_create(&a, WC_LIBC, nKB(1));
-    wc_allocator al = Arena_allocator(&a);
+    const wc_allocator* al = Arena_allocator(&a);
 
     u8* p1  = wc_alloc(al, 32, 8);
     u8* p2  = wc_alloc(al, 32, 8);
@@ -400,7 +400,7 @@ static void grow_outer_block_inside_scratch(void)
 {
     Arena a;
     Arena_create(&a, WC_LIBC, nKB(4));
-    wc_allocator al  = Arena_allocator(&a);
+    const wc_allocator* al  = Arena_allocator(&a);
     u8*          vec = wc_alloc(al, 64, 8);
     ARENA_SCRATCH (&a) {
         vec = wc_realloc(al, vec, 64, 512, 8);
@@ -416,7 +416,7 @@ static void grow_inner_block_inside_scratch(void)
 {
     Arena a;
     Arena_create(&a, WC_LIBC, nKB(4));
-    wc_allocator al = Arena_allocator(&a);
+    const wc_allocator* al = Arena_allocator(&a);
     ARENA_SCRATCH (&a) {
         u8* vec = wc_alloc(al, 64, 8);
         vec     = wc_realloc(al, vec, 64, 512, 8);
@@ -433,7 +433,7 @@ UTEST(arena, floor_grow_outer_block_inside_scratch)
 #else
     Arena a;
     Arena_create(&a, WC_LIBC, nKB(4));
-    wc_allocator al   = Arena_allocator(&a);
+    const wc_allocator* al   = Arena_allocator(&a);
     u8*          keep = wc_alloc(al, 64, 8);
     memset(keep, 'K', 64);
     u64 mark = Arena_used(&a);
@@ -454,7 +454,7 @@ UTEST(arena, floor_shrink_outer_block_inside_scratch)
 {
     Arena a;
     Arena_create(&a, WC_LIBC, nKB(4));
-    wc_allocator al   = Arena_allocator(&a);
+    const wc_allocator* al   = Arena_allocator(&a);
     u8*          keep = wc_alloc(al, 64, 8);
     u64          mark = Arena_used(&a);
     ARENA_SCRATCH (&a) {
@@ -469,7 +469,7 @@ UTEST(arena, floor_free_inside_scratch_does_not_rewind_below_mark)
 {
     Arena a;
     Arena_create(&a, WC_LIBC, nKB(4));
-    wc_allocator al = Arena_allocator(&a);
+    const wc_allocator* al = Arena_allocator(&a);
 
     u8* outer = wc_alloc(al, 64, 8);
     u64 mark  = Arena_used(&a);
@@ -506,7 +506,7 @@ UTEST(arena, floor_nested_scopes)
     EXPECT_EQ(a.idx, 10u);
 
     // in-place growth works again once the scopes are gone
-    wc_allocator al = Arena_allocator(&a);
+    const wc_allocator* al = Arena_allocator(&a);
     u8*          p  = wc_alloc(al, 8, 8);
     EXPECT_TRUE(wc_realloc(al, p, 8, 64, 8) == p);
     Arena_destroy(&a);
@@ -517,7 +517,7 @@ UTEST(arena, floor_allows_in_place_above_mark)
 {
     Arena a;
     Arena_create(&a, WC_LIBC, nKB(4));
-    wc_allocator al = Arena_allocator(&a);
+    const wc_allocator* al = Arena_allocator(&a);
     Arena_alloc(&a, 40);
 
     ARENA_SCRATCH (&a) {
@@ -534,7 +534,7 @@ UTEST(arena, scope_basic)
 {
     int sum = 0;
     ARENA_SCOPE (tmp, nKB(1)) {
-        EXPECT_TRUE((tmp.ctx) != NULL); // an Arena, not libc
+        EXPECT_TRUE((tmp->ctx) != NULL); // an Arena, not libc
         GenVec v = VEC_OF_IN(tmp, int, 4);
         for (int i = 0; i < 100; i++) {
             VEC_PUSH(&v, i);
@@ -557,7 +557,7 @@ UTEST(arena, scope_nested_and_break)
         int* a = wc_alloc(outer, sizeof(int), alignof(int));
         *a     = 1;
         ARENA_SCOPE (inner, 256) {
-            EXPECT_TRUE(inner.ctx != outer.ctx); // distinct arenas, no name clash
+            EXPECT_TRUE(inner->ctx != outer->ctx); // distinct arenas, no name clash
             int* b = wc_alloc(inner, sizeof(int), alignof(int));
             *b     = 2;
             reached += *a + *b;
@@ -630,10 +630,10 @@ UTEST(arena, A1_arena_alloc_past_end_returns_null)
     Arena          arena;
     Arena_create_buf(&arena, buf, sizeof(buf));
 
-    EXPECT_TRUE((Arena_alloc(&arena, 1)) != NULL); // idx 0 -> 1
-    EXPECT_TRUE((Arena_alloc(&arena, 4)) != NULL); // aligned to 8, idx -> 12
+    EXPECT_TRUE((Arena_alloc_aligned(&arena, 1, 8)) != NULL); // idx 0 -> 1
+    EXPECT_TRUE((Arena_alloc_aligned(&arena, 4, 8)) != NULL); // aligned to 8, idx -> 12
 
-    u8* p = Arena_alloc(&arena, 1); // aligned_idx = 16 > size 13
+    u8* p = Arena_alloc(&arena, 1); // default align 16: aligned_idx = 16 > size 13
     EXPECT_TRUE((p) == NULL);
     EXPECT_TRUE(p == NULL || p < buf + sizeof(buf));
 }
@@ -671,7 +671,7 @@ UTEST(arena, A4_arena_grows_last_block_in_place)
 {
     Arena a;
     Arena_create(&a, WC_LIBC, nKB(1));
-    wc_allocator al = Arena_allocator(&a);
+    const wc_allocator* al = Arena_allocator(&a);
 
     u8* p = NULL;
     u64 n = 0;

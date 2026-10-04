@@ -12,8 +12,8 @@
 
 A growable byte string with small-string optimization.
 
-- **64 bytes**, one cache line: a 32-byte union of inline buffer or heap pointer, then `size`, `capacity` and the stored allocator.
-- **Up to 31 characters live inline**, with no allocation. The 32nd byte is the mode flag. Longer strings move to the heap and grow by `STRING_GROWTH` (1.5×).
+- **48 bytes**: a 24-byte union of inline buffer or heap pointer, then `size`, `capacity` and the stored allocator pointer.
+- **Up to 23 characters live inline**, with no allocation. The 24th byte is the mode flag. Longer strings move to the heap and grow by `STRING_GROWTH` (1.5×).
 - **Not NUL-terminated by default.** `size` is the length. Ask for a terminator when you need one (see [C strings](#c-strings)).
 - Every container that holds `String`s by value uses `wc_str_ops`, so strings are deep-copied and destroyed with their container.
 
@@ -39,8 +39,9 @@ int main(void)
 |---|---|
 | Create | `String_create(a)`, `String_from_cstr(a, cstr)`, `String_from_String(a, &other)` |
 | Lifetime | `String_destroy`, `String_copy(a, &src)`, `String_move(&dst, &src)` |
+| Borrow | `String_borrow(ptr, len)`: a read-only `String` over existing bytes, no allocation. For lookups in `String`-keyed maps and sets. Never store it; any mutation is fatal. |
 | Capacity | `String_reserve(s, cap)`, `String_reserve_char(s, cap, c)` (grow and fill), `String_shrink_to_fit` (back to inline when it fits) |
-| Append | `String_append_char`, `String_append_cstr`, `String_append_String`, `String_append_String_move` (appends, then destroys the source) |
+| Append | `String_append_char`, `String_append_cstr`, `String_append_String`, `String_append_String_move` (appends, then destroys the source; into an empty string on the same allocator it takes over the source's buffer instead of copying) |
 | Insert / remove | `String_insert_char`, `String_insert_cstr`, `String_insert_String`, `String_remove_char`, `String_remove_range(s, start, len)`, `String_pop_char`, `String_clear` |
 | Access | `String_char_at(s, i)`, `String_set_char(s, i, c)`, `String_char_at_unsafe` |
 | Compare | `String_compare` (like `strcmp`), `String_equals`, `String_equals_cstr` |

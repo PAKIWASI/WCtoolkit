@@ -20,8 +20,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define WC_MAX_ALIGN alignof(max_align_t)
 
+#define WC_MAX_ALIGN alignof(max_align_t)
 
 /* libc fallbacks */
 
@@ -42,7 +42,6 @@ static inline void* wc_libc_alloc(size_t n, size_t align)
 #endif
 }
 
-// NOLINTBEGIN(clang-analyzer-unix.Malloc): only libc blocks reach libc; the analyzer cannot see that arena allocators always set vt
 static inline void wc_libc_free(void* p, size_t align)
 {
 #ifdef _MSC_VER
@@ -54,9 +53,7 @@ static inline void wc_libc_free(void* p, size_t align)
     (void)align;
     free(p); // POSIX/glibc: fine for both
 }
-// NOLINTEND(clang-analyzer-unix.Malloc)
 
-// NOLINTBEGIN(clang-analyzer-unix.Malloc): as above
 static inline void* wc_libc_realloc(void* p, size_t old_n, size_t n, size_t align)
 {
     if (align <= WC_MAX_ALIGN) {
@@ -72,7 +69,6 @@ static inline void* wc_libc_realloc(void* p, size_t old_n, size_t n, size_t alig
     wc_libc_free(p, align);
     return q;
 }
-// NOLINTEND(clang-analyzer-unix.Malloc)
 
 
 
@@ -82,8 +78,12 @@ static inline void* wc_libc_realloc(void* p, size_t old_n, size_t n, size_t alig
  * No global allocator exists: every data structure receives its allocator at
  * construction, stores it, and uses it for every allocation.
  *
- * An allocator is a (vtable, ctx) pair, 16 bytes, passed and stored BY VALUE.
- * A zero-initialised allocator is libc: `WC_LIBC`.
+ * An allocator is a (vtable, ctx) pair. It is passed and stored as `const wc_allocator*`
+ *   - the pointer is never NULL; libc is WC_LIBC, nothing else.
+ *   - the pointed-to allocator must outlive every container that stores it.
+ *     WC_LIBC and WC_BORROWED are static; Arena, ChainArena and wc_test_alloc
+ *     embed their own allocator, so the arena's lifetime covers it
+ *   - `const`: a call never changes the (vt, ctx) pair; ctx is what mutates
  *
  * Contract (the wc_* wrappers enforce it, backends may rely on it):
  *   - callbacks are never called with p == NULL or size == 0
@@ -97,7 +97,6 @@ static inline void* wc_libc_realloc(void* p, size_t old_n, size_t n, size_t alig
  *   - wc_realloc(a, p, old, 0, ..) frees p and returns NULL
  *
 */
-
 typedef struct {
     void* (*alloc)(void* ctx, size_t size, size_t align);
     void* (*realloc)(void* ctx, void* p, size_t old_size, size_t new_size, size_t align); // may be NULL
@@ -105,56 +104,61 @@ typedef struct {
 } wc_alloc_vtable;
 
 typedef struct {
-    const wc_alloc_vtable* vt;  // NULL => libc
+    const wc_alloc_vtable* vt;  // NULL => libc (only ever true for wc_libc)
     void*                  ctx; // Arena*, ChainArena*, test allocator, ...
 } wc_allocator;
 
-_Static_assert(sizeof(wc_allocator) == 16, "wc_allocator must stay 16 bytes (stored by value in every container)");
+_Static_assert(sizeof(wc_allocator) == 16, "wc_allocator must stay 16 bytes");
 
-#define WC_LIBC ((wc_allocator){0})
+// The libc allocator. Defined once in wc_allocator.c.
+extern const wc_allocator wc_libc;
+#define WC_LIBC (&wc_libc)
 
 // Non-owning allocator: alloc -> NULL, free -> no-op. A container built on it
 // wraps caller memory, cannot grow, and frees nothing on destroy.
 extern const wc_allocator wc_borrowed;
+#define WC_BORROWED (&wc_borrowed)
 
-static inline int wc_is_libc(wc_allocator a)
+static inline __attribute__((nonnull(1))) int wc_is_libc(const wc_allocator* a)
 {
-    return a.vt == NULL;
+    return a->vt == NULL;
 }
 
-static inline int wc_same(wc_allocator a, wc_allocator b)
+// Same backend and same context: memory from one may be freed through the other.
+static inline __attribute__((nonnull(1, 2))) int wc_same(const wc_allocator* a, const wc_allocator* b)
 {
-    return a.vt == b.vt && a.ctx == b.ctx;
+    return a == b || (a->vt == b->vt && a->ctx == b->ctx);
 }
 
 #define WC_ALLOC_ASSERT_ALIGN(align) \
     assert((align) != 0 && ((align) & ((align) - 1)) == 0 && "align must be a power of two >= 1")
 
-static inline void* wc_alloc(wc_allocator a, size_t n, size_t align)
+static inline __attribute__((nonnull(1))) void* wc_alloc(const wc_allocator* a, size_t n, size_t align)
 {
     WC_ALLOC_ASSERT_ALIGN(align);
     if (n == 0 || n > (size_t)PTRDIFF_MAX) { // > PTRDIFF_MAX: overflowed size (see wc_mul)
         return NULL;
     }
-    return a.vt ? a.vt->alloc(a.ctx, n, align) : wc_libc_alloc(n, align);
+    return a->vt ? a->vt->alloc(a->ctx, n, align) : wc_libc_alloc(n, align);
 }
 
-static inline void wc_free(wc_allocator a, void* p, size_t n, size_t align)
+static inline __attribute__((nonnull(1))) void wc_free(const wc_allocator* a, void* p, size_t n, size_t align)
 {
     WC_ALLOC_ASSERT_ALIGN(align);
     if (!p) {
         return;
     }
-    if (!a.vt) {
+    if (!a->vt) {
         wc_libc_free(p, align);
         return;
     }
-    if (a.vt->free) {
-        a.vt->free(a.ctx, p, n, align);
+    if (a->vt->free) {
+        a->vt->free(a->ctx, p, n, align);
     }
 }
 
-static inline void* wc_realloc(wc_allocator a, void* p, size_t old_n, size_t n, size_t align)
+static inline __attribute__((nonnull(1))) void* wc_realloc(const wc_allocator* a, void* p, size_t old_n, size_t n,
+                                                           size_t align)
 {
     WC_ALLOC_ASSERT_ALIGN(align);
     if (!p) {
@@ -167,15 +171,15 @@ static inline void* wc_realloc(wc_allocator a, void* p, size_t old_n, size_t n, 
     if (n > (size_t)PTRDIFF_MAX) {
         return NULL; // overflowed size: fail, p stays valid
     }
-    if (!a.vt) {
+    if (!a->vt) {
         return wc_libc_realloc(p, old_n, n, align);
     }
-    if (a.vt->realloc) {
-        return a.vt->realloc(a.ctx, p, old_n, n, align);
+    if (a->vt->realloc) {
+        return a->vt->realloc(a->ctx, p, old_n, n, align);
     }
 
     // backend without realloc: emulate
-    void* q = a.vt->alloc(a.ctx, n, align);
+    void* q = a->vt->alloc(a->ctx, n, align);
     if (!q) {
         return NULL; // p left untouched
     }
@@ -193,7 +197,7 @@ static inline size_t wc_mul(size_t count, size_t size)
     return (int)__builtin_mul_overflow(count, size, &r) ? SIZE_MAX : r;
 }
 
-// Smallest safe alignment for elements of `elm_size` bytes (plan D7): the
+// Smallest safe alignment for elements of `elm_size` bytes: the
 // largest power of two dividing elm_size, capped at WC_MAX_ALIGN. Valid because
 // sizeof(T) is always a multiple of alignof(T).
 static inline size_t wc_align_for_size(size_t elm_size)
@@ -206,15 +210,17 @@ static inline size_t wc_align_for_size(size_t elm_size)
 }
 
 
-/* typed helpers (allocator first) */
+/* typed helpers (allocator first)
+ * Free takes the POINTER, not a type: size and align come from *p, so a wrong
+ * type can't be passed*/
 
-#define WC_NEW(a, T)            ((T*)wc_alloc((a), sizeof(T), alignof(T)))
-#define WC_NEW_N(a, T, n)       ((T*)wc_alloc((a), wc_mul((n), sizeof(T)), alignof(T)))
-#define WC_DELETE(a, T, p)      wc_free((a), (p), sizeof(T), alignof(T))
-#define WC_DELETE_N(a, T, p, n) wc_free((a), (p), wc_mul((n), sizeof(T)), alignof(T))
-#define WC_REALLOC_N(a, T, p, old_n, n) \
-    ((T*)wc_realloc((a), (p), wc_mul((old_n), sizeof(T)), wc_mul((n), sizeof(T)), alignof(T)))
-
+#define WC_NEW(a, T)      ((T*)wc_alloc((a), sizeof(T), alignof(T)))
+#define WC_NEW_N(a, T, n) ((T*)wc_alloc((a), wc_mul((n), sizeof(T)), alignof(T)))
+#define WC_REALLOC_N(a, p, old_n, n)                                                               \
+    ((__typeof__(p))wc_realloc((a), (p), wc_mul((old_n), sizeof(*(p))), wc_mul((n), sizeof(*(p))), \
+                               alignof(__typeof__(*(p)))))
+#define WC_FREE(a, p)      (wc_free((a), (p), sizeof(*(p)), alignof(__typeof__(*(p)))))
+#define WC_FREE_N(a, p, n) (wc_free((a), (p), wc_mul((n), sizeof(*(p))), alignof(__typeof__(*(p)))))
 
 
 #endif // WC_ALLOCATOR_H
@@ -254,22 +260,26 @@ static inline size_t wc_align_for_size(size_t elm_size)
 /*
  * DIAGNOSTICS
  *
- * Every macro below is an EXPRESSION of type void (no do { } while (0)), so
- * it composes anywhere: statements, comma expressions, ({ }) blocks, ?:.
- *
  *   SURVIVES EVERY BUILD (Debug and Release)
  *     FATAL(fmt, ...)                 abort with a message
+ *
  *     FATAL_IF(cond, fmt, ...)        abort if cond is TRUE. Absolute failures
  *                                     only: allocation failed, mutation of a
  *                                     zeroed (moved-from/destroyed) container.
+ *
  *     WARN(fmt, ...)                  print a warning to stderr, continue
+ *
  *     WARN_IF(cond, fmt, ...)         warn if cond is TRUE, continue
+ *
  *     WARN_IF_RET(cond, ret, fmt, ...) warn and `return ret` if cond is TRUE
- *                                     (GNU statement expression: it can return)
- *     LOG(fmt, ...)                   print to stdout
+ *                                     (GNU statement expression can return)
+ *
+ *     LOG(fmt, ...)                   print to stderr
+ *
  *     LOG_IF(cond, fmt, ...)          log if cond is TRUE
  *
  *   STRIPPED UNDER NDEBUG (Release)
+ *
  *     WC_ASSERT(cond, fmt, ...)       abort if cond is FALSE. cond is the
  *                                     INVARIANT (`i < size`), not the failure.
  *                                     For programmer errors: bounds, API misuse.
@@ -278,7 +288,7 @@ static inline size_t wc_align_for_size(size_t elm_size)
  *
  * The rule: if continuing past the failure would corrupt memory even in a
  * correct program (an allocator returned NULL), use FATAL_IF. If the failure
- * means the CALLER has a bug, use WC_ASSERT. Never WC_ASSERT an allocation.
+ * means the CALLER has a bug, use WC_ASSERT
  *
  * Branch prediction: failure paths are WC_UNLIKELY, and the reporters are
  * `cold, noinline` functions defined once in wc_errno.c. The compiler moves
@@ -291,6 +301,14 @@ static inline size_t wc_align_for_size(size_t elm_size)
 
 __attribute__((cold, noinline, noreturn, format(printf, 4, 5))) void
 wc_fatal_report(const char* file, int line, const char* func, const char* fmt, ...);
+
+/* Fatal handler. Every FATAL / FATAL_IF formats its message and calls the
+ * installed handler. The handler must not return: abort, exit, or longjmp out
+ * (tests can verify that something FATALs). If it does return, the program
+ * exits. NULL restores the default (print to stderr, exit(EXIT_FAILURE)).
+ * Returns the previous handler. Set it once at startup: it is not thread-local. */
+typedef void (*wc_fatal_fn)(const char* file, int line, const char* func, const char* msg);
+wc_fatal_fn wc_set_fatal_handler(wc_fatal_fn fn);
 
 __attribute__((cold, noinline, format(printf, 4, 5))) void wc_warn_report(const char* file, int line, const char* func,
                                                                           const char* fmt, ...);
@@ -315,8 +333,9 @@ __attribute__((cold, noinline, format(printf, 4, 5))) void wc_warn_report(const 
         (void)0;                                      \
     })
 
-
-#define LOG(fmt, ...) ((void)printf(WC_COLOR_CYAN "[LOG] %s(): " fmt "\n" WC_COLOR_RESET, __func__, ##__VA_ARGS__))
+// stderr, like WARN/FATAL: diagnostics never mix into program output.
+#define LOG(fmt, ...) \
+    ((void)fprintf(stderr, WC_COLOR_CYAN "[LOG] %s(): " fmt "\n" WC_COLOR_RESET, __func__, ##__VA_ARGS__))
 
 #define LOG_IF(cond, fmt, ...) ((void)((cond) && (LOG(fmt, ##__VA_ARGS__), 0)))
 
@@ -334,7 +353,9 @@ __attribute__((cold, noinline, format(printf, 4, 5))) void wc_warn_report(const 
 #endif
 
 
-// token pasting that expands its arguments first (for __COUNTER__/__LINE__ names)
+// Token pasting that expands its arguments first. `a##b` pastes BEFORE expansion,
+// so WC_CAT_(x, __LINE__) gives `x__LINE__`; the extra level expands __LINE__ to
+// 42 first and then pastes, giving `x42`. Used for __COUNTER__/__LINE__ names.
 #define WC_CAT_(a, b) a##b
 #define WC_CAT(a, b)  WC_CAT_(a, b)
 
@@ -345,36 +366,48 @@ __attribute__((cold, noinline, format(printf, 4, 5))) void wc_warn_report(const 
 #include <stdint.h>
 
 typedef uint8_t  u8;
-typedef uint8_t  b8;
 typedef uint16_t u16;
 typedef uint32_t u32;
 typedef uint64_t u64;
 
+typedef int8_t  i8;
+typedef int16_t i16;
+typedef int32_t i32;
+typedef int64_t i64;
+
+// we are using unsigned indices/sizes
 #define WC_NOT_FOUND ((u64) - 1)
 
 
 // GENERIC FUNCTIONS
 
 
+/* ELEMENT OPS
+ *
+ * Memory rule B5: every element is TRIVIALLY RELOCATABLE. A container may move
+ * an element to another address with a raw memcpy (growth, insert/remove shifts,
+ * hash table shuffles, queue compaction, taking an element out) and never asks
+ * the element first. A type that holds a pointer to itself, or that something
+ * outside points into, cannot be stored by value: store it by pointer.
+ *
+ */
+
 // Deep-copy `src` INTO `dest`, allocating any owned resources from `dst`.
-// `dest` is uninitialised raw slot memory (plan 3.3).
-typedef void (*wc_copy_fn)(wc_allocator dst, void* dest, const void* src);
-// Transfer ownership: `dest` takes over everything `src` owned; `src` is left
-// ZEROED (safe to destroy, not usable). Containers do memcpy + zero when NULL.
-typedef void (*wc_move_fn)(void* dest, void* src);
+// `dest` is uninitialised raw slot memory: never read or free it (B3).
+// Called ONLY when both sides keep the value (B8).
+typedef void (*wc_copy_fn)(const wc_allocator* dst, void* dest, const void* src);
 // Release owned resources of the element (not the slot). Elements that own
-// memory store their own allocator, so no allocator argument is needed.
+// memory store their own allocator, so no allocator argument is needed (B2).
 typedef void (*wc_delete_fn)(void* elm);
 typedef void (*wc_print_fn)(const void* elm);
 typedef int (*wc_compare_fn)(const void* a, const void* b, u64 size);
 
 
-// Vtable: one instance shared across all vectors of the same type.
-// Pass NULL for any callback not needed.
-// For POD types, pass NULL for the whole ops pointer.
+// vtable: one instance shared across all objects of the same type.
+// Pass NULL for any callback not needed (no copy_fn: copies are memcpy;
+// no del_fn: nothing is freed per element). For plain data pass NULL ops.
 typedef struct {
     wc_copy_fn   copy_fn; // Deep copy function for owned resources (or NULL)
-    wc_move_fn   move_fn; // Transfer ownership and null original (or NULL)
     wc_delete_fn del_fn;  // Cleanup function for owned resources (or NULL)
 } wc_container_ops;
 
@@ -383,13 +416,12 @@ typedef struct {
 //   GenVec* v = WC_BOX_IN(A, GenVec, GenVec_create, 8, sizeof(int), NULL);
 // Invariant: the shell comes from the same allocator the child stores, so a
 // by-pointer delete can free the shell with the child's own allocator.
-#define WC_BOX_IN(A, T, init_fn, ...)                                  \
-    ({                                                                 \
-        wc_allocator _wbx_a = (A);                                     \
-        T*           _wbx_p = wc_alloc(_wbx_a, sizeof(T), alignof(T)); \
-        FATAL_IF(!_wbx_p, "WC_BOX_IN(" #T "): allocation failed");     \
-        *_wbx_p = init_fn(_wbx_a, __VA_ARGS__);                        \
-        _wbx_p;                                                        \
+#define WC_BOX_IN(A, T, init_fn, ...)                              \
+    ({                                                             \
+        T* _wbx_p = wc_alloc(A, sizeof(T), alignof(T));            \
+        FATAL_IF(!_wbx_p, "WC_BOX_IN(" #T "): allocation failed"); \
+        *_wbx_p = init_fn(A, __VA_ARGS__);                         \
+        _wbx_p;                                                    \
     })
 
 
@@ -474,7 +506,6 @@ static inline void wc_print_cstr(const void* elm)
 
 
 /* wc_errno.h — Error reporting for WCtoolkit
- * ============================================
  *
  * Three tiers:
  *
@@ -604,6 +635,9 @@ static inline void wc_perror(const char* prefix)
 
 
 
+#include <stdint.h>
+#include <string.h>
+
 
 #ifndef STRING_GROWTH
 #define STRING_GROWTH 1.5F // capacity multiplier on grow
@@ -612,45 +646,57 @@ static inline void wc_perror(const char* prefix)
 // SSO inline buffer size (bytes).  Last byte is the mode flag:
 //   nonzero = SSO mode (the string lives in stk[]).
 //   '\0'    = heap mode (the string lives in heap).
-// Usable SSO bytes = STR_SSO_SIZE - 1 = 31.
-#define STR_SSO_SIZE 32
-
+// Usable SSO bytes = STR_SSO_SIZE - 1 = 23.
+#define STR_SSO_SIZE 24
 
 typedef struct {
     union {
         char* heap;
         char  stk[STR_SSO_SIZE];
     };
-    u64          size;
-    u64          capacity;
-    wc_allocator alloc;
+    u64           size;
+    u64           capacity;
+    const wc_allocator* alloc;
 } String;
 
-_Static_assert(sizeof(String) == 64, "String must be 64 bytes");
 
+_Static_assert(sizeof(String) == 48, "String must be 48 bytes");
 
 
 //  Construction / Destruction
 
 // Create an empty String using allocator `a`.
-String String_create(wc_allocator a) __attribute__((warn_unused_result));
+String String_create(const wc_allocator* a) __attribute__((nonnull(1), warn_unused_result));
 
 // Create a String from a C string using allocator `a`.
-String String_from_cstr(wc_allocator a, const char* cstr) __attribute__((warn_unused_result));
+String String_from_cstr(const wc_allocator* a, const char* cstr) __attribute__((nonnull(1), warn_unused_result));
 
-// Create a deep copy of `other` into allocator `a`.
-String String_from_String(wc_allocator a, const String* other) __attribute__((nonnull(2), warn_unused_result));
-
-// Destroy the String's internal buffer (does NOT free the String struct).
+// Destroy the String's internal buffer
 // Safe on a zeroed/moved-from String.
 void String_destroy(String* str) __attribute__((nonnull(1)));
 
 // Deep copy src → new String in allocator `a`.
 // dest is raw/uninitialized: never reads it before writing.
-String String_copy(wc_allocator a, const String* src) __attribute__((nonnull(2), warn_unused_result));
+String String_copy(const wc_allocator* a, const String* src) __attribute__((nonnull(1, 2), warn_unused_result));
 
 // Transfer ownership: dest gets src's contents, src is zeroed.
 void String_move(String* dest, String* src) __attribute__((nonnull(1, 2)));
+
+// TODO: just use a StrView for this? can we for hashmap lookup?
+// Non-owning, READ-ONLY String over `len` existing bytes: no allocation.
+// For lookups only: a String-keyed map or set hashes and compares it like an
+// owning String with the same bytes. Never store it in a container.
+// Any mutation is fatal (WC_BORROWED cannot allocate); destroy is a no-op.
+__attribute__((nonnull(1))) static inline String String_borrow(const char* p, u64 len)
+{
+    String s;
+    memset(&s, 0, sizeof(s)); // stk[STR_SSO_SIZE - 1] == 0: heap mode
+    s.heap     = (char*)(uintptr_t)p;
+    s.size     = len;
+    s.capacity = len ? len : 1; // capacity 0 is the zero state
+    s.alloc    = WC_BORROWED;
+    return s;
+}
 
 
 //  Capacity
@@ -669,7 +715,7 @@ void String_shrink_to_fit(String* str) __attribute__((nonnull(1)));
 
 // Return a buffer (allocated from `a`) holding a NUL-terminated copy — caller
 // must free with wc_free(a, ptr, str->size + 1, 1).
-char* String_to_cstr(wc_allocator a, const String* str) __attribute__((nonnull(2), warn_unused_result));
+char* String_to_cstr(const wc_allocator* a, const String* str) __attribute__((nonnull(1, 2), warn_unused_result));
 
 void String_to_cstr_buf(const String* str, char* buff, u64 n) __attribute__((nonnull(1, 2)));
 
@@ -686,7 +732,8 @@ void String_ensure_null_term(String* str) __attribute__((nonnull(1)));
 void String_append_char(String* str, char c) __attribute__((nonnull(1)));
 void String_append_cstr(String* str, const char* cstr) __attribute__((nonnull(1, 2)));
 void String_append_String(String* str, const String* other) __attribute__((nonnull(1, 2)));
-// Append other then destroy it (leaves other zeroed).
+// Append other then destroy it (leaves other zeroed). When str is empty and
+// both share an allocator, str takes over other's buffer: no copy.
 void String_append_String_move(String* str, String* other) __attribute__((nonnull(1, 2)));
 
 char String_pop_char(String* str) __attribute__((nonnull(1)));
@@ -715,6 +762,7 @@ __attribute__((nonnull(1))) static inline char String_char_at(const String* str,
     return ((str->stk[STR_SSO_SIZE - 1] != '\0') ? str->stk : str->heap)[i];
 }
 
+// UNCHECKED: no bounds check, even in Debug. Caller guarantees i < size.
 __attribute__((nonnull(1))) static inline char String_char_at_unsafe(const String* str, u64 i)
 {
     return ((str->stk[STR_SSO_SIZE - 1] != '\0') ? str->stk : str->heap)[i];
@@ -731,11 +779,11 @@ __attribute__((nonnull(1))) static inline void String_set_char(String* str, u64 
 
 // 0 == equal, <0 == str1 < str2, >0 == str1 > str2
 int String_compare(const String* s1, const String* s2) __attribute__((nonnull(1, 2)));
-__attribute__((nonnull(1, 2))) static inline b8 String_equals(const String* s1, const String* s2)
+__attribute__((nonnull(1, 2))) static inline bool String_equals(const String* s1, const String* s2)
 {
     return String_compare(s1, s2) == 0;
 }
-b8 String_equals_cstr(const String* str, const char* cstr) __attribute__((nonnull(1, 2)));
+bool String_equals_cstr(const String* str, const char* cstr) __attribute__((nonnull(1, 2)));
 
 
 //  Search
@@ -745,8 +793,8 @@ u64 String_find_char(const String* str, char c) __attribute__((nonnull(1)));
 u64 String_find_cstr(const String* str, const char* substr) __attribute__((nonnull(1, 2)));
 
 // Return a String (in allocator `a`) holding `length` chars starting at `start`.
-String String_substr(wc_allocator a, const String* str, u64 start, u64 length)
-    __attribute__((nonnull(2), warn_unused_result));
+String String_substr(const wc_allocator* a, const String* str, u64 start, u64 length)
+    __attribute__((nonnull(1, 2), warn_unused_result));
 
 
 //  I/O
@@ -766,23 +814,22 @@ __attribute__((nonnull(1))) static inline u64 String_capacity(const String* str)
     return str->capacity;
 }
 
-__attribute__((nonnull(1))) static inline b8 String_empty(const String* str)
+__attribute__((nonnull(1))) static inline bool String_empty(const String* str)
 {
     return str->size == 0;
 }
 
-__attribute__((nonnull(1))) static inline b8 String_is_sso(const String* str)
+__attribute__((nonnull(1))) static inline bool String_is_sso(const String* str)
 {
     return str->stk[STR_SSO_SIZE - 1] != '\0';
 }
 
 // Read-only pointer into the buffer. Unlike String_data_ptr, this never
-// returns NULL for an empty String. It's meant to be used AFTER
-// String_ensure_null_term, where index 0 is guaranteed to hold at least a '\0',
-// even when size == 0. Calling this without a prior String_ensure_null_term on
-// a fresh/empty String reads uninitialised memory.
-__attribute__((nonnull(1))) static inline const char* String_cstr_view(const String* str)
+// returns NULL for an empty String. Internally, it uses String_ensure_null_term(),
+// which places a '\0' right after the last valid char without touching the size of the string.
+__attribute__((nonnull(1))) static inline const char* String_cstr_view(String* str)
 {
+    String_ensure_null_term(str);
     return String_is_sso(str) ? str->stk : str->heap;
 }
 
@@ -800,7 +847,12 @@ __attribute__((nonnull(1))) static inline const char* String_cstr_view(const Str
 
 
 
-/* wc_borrowed: non-owning allocator (plan 3.2) */
+/* wc_libc: the only allocator with vt == NULL */
+
+const wc_allocator wc_libc = {.vt = NULL, .ctx = NULL};
+
+
+/* wc_borrowed: non-owning allocator */
 
 static void* wc_borrowed_alloc(void* ctx, size_t size, size_t align)
 {
@@ -840,7 +892,6 @@ const wc_allocator wc_borrowed = {.vt = &wc_borrowed_vt, .ctx = NULL};
 #include <stdlib.h>
 
 
-
 /* One definition of the thread-local error variable.
  * Every translation unit that includes wc_error.h sees the extern declaration.
  * This file provides the actual storage.
@@ -852,21 +903,34 @@ _Thread_local wc_err wc_errno = WC_OK;
  * the compiler places them, and every branch that calls them, away from hot
  * code. Both write to stderr so diagnostics never mix into program output. */
 
-// NOLINTBEGIN(clang-analyzer-valist.Uninitialized): false positive: va_start precedes vfprintf
+// The installed fatal handler; NULL means the default (print + exit).
+static wc_fatal_fn g_fatal_handler = NULL;
+
+wc_fatal_fn wc_set_fatal_handler(wc_fatal_fn fn)
+{
+    wc_fatal_fn prev = g_fatal_handler;
+    g_fatal_handler  = fn;
+    return prev;
+}
+
 void wc_fatal_report(const char* file, int line, const char* func, const char* fmt, ...)
 {
     fflush(stdout); // keep ordering with anything already printed
-    fprintf(stderr, WC_COLOR_RED "[FATAL] %s:%d:%s(): ", file, line, func);
+
+    char    msg[512];
     va_list args;
     va_start(args, fmt);
-    vfprintf(stderr, fmt, args);
+    vsnprintf(msg, sizeof(msg), fmt, args);
     va_end(args);
-    fprintf(stderr, "\n" WC_COLOR_RESET);
-    exit(EXIT_FAILURE);
-}
-// NOLINTEND(clang-analyzer-valist.Uninitialized)
 
-// NOLINTBEGIN(clang-analyzer-valist.Uninitialized): as above
+    if (g_fatal_handler) {
+        g_fatal_handler(file, line, func, msg); // must not return
+    } else {
+        fprintf(stderr, WC_COLOR_RED "[FATAL] %s:%d:%s(): %s\n" WC_COLOR_RESET, file, line, func, msg);
+    }
+    exit(EXIT_FAILURE); // default, and the backstop for a handler that returns
+}
+
 void wc_warn_report(const char* file, int line, const char* func, const char* fmt, ...)
 {
     fflush(stdout);
@@ -877,7 +941,6 @@ void wc_warn_report(const char* file, int line, const char* func, const char* fm
     va_end(args);
     fprintf(stderr, "\n" WC_COLOR_RESET);
 }
-// NOLINTEND(clang-analyzer-valist.Uninitialized)
 
 #endif /* WC_WC_ERRNO_IMPL */
 
@@ -920,7 +983,6 @@ void wc_warn_report(const char* file, int line, const char* func, const char* fm
 
 //  Private helpers
 
-static inline u64  cstr_len(const char* cstr);
 static inline void stk_to_heap(String* s);
 static inline void heap_to_stk(String* s);
 static inline void String_grow(String* s);
@@ -928,7 +990,7 @@ static inline void ensure_capacity(String* s, u64 needed);
 
 // Initialise the struct to SSO mode. a is stored so all subsequent allocations
 // use it.  Does NOT allocate.
-static inline void str_init_sso(String* s, wc_allocator a)
+static inline void str_init_sso(String* s, const wc_allocator* a)
 {
     s->size                  = 0;
     s->capacity              = STR_SSO_SIZE - 1; // 0..30 usable, last byte is mode flag
@@ -940,14 +1002,14 @@ static inline void str_init_sso(String* s, wc_allocator a)
 
 //  Construction / Destruction
 
-String String_create(wc_allocator a)
+String String_create(const wc_allocator* a)
 {
     String s;
     str_init_sso(&s, a);
     return s;
 }
 
-String String_from_cstr(wc_allocator a, const char* cstr)
+String String_from_cstr(const wc_allocator* a, const char* cstr)
 {
     String s;
     str_init_sso(&s, a);
@@ -956,7 +1018,7 @@ String String_from_cstr(wc_allocator a, const char* cstr)
         return s;
     }
 
-    u64 len = cstr_len(cstr);
+    u64 len = strlen(cstr);
     if (len == 0) {
         return s;
     }
@@ -964,20 +1026,6 @@ String String_from_cstr(wc_allocator a, const char* cstr)
     ensure_capacity(&s, len);
     memcpy(GET_STR(&s), cstr, len);
     s.size = len;
-    return s;
-}
-
-String String_from_String(wc_allocator a, const String* other)
-{
-    String s;
-    str_init_sso(&s, a);
-
-    if (other->size > 0) {
-        ensure_capacity(&s, other->size);
-        memcpy(GET_STR(&s), GET_STR(other), other->size);
-        s.size = other->size;
-    }
-
     return s;
 }
 
@@ -990,9 +1038,18 @@ void String_destroy(String* s)
     memset(s, 0, sizeof(String));
 }
 
-String String_copy(wc_allocator a, const String* src)
+String String_copy(const wc_allocator* a, const String* src)
 {
-    return String_from_String(a, src);
+    String s;
+    str_init_sso(&s, a);
+
+    if (src->size > 0) {
+        ensure_capacity(&s, src->size);
+        memcpy(GET_STR(&s), GET_STR(src), src->size);
+        s.size = src->size;
+    }
+
+    return s;
 }
 
 void String_move(String* dest, String* src)
@@ -1044,7 +1101,7 @@ void String_shrink_to_fit(String* s)
     if (s->size <= STR_SSO_SIZE - 1) {
         // Bring back to SSO.
         // Covers size == 0: heap_to_stk frees the buffer AND restores the SSO flag.
-        // (A8: the old size == 0 branch freed the buffer but stayed in heap mode,
+        // (the old size == 0 branch freed the buffer but stayed in heap mode,
         //  leaving heap == NULL with capacity 23; the next append wrote to NULL.)
         heap_to_stk(s);
         return;
@@ -1062,7 +1119,7 @@ void String_shrink_to_fit(String* s)
 
 //  Conversion
 
-char* String_to_cstr(wc_allocator a, const String* s)
+char* String_to_cstr(const wc_allocator* a, const String* s)
 {
     char* out = wc_alloc(a, s->size + 1, 1);
     FATAL_IF(!out, "String_to_cstr: allocation failed");
@@ -1097,7 +1154,7 @@ char* String_data_ptr(const String* s)
 // Same growth path as String_append_char, minus the size++: writes '\0'
 // at index s->size and leaves size untouched. Safe against the SSO
 // mode-flag byte because MAYBE_GROW_STR converts to heap (or reallocs
-// the heap buffer) whenever size == capacity, before we ever write —
+// the heap buffer) whenever size == capacity, before we ever write,
 // so the write always lands one past the last real char, never on the
 // flag byte at stk[STR_SSO_SIZE - 1].
 void String_ensure_null_term(String* s)
@@ -1118,7 +1175,7 @@ void String_append_char(String* s, char c)
 void String_append_cstr(String* s, const char* cstr)
 {
     FATAL_IF(s->capacity == 0, "String_append_cstr on zeroed/moved-from String");
-    u64 len = cstr_len(cstr);
+    u64 len = strlen(cstr);
     if (len == 0) {
         return;
     }
@@ -1142,6 +1199,20 @@ void String_append_String(String* s, const String* other)
 
 void String_append_String_move(String* s, String* other)
 {
+    FATAL_IF(s->capacity == 0, "String_append_String_move on zeroed/moved-from String");
+    if (s == other) {
+        return;
+    }
+
+    // Empty destination on the same allocator: take other's buffer instead of
+    // copying it (0 allocations, B8: other dies here, so nothing is copied).
+    if (s->size == 0 && other->capacity != 0 && wc_same(s->alloc, other->alloc)) {
+        String_destroy(s);
+        *s = *other;
+        memset(other, 0, sizeof(String));
+        return;
+    }
+
     if (other->size > 0) {
         String_append_String(s, other);
     }
@@ -1175,7 +1246,7 @@ void String_insert_cstr(String* s, u64 i, const char* cstr)
 {
     WC_ASSERT(i <= s->size, "index out of bounds");
 
-    u64 len = cstr_len(cstr);
+    u64 len = strlen(cstr);
     if (len == 0) {
         return;
     }
@@ -1217,9 +1288,7 @@ void String_remove_char(String* s, u64 i)
     WC_ASSERT(i < s->size, "index out of bounds");
 
     char* buf = GET_STR(s);
-    for (u64 j = i; j < s->size - 1; j++) {
-        buf[j] = buf[j + 1];
-    }
+    memmove(buf + i, buf + i + 1, s->size - 1 - i);
     s->size--;
 }
 
@@ -1274,9 +1343,9 @@ int String_compare(const String* s1, const String* s2)
     return 0;
 }
 
-b8 String_equals_cstr(const String* s, const char* cstr)
+bool String_equals_cstr(const String* s, const char* cstr)
 {
-    u64 len = cstr_len(cstr);
+    u64 len = strlen(cstr);
 
     if (s->size != len) {
         return false;
@@ -1303,7 +1372,7 @@ u64 String_find_char(const String* s, char c)
 
 u64 String_find_cstr(const String* s, const char* substr)
 {
-    u64 len = cstr_len(substr);
+    u64 len = strlen(substr);
     if (len == 0) {
         return 0;
     }
@@ -1311,17 +1380,20 @@ u64 String_find_cstr(const String* s, const char* substr)
         return WC_NOT_FOUND;
     }
 
+    // memchr (SIMD in libc) jumps to each candidate first byte; memcmp confirms the rest.
     const char* buf = GET_STR(s);
-    for (u64 i = 0; i <= s->size - len; i++) {
-        if (memcmp(buf + i, substr, len) == 0) {
-            return i;
+    const char* end = buf + (s->size - len) + 1; // one past the last valid start
+    const char* cur = buf;
+    while (cur < end && (cur = memchr(cur, substr[0], (size_t)(end - cur))) != NULL) {
+        if (memcmp(cur, substr, len) == 0) {
+            return (u64)(cur - buf);
         }
+        cur++;
     }
     return WC_NOT_FOUND;
 }
 
-// NOLINTBEGIN(clang-analyzer-unix.Malloc): false positive: the returned String owns its heap buffer
-String String_substr(wc_allocator a, const String* s, u64 start, u64 length)
+String String_substr(const wc_allocator* a, const String* s, u64 start, u64 length)
 {
     WC_ASSERT(start < s->size, "start out of bounds");
 
@@ -1339,7 +1411,6 @@ String String_substr(wc_allocator a, const String* s, u64 start, u64 length)
 
     return result;
 }
-// NOLINTEND(clang-analyzer-unix.Malloc)
 
 
 //  I/O
@@ -1347,17 +1418,8 @@ String String_substr(wc_allocator a, const String* s, u64 start, u64 length)
 void String_print(const String* s)
 {
     putchar('"');
-    const char* buf = GET_STR(s);
-    for (u64 i = 0; i < s->size; i++) {
-        putchar(buf[i]);
-    }
+    fwrite(GET_STR(s), 1, s->size, stdout);
     putchar('"');
-}
-
-
-static inline u64 cstr_len(const char* cstr)
-{
-    return (u64)strlen(cstr);
 }
 
 
@@ -1382,9 +1444,9 @@ static inline void stk_to_heap(String* s)
 static inline void heap_to_stk(String* s)
 {
     // save the ptr as memcpy on stk will overwrite
-    char*        heap = s->heap;
-    wc_allocator a    = s->alloc;
-    u64          cap  = s->capacity;
+    char*               heap = s->heap;
+    const wc_allocator* a    = s->alloc;
+    u64                 cap  = s->capacity;
     memcpy(s->stk, heap, s->size);
     wc_free(a, heap, cap, 1);
     s->stk[STR_SSO_SIZE - 1] = 1; // mark SSO mode

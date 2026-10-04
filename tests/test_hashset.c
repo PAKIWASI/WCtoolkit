@@ -44,8 +44,8 @@ UTEST(hashset, insert_returns_existed)
 {
     HashSet s      = int_set();
     int     x      = 5;
-    b8      first  = HashSet_insert(&s, &x);
-    b8      second = HashSet_insert(&s, &x);
+    bool      first  = HashSet_insert(&s, &x);
+    bool      second = HashSet_insert(&s, &x);
     EXPECT_FALSE(first); // new insert
     EXPECT_TRUE(second); // already existed
     HashSet_destroy(&s);
@@ -476,8 +476,8 @@ UTEST(hashset, str_no_duplicates)
 {
     HashSet s      = str_set();
     String  sv     = String_from_cstr(WC_LIBC, "dup");
-    b8      first  = HashSet_insert(&s, &sv);
-    b8      second = HashSet_insert(&s, &sv);
+    bool      first  = HashSet_insert(&s, &sv);
+    bool      second = HashSet_insert(&s, &sv);
     EXPECT_FALSE(first);
     EXPECT_TRUE(second);
     EXPECT_EQ(HashSet_size(&s), 1u);
@@ -493,7 +493,7 @@ UTEST(hashset, str_insert_move_duplicate_frees_elm)
     HashSet_insert(&s, &sv);
 
     String dup     = String_from_cstr(WC_LIBC, "dup");
-    b8     existed = HashSet_insert_move(&s, &dup);
+    bool     existed = HashSet_insert_move(&s, &dup);
     EXPECT_TRUE(existed);
     EXPECT_EQ(dup.size, 0u); // duplicate destroyed and zeroed
     EXPECT_TRUE((dup.heap) == NULL);
@@ -586,7 +586,7 @@ UTEST(hashset, insert_move_nulls_src)
 {
     HashSet s       = HashSet_create(WC_LIBC, sizeof(String), wyhash_str, str_cmp, &wc_str_ops);
     String  el      = String_from_cstr(WC_LIBC, "owned");
-    b8      existed = HashSet_insert_move(&s, &el);
+    bool      existed = HashSet_insert_move(&s, &el);
     String_destroy(&el); // moved-from: zeroed, safe destroy
     EXPECT_FALSE(existed);
     EXPECT_EQ(HashSet_size(&s), 1u);
@@ -603,7 +603,7 @@ UTEST(hashset, insert_move_duplicate_frees_incoming)
     SET_INSERT_CSTR(&s, "dup");
 
     String el      = String_from_cstr(WC_LIBC, "dup");
-    b8     existed = HashSet_insert_move(&s, &el);
+    bool     existed = HashSet_insert_move(&s, &el);
     EXPECT_TRUE(existed);   /* already in set */
     EXPECT_EQ(el.size, 0u); /* incoming consumed and zeroed */
     String_destroy(&el);    /* safe on zeroed */
@@ -714,7 +714,7 @@ UTEST(hashset, cross_alloc_copy)
 {
     Arena a;
     Arena_create(&a, WC_LIBC, nKB(64));
-    wc_allocator al = Arena_allocator(&a);
+    const wc_allocator* al = Arena_allocator(&a);
 
     HashSet src = HashSet_create(al, sizeof(int), NULL, NULL, NULL);
     for (int i = 0; i < 20; i++) {

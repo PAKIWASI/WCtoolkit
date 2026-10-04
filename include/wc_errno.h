@@ -5,7 +5,6 @@
 
 
 /* wc_errno.h — Error reporting for WCtoolkit
- * ============================================
  *
  * Three tiers:
  *

@@ -130,7 +130,7 @@ static inline void ta_b_free(wc_test_alloc* ta, void* p, size_t size, size_t ali
 
 // Contract checks shared by alloc and realloc
 
-static b8 ta_check_request(wc_test_alloc* ta, const char* op, size_t size, size_t align)
+static bool ta_check_request(wc_test_alloc* ta, const char* op, size_t size, size_t align)
 {
     if (size == 0) {
         ta_error(ta, "%s: size == 0 (wrappers must never pass 0 to a backend)", op);
@@ -143,7 +143,7 @@ static b8 ta_check_request(wc_test_alloc* ta, const char* op, size_t size, size_
     return 1;
 }
 
-static b8 ta_should_fail(wc_test_alloc* ta)
+static bool ta_should_fail(wc_test_alloc* ta)
 {
     ta->n_attempts++;
     if (ta->fail_at == 0) {
@@ -152,7 +152,7 @@ static b8 ta_should_fail(wc_test_alloc* ta)
     return ta->fail_sticky ? (ta->n_attempts >= ta->fail_at) : (ta->n_attempts == ta->fail_at);
 }
 
-static b8 ta_check_block(wc_test_alloc* ta, const char* op, void* p, wc_ta_block** out, size_t size, size_t align)
+static bool ta_check_block(wc_test_alloc* ta, const char* op, void* p, wc_ta_block** out, size_t size, size_t align)
 {
     wc_ta_block* b = ta_find(ta, p);
     if (!b) {
@@ -252,10 +252,13 @@ void wc_test_alloc_cb_free(void* ctx, void* p, size_t size, size_t align)
 
 // Lifecycle
 
-void wc_test_alloc_init(wc_test_alloc* ta, wc_allocator backing)
+static const wc_alloc_vtable wc_test_alloc_vt;
+
+void wc_test_alloc_init(wc_test_alloc* ta, const wc_allocator* backing)
 {
     memset(ta, 0, sizeof(*ta));
     ta->backing = backing;
+    ta->self    = (wc_allocator){.vt = &wc_test_alloc_vt, .ctx = ta};
     ta->cap     = WC_TA_INIT_CAP;
     ta->blocks  = calloc(ta->cap, sizeof(wc_ta_block));
     if (!ta->blocks) {
@@ -293,12 +296,7 @@ static const wc_alloc_vtable wc_test_alloc_vt = {
     .free    = wc_test_alloc_cb_free,
 };
 
-wc_allocator wc_test_alloc_allocator(wc_test_alloc* ta)
-{
-    return (wc_allocator){.vt = &wc_test_alloc_vt, .ctx = ta};
-}
-
-b8 wc_test_alloc_owns(const wc_test_alloc* ta, const void* p)
+bool wc_test_alloc_owns(const wc_test_alloc* ta, const void* p)
 {
     return p != NULL && ta_find(ta, p) != NULL;
 }

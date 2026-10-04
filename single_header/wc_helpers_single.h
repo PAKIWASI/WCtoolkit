@@ -20,8 +20,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define WC_MAX_ALIGN alignof(max_align_t)
 
+#define WC_MAX_ALIGN alignof(max_align_t)
 
 /* libc fallbacks */
 
@@ -42,7 +42,6 @@ static inline void* wc_libc_alloc(size_t n, size_t align)
 #endif
 }
 
-// NOLINTBEGIN(clang-analyzer-unix.Malloc): only libc blocks reach libc; the analyzer cannot see that arena allocators always set vt
 static inline void wc_libc_free(void* p, size_t align)
 {
 #ifdef _MSC_VER
@@ -54,9 +53,7 @@ static inline void wc_libc_free(void* p, size_t align)
     (void)align;
     free(p); // POSIX/glibc: fine for both
 }
-// NOLINTEND(clang-analyzer-unix.Malloc)
 
-// NOLINTBEGIN(clang-analyzer-unix.Malloc): as above
 static inline void* wc_libc_realloc(void* p, size_t old_n, size_t n, size_t align)
 {
     if (align <= WC_MAX_ALIGN) {
@@ -72,7 +69,6 @@ static inline void* wc_libc_realloc(void* p, size_t old_n, size_t n, size_t alig
     wc_libc_free(p, align);
     return q;
 }
-// NOLINTEND(clang-analyzer-unix.Malloc)
 
 
 
@@ -82,8 +78,12 @@ static inline void* wc_libc_realloc(void* p, size_t old_n, size_t n, size_t alig
  * No global allocator exists: every data structure receives its allocator at
  * construction, stores it, and uses it for every allocation.
  *
- * An allocator is a (vtable, ctx) pair, 16 bytes, passed and stored BY VALUE.
- * A zero-initialised allocator is libc: `WC_LIBC`.
+ * An allocator is a (vtable, ctx) pair. It is passed and stored as `const wc_allocator*`
+ *   - the pointer is never NULL; libc is WC_LIBC, nothing else.
+ *   - the pointed-to allocator must outlive every container that stores it.
+ *     WC_LIBC and WC_BORROWED are static; Arena, ChainArena and wc_test_alloc
+ *     embed their own allocator, so the arena's lifetime covers it
+ *   - `const`: a call never changes the (vt, ctx) pair; ctx is what mutates
  *
  * Contract (the wc_* wrappers enforce it, backends may rely on it):
  *   - callbacks are never called with p == NULL or size == 0
@@ -97,7 +97,6 @@ static inline void* wc_libc_realloc(void* p, size_t old_n, size_t n, size_t alig
  *   - wc_realloc(a, p, old, 0, ..) frees p and returns NULL
  *
 */
-
 typedef struct {
     void* (*alloc)(void* ctx, size_t size, size_t align);
     void* (*realloc)(void* ctx, void* p, size_t old_size, size_t new_size, size_t align); // may be NULL
@@ -105,56 +104,61 @@ typedef struct {
 } wc_alloc_vtable;
 
 typedef struct {
-    const wc_alloc_vtable* vt;  // NULL => libc
+    const wc_alloc_vtable* vt;  // NULL => libc (only ever true for wc_libc)
     void*                  ctx; // Arena*, ChainArena*, test allocator, ...
 } wc_allocator;
 
-_Static_assert(sizeof(wc_allocator) == 16, "wc_allocator must stay 16 bytes (stored by value in every container)");
+_Static_assert(sizeof(wc_allocator) == 16, "wc_allocator must stay 16 bytes");
 
-#define WC_LIBC ((wc_allocator){0})
+// The libc allocator. Defined once in wc_allocator.c.
+extern const wc_allocator wc_libc;
+#define WC_LIBC (&wc_libc)
 
 // Non-owning allocator: alloc -> NULL, free -> no-op. A container built on it
 // wraps caller memory, cannot grow, and frees nothing on destroy.
 extern const wc_allocator wc_borrowed;
+#define WC_BORROWED (&wc_borrowed)
 
-static inline int wc_is_libc(wc_allocator a)
+static inline __attribute__((nonnull(1))) int wc_is_libc(const wc_allocator* a)
 {
-    return a.vt == NULL;
+    return a->vt == NULL;
 }
 
-static inline int wc_same(wc_allocator a, wc_allocator b)
+// Same backend and same context: memory from one may be freed through the other.
+static inline __attribute__((nonnull(1, 2))) int wc_same(const wc_allocator* a, const wc_allocator* b)
 {
-    return a.vt == b.vt && a.ctx == b.ctx;
+    return a == b || (a->vt == b->vt && a->ctx == b->ctx);
 }
 
 #define WC_ALLOC_ASSERT_ALIGN(align) \
     assert((align) != 0 && ((align) & ((align) - 1)) == 0 && "align must be a power of two >= 1")
 
-static inline void* wc_alloc(wc_allocator a, size_t n, size_t align)
+static inline __attribute__((nonnull(1))) void* wc_alloc(const wc_allocator* a, size_t n, size_t align)
 {
     WC_ALLOC_ASSERT_ALIGN(align);
     if (n == 0 || n > (size_t)PTRDIFF_MAX) { // > PTRDIFF_MAX: overflowed size (see wc_mul)
         return NULL;
     }
-    return a.vt ? a.vt->alloc(a.ctx, n, align) : wc_libc_alloc(n, align);
+    return a->vt ? a->vt->alloc(a->ctx, n, align) : wc_libc_alloc(n, align);
 }
 
-static inline void wc_free(wc_allocator a, void* p, size_t n, size_t align)
+static inline __attribute__((nonnull(1))) void wc_free(const wc_allocator* a, void* p, size_t n, size_t align)
 {
     WC_ALLOC_ASSERT_ALIGN(align);
     if (!p) {
         return;
     }
-    if (!a.vt) {
+    if (!a->vt) {
         wc_libc_free(p, align);
         return;
     }
-    if (a.vt->free) {
-        a.vt->free(a.ctx, p, n, align);
+    if (a->vt->free) {
+        a->vt->free(a->ctx, p, n, align);
     }
 }
 
-static inline void* wc_realloc(wc_allocator a, void* p, size_t old_n, size_t n, size_t align)
+static inline __attribute__((nonnull(1))) void* wc_realloc(const wc_allocator* a, void* p, size_t old_n, size_t n,
+                                                           size_t align)
 {
     WC_ALLOC_ASSERT_ALIGN(align);
     if (!p) {
@@ -167,15 +171,15 @@ static inline void* wc_realloc(wc_allocator a, void* p, size_t old_n, size_t n, 
     if (n > (size_t)PTRDIFF_MAX) {
         return NULL; // overflowed size: fail, p stays valid
     }
-    if (!a.vt) {
+    if (!a->vt) {
         return wc_libc_realloc(p, old_n, n, align);
     }
-    if (a.vt->realloc) {
-        return a.vt->realloc(a.ctx, p, old_n, n, align);
+    if (a->vt->realloc) {
+        return a->vt->realloc(a->ctx, p, old_n, n, align);
     }
 
     // backend without realloc: emulate
-    void* q = a.vt->alloc(a.ctx, n, align);
+    void* q = a->vt->alloc(a->ctx, n, align);
     if (!q) {
         return NULL; // p left untouched
     }
@@ -193,7 +197,7 @@ static inline size_t wc_mul(size_t count, size_t size)
     return (int)__builtin_mul_overflow(count, size, &r) ? SIZE_MAX : r;
 }
 
-// Smallest safe alignment for elements of `elm_size` bytes (plan D7): the
+// Smallest safe alignment for elements of `elm_size` bytes: the
 // largest power of two dividing elm_size, capped at WC_MAX_ALIGN. Valid because
 // sizeof(T) is always a multiple of alignof(T).
 static inline size_t wc_align_for_size(size_t elm_size)
@@ -206,15 +210,17 @@ static inline size_t wc_align_for_size(size_t elm_size)
 }
 
 
-/* typed helpers (allocator first) */
+/* typed helpers (allocator first)
+ * Free takes the POINTER, not a type: size and align come from *p, so a wrong
+ * type can't be passed*/
 
-#define WC_NEW(a, T)            ((T*)wc_alloc((a), sizeof(T), alignof(T)))
-#define WC_NEW_N(a, T, n)       ((T*)wc_alloc((a), wc_mul((n), sizeof(T)), alignof(T)))
-#define WC_DELETE(a, T, p)      wc_free((a), (p), sizeof(T), alignof(T))
-#define WC_DELETE_N(a, T, p, n) wc_free((a), (p), wc_mul((n), sizeof(T)), alignof(T))
-#define WC_REALLOC_N(a, T, p, old_n, n) \
-    ((T*)wc_realloc((a), (p), wc_mul((old_n), sizeof(T)), wc_mul((n), sizeof(T)), alignof(T)))
-
+#define WC_NEW(a, T)      ((T*)wc_alloc((a), sizeof(T), alignof(T)))
+#define WC_NEW_N(a, T, n) ((T*)wc_alloc((a), wc_mul((n), sizeof(T)), alignof(T)))
+#define WC_REALLOC_N(a, p, old_n, n)                                                               \
+    ((__typeof__(p))wc_realloc((a), (p), wc_mul((old_n), sizeof(*(p))), wc_mul((n), sizeof(*(p))), \
+                               alignof(__typeof__(*(p)))))
+#define WC_FREE(a, p)      (wc_free((a), (p), sizeof(*(p)), alignof(__typeof__(*(p)))))
+#define WC_FREE_N(a, p, n) (wc_free((a), (p), wc_mul((n), sizeof(*(p))), alignof(__typeof__(*(p)))))
 
 
 #endif // WC_ALLOCATOR_H
@@ -254,22 +260,26 @@ static inline size_t wc_align_for_size(size_t elm_size)
 /*
  * DIAGNOSTICS
  *
- * Every macro below is an EXPRESSION of type void (no do { } while (0)), so
- * it composes anywhere: statements, comma expressions, ({ }) blocks, ?:.
- *
  *   SURVIVES EVERY BUILD (Debug and Release)
  *     FATAL(fmt, ...)                 abort with a message
+ *
  *     FATAL_IF(cond, fmt, ...)        abort if cond is TRUE. Absolute failures
  *                                     only: allocation failed, mutation of a
  *                                     zeroed (moved-from/destroyed) container.
+ *
  *     WARN(fmt, ...)                  print a warning to stderr, continue
+ *
  *     WARN_IF(cond, fmt, ...)         warn if cond is TRUE, continue
+ *
  *     WARN_IF_RET(cond, ret, fmt, ...) warn and `return ret` if cond is TRUE
- *                                     (GNU statement expression: it can return)
- *     LOG(fmt, ...)                   print to stdout
+ *                                     (GNU statement expression can return)
+ *
+ *     LOG(fmt, ...)                   print to stderr
+ *
  *     LOG_IF(cond, fmt, ...)          log if cond is TRUE
  *
  *   STRIPPED UNDER NDEBUG (Release)
+ *
  *     WC_ASSERT(cond, fmt, ...)       abort if cond is FALSE. cond is the
  *                                     INVARIANT (`i < size`), not the failure.
  *                                     For programmer errors: bounds, API misuse.
@@ -278,7 +288,7 @@ static inline size_t wc_align_for_size(size_t elm_size)
  *
  * The rule: if continuing past the failure would corrupt memory even in a
  * correct program (an allocator returned NULL), use FATAL_IF. If the failure
- * means the CALLER has a bug, use WC_ASSERT. Never WC_ASSERT an allocation.
+ * means the CALLER has a bug, use WC_ASSERT
  *
  * Branch prediction: failure paths are WC_UNLIKELY, and the reporters are
  * `cold, noinline` functions defined once in wc_errno.c. The compiler moves
@@ -291,6 +301,14 @@ static inline size_t wc_align_for_size(size_t elm_size)
 
 __attribute__((cold, noinline, noreturn, format(printf, 4, 5))) void
 wc_fatal_report(const char* file, int line, const char* func, const char* fmt, ...);
+
+/* Fatal handler. Every FATAL / FATAL_IF formats its message and calls the
+ * installed handler. The handler must not return: abort, exit, or longjmp out
+ * (tests can verify that something FATALs). If it does return, the program
+ * exits. NULL restores the default (print to stderr, exit(EXIT_FAILURE)).
+ * Returns the previous handler. Set it once at startup: it is not thread-local. */
+typedef void (*wc_fatal_fn)(const char* file, int line, const char* func, const char* msg);
+wc_fatal_fn wc_set_fatal_handler(wc_fatal_fn fn);
 
 __attribute__((cold, noinline, format(printf, 4, 5))) void wc_warn_report(const char* file, int line, const char* func,
                                                                           const char* fmt, ...);
@@ -315,8 +333,9 @@ __attribute__((cold, noinline, format(printf, 4, 5))) void wc_warn_report(const 
         (void)0;                                      \
     })
 
-
-#define LOG(fmt, ...) ((void)printf(WC_COLOR_CYAN "[LOG] %s(): " fmt "\n" WC_COLOR_RESET, __func__, ##__VA_ARGS__))
+// stderr, like WARN/FATAL: diagnostics never mix into program output.
+#define LOG(fmt, ...) \
+    ((void)fprintf(stderr, WC_COLOR_CYAN "[LOG] %s(): " fmt "\n" WC_COLOR_RESET, __func__, ##__VA_ARGS__))
 
 #define LOG_IF(cond, fmt, ...) ((void)((cond) && (LOG(fmt, ##__VA_ARGS__), 0)))
 
@@ -334,7 +353,9 @@ __attribute__((cold, noinline, format(printf, 4, 5))) void wc_warn_report(const 
 #endif
 
 
-// token pasting that expands its arguments first (for __COUNTER__/__LINE__ names)
+// Token pasting that expands its arguments first. `a##b` pastes BEFORE expansion,
+// so WC_CAT_(x, __LINE__) gives `x__LINE__`; the extra level expands __LINE__ to
+// 42 first and then pastes, giving `x42`. Used for __COUNTER__/__LINE__ names.
 #define WC_CAT_(a, b) a##b
 #define WC_CAT(a, b)  WC_CAT_(a, b)
 
@@ -345,36 +366,48 @@ __attribute__((cold, noinline, format(printf, 4, 5))) void wc_warn_report(const 
 #include <stdint.h>
 
 typedef uint8_t  u8;
-typedef uint8_t  b8;
 typedef uint16_t u16;
 typedef uint32_t u32;
 typedef uint64_t u64;
 
+typedef int8_t  i8;
+typedef int16_t i16;
+typedef int32_t i32;
+typedef int64_t i64;
+
+// we are using unsigned indices/sizes
 #define WC_NOT_FOUND ((u64) - 1)
 
 
 // GENERIC FUNCTIONS
 
 
+/* ELEMENT OPS
+ *
+ * Memory rule B5: every element is TRIVIALLY RELOCATABLE. A container may move
+ * an element to another address with a raw memcpy (growth, insert/remove shifts,
+ * hash table shuffles, queue compaction, taking an element out) and never asks
+ * the element first. A type that holds a pointer to itself, or that something
+ * outside points into, cannot be stored by value: store it by pointer.
+ *
+ */
+
 // Deep-copy `src` INTO `dest`, allocating any owned resources from `dst`.
-// `dest` is uninitialised raw slot memory (plan 3.3).
-typedef void (*wc_copy_fn)(wc_allocator dst, void* dest, const void* src);
-// Transfer ownership: `dest` takes over everything `src` owned; `src` is left
-// ZEROED (safe to destroy, not usable). Containers do memcpy + zero when NULL.
-typedef void (*wc_move_fn)(void* dest, void* src);
+// `dest` is uninitialised raw slot memory: never read or free it (B3).
+// Called ONLY when both sides keep the value (B8).
+typedef void (*wc_copy_fn)(const wc_allocator* dst, void* dest, const void* src);
 // Release owned resources of the element (not the slot). Elements that own
-// memory store their own allocator, so no allocator argument is needed.
+// memory store their own allocator, so no allocator argument is needed (B2).
 typedef void (*wc_delete_fn)(void* elm);
 typedef void (*wc_print_fn)(const void* elm);
 typedef int (*wc_compare_fn)(const void* a, const void* b, u64 size);
 
 
-// Vtable: one instance shared across all vectors of the same type.
-// Pass NULL for any callback not needed.
-// For POD types, pass NULL for the whole ops pointer.
+// vtable: one instance shared across all objects of the same type.
+// Pass NULL for any callback not needed (no copy_fn: copies are memcpy;
+// no del_fn: nothing is freed per element). For plain data pass NULL ops.
 typedef struct {
     wc_copy_fn   copy_fn; // Deep copy function for owned resources (or NULL)
-    wc_move_fn   move_fn; // Transfer ownership and null original (or NULL)
     wc_delete_fn del_fn;  // Cleanup function for owned resources (or NULL)
 } wc_container_ops;
 
@@ -383,13 +416,12 @@ typedef struct {
 //   GenVec* v = WC_BOX_IN(A, GenVec, GenVec_create, 8, sizeof(int), NULL);
 // Invariant: the shell comes from the same allocator the child stores, so a
 // by-pointer delete can free the shell with the child's own allocator.
-#define WC_BOX_IN(A, T, init_fn, ...)                                  \
-    ({                                                                 \
-        wc_allocator _wbx_a = (A);                                     \
-        T*           _wbx_p = wc_alloc(_wbx_a, sizeof(T), alignof(T)); \
-        FATAL_IF(!_wbx_p, "WC_BOX_IN(" #T "): allocation failed");     \
-        *_wbx_p = init_fn(_wbx_a, __VA_ARGS__);                        \
-        _wbx_p;                                                        \
+#define WC_BOX_IN(A, T, init_fn, ...)                              \
+    ({                                                             \
+        T* _wbx_p = wc_alloc(A, sizeof(T), alignof(T));            \
+        FATAL_IF(!_wbx_p, "WC_BOX_IN(" #T "): allocation failed"); \
+        *_wbx_p = init_fn(A, __VA_ARGS__);                         \
+        _wbx_p;                                                    \
     })
 
 
@@ -474,7 +506,6 @@ static inline void wc_print_cstr(const void* elm)
 
 
 /* wc_errno.h — Error reporting for WCtoolkit
- * ============================================
  *
  * Three tiers:
  *
@@ -604,7 +635,6 @@ static inline void wc_perror(const char* prefix)
 
 
 
-
 /*          TLDR
  * GenVec is a value-based generic vector.
  * Elements are stored inline and managed via user-supplied
@@ -612,7 +642,7 @@ static inline void wc_perror(const char* prefix)
  *
  * The vector is a VALUE: create returns it, destroy never frees the struct.
  * It stores the allocator it was created with and uses it for every
- * allocation, reallocation and free (plan 3.3).
+ * allocation, reallocation and free
  *
  *   GenVec v = GenVec_create(WC_LIBC, 8, sizeof(int), NULL);        // libc
  *   GenVec w = GenVec_create(Arena_allocator(&arena), 8, sizeof(int), NULL);
@@ -622,16 +652,26 @@ static inline void wc_perror(const char* prefix)
  * Moves take a pointer to the source ELEMENT and leave it zeroed:
  *   String s = ...;  GenVec_push_move(&v, &s);                 // s is zeroed
  *
+ * Taking an element out (pop, remove, swap_pop) MOVES it into `out`: no copy,
+ * no allocation, and the vector forgets the slot (memory rule B7). The value
+ * keeps the vector's allocator (B9). With out == NULL the element is deleted.
+ *
+ * Input aliasing (D4): the element passed to push/insert/replace must not live
+ * inside this vector's own buffer (growth would free it before the copy).
+ * Debug builds check this.
+ *
  * Zero state: a zeroed GenVec (moved-from or destroyed) may only be destroyed
- * or re-created. Growing or inserting into it is a FATAL in every build (D4).
+ * or re-created. Growing or inserting into it is a FATAL in every build
  */
 
 
 // GenVec growth settings
 
-#ifndef GENVEC_GROWTH
-#define GENVEC_GROWTH 1.5F // vec capacity multiplier
+#ifndef GENVEC_MIN_CAPACITY
+#define GENVEC_MIN_CAPACITY 8
 #endif
+
+// TODO: genvec growth as a compile time option?
 
 
 // generic vector container
@@ -641,24 +681,26 @@ typedef struct {
     // Pointer to shared type-ops vtable (or NULL for POD types)
     const wc_container_ops* ops;
 
+    const wc_allocator* alloc; // every data allocation goes through this
+
     u64 size;     // Number of elements currently in vector
     u64 capacity; // Total allocated capacity (in elements)
 
-    wc_allocator alloc; // every data allocation goes through this (16 B, by value)
 
     u32 data_size; // Size of each element in bytes (0 = zero state)
 
     // Cache: 1 if ops==NULL (POD fast path)
-    b8 is_pod;
+    bool is_pod;
 } GenVec;
 
-// 8 8 8 8 16 4 1 '3'  = 56 bytes
-_Static_assert(sizeof(GenVec) == 56, "GenVec layout drifted from expected 56 bytes");
+
+
+// 8 8 8 8 8 4 1 '3'  = 48 bytes
+_Static_assert(sizeof(GenVec) == 48, "GenVec layout drifted from expected 48 bytes");
 
 
 // Convenience: access ops callbacks safely
 #define VEC_COPY_FN(vec) ((vec)->ops ? (vec)->ops->copy_fn : NULL)
-#define VEC_MOVE_FN(vec) ((vec)->ops ? (vec)->ops->move_fn : NULL)
 #define VEC_DEL_FN(vec)  ((vec)->ops ? (vec)->ops->del_fn : NULL)
 
 
@@ -668,15 +710,15 @@ _Static_assert(sizeof(GenVec) == 56, "GenVec layout drifted from expected 56 byt
 
 // Vector with capacity n, storage from `alloc`.
 // ops: pointer to a shared wc_container_ops vtable, or NULL for POD types.
-GenVec GenVec_create(wc_allocator alloc, u64 n, u32 data_size, const wc_container_ops* ops)
-    __attribute__((warn_unused_result));
+GenVec GenVec_create(const wc_allocator* alloc, u64 n, u32 data_size, const wc_container_ops* ops)
+    __attribute__((nonnull(1), warn_unused_result));
 
 // Vector of size n with every element a copy of val.
-GenVec GenVec_create_val(wc_allocator alloc, u64 n, const void* val, u32 data_size, const wc_container_ops* ops)
-    __attribute__((nonnull(3), warn_unused_result));
+GenVec GenVec_create_val(const wc_allocator* alloc, u64 n, const void* val, u32 data_size, const wc_container_ops* ops)
+    __attribute__((nonnull(1, 3), warn_unused_result));
 
 // Vector over caller-owned storage of n elements (size 0, capacity n).
-// Uses wc_borrowed: it can never grow (growth is a FATAL) and destroy frees nothing.
+// Uses WC_BORROWED: it can never grow (growth is a FATAL) and destroy frees nothing.
 GenVec GenVec_create_buf(void* buf, u64 n, u32 data_size, const wc_container_ops* ops)
     __attribute__((nonnull(1), warn_unused_result));
 
@@ -710,18 +752,18 @@ void GenVec_push(GenVec* vec, const void* data) __attribute__((nonnull(1, 2)));
 // Append element to end, transfer ownership: *data is moved in and zeroed.
 void GenVec_push_move(GenVec* vec, void* data) __attribute__((nonnull(1, 2)));
 
-// Remove element from end. If popped is provided, copies element before deletion
-// (owned resources of the copy come from the vector's allocator).
-// Note: del_fn is called regardless to clean up owned resources.
+// Remove the last element. popped != NULL: the element is MOVED into it and the
+// caller owns it. popped == NULL: the element is deleted.
 void GenVec_pop(GenVec* vec, void* popped) __attribute__((nonnull(1)));
 
-// If order doesn't matter, O(1) deletion from middle
+// O(1) removal from the middle when order doesn't matter: element i is moved
+// into out (or deleted if out == NULL), the last element takes its place.
 void GenVec_swap_pop(GenVec* vec, u64 i, void* out) __attribute__((nonnull(1)));
 
-// swap element at i with element at j
+// Swap elements i and j in place. Never allocates.
 void GenVec_swap(GenVec* vec, u64 i, u64 j) __attribute__((nonnull(1)));
 
-// Copy element at index i into out buffer.
+// Deep COPY of element i into out (the vector keeps its own).
 void GenVec_get(const GenVec* vec, u64 i, void* out) __attribute__((nonnull(1, 3)));
 
 // Get pointer to element at index i.
@@ -732,10 +774,13 @@ const void* GenVec_get_ptr(const GenVec* vec, u64 i) __attribute__((nonnull(1)))
 // Note: Pointer invalidated by push/insert/remove operations.
 void* GenVec_get_ptr_mut(GenVec* vec, u64 i) __attribute__((nonnull(1)));
 
-// UNCHECKED variants: same as above but with the bounds WC_ASSERT elided.
-// Preconditions are NOT validated: caller must guarantee i < vec->size.
+// UNCHECKED variants: same as above but with the bounds WC_ASSERT elided, even in
+// Debug. Preconditions are NOT validated: caller must guarantee i < vec->size.
 // Use on hot paths where the check is provably redundant (macros, internal loops).
-const void* GenVec_get_ptr_unsafe(const GenVec* vec, u64 i) __attribute__((nonnull(1)));
+static inline __attribute__((nonnull(1))) const void* GenVec_get_ptr_unsafe(const GenVec* vec, u64 i)
+{
+    return (vec->data + (i * vec->data_size));
+}
 
 static inline __attribute__((nonnull(1))) void* GenVec_get_ptr_mut_unsafe(GenVec* vec, u64 i)
 {
@@ -760,7 +805,8 @@ void GenVec_insert_multi(GenVec* vec, u64 i, const void* data, u64 num_data) __a
 // Insert (move) num_data contiguous elements from data at index i; the source range is zeroed.
 void GenVec_insert_multi_move(GenVec* vec, u64 i, void* data, u64 num_data) __attribute__((nonnull(1, 3)));
 
-// Remove element at index i, optionally copy to out, shift elements left.
+// Remove element at index i, shift elements left. out != NULL: the element is
+// MOVED into it. out == NULL: the element is deleted.
 void GenVec_remove(GenVec* vec, u64 i, void* out) __attribute__((nonnull(1)));
 
 // Remove elements in range [start, start + len)
@@ -779,8 +825,8 @@ const void* GenVec_back(const GenVec* vec) __attribute__((nonnull(1)));
 u64 GenVec_find(const GenVec* vec, void* elm, wc_compare_fn cmp_fn) __attribute__((nonnull(1, 2)));
 
 // New vector (storage from `alloc`) holding deep copies of [start, start + len).
-GenVec GenVec_subarr(const GenVec* vec, wc_allocator alloc, u64 start, u64 len)
-    __attribute__((nonnull(1), warn_unused_result));
+GenVec GenVec_subarr(const GenVec* vec, const wc_allocator* alloc, u64 start, u64 len)
+    __attribute__((nonnull(1, 2), warn_unused_result));
 
 
 // Utility
@@ -790,8 +836,10 @@ GenVec GenVec_subarr(const GenVec* vec, wc_allocator alloc, u64 start, u64 len)
 void GenVec_print(const GenVec* vec, wc_print_fn fn) __attribute__((nonnull(1, 2)));
 
 // Deep copy of src whose storage (and every element's owned resources, via
-// copy_fn) comes from `alloc`. Never inherits src's allocator (A7).
-GenVec GenVec_copy(wc_allocator alloc, const GenVec* src) __attribute__((nonnull(2), warn_unused_result));
+// copy_fn) comes from `alloc`. Never inherits src's allocator (A14).
+// Capacity is max(size, GENVEC_MIN_CAPACITY), or 0 for an empty src: a copy
+// does not carry the source's slack (F5).
+GenVec GenVec_copy(const wc_allocator* alloc, const GenVec* src) __attribute__((nonnull(1, 2), warn_unused_result));
 
 // Transfer everything from src to dest; src is left zeroed.
 // dest must be uninitialised or destroyed (its old contents are overwritten, not freed).
@@ -811,7 +859,7 @@ static inline __attribute__((nonnull(1))) u64 GenVec_capacity(const GenVec* vec)
 }
 
 // Check if vector is empty
-static inline __attribute__((nonnull(1))) b8 GenVec_empty(const GenVec* vec)
+static inline __attribute__((nonnull(1))) bool GenVec_empty(const GenVec* vec)
 {
     return vec->size == 0;
 }
@@ -828,6 +876,9 @@ static inline __attribute__((nonnull(1))) b8 GenVec_empty(const GenVec* vec)
 
 
 
+#include <stdint.h>
+#include <string.h>
+
 
 #ifndef STRING_GROWTH
 #define STRING_GROWTH 1.5F // capacity multiplier on grow
@@ -836,45 +887,57 @@ static inline __attribute__((nonnull(1))) b8 GenVec_empty(const GenVec* vec)
 // SSO inline buffer size (bytes).  Last byte is the mode flag:
 //   nonzero = SSO mode (the string lives in stk[]).
 //   '\0'    = heap mode (the string lives in heap).
-// Usable SSO bytes = STR_SSO_SIZE - 1 = 31.
-#define STR_SSO_SIZE 32
-
+// Usable SSO bytes = STR_SSO_SIZE - 1 = 23.
+#define STR_SSO_SIZE 24
 
 typedef struct {
     union {
         char* heap;
         char  stk[STR_SSO_SIZE];
     };
-    u64          size;
-    u64          capacity;
-    wc_allocator alloc;
+    u64           size;
+    u64           capacity;
+    const wc_allocator* alloc;
 } String;
 
-_Static_assert(sizeof(String) == 64, "String must be 64 bytes");
 
+_Static_assert(sizeof(String) == 48, "String must be 48 bytes");
 
 
 //  Construction / Destruction
 
 // Create an empty String using allocator `a`.
-String String_create(wc_allocator a) __attribute__((warn_unused_result));
+String String_create(const wc_allocator* a) __attribute__((nonnull(1), warn_unused_result));
 
 // Create a String from a C string using allocator `a`.
-String String_from_cstr(wc_allocator a, const char* cstr) __attribute__((warn_unused_result));
+String String_from_cstr(const wc_allocator* a, const char* cstr) __attribute__((nonnull(1), warn_unused_result));
 
-// Create a deep copy of `other` into allocator `a`.
-String String_from_String(wc_allocator a, const String* other) __attribute__((nonnull(2), warn_unused_result));
-
-// Destroy the String's internal buffer (does NOT free the String struct).
+// Destroy the String's internal buffer
 // Safe on a zeroed/moved-from String.
 void String_destroy(String* str) __attribute__((nonnull(1)));
 
 // Deep copy src → new String in allocator `a`.
 // dest is raw/uninitialized: never reads it before writing.
-String String_copy(wc_allocator a, const String* src) __attribute__((nonnull(2), warn_unused_result));
+String String_copy(const wc_allocator* a, const String* src) __attribute__((nonnull(1, 2), warn_unused_result));
 
 // Transfer ownership: dest gets src's contents, src is zeroed.
 void String_move(String* dest, String* src) __attribute__((nonnull(1, 2)));
+
+// TODO: just use a StrView for this? can we for hashmap lookup?
+// Non-owning, READ-ONLY String over `len` existing bytes: no allocation.
+// For lookups only: a String-keyed map or set hashes and compares it like an
+// owning String with the same bytes. Never store it in a container.
+// Any mutation is fatal (WC_BORROWED cannot allocate); destroy is a no-op.
+__attribute__((nonnull(1))) static inline String String_borrow(const char* p, u64 len)
+{
+    String s;
+    memset(&s, 0, sizeof(s)); // stk[STR_SSO_SIZE - 1] == 0: heap mode
+    s.heap     = (char*)(uintptr_t)p;
+    s.size     = len;
+    s.capacity = len ? len : 1; // capacity 0 is the zero state
+    s.alloc    = WC_BORROWED;
+    return s;
+}
 
 
 //  Capacity
@@ -893,7 +956,7 @@ void String_shrink_to_fit(String* str) __attribute__((nonnull(1)));
 
 // Return a buffer (allocated from `a`) holding a NUL-terminated copy — caller
 // must free with wc_free(a, ptr, str->size + 1, 1).
-char* String_to_cstr(wc_allocator a, const String* str) __attribute__((nonnull(2), warn_unused_result));
+char* String_to_cstr(const wc_allocator* a, const String* str) __attribute__((nonnull(1, 2), warn_unused_result));
 
 void String_to_cstr_buf(const String* str, char* buff, u64 n) __attribute__((nonnull(1, 2)));
 
@@ -910,7 +973,8 @@ void String_ensure_null_term(String* str) __attribute__((nonnull(1)));
 void String_append_char(String* str, char c) __attribute__((nonnull(1)));
 void String_append_cstr(String* str, const char* cstr) __attribute__((nonnull(1, 2)));
 void String_append_String(String* str, const String* other) __attribute__((nonnull(1, 2)));
-// Append other then destroy it (leaves other zeroed).
+// Append other then destroy it (leaves other zeroed). When str is empty and
+// both share an allocator, str takes over other's buffer: no copy.
 void String_append_String_move(String* str, String* other) __attribute__((nonnull(1, 2)));
 
 char String_pop_char(String* str) __attribute__((nonnull(1)));
@@ -939,6 +1003,7 @@ __attribute__((nonnull(1))) static inline char String_char_at(const String* str,
     return ((str->stk[STR_SSO_SIZE - 1] != '\0') ? str->stk : str->heap)[i];
 }
 
+// UNCHECKED: no bounds check, even in Debug. Caller guarantees i < size.
 __attribute__((nonnull(1))) static inline char String_char_at_unsafe(const String* str, u64 i)
 {
     return ((str->stk[STR_SSO_SIZE - 1] != '\0') ? str->stk : str->heap)[i];
@@ -955,11 +1020,11 @@ __attribute__((nonnull(1))) static inline void String_set_char(String* str, u64 
 
 // 0 == equal, <0 == str1 < str2, >0 == str1 > str2
 int String_compare(const String* s1, const String* s2) __attribute__((nonnull(1, 2)));
-__attribute__((nonnull(1, 2))) static inline b8 String_equals(const String* s1, const String* s2)
+__attribute__((nonnull(1, 2))) static inline bool String_equals(const String* s1, const String* s2)
 {
     return String_compare(s1, s2) == 0;
 }
-b8 String_equals_cstr(const String* str, const char* cstr) __attribute__((nonnull(1, 2)));
+bool String_equals_cstr(const String* str, const char* cstr) __attribute__((nonnull(1, 2)));
 
 
 //  Search
@@ -969,8 +1034,8 @@ u64 String_find_char(const String* str, char c) __attribute__((nonnull(1)));
 u64 String_find_cstr(const String* str, const char* substr) __attribute__((nonnull(1, 2)));
 
 // Return a String (in allocator `a`) holding `length` chars starting at `start`.
-String String_substr(wc_allocator a, const String* str, u64 start, u64 length)
-    __attribute__((nonnull(2), warn_unused_result));
+String String_substr(const wc_allocator* a, const String* str, u64 start, u64 length)
+    __attribute__((nonnull(1, 2), warn_unused_result));
 
 
 //  I/O
@@ -990,23 +1055,22 @@ __attribute__((nonnull(1))) static inline u64 String_capacity(const String* str)
     return str->capacity;
 }
 
-__attribute__((nonnull(1))) static inline b8 String_empty(const String* str)
+__attribute__((nonnull(1))) static inline bool String_empty(const String* str)
 {
     return str->size == 0;
 }
 
-__attribute__((nonnull(1))) static inline b8 String_is_sso(const String* str)
+__attribute__((nonnull(1))) static inline bool String_is_sso(const String* str)
 {
     return str->stk[STR_SSO_SIZE - 1] != '\0';
 }
 
 // Read-only pointer into the buffer. Unlike String_data_ptr, this never
-// returns NULL for an empty String. It's meant to be used AFTER
-// String_ensure_null_term, where index 0 is guaranteed to hold at least a '\0',
-// even when size == 0. Calling this without a prior String_ensure_null_term on
-// a fresh/empty String reads uninitialised memory.
-__attribute__((nonnull(1))) static inline const char* String_cstr_view(const String* str)
+// returns NULL for an empty String. Internally, it uses String_ensure_null_term(),
+// which places a '\0' right after the last valid char without touching the size of the string.
+__attribute__((nonnull(1))) static inline const char* String_cstr_view(String* str)
 {
+    String_ensure_null_term(str);
     return String_is_sso(str) ? str->stk : str->heap;
 }
 
@@ -1019,7 +1083,7 @@ __attribute__((nonnull(1))) static inline const char* String_cstr_view(const Str
 #define HELPERS_H
 
 /*
- * wc_helpers.h — Generic container callbacks and typed macros for WCtoolkit
+ * wc_helpers.h: Generic container callbacks and typed macros for WCtoolkit
  * =======================================================================
  *
  * ALL functions are static inline to avoid multiple-definition linker
@@ -1033,19 +1097,14 @@ __attribute__((nonnull(1))) static inline const char* String_cstr_view(const Str
  *   4.  GenVec by pointer (sizeof(GenVec*) per slot)
  *   5.  Shared ops instances (define once, reference everywhere)
  *
- * RULES FOR WRITING copy/move/del CALLBACKS
- * ------------------------------------------
+ * RULES FOR WRITING copy/del CALLBACKS
+ * -------------------------------------
  *
  * BY VALUE  (slot holds the full struct, sizeof(T) bytes)
- *   copy_fn(wc_allocator dst, void* dest, const void* src)
+ *   copy_fn(const wc_allocator* dst, void* dest, const void* src)
  *     dest  — raw bytes of the slot (uninitialised — treat as blank)
  *     job   — deep-copy src into dest, allocating owned resources from `dst`
  *             (the container's allocator). DO NOT free dest first.
- *
- *   move_fn(void* dest, void* src)
- *     job   — dest takes over everything src owned; leave src ZEROED.
- *             For plain structs this is memcpy + memset(0), which is also
- *             what containers do when move_fn is NULL.
  *
  *   del_fn(void* elm)
  *     job   — free owned resources (with the element's OWN stored allocator)
@@ -1053,39 +1112,30 @@ __attribute__((nonnull(1))) static inline const char* String_cstr_view(const Str
  *
  * BY POINTER  (slot holds T*, sizeof(T*) = 8 bytes)
  *   copy_fn: *(T**)dest = a new shell from `dst` holding a deep copy (WC_BOX_IN)
- *   move_fn: *(T**)dest = *(T**)src;  *(T**)src = NULL;
  *   del_fn : destroy the pointee, then free the shell with the pointee's own
- *            allocator (shell allocator == child allocator, plan D6)
+ *            allocator (shell allocator == child allocator, rule B12)
  */
 
 
 
 
+
+#include <stdalign.h>
 #include <stdio.h>
-#include <string.h>
 
 
 
-/* ══════════════════════════════════════════════════════════════════════════
+/* 
  * 1.  STRING BY VALUE
  *
- * String stores its own allocator since Phase 4.
+ * String stores its own allocator.
  * str_copy  — copies using dst allocator (so a String follows its outer container)
- * str_move  — memcpy the struct, zero the source
  * str_del   — delegates to String_destroy() (frees heap buf via str->alloc, NOT the slot)
- * ══════════════════════════════════════════════════════════════════════════ */
+*/
 
-static inline void str_copy(wc_allocator dst, void* dest, const void* src)
+static inline void str_copy(const wc_allocator* dst, void* dest, const void* src)
 {
     *(String*)dest = String_copy(dst, (const String*)src);
-}
-
-static inline void str_move(void* dest, void* src)
-{
-    // Works for both SSO (copies stk[]) and heap mode (the heap pointer moves).
-    // A zeroed String reads as heap mode with heap == NULL: destroy-safe.
-    memcpy(dest, src, sizeof(String));
-    memset(src, 0, sizeof(String));
 }
 
 static inline void str_del(void* elm)
@@ -1099,24 +1149,17 @@ static inline void str_print(const void* elm)
 }
 
 
-/* ══════════════════════════════════════════════════════════════════════════
+/*
  * 2.  STRING BY POINTER
  *
  * str_copy_ptr — box a deep copy in allocator `dst` (shell + contents from dst)
- * str_move_ptr — pointer swap, nulls source
  * str_del_ptr  — destroy pointee via its own allocator, then free shell
- * ══════════════════════════════════════════════════════════════════════════ */
+*/
 
-static inline void str_copy_ptr(wc_allocator dst, void* dest, const void* src)
+static inline void str_copy_ptr(const wc_allocator* dst, void* dest, const void* src)
 {
-    // Box a deep copy: shell and contents both from dst (D6)
+    // Box a deep copy: shell and contents both from dst
     *(String**)dest = (String*)WC_BOX_IN(dst, String, String_copy, *(const String* const*)src);
-}
-
-static inline void str_move_ptr(void* dest, void* src)
-{
-    *(String**)dest = *(String**)src;
-    *(String**)src  = NULL;
 }
 
 static inline void str_del_ptr(void* elm)
@@ -1126,7 +1169,7 @@ static inline void str_del_ptr(void* elm)
         return;
     }
     // Read allocator before destroy zeroes the struct
-    wc_allocator a = s->alloc;
+    const wc_allocator* a = s->alloc;
     String_destroy(s);                              // free heap buffer via s->alloc
     wc_free(a, s, sizeof(String), alignof(String)); // free the shell
 }
@@ -1149,18 +1192,13 @@ static inline int str_cmp_ptr(const void* a, const void* b, u64 size)
 }
 
 
-/* ══════════════════════════════════════════════════════════════════════════
+/*
  * 3.  GENVEC BY VALUE  (vec of vecs)
- * ══════════════════════════════════════════════════════════════════════════ */
+*/ 
 
-static inline void vec_copy(wc_allocator dst, void* dest, const void* src)
+static inline void vec_copy(const wc_allocator* dst, void* dest, const void* src)
 {
     *(GenVec*)dest = GenVec_copy(dst, (const GenVec*)src); // inner vec follows the outer container
-}
-
-static inline void vec_move(void* dest, void* src)
-{
-    GenVec_move((GenVec*)dest, (GenVec*)src); // memcpy + zero src
 }
 
 static inline void vec_del(void* elm)
@@ -1182,20 +1220,14 @@ static inline void vec_print_int(const void* elm)
 }
 
 
-/* ══════════════════════════════════════════════════════════════════════════
+/*
  * 4.  GENVEC BY POINTER  (slot holds GenVec*)
- * ══════════════════════════════════════════════════════════════════════════ */
+*/
 
-static inline void vec_copy_ptr(wc_allocator dst, void* dest, const void* src)
+static inline void vec_copy_ptr(const wc_allocator* dst, void* dest, const void* src)
 {
     // shell and contents both from dst: the shell allocator equals the child's (D6)
     *(GenVec**)dest = WC_BOX_IN(dst, GenVec, GenVec_copy, *(const GenVec* const*)src);
-}
-
-static inline void vec_move_ptr(void* dest, void* src)
-{
-    *(GenVec**)dest = *(GenVec**)src;
-    *(GenVec**)src  = NULL;
 }
 
 static inline void vec_del_ptr(void* elm)
@@ -1204,7 +1236,7 @@ static inline void vec_del_ptr(void* elm)
     if (!v) {
         return;
     }
-    wc_allocator a = v->alloc; // read before destroy zeroes it
+    const wc_allocator* a = v->alloc; // read before destroy zeroes it
     GenVec_destroy(v);
     wc_free(a, v, sizeof(GenVec), alignof(GenVec));
 }
@@ -1215,7 +1247,7 @@ static inline void vec_print_int_ptr(const void* elm)
 }
 
 
-/* ══════════════════════════════════════════════════════════════════════════
+/*
  * 5.  SHARED OPS INSTANCES
  *
  * Define once here as static const. Reference by address wherever needed.
@@ -1224,15 +1256,13 @@ static inline void vec_print_int_ptr(const void* elm)
  * Usage:
  *   GenVec v = GenVec_create(WC_LIBC, 8, sizeof(String), &wc_str_ops);
  *   HashMap m = HashMap_create(WC_LIBC, ..., &wc_str_ops, &wc_str_ops);
- * ══════════════════════════════════════════════════════════════════════════ */
+*/
 
-static const wc_container_ops wc_str_ops     = {str_copy, str_move, str_del};
-static const wc_container_ops wc_str_ptr_ops = {str_copy_ptr, str_move_ptr, str_del_ptr};
-static const wc_container_ops wc_vec_ops     = {vec_copy, vec_move, vec_del};
-static const wc_container_ops wc_vec_ptr_ops = {vec_copy_ptr, vec_move_ptr, vec_del_ptr};
+static const wc_container_ops wc_str_ops     = {.copy_fn = str_copy, .del_fn = str_del};
+static const wc_container_ops wc_str_ptr_ops = {.copy_fn = str_copy_ptr, .del_fn = str_del_ptr};
+static const wc_container_ops wc_vec_ops     = {.copy_fn = vec_copy, .del_fn = vec_del};
+static const wc_container_ops wc_vec_ptr_ops = {.copy_fn = vec_copy_ptr, .del_fn = vec_del_ptr};
 
-// NOTE: sizeof(String) == 64, sizeof(GenVec) == 56 (D9 detail):
-// the old _Static_assert(sizeof(String) == sizeof(GenVec)) is intentionally removed.
 
 #endif // HELPERS_H
 
@@ -1247,7 +1277,12 @@ static const wc_container_ops wc_vec_ptr_ops = {vec_copy_ptr, vec_move_ptr, vec_
 
 
 
-/* wc_borrowed: non-owning allocator (plan 3.2) */
+/* wc_libc: the only allocator with vt == NULL */
+
+const wc_allocator wc_libc = {.vt = NULL, .ctx = NULL};
+
+
+/* wc_borrowed: non-owning allocator */
 
 static void* wc_borrowed_alloc(void* ctx, size_t size, size_t align)
 {
@@ -1287,7 +1322,6 @@ const wc_allocator wc_borrowed = {.vt = &wc_borrowed_vt, .ctx = NULL};
 #include <stdlib.h>
 
 
-
 /* One definition of the thread-local error variable.
  * Every translation unit that includes wc_error.h sees the extern declaration.
  * This file provides the actual storage.
@@ -1299,21 +1333,34 @@ _Thread_local wc_err wc_errno = WC_OK;
  * the compiler places them, and every branch that calls them, away from hot
  * code. Both write to stderr so diagnostics never mix into program output. */
 
-// NOLINTBEGIN(clang-analyzer-valist.Uninitialized): false positive: va_start precedes vfprintf
+// The installed fatal handler; NULL means the default (print + exit).
+static wc_fatal_fn g_fatal_handler = NULL;
+
+wc_fatal_fn wc_set_fatal_handler(wc_fatal_fn fn)
+{
+    wc_fatal_fn prev = g_fatal_handler;
+    g_fatal_handler  = fn;
+    return prev;
+}
+
 void wc_fatal_report(const char* file, int line, const char* func, const char* fmt, ...)
 {
     fflush(stdout); // keep ordering with anything already printed
-    fprintf(stderr, WC_COLOR_RED "[FATAL] %s:%d:%s(): ", file, line, func);
+
+    char    msg[512];
     va_list args;
     va_start(args, fmt);
-    vfprintf(stderr, fmt, args);
+    vsnprintf(msg, sizeof(msg), fmt, args);
     va_end(args);
-    fprintf(stderr, "\n" WC_COLOR_RESET);
-    exit(EXIT_FAILURE);
-}
-// NOLINTEND(clang-analyzer-valist.Uninitialized)
 
-// NOLINTBEGIN(clang-analyzer-valist.Uninitialized): as above
+    if (g_fatal_handler) {
+        g_fatal_handler(file, line, func, msg); // must not return
+    } else {
+        fprintf(stderr, WC_COLOR_RED "[FATAL] %s:%d:%s(): %s\n" WC_COLOR_RESET, file, line, func, msg);
+    }
+    exit(EXIT_FAILURE); // default, and the backstop for a handler that returns
+}
+
 void wc_warn_report(const char* file, int line, const char* func, const char* fmt, ...)
 {
     fflush(stdout);
@@ -1324,7 +1371,6 @@ void wc_warn_report(const char* file, int line, const char* func, const char* fm
     va_end(args);
     fprintf(stderr, "\n" WC_COLOR_RESET);
 }
-// NOLINTEND(clang-analyzer-valist.Uninitialized)
 
 #endif /* WC_WC_ERRNO_IMPL */
 
@@ -1338,11 +1384,7 @@ void wc_warn_report(const char* file, int line, const char* func, const char* fm
 
 
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
-
-
-#define GENVEC_MIN_CAPACITY 4
 
 
 // MACROS
@@ -1353,7 +1395,8 @@ void wc_warn_report(const char* file, int line, const char* func, const char* fm
 #define GET_SCALED(vec, i) ((u64)(i) * ((vec)->data_size))
 
 // Growth is amortized: rare by construction, so the hint is known-correct.
-#define MAYBE_GROW(vec) ((void)(WC_UNLIKELY(!(vec)->data || (vec)->size >= (vec)->capacity) && (GenVec_grow(vec), 0)))
+#define MAYBE_GROW(vec) \
+    ((void)(WC_UNLIKELY((vec)->size >= (vec)->capacity) && (GenVec_grow_to((vec), (vec)->size + 1), 0)))
 
 // smallest safe alignment for this element size
 #define DATA_ALIGN(vec) wc_align_for_size((vec)->data_size)
@@ -1362,23 +1405,53 @@ void wc_warn_report(const char* file, int line, const char* func, const char* fm
 #define ZERO_GUARD(vec) \
     FATAL_IF((vec)->data_size == 0, "GenVec is in the zero state (moved-from or destroyed): re-create it first")
 
-// Move one element: move_fn if provided, else memcpy. The source is always left zeroed.
-static inline void move_elm(const GenVec* vec, u8* dest, u8* src)
+// D4: an input element must not live inside this vector's own storage. Growth
+// would free it before it is read. Checked over the whole capacity (Debug only).
+#define NOT_ALIASED(vec, p)                                                         \
+    WC_ASSERT(!((vec)->data && (const u8*)(p) >= (vec)->data &&                     \
+                (const u8*)(p) < (vec)->data + GET_SCALED((vec), (vec)->capacity)), \
+              "input element points into this vector's own buffer (rule D4): copy it out first")
+
+// Copy one element INTO raw slot memory: copy_fn if any, else memcpy
+static inline void vec_copy_into(const GenVec* vec, u8* dest, const void* src)
 {
-    wc_move_fn move = vec->is_pod ? NULL : VEC_MOVE_FN(vec);
-    if (move) {
-        move(dest, src);
+    wc_copy_fn copy = vec->is_pod ? NULL : VEC_COPY_FN(vec);
+    if (copy) {
+        copy(vec->alloc, dest, src);
     } else {
         memcpy(dest, src, vec->data_size);
     }
+}
+
+// Move one element (always memcpy). The source is left zeroed.
+static inline void vec_move_into(const GenVec* vec, u8* dest, void* src)
+{
+    memcpy(dest, src, vec->data_size);
     memset(src, 0, vec->data_size);
 }
 
+// Delete `n` elements starting at `p`.
+static inline void vec_delete_range(const GenVec* vec, u8* p, u64 n)
+{
+    wc_delete_fn del = vec->is_pod ? NULL : VEC_DEL_FN(vec);
+    if (del) {
+        for (u64 i = 0; i < n; i++) {
+            del(p + GET_SCALED(vec, i));
+        }
+    }
+}
 
-// ops accessors (safe when ops is NULL)
-#define COPY_FN(vec) VEC_COPY_FN(vec)
-#define MOVE_FN(vec) VEC_MOVE_FN(vec)
-#define DEL_FN(vec)  VEC_DEL_FN(vec)
+// Take element at `slot` out: moved into `out`, or deleted when out == NULL (B7).
+// The slot itself is left as garbage: callers drop it from the live range.
+static inline void vec_take_out(const GenVec* vec, u8* slot, void* out)
+{
+    if (out) {
+        memcpy(out, slot, vec->data_size);
+    } else {
+        vec_delete_range(vec, slot, 1);
+    }
+}
+
 
 #define IS_POD(vec)   ((vec)->is_pod) // cached at init
 #define CALC_POD(ops) ((ops) == NULL) // derive from ops. ONLY valid at init time
@@ -1386,7 +1459,7 @@ static inline void move_elm(const GenVec* vec, u8* dest, u8* src)
 
 // private functions
 
-static void GenVec_grow(GenVec* vec);
+static void GenVec_grow_to(GenVec* vec, u64 needed);
 
 
 // API Implementation
@@ -1402,7 +1475,7 @@ static void GenVec_grow(GenVec* vec);
     })
 
 
-GenVec GenVec_create(wc_allocator alloc, u64 n, u32 data_size, const wc_container_ops* ops)
+GenVec GenVec_create(const wc_allocator* alloc, u64 n, u32 data_size, const wc_container_ops* ops)
 {
     FATAL_IF(data_size == 0, "GenVec: data_size can't be 0");
 
@@ -1418,28 +1491,27 @@ GenVec GenVec_create(wc_allocator alloc, u64 n, u32 data_size, const wc_containe
 }
 
 
-GenVec GenVec_create_val(wc_allocator alloc, u64 n, const void* val, u32 data_size, const wc_container_ops* ops)
+GenVec GenVec_create_val(const wc_allocator* alloc, u64 n, const void* val, u32 data_size, const wc_container_ops* ops)
 {
     WC_ASSERT(n != 0, "cant init with val if n = 0");
 
-    GenVec  v   = GenVec_create(alloc, n, data_size, ops);
-    GenVec* vec = &v;
+    GenVec v = GenVec_create(alloc, n, data_size, ops);
 
-    if (vec->is_pod) {
-        for (u64 i = 0; i < n; i++) {
-            memcpy(GET_PTR(vec, i), val, data_size);
+    if (v.is_pod || !VEC_COPY_FN(&v)) {
+        // First element by copy, then double the filled prefix: O(log n) memcpy calls of
+        // growing length instead of n calls of runtime length.
+        memcpy(v.data, val, data_size);
+        for (u64 filled = 1; filled < n;) {
+            u64 chunk = filled < n - filled ? filled : n - filled;
+            memcpy(GET_PTR(&v, filled), v.data, chunk * data_size);
+            filled += chunk;
         }
     } else {
-        wc_copy_fn copy = VEC_COPY_FN(vec);
         for (u64 i = 0; i < n; i++) {
-            if (copy) {
-                copy(vec->alloc, GET_PTR(vec, i), val);
-            } else {
-                memcpy(GET_PTR(vec, i), val, data_size);
-            }
+            vec_copy_into(&v, GET_PTR(&v, i), val);
         }
     }
-    vec->size = n;
+    v.size = n;
 
     return v;
 }
@@ -1454,7 +1526,7 @@ GenVec GenVec_create_buf(void* buf, u64 n, u32 data_size, const wc_container_ops
         .ops       = ops,
         .size      = 0,
         .capacity  = n,
-        .alloc     = wc_borrowed,
+        .alloc     = WC_BORROWED,
         .data_size = data_size,
         .is_pod    = CALC_POD(ops),
     };
@@ -1464,46 +1536,26 @@ GenVec GenVec_create_buf(void* buf, u64 n, u32 data_size, const wc_container_ops
 void GenVec_destroy(GenVec* vec)
 {
     if (vec->data) {
-        if (!vec->is_pod) {
-            wc_delete_fn del = VEC_DEL_FN(vec);
-            if (del) {
-                for (u64 i = 0; i < vec->size; i++) {
-                    del(GET_PTR(vec, i));
-                }
-            }
-        }
-        wc_allocator a = vec->alloc; // read before zeroing
-        wc_free(a, vec->data, GET_SCALED(vec, vec->capacity), DATA_ALIGN(vec));
+        vec_delete_range(vec, vec->data, vec->size);
+        wc_free(vec->alloc, vec->data, GET_SCALED(vec, vec->capacity), DATA_ALIGN(vec));
     }
     memset(vec, 0, sizeof(*vec));
 }
 
 void GenVec_clear(GenVec* vec)
 {
-    if (!vec->is_pod) {
-        wc_delete_fn del = VEC_DEL_FN(vec);
-        if (del) {
-            for (u64 i = 0; i < vec->size; i++) {
-                del(GET_PTR(vec, i));
-            }
-        }
+    if (vec->data) {
+        vec_delete_range(vec, vec->data, vec->size);
     }
-
     vec->size = 0;
 }
 
 void GenVec_reset(GenVec* vec)
 {
-    if (!vec->is_pod) {
-        wc_delete_fn del = VEC_DEL_FN(vec);
-        if (del) {
-            for (u64 i = 0; i < vec->size; i++) {
-                del(GET_PTR(vec, i));
-            }
-        }
+    if (vec->data) {
+        vec_delete_range(vec, vec->data, vec->size);
+        wc_free(vec->alloc, vec->data, GET_SCALED(vec, vec->capacity), DATA_ALIGN(vec));
     }
-
-    wc_free(vec->alloc, vec->data, GET_SCALED(vec, vec->capacity), DATA_ALIGN(vec));
     vec->data     = NULL;
     vec->size     = 0;
     vec->capacity = 0;
@@ -1529,23 +1581,26 @@ void GenVec_reserve(GenVec* vec, u64 new_capacity)
 void GenVec_reserve_val(GenVec* vec, u64 new_capacity, const void* val)
 {
     WC_ASSERT(new_capacity >= vec->size, "new_capacity must be >= current size");
+    NOT_ALIASED(vec, val);
 
     GenVec_reserve(vec, new_capacity);
 
-    if (vec->is_pod) {
-        for (u64 i = vec->size; i < new_capacity; i++) {
-            memcpy(GET_PTR(vec, i), val, vec->data_size);
+    u64 count = new_capacity - vec->size; // elements to fill
+    if (count == 0) {
+        return;
+    }
+    if (vec->is_pod || !VEC_COPY_FN(vec)) {
+        // Plain bytes: first element by copy, then double the filled run (O(log n) memcpy calls
+        // of growing length instead of one runtime-length call per element).
+        memcpy(GET_PTR(vec, vec->size), val, vec->data_size);
+        for (u64 filled = 1; filled < count;) {
+            u64 chunk = filled < count - filled ? filled : count - filled;
+            memcpy(GET_PTR(vec, vec->size + filled), GET_PTR(vec, vec->size), chunk * vec->data_size);
+            filled += chunk;
         }
     } else {
-        wc_copy_fn copy = VEC_COPY_FN(vec);
-        if (copy) {
-            for (u64 i = vec->size; i < new_capacity; i++) {
-                copy(vec->alloc, GET_PTR(vec, i), val);
-            }
-        } else {
-            for (u64 i = vec->size; i < new_capacity; i++) {
-                memcpy(GET_PTR(vec, i), val, vec->data_size);
-            }
+        for (u64 i = vec->size; i < new_capacity; i++) {
+            vec_copy_into(vec, GET_PTR(vec, i), val);
         }
     }
     vec->size = new_capacity;
@@ -1572,26 +1627,17 @@ void GenVec_shrink_to_fit(GenVec* vec)
 
 void GenVec_push(GenVec* vec, const void* data)
 {
+    NOT_ALIASED(vec, data);
     MAYBE_GROW(vec);
-
-    if (vec->is_pod) {
-        memcpy(GET_PTR(vec, vec->size), data, vec->data_size);
-    } else {
-        wc_copy_fn copy = VEC_COPY_FN(vec);
-        if (copy) {
-            copy(vec->alloc, GET_PTR(vec, vec->size), data);
-        } else {
-            memcpy(GET_PTR(vec, vec->size), data, vec->data_size);
-        }
-    }
-
+    vec_copy_into(vec, GET_PTR(vec, vec->size), data);
     vec->size++;
 }
 
 void GenVec_push_move(GenVec* vec, void* data)
 {
+    NOT_ALIASED(vec, data);
     MAYBE_GROW(vec);
-    move_elm(vec, GET_PTR(vec, vec->size), data);
+    vec_move_into(vec, GET_PTR(vec, vec->size), data);
     vec->size++;
 }
 
@@ -1599,59 +1645,21 @@ void GenVec_pop(GenVec* vec, void* popped)
 {
     WC_SET_RET(WC_ERR_EMPTY, vec->size == 0, );
 
-    u8* last_elm = GET_PTR(vec, vec->size - 1);
-
-    if (popped) {
-        if (vec->is_pod) {
-            memcpy(popped, last_elm, vec->data_size);
-        } else {
-            wc_copy_fn copy = VEC_COPY_FN(vec);
-            if (copy) {
-                copy(vec->alloc, popped, last_elm);
-            } else {
-                memcpy(popped, last_elm, vec->data_size);
-            }
-        }
-    }
-
-    if (!vec->is_pod) {
-        wc_delete_fn del = VEC_DEL_FN(vec);
-        if (del) {
-            del(last_elm);
-        }
-    }
-
     vec->size--;
+    vec_take_out(vec, GET_PTR(vec, vec->size), popped);
 }
 
 void GenVec_swap_pop(GenVec* vec, u64 i, void* out)
 {
     WC_ASSERT(i < vec->size, "index out of bounds");
 
-    if (out) {
-        if (vec->is_pod) {
-            memcpy(out, GET_PTR(vec, i), vec->data_size);
-        } else {
-            wc_copy_fn copy = VEC_COPY_FN(vec);
-            if (copy) {
-                copy(vec->alloc, out, GET_PTR(vec, i));
-            } else {
-                memcpy(out, GET_PTR(vec, i), vec->data_size);
-            }
-        }
-    }
+    vec_take_out(vec, GET_PTR(vec, i), out);
 
-    if (!vec->is_pod) {
-        wc_delete_fn del = VEC_DEL_FN(vec);
-        if (del) {
-            del(GET_PTR(vec, i));
-        }
-    }
-
-    // swap the last container with the removed one
-    // if owns memory elsewhere, those are still valid, only container location changes
-    memcpy(GET_PTR(vec, i), GET_PTR(vec, vec->size - 1), vec->data_size);
+    // the last element takes slot i (a relocation: memcpy)
     vec->size--;
+    if (i != vec->size) {
+        memcpy(GET_PTR(vec, i), GET_PTR(vec, vec->size), vec->data_size);
+    }
 }
 
 void GenVec_swap(GenVec* vec, u64 i, u64 j)
@@ -1662,34 +1670,26 @@ void GenVec_swap(GenVec* vec, u64 i, u64 j)
         return;
     }
 
-    // we need one empty container as temp space for swap
-    MAYBE_GROW(vec);
-
-    // shallow copy of the jth container to temp space
-    memcpy(GET_PTR(vec, vec->size), GET_PTR(vec, j), vec->data_size);
-    // shallow copy into jth container
-    memcpy(GET_PTR(vec, j), GET_PTR(vec, i), vec->data_size);
-    // shallow copy from temp space into ith container
-    memcpy(GET_PTR(vec, i), GET_PTR(vec, vec->size), vec->data_size);
-
-    // temp container will be over written on next push
+    // Swap through a small stack buffer in chunks: no growth, no spare slot
+    u8* a = GET_PTR(vec, i);
+    u8* b = GET_PTR(vec, j);
+    u8  tmp[64];
+    for (u64 left = vec->data_size; left > 0;) {
+        u64 n = left < sizeof(tmp) ? left : sizeof(tmp);
+        memcpy(tmp, a, n);
+        memcpy(a, b, n);
+        memcpy(b, tmp, n);
+        a += n;
+        b += n;
+        left -= n;
+    }
 }
 
 
 void GenVec_get(const GenVec* vec, u64 i, void* out)
 {
     WC_ASSERT(i < vec->size, "index out of bounds");
-
-    if (vec->is_pod) {
-        memcpy(out, GET_PTR(vec, i), vec->data_size);
-    } else {
-        wc_copy_fn copy = VEC_COPY_FN(vec);
-        if (copy) {
-            copy(vec->alloc, out, GET_PTR(vec, i));
-        } else {
-            memcpy(out, GET_PTR(vec, i), vec->data_size);
-        }
-    }
+    vec_copy_into(vec, out, GET_PTR(vec, i));
 }
 
 const void* GenVec_get_ptr(const GenVec* vec, u64 i)
@@ -1704,73 +1704,38 @@ void* GenVec_get_ptr_mut(GenVec* vec, u64 i)
     return GET_PTR(vec, i);
 }
 
-// TODO: place this in .h, make it inline
-const void* GenVec_get_ptr_unsafe(const GenVec* vec, u64 i)
-{
-    return GET_PTR(vec, i);
-}
 
 void GenVec_replace(GenVec* vec, u64 i, const void* data)
 {
     WC_ASSERT(i < vec->size, "index out of bounds");
+    NOT_ALIASED(vec, data);
 
     u8* to_replace = GET_PTR(vec, i);
-
-    if (vec->is_pod) {
-        memcpy(to_replace, data, vec->data_size);
-    } else {
-        wc_delete_fn del = VEC_DEL_FN(vec);
-        if (del) {
-            del(to_replace);
-        }
-        wc_copy_fn copy = VEC_COPY_FN(vec);
-        if (copy) {
-            copy(vec->alloc, to_replace, data);
-        } else {
-            memcpy(to_replace, data, vec->data_size);
-        }
-    }
+    vec_delete_range(vec, to_replace, 1);
+    vec_copy_into(vec, to_replace, data);
 }
 
 void GenVec_replace_move(GenVec* vec, u64 i, void* data)
 {
     WC_ASSERT(i < vec->size, "index out of bounds");
+    NOT_ALIASED(vec, data);
 
     u8* to_replace = GET_PTR(vec, i);
-
-    if (!vec->is_pod) {
-        wc_delete_fn del = VEC_DEL_FN(vec);
-        if (del) {
-            del(to_replace);
-        }
-    }
-    move_elm(vec, to_replace, data);
+    vec_delete_range(vec, to_replace, 1);
+    vec_move_into(vec, to_replace, data);
 }
 
 
 void GenVec_insert(GenVec* vec, u64 i, const void* data)
 {
     WC_ASSERT(i <= vec->size, "index out of bounds");
-
-    u64 elements_to_shift = vec->size - i;
+    NOT_ALIASED(vec, data);
 
     MAYBE_GROW(vec);
 
-    u8* src  = GET_PTR(vec, i);
-    u8* dest = GET_PTR(vec, i + 1);
-    memmove(dest, src, GET_SCALED(vec, elements_to_shift));
-
-    if (vec->is_pod) {
-        memcpy(src, data, vec->data_size);
-    } else {
-        wc_copy_fn copy = VEC_COPY_FN(vec);
-        if (copy) {
-            copy(vec->alloc, src, data);
-        } else {
-            memcpy(src, data, vec->data_size);
-        }
-    }
-
+    u8* slot = GET_PTR(vec, i);
+    memmove(GET_PTR(vec, i + 1), slot, GET_SCALED(vec, vec->size - i));
+    vec_copy_into(vec, slot, data);
     vec->size++;
 }
 
@@ -1778,46 +1743,44 @@ void GenVec_insert(GenVec* vec, u64 i, const void* data)
 void GenVec_insert_move(GenVec* vec, u64 i, void* data)
 {
     WC_ASSERT(i <= vec->size, "index out of bounds");
-
-    u64 elements_to_shift = vec->size - i;
+    NOT_ALIASED(vec, data);
 
     MAYBE_GROW(vec);
 
-    u8* src  = GET_PTR(vec, i);
-    u8* dest = GET_PTR(vec, i + 1);
-    memmove(dest, src, GET_SCALED(vec, elements_to_shift));
-
-    move_elm(vec, src, data);
-
+    u8* slot = GET_PTR(vec, i);
+    memmove(GET_PTR(vec, i + 1), slot, GET_SCALED(vec, vec->size - i));
+    vec_move_into(vec, slot, data);
     vec->size++;
+}
+
+
+// Open a gap of `n` slots at index i (grows geometrically). Returns the gap.
+static u8* vec_open_gap(GenVec* vec, u64 i, u64 n)
+{
+    if (vec->size + n > vec->capacity) {
+        GenVec_grow_to(vec, vec->size + n);
+    }
+    u8* gap = GET_PTR(vec, i);
+    if (i < vec->size) {
+        memmove(GET_PTR(vec, i + n), gap, GET_SCALED(vec, vec->size - i));
+    }
+    vec->size += n;
+    return gap;
 }
 
 
 void GenVec_insert_multi(GenVec* vec, u64 i, const void* data, u64 num_data)
 {
     WC_ASSERT(num_data != 0 && i <= vec->size, "num_data can't be 0 / index out of bounds");
+    NOT_ALIASED(vec, data);
 
-    u64 elements_to_shift = vec->size - i;
+    u8* gap = vec_open_gap(vec, i, num_data);
 
-    vec->size += num_data;
-    GenVec_reserve(vec, vec->size);
-
-    u8* src = GET_PTR(vec, i);
-    if (elements_to_shift > 0) {
-        u8* dest = GET_PTR(vec, i + num_data);
-        memmove(dest, src, GET_SCALED(vec, elements_to_shift));
-    }
-
-    if (vec->is_pod) {
-        memcpy(src, data, GET_SCALED(vec, num_data));
+    if (vec->is_pod || !VEC_COPY_FN(vec)) {
+        memcpy(gap, data, GET_SCALED(vec, num_data));
     } else {
-        wc_copy_fn copy = VEC_COPY_FN(vec);
-        if (copy) {
-            for (u64 j = 0; j < num_data; j++) {
-                copy(vec->alloc, GET_PTR(vec, j + i), (const u8*)data + (size_t)(j * vec->data_size));
-            }
-        } else {
-            memcpy(src, data, GET_SCALED(vec, num_data));
+        for (u64 j = 0; j < num_data; j++) {
+            vec_copy_into(vec, gap + GET_SCALED(vec, j), (const u8*)data + GET_SCALED(vec, j));
         }
     }
 }
@@ -1826,21 +1789,13 @@ void GenVec_insert_multi(GenVec* vec, u64 i, const void* data, u64 num_data)
 void GenVec_insert_multi_move(GenVec* vec, u64 i, void* data, u64 num_data)
 {
     WC_ASSERT(num_data != 0 && i <= vec->size, "num_data can't be 0 / index out of bounds");
+    NOT_ALIASED(vec, data);
 
-    u64 elements_to_shift = vec->size - i;
+    u8* gap = vec_open_gap(vec, i, num_data);
 
-    GenVec_reserve(vec, vec->size + num_data);
-    vec->size += num_data;
-
-    u8* src = GET_PTR(vec, i);
-    if (elements_to_shift > 0) {
-        u8* dest = GET_PTR(vec, i + num_data);
-        memmove(dest, src, GET_SCALED(vec, elements_to_shift));
-    }
-
-    for (u64 j = 0; j < num_data; j++) {
-        move_elm(vec, GET_PTR(vec, j + i), (u8*)data + GET_SCALED(vec, j)); // u8* inside: byte offsets
-    }
+    // one block move: memcpy the whole range, then zero the source range
+    memcpy(gap, data, GET_SCALED(vec, num_data));
+    memset(data, 0, GET_SCALED(vec, num_data));
 }
 
 
@@ -1848,31 +1803,11 @@ void GenVec_remove(GenVec* vec, u64 i, void* out)
 {
     WC_ASSERT(i < vec->size, "index out of bounds");
 
-    if (out) {
-        if (vec->is_pod) {
-            memcpy(out, GET_PTR(vec, i), vec->data_size);
-        } else {
-            wc_copy_fn copy = VEC_COPY_FN(vec);
-            if (copy) {
-                copy(vec->alloc, out, GET_PTR(vec, i));
-            } else {
-                memcpy(out, GET_PTR(vec, i), vec->data_size);
-            }
-        }
-    }
-
-    if (!vec->is_pod) {
-        wc_delete_fn del = VEC_DEL_FN(vec);
-        if (del) {
-            del(GET_PTR(vec, i));
-        }
-    }
+    vec_take_out(vec, GET_PTR(vec, i), out);
 
     u64 elements_to_shift = vec->size - i - 1;
     if (elements_to_shift > 0) {
-        u8* dest = GET_PTR(vec, i);
-        u8* src  = GET_PTR(vec, i + 1);
-        memmove(dest, src, GET_SCALED(vec, elements_to_shift));
+        memmove(GET_PTR(vec, i), GET_PTR(vec, i + 1), GET_SCALED(vec, elements_to_shift));
     }
 
     vec->size--;
@@ -1890,14 +1825,7 @@ void GenVec_remove_range(GenVec* vec, u64 start, u64 len)
         len = vec->size - start;
     }
 
-    if (!vec->is_pod) {
-        wc_delete_fn del = VEC_DEL_FN(vec);
-        if (del) {
-            for (u64 i = 0; i < len; i++) {
-                del(GET_PTR(vec, start + i));
-            }
-        }
-    }
+    vec_delete_range(vec, GET_PTR(vec, start), len);
 
     u8* dest = GET_PTR(vec, start);
     u8* src  = GET_PTR(vec, start + len);
@@ -1936,7 +1864,7 @@ u64 GenVec_find(const GenVec* vec, void* elm, wc_compare_fn cmp_fn)
 }
 
 
-GenVec GenVec_subarr(const GenVec* vec, wc_allocator alloc, u64 start, u64 len)
+GenVec GenVec_subarr(const GenVec* vec, const wc_allocator* alloc, u64 start, u64 len)
 {
     WC_ASSERT(start < vec->size, "out of bounds");
 
@@ -1944,24 +1872,17 @@ GenVec GenVec_subarr(const GenVec* vec, wc_allocator alloc, u64 start, u64 len)
         len = vec->size - start;
     }
 
-    GenVec  out = GenVec_create(alloc, len, vec->data_size, vec->ops);
-    GenVec* v   = &out;
+    GenVec out = GenVec_create(alloc, len, vec->data_size, vec->ops);
 
     if (len > 0) {
-        if (vec->is_pod) {
-            memcpy(GET_PTR(v, 0), GET_PTR(vec, start), GET_SCALED(vec, len));
+        if (vec->is_pod || !VEC_COPY_FN(vec)) {
+            memcpy(GET_PTR(&out, 0), GET_PTR(vec, start), GET_SCALED(vec, len));
         } else {
-            wc_copy_fn copy = VEC_COPY_FN(vec);
-            if (copy) {
-                for (u64 i = 0; i < len; i++) {
-                    copy(v->alloc, GET_PTR(v, i), GET_PTR(vec, i + start));
-                }
-            } else {
-                memcpy(GET_PTR(v, 0), GET_PTR(vec, start), GET_SCALED(vec, len));
+            for (u64 i = 0; i < len; i++) {
+                vec_copy_into(&out, GET_PTR(&out, i), GET_PTR(vec, i + start));
             }
         }
-
-        v->size = len;
+        out.size = len;
     }
 
     return out;
@@ -1978,24 +1899,25 @@ void GenVec_print(const GenVec* vec, wc_print_fn fn)
 }
 
 
-GenVec GenVec_copy(wc_allocator alloc, const GenVec* src)
+GenVec GenVec_copy(const wc_allocator* alloc, const GenVec* src)
 {
-    // Field by field: the allocator comes from the caller, never from src (A7).
+    if (src->data_size == 0) {
+        return (GenVec){0}; // copy of a zeroed vector is a zeroed vector
+    }
+
+    // size the copy to its contents, not to src's slack.
+    u64 cap = src->size == 0 ? 0 : (src->size > GENVEC_MIN_CAPACITY ? src->size : GENVEC_MIN_CAPACITY);
+
+    // Field by field: the allocator comes from the caller, never from src
     GenVec dest = {
-        .data      = NULL,
+        .data      = ALLOC_OR_DIE(alloc, cap, src->data_size),
         .ops       = src->ops,
         .size      = src->size,
-        .capacity  = src->capacity,
+        .capacity  = cap,
         .alloc     = alloc,
         .data_size = src->data_size,
         .is_pod    = src->is_pod,
     };
-    if (src->data_size == 0) {
-        memset(&dest, 0, sizeof(dest)); // copy of a zeroed vector is a zeroed vector
-        return dest;
-    }
-
-    dest.data = ALLOC_OR_DIE(alloc, src->capacity, src->data_size);
 
     wc_copy_fn copy = src->is_pod ? NULL : VEC_COPY_FN(src);
     if (copy) {
@@ -2020,41 +1942,37 @@ void GenVec_move(GenVec* dest, GenVec* src)
 }
 
 
-static void GenVec_grow(GenVec* vec)
+// Grow to hold at least `needed` elements: 0 -> GENVEC_MIN_CAPACITY, then 1.5x,
+// or straight to `needed` when that is larger (bulk inserts, F4).
+static void GenVec_grow_to(GenVec* vec, u64 needed)
 {
     ZERO_GUARD(vec);
 
     u64 old_cap = vec->capacity;
-    u64 new_cap;
-    if (old_cap < GENVEC_MIN_CAPACITY) {
-        new_cap = old_cap + 1;
-    } else {
-        new_cap = (u64)((float)old_cap * GENVEC_GROWTH);
-        if (new_cap <= old_cap) {
-            new_cap = old_cap + 1;
-        }
+    u64 new_cap = old_cap == 0 ? GENVEC_MIN_CAPACITY : old_cap + (old_cap / 2); // 0 -> MIN, then 1.5x (F3)
+    if (new_cap <= old_cap) {
+        new_cap = old_cap + 1; // small capacities: 1.5x rounds down to no growth
+    }
+    if (new_cap < needed) {
+        new_cap = needed;
     }
 
     u8* new_data =
         wc_realloc(vec->alloc, vec->data, GET_SCALED(vec, old_cap), wc_mul(new_cap, vec->data_size), DATA_ALIGN(vec));
     if (!new_data) {
-        FATAL("GenVec: growth to %llu elements failed (arena full, or borrowed buffer)",
-              (unsigned long long)new_cap); // D5
+        FATAL("GenVec: growth to %llu elements failed (arena full, or borrowed buffer)", (unsigned long long)new_cap);
     }
 
     vec->data     = new_data;
     vec->capacity = new_cap;
 }
 
-#undef GENVEC_MIN_CAPACITY
 #undef GET_PTR
 #undef GET_SCALED
 #undef MAYBE_GROW
 #undef DATA_ALIGN
 #undef ZERO_GUARD
-#undef COPY_FN
-#undef MOVE_FN
-#undef DEL_FN
+#undef NOT_ALIASED
 #undef IS_POD
 #undef CALC_POD
 #undef ALLOC_OR_DIE
@@ -2099,7 +2017,6 @@ static void GenVec_grow(GenVec* vec)
 
 //  Private helpers
 
-static inline u64  cstr_len(const char* cstr);
 static inline void stk_to_heap(String* s);
 static inline void heap_to_stk(String* s);
 static inline void String_grow(String* s);
@@ -2107,7 +2024,7 @@ static inline void ensure_capacity(String* s, u64 needed);
 
 // Initialise the struct to SSO mode. a is stored so all subsequent allocations
 // use it.  Does NOT allocate.
-static inline void str_init_sso(String* s, wc_allocator a)
+static inline void str_init_sso(String* s, const wc_allocator* a)
 {
     s->size                  = 0;
     s->capacity              = STR_SSO_SIZE - 1; // 0..30 usable, last byte is mode flag
@@ -2119,14 +2036,14 @@ static inline void str_init_sso(String* s, wc_allocator a)
 
 //  Construction / Destruction
 
-String String_create(wc_allocator a)
+String String_create(const wc_allocator* a)
 {
     String s;
     str_init_sso(&s, a);
     return s;
 }
 
-String String_from_cstr(wc_allocator a, const char* cstr)
+String String_from_cstr(const wc_allocator* a, const char* cstr)
 {
     String s;
     str_init_sso(&s, a);
@@ -2135,7 +2052,7 @@ String String_from_cstr(wc_allocator a, const char* cstr)
         return s;
     }
 
-    u64 len = cstr_len(cstr);
+    u64 len = strlen(cstr);
     if (len == 0) {
         return s;
     }
@@ -2143,20 +2060,6 @@ String String_from_cstr(wc_allocator a, const char* cstr)
     ensure_capacity(&s, len);
     memcpy(GET_STR(&s), cstr, len);
     s.size = len;
-    return s;
-}
-
-String String_from_String(wc_allocator a, const String* other)
-{
-    String s;
-    str_init_sso(&s, a);
-
-    if (other->size > 0) {
-        ensure_capacity(&s, other->size);
-        memcpy(GET_STR(&s), GET_STR(other), other->size);
-        s.size = other->size;
-    }
-
     return s;
 }
 
@@ -2169,9 +2072,18 @@ void String_destroy(String* s)
     memset(s, 0, sizeof(String));
 }
 
-String String_copy(wc_allocator a, const String* src)
+String String_copy(const wc_allocator* a, const String* src)
 {
-    return String_from_String(a, src);
+    String s;
+    str_init_sso(&s, a);
+
+    if (src->size > 0) {
+        ensure_capacity(&s, src->size);
+        memcpy(GET_STR(&s), GET_STR(src), src->size);
+        s.size = src->size;
+    }
+
+    return s;
 }
 
 void String_move(String* dest, String* src)
@@ -2223,7 +2135,7 @@ void String_shrink_to_fit(String* s)
     if (s->size <= STR_SSO_SIZE - 1) {
         // Bring back to SSO.
         // Covers size == 0: heap_to_stk frees the buffer AND restores the SSO flag.
-        // (A8: the old size == 0 branch freed the buffer but stayed in heap mode,
+        // (the old size == 0 branch freed the buffer but stayed in heap mode,
         //  leaving heap == NULL with capacity 23; the next append wrote to NULL.)
         heap_to_stk(s);
         return;
@@ -2241,7 +2153,7 @@ void String_shrink_to_fit(String* s)
 
 //  Conversion
 
-char* String_to_cstr(wc_allocator a, const String* s)
+char* String_to_cstr(const wc_allocator* a, const String* s)
 {
     char* out = wc_alloc(a, s->size + 1, 1);
     FATAL_IF(!out, "String_to_cstr: allocation failed");
@@ -2276,7 +2188,7 @@ char* String_data_ptr(const String* s)
 // Same growth path as String_append_char, minus the size++: writes '\0'
 // at index s->size and leaves size untouched. Safe against the SSO
 // mode-flag byte because MAYBE_GROW_STR converts to heap (or reallocs
-// the heap buffer) whenever size == capacity, before we ever write —
+// the heap buffer) whenever size == capacity, before we ever write,
 // so the write always lands one past the last real char, never on the
 // flag byte at stk[STR_SSO_SIZE - 1].
 void String_ensure_null_term(String* s)
@@ -2297,7 +2209,7 @@ void String_append_char(String* s, char c)
 void String_append_cstr(String* s, const char* cstr)
 {
     FATAL_IF(s->capacity == 0, "String_append_cstr on zeroed/moved-from String");
-    u64 len = cstr_len(cstr);
+    u64 len = strlen(cstr);
     if (len == 0) {
         return;
     }
@@ -2321,6 +2233,20 @@ void String_append_String(String* s, const String* other)
 
 void String_append_String_move(String* s, String* other)
 {
+    FATAL_IF(s->capacity == 0, "String_append_String_move on zeroed/moved-from String");
+    if (s == other) {
+        return;
+    }
+
+    // Empty destination on the same allocator: take other's buffer instead of
+    // copying it (0 allocations, B8: other dies here, so nothing is copied).
+    if (s->size == 0 && other->capacity != 0 && wc_same(s->alloc, other->alloc)) {
+        String_destroy(s);
+        *s = *other;
+        memset(other, 0, sizeof(String));
+        return;
+    }
+
     if (other->size > 0) {
         String_append_String(s, other);
     }
@@ -2354,7 +2280,7 @@ void String_insert_cstr(String* s, u64 i, const char* cstr)
 {
     WC_ASSERT(i <= s->size, "index out of bounds");
 
-    u64 len = cstr_len(cstr);
+    u64 len = strlen(cstr);
     if (len == 0) {
         return;
     }
@@ -2396,9 +2322,7 @@ void String_remove_char(String* s, u64 i)
     WC_ASSERT(i < s->size, "index out of bounds");
 
     char* buf = GET_STR(s);
-    for (u64 j = i; j < s->size - 1; j++) {
-        buf[j] = buf[j + 1];
-    }
+    memmove(buf + i, buf + i + 1, s->size - 1 - i);
     s->size--;
 }
 
@@ -2453,9 +2377,9 @@ int String_compare(const String* s1, const String* s2)
     return 0;
 }
 
-b8 String_equals_cstr(const String* s, const char* cstr)
+bool String_equals_cstr(const String* s, const char* cstr)
 {
-    u64 len = cstr_len(cstr);
+    u64 len = strlen(cstr);
 
     if (s->size != len) {
         return false;
@@ -2482,7 +2406,7 @@ u64 String_find_char(const String* s, char c)
 
 u64 String_find_cstr(const String* s, const char* substr)
 {
-    u64 len = cstr_len(substr);
+    u64 len = strlen(substr);
     if (len == 0) {
         return 0;
     }
@@ -2490,17 +2414,20 @@ u64 String_find_cstr(const String* s, const char* substr)
         return WC_NOT_FOUND;
     }
 
+    // memchr (SIMD in libc) jumps to each candidate first byte; memcmp confirms the rest.
     const char* buf = GET_STR(s);
-    for (u64 i = 0; i <= s->size - len; i++) {
-        if (memcmp(buf + i, substr, len) == 0) {
-            return i;
+    const char* end = buf + (s->size - len) + 1; // one past the last valid start
+    const char* cur = buf;
+    while (cur < end && (cur = memchr(cur, substr[0], (size_t)(end - cur))) != NULL) {
+        if (memcmp(cur, substr, len) == 0) {
+            return (u64)(cur - buf);
         }
+        cur++;
     }
     return WC_NOT_FOUND;
 }
 
-// NOLINTBEGIN(clang-analyzer-unix.Malloc): false positive: the returned String owns its heap buffer
-String String_substr(wc_allocator a, const String* s, u64 start, u64 length)
+String String_substr(const wc_allocator* a, const String* s, u64 start, u64 length)
 {
     WC_ASSERT(start < s->size, "start out of bounds");
 
@@ -2518,7 +2445,6 @@ String String_substr(wc_allocator a, const String* s, u64 start, u64 length)
 
     return result;
 }
-// NOLINTEND(clang-analyzer-unix.Malloc)
 
 
 //  I/O
@@ -2526,17 +2452,8 @@ String String_substr(wc_allocator a, const String* s, u64 start, u64 length)
 void String_print(const String* s)
 {
     putchar('"');
-    const char* buf = GET_STR(s);
-    for (u64 i = 0; i < s->size; i++) {
-        putchar(buf[i]);
-    }
+    fwrite(GET_STR(s), 1, s->size, stdout);
     putchar('"');
-}
-
-
-static inline u64 cstr_len(const char* cstr)
-{
-    return (u64)strlen(cstr);
 }
 
 
@@ -2561,9 +2478,9 @@ static inline void stk_to_heap(String* s)
 static inline void heap_to_stk(String* s)
 {
     // save the ptr as memcpy on stk will overwrite
-    char*        heap = s->heap;
-    wc_allocator a    = s->alloc;
-    u64          cap  = s->capacity;
+    char*               heap = s->heap;
+    const wc_allocator* a    = s->alloc;
+    u64                 cap  = s->capacity;
     memcpy(s->stk, heap, s->size);
     wc_free(a, heap, cap, 1);
     s->stk[STR_SSO_SIZE - 1] = 1; // mark SSO mode

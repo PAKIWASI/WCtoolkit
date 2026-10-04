@@ -218,7 +218,7 @@ UTEST(views, strview_copy_cstr_terminates_and_frees)
 {
     wc_test_alloc ta;
     wc_test_alloc_init(&ta, WC_LIBC);
-    wc_allocator al = wc_test_alloc_allocator(&ta);
+    const wc_allocator* al = wc_test_alloc_allocator(&ta);
 
     // clen shorter than the string: the old Arena path copied clen + 1 bytes
     // and left cstr[clen] ('l') where the terminator should be
@@ -249,7 +249,7 @@ UTEST(views, StringStore_test_allocator_leak_free)
 {
     wc_test_alloc ta;
     wc_test_alloc_init(&ta, WC_LIBC);
-    wc_allocator al = wc_test_alloc_allocator(&ta);
+    const wc_allocator* al = wc_test_alloc_allocator(&ta);
 
     StringStore ss = StringStore_create(al);
     (void)StringStore_cstr(&ss, "small", 5);

@@ -11,6 +11,7 @@
 
 // ubench.h registers each benchmark with realloc() inside the UBENCH macro
 // NOLINTBEGIN(bugprone-suspicious-realloc-usage)
+
 UBENCH(gen_vector, push_int)
 {
     GenVec v = VEC(int, 0);
@@ -61,7 +62,8 @@ UBENCH_EX(gen_vector, copy_string)
     GenVec_destroy(&src);
 }
 
-UBENCH(gen_vector, pop_int)
+// Includes the N pushes that fill the vector (a pop cannot be re-run on an emptied vector).
+UBENCH(gen_vector, push_then_pop_int)
 {
     GenVec v = VEC(int, N);
     for (int i = 0; i < N; i++) {
@@ -69,7 +71,7 @@ UBENCH(gen_vector, pop_int)
     }
     int out = 0;
     for (int i = 0; i < N; i++) {
-        GenVec_pop(&v, &out);
+        out = VEC_POP(&v, int);
     }
     UBENCH_DO_NOTHING(&out);
     GenVec_destroy(&v);
@@ -103,7 +105,7 @@ typedef struct {
     GenVec scores;
 } Person;
 
-static void person_copy(wc_allocator dst, void* dest, const void* src)
+static void person_copy(const wc_allocator* dst, void* dest, const void* src)
 {
     const Person* s = src;
     Person*       d = dest;
@@ -118,7 +120,7 @@ static void person_del(void* elm)
     GenVec_destroy(&p->scores);
 }
 
-static const wc_container_ops person_ops = {person_copy, NULL, person_del};
+static const wc_container_ops person_ops = {.copy_fn = person_copy, .del_fn = person_del};
 
 static Person person_make(int i)
 {

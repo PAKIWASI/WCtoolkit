@@ -7,7 +7,7 @@
 
 
 
-BitVec BitVec_create(wc_allocator a)
+BitVec BitVec_create(const wc_allocator* a)
 {
     BitVec bvec;
     // u8 is POD — no ops needed; initial capacity of 0 is fine (grows on first set)

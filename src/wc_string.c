@@ -33,7 +33,6 @@
 
 //  Private helpers
 
-static inline u64  cstr_len(const char* cstr);
 static inline void stk_to_heap(String* s);
 static inline void heap_to_stk(String* s);
 static inline void String_grow(String* s);
@@ -41,7 +40,7 @@ static inline void ensure_capacity(String* s, u64 needed);
 
 // Initialise the struct to SSO mode. a is stored so all subsequent allocations
 // use it.  Does NOT allocate.
-static inline void str_init_sso(String* s, wc_allocator a)
+static inline void str_init_sso(String* s, const wc_allocator* a)
 {
     s->size                  = 0;
     s->capacity              = STR_SSO_SIZE - 1; // 0..30 usable, last byte is mode flag
@@ -53,14 +52,14 @@ static inline void str_init_sso(String* s, wc_allocator a)
 
 //  Construction / Destruction
 
-String String_create(wc_allocator a)
+String String_create(const wc_allocator* a)
 {
     String s;
     str_init_sso(&s, a);
     return s;
 }
 
-String String_from_cstr(wc_allocator a, const char* cstr)
+String String_from_cstr(const wc_allocator* a, const char* cstr)
 {
     String s;
     str_init_sso(&s, a);
@@ -69,7 +68,7 @@ String String_from_cstr(wc_allocator a, const char* cstr)
         return s;
     }
 
-    u64 len = cstr_len(cstr);
+    u64 len = strlen(cstr);
     if (len == 0) {
         return s;
     }
@@ -77,20 +76,6 @@ String String_from_cstr(wc_allocator a, const char* cstr)
     ensure_capacity(&s, len);
     memcpy(GET_STR(&s), cstr, len);
     s.size = len;
-    return s;
-}
-
-String String_from_String(wc_allocator a, const String* other)
-{
-    String s;
-    str_init_sso(&s, a);
-
-    if (other->size > 0) {
-        ensure_capacity(&s, other->size);
-        memcpy(GET_STR(&s), GET_STR(other), other->size);
-        s.size = other->size;
-    }
-
     return s;
 }
 
@@ -103,9 +88,18 @@ void String_destroy(String* s)
     memset(s, 0, sizeof(String));
 }
 
-String String_copy(wc_allocator a, const String* src)
+String String_copy(const wc_allocator* a, const String* src)
 {
-    return String_from_String(a, src);
+    String s;
+    str_init_sso(&s, a);
+
+    if (src->size > 0) {
+        ensure_capacity(&s, src->size);
+        memcpy(GET_STR(&s), GET_STR(src), src->size);
+        s.size = src->size;
+    }
+
+    return s;
 }
 
 void String_move(String* dest, String* src)
@@ -157,7 +151,7 @@ void String_shrink_to_fit(String* s)
     if (s->size <= STR_SSO_SIZE - 1) {
         // Bring back to SSO.
         // Covers size == 0: heap_to_stk frees the buffer AND restores the SSO flag.
-        // (A8: the old size == 0 branch freed the buffer but stayed in heap mode,
+        // (the old size == 0 branch freed the buffer but stayed in heap mode,
         //  leaving heap == NULL with capacity 23; the next append wrote to NULL.)
         heap_to_stk(s);
         return;
@@ -175,7 +169,7 @@ void String_shrink_to_fit(String* s)
 
 //  Conversion
 
-char* String_to_cstr(wc_allocator a, const String* s)
+char* String_to_cstr(const wc_allocator* a, const String* s)
 {
     char* out = wc_alloc(a, s->size + 1, 1);
     FATAL_IF(!out, "String_to_cstr: allocation failed");
@@ -210,7 +204,7 @@ char* String_data_ptr(const String* s)
 // Same growth path as String_append_char, minus the size++: writes '\0'
 // at index s->size and leaves size untouched. Safe against the SSO
 // mode-flag byte because MAYBE_GROW_STR converts to heap (or reallocs
-// the heap buffer) whenever size == capacity, before we ever write —
+// the heap buffer) whenever size == capacity, before we ever write,
 // so the write always lands one past the last real char, never on the
 // flag byte at stk[STR_SSO_SIZE - 1].
 void String_ensure_null_term(String* s)
@@ -231,7 +225,7 @@ void String_append_char(String* s, char c)
 void String_append_cstr(String* s, const char* cstr)
 {
     FATAL_IF(s->capacity == 0, "String_append_cstr on zeroed/moved-from String");
-    u64 len = cstr_len(cstr);
+    u64 len = strlen(cstr);
     if (len == 0) {
         return;
     }
@@ -255,6 +249,20 @@ void String_append_String(String* s, const String* other)
 
 void String_append_String_move(String* s, String* other)
 {
+    FATAL_IF(s->capacity == 0, "String_append_String_move on zeroed/moved-from String");
+    if (s == other) {
+        return;
+    }
+
+    // Empty destination on the same allocator: take other's buffer instead of
+    // copying it (0 allocations, B8: other dies here, so nothing is copied).
+    if (s->size == 0 && other->capacity != 0 && wc_same(s->alloc, other->alloc)) {
+        String_destroy(s);
+        *s = *other;
+        memset(other, 0, sizeof(String));
+        return;
+    }
+
     if (other->size > 0) {
         String_append_String(s, other);
     }
@@ -288,7 +296,7 @@ void String_insert_cstr(String* s, u64 i, const char* cstr)
 {
     WC_ASSERT(i <= s->size, "index out of bounds");
 
-    u64 len = cstr_len(cstr);
+    u64 len = strlen(cstr);
     if (len == 0) {
         return;
     }
@@ -330,9 +338,7 @@ void String_remove_char(String* s, u64 i)
     WC_ASSERT(i < s->size, "index out of bounds");
 
     char* buf = GET_STR(s);
-    for (u64 j = i; j < s->size - 1; j++) {
-        buf[j] = buf[j + 1];
-    }
+    memmove(buf + i, buf + i + 1, s->size - 1 - i);
     s->size--;
 }
 
@@ -387,9 +393,9 @@ int String_compare(const String* s1, const String* s2)
     return 0;
 }
 
-b8 String_equals_cstr(const String* s, const char* cstr)
+bool String_equals_cstr(const String* s, const char* cstr)
 {
-    u64 len = cstr_len(cstr);
+    u64 len = strlen(cstr);
 
     if (s->size != len) {
         return false;
@@ -416,7 +422,7 @@ u64 String_find_char(const String* s, char c)
 
 u64 String_find_cstr(const String* s, const char* substr)
 {
-    u64 len = cstr_len(substr);
+    u64 len = strlen(substr);
     if (len == 0) {
         return 0;
     }
@@ -424,17 +430,20 @@ u64 String_find_cstr(const String* s, const char* substr)
         return WC_NOT_FOUND;
     }
 
+    // memchr (SIMD in libc) jumps to each candidate first byte; memcmp confirms the rest.
     const char* buf = GET_STR(s);
-    for (u64 i = 0; i <= s->size - len; i++) {
-        if (memcmp(buf + i, substr, len) == 0) {
-            return i;
+    const char* end = buf + (s->size - len) + 1; // one past the last valid start
+    const char* cur = buf;
+    while (cur < end && (cur = memchr(cur, substr[0], (size_t)(end - cur))) != NULL) {
+        if (memcmp(cur, substr, len) == 0) {
+            return (u64)(cur - buf);
         }
+        cur++;
     }
     return WC_NOT_FOUND;
 }
 
-// NOLINTBEGIN(clang-analyzer-unix.Malloc): false positive: the returned String owns its heap buffer
-String String_substr(wc_allocator a, const String* s, u64 start, u64 length)
+String String_substr(const wc_allocator* a, const String* s, u64 start, u64 length)
 {
     WC_ASSERT(start < s->size, "start out of bounds");
 
@@ -452,7 +461,6 @@ String String_substr(wc_allocator a, const String* s, u64 start, u64 length)
 
     return result;
 }
-// NOLINTEND(clang-analyzer-unix.Malloc)
 
 
 //  I/O
@@ -460,17 +468,8 @@ String String_substr(wc_allocator a, const String* s, u64 start, u64 length)
 void String_print(const String* s)
 {
     putchar('"');
-    const char* buf = GET_STR(s);
-    for (u64 i = 0; i < s->size; i++) {
-        putchar(buf[i]);
-    }
+    fwrite(GET_STR(s), 1, s->size, stdout);
     putchar('"');
-}
-
-
-static inline u64 cstr_len(const char* cstr)
-{
-    return (u64)strlen(cstr);
 }
 
 
@@ -495,9 +494,9 @@ static inline void stk_to_heap(String* s)
 static inline void heap_to_stk(String* s)
 {
     // save the ptr as memcpy on stk will overwrite
-    char*        heap = s->heap;
-    wc_allocator a    = s->alloc;
-    u64          cap  = s->capacity;
+    char*               heap = s->heap;
+    const wc_allocator* a    = s->alloc;
+    u64                 cap  = s->capacity;
     memcpy(s->stk, heap, s->size);
     wc_free(a, heap, cap, 1);
     s->stk[STR_SSO_SIZE - 1] = 1; // mark SSO mode

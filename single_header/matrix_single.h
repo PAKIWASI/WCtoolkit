@@ -20,8 +20,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define WC_MAX_ALIGN alignof(max_align_t)
 
+#define WC_MAX_ALIGN alignof(max_align_t)
 
 /* libc fallbacks */
 
@@ -42,7 +42,6 @@ static inline void* wc_libc_alloc(size_t n, size_t align)
 #endif
 }
 
-// NOLINTBEGIN(clang-analyzer-unix.Malloc): only libc blocks reach libc; the analyzer cannot see that arena allocators always set vt
 static inline void wc_libc_free(void* p, size_t align)
 {
 #ifdef _MSC_VER
@@ -54,9 +53,7 @@ static inline void wc_libc_free(void* p, size_t align)
     (void)align;
     free(p); // POSIX/glibc: fine for both
 }
-// NOLINTEND(clang-analyzer-unix.Malloc)
 
-// NOLINTBEGIN(clang-analyzer-unix.Malloc): as above
 static inline void* wc_libc_realloc(void* p, size_t old_n, size_t n, size_t align)
 {
     if (align <= WC_MAX_ALIGN) {
@@ -72,7 +69,6 @@ static inline void* wc_libc_realloc(void* p, size_t old_n, size_t n, size_t alig
     wc_libc_free(p, align);
     return q;
 }
-// NOLINTEND(clang-analyzer-unix.Malloc)
 
 
 
@@ -82,8 +78,12 @@ static inline void* wc_libc_realloc(void* p, size_t old_n, size_t n, size_t alig
  * No global allocator exists: every data structure receives its allocator at
  * construction, stores it, and uses it for every allocation.
  *
- * An allocator is a (vtable, ctx) pair, 16 bytes, passed and stored BY VALUE.
- * A zero-initialised allocator is libc: `WC_LIBC`.
+ * An allocator is a (vtable, ctx) pair. It is passed and stored as `const wc_allocator*`
+ *   - the pointer is never NULL; libc is WC_LIBC, nothing else.
+ *   - the pointed-to allocator must outlive every container that stores it.
+ *     WC_LIBC and WC_BORROWED are static; Arena, ChainArena and wc_test_alloc
+ *     embed their own allocator, so the arena's lifetime covers it
+ *   - `const`: a call never changes the (vt, ctx) pair; ctx is what mutates
  *
  * Contract (the wc_* wrappers enforce it, backends may rely on it):
  *   - callbacks are never called with p == NULL or size == 0
@@ -97,7 +97,6 @@ static inline void* wc_libc_realloc(void* p, size_t old_n, size_t n, size_t alig
  *   - wc_realloc(a, p, old, 0, ..) frees p and returns NULL
  *
 */
-
 typedef struct {
     void* (*alloc)(void* ctx, size_t size, size_t align);
     void* (*realloc)(void* ctx, void* p, size_t old_size, size_t new_size, size_t align); // may be NULL
@@ -105,56 +104,61 @@ typedef struct {
 } wc_alloc_vtable;
 
 typedef struct {
-    const wc_alloc_vtable* vt;  // NULL => libc
+    const wc_alloc_vtable* vt;  // NULL => libc (only ever true for wc_libc)
     void*                  ctx; // Arena*, ChainArena*, test allocator, ...
 } wc_allocator;
 
-_Static_assert(sizeof(wc_allocator) == 16, "wc_allocator must stay 16 bytes (stored by value in every container)");
+_Static_assert(sizeof(wc_allocator) == 16, "wc_allocator must stay 16 bytes");
 
-#define WC_LIBC ((wc_allocator){0})
+// The libc allocator. Defined once in wc_allocator.c.
+extern const wc_allocator wc_libc;
+#define WC_LIBC (&wc_libc)
 
 // Non-owning allocator: alloc -> NULL, free -> no-op. A container built on it
 // wraps caller memory, cannot grow, and frees nothing on destroy.
 extern const wc_allocator wc_borrowed;
+#define WC_BORROWED (&wc_borrowed)
 
-static inline int wc_is_libc(wc_allocator a)
+static inline __attribute__((nonnull(1))) int wc_is_libc(const wc_allocator* a)
 {
-    return a.vt == NULL;
+    return a->vt == NULL;
 }
 
-static inline int wc_same(wc_allocator a, wc_allocator b)
+// Same backend and same context: memory from one may be freed through the other.
+static inline __attribute__((nonnull(1, 2))) int wc_same(const wc_allocator* a, const wc_allocator* b)
 {
-    return a.vt == b.vt && a.ctx == b.ctx;
+    return a == b || (a->vt == b->vt && a->ctx == b->ctx);
 }
 
 #define WC_ALLOC_ASSERT_ALIGN(align) \
     assert((align) != 0 && ((align) & ((align) - 1)) == 0 && "align must be a power of two >= 1")
 
-static inline void* wc_alloc(wc_allocator a, size_t n, size_t align)
+static inline __attribute__((nonnull(1))) void* wc_alloc(const wc_allocator* a, size_t n, size_t align)
 {
     WC_ALLOC_ASSERT_ALIGN(align);
     if (n == 0 || n > (size_t)PTRDIFF_MAX) { // > PTRDIFF_MAX: overflowed size (see wc_mul)
         return NULL;
     }
-    return a.vt ? a.vt->alloc(a.ctx, n, align) : wc_libc_alloc(n, align);
+    return a->vt ? a->vt->alloc(a->ctx, n, align) : wc_libc_alloc(n, align);
 }
 
-static inline void wc_free(wc_allocator a, void* p, size_t n, size_t align)
+static inline __attribute__((nonnull(1))) void wc_free(const wc_allocator* a, void* p, size_t n, size_t align)
 {
     WC_ALLOC_ASSERT_ALIGN(align);
     if (!p) {
         return;
     }
-    if (!a.vt) {
+    if (!a->vt) {
         wc_libc_free(p, align);
         return;
     }
-    if (a.vt->free) {
-        a.vt->free(a.ctx, p, n, align);
+    if (a->vt->free) {
+        a->vt->free(a->ctx, p, n, align);
     }
 }
 
-static inline void* wc_realloc(wc_allocator a, void* p, size_t old_n, size_t n, size_t align)
+static inline __attribute__((nonnull(1))) void* wc_realloc(const wc_allocator* a, void* p, size_t old_n, size_t n,
+                                                           size_t align)
 {
     WC_ALLOC_ASSERT_ALIGN(align);
     if (!p) {
@@ -167,15 +171,15 @@ static inline void* wc_realloc(wc_allocator a, void* p, size_t old_n, size_t n, 
     if (n > (size_t)PTRDIFF_MAX) {
         return NULL; // overflowed size: fail, p stays valid
     }
-    if (!a.vt) {
+    if (!a->vt) {
         return wc_libc_realloc(p, old_n, n, align);
     }
-    if (a.vt->realloc) {
-        return a.vt->realloc(a.ctx, p, old_n, n, align);
+    if (a->vt->realloc) {
+        return a->vt->realloc(a->ctx, p, old_n, n, align);
     }
 
     // backend without realloc: emulate
-    void* q = a.vt->alloc(a.ctx, n, align);
+    void* q = a->vt->alloc(a->ctx, n, align);
     if (!q) {
         return NULL; // p left untouched
     }
@@ -193,7 +197,7 @@ static inline size_t wc_mul(size_t count, size_t size)
     return (int)__builtin_mul_overflow(count, size, &r) ? SIZE_MAX : r;
 }
 
-// Smallest safe alignment for elements of `elm_size` bytes (plan D7): the
+// Smallest safe alignment for elements of `elm_size` bytes: the
 // largest power of two dividing elm_size, capped at WC_MAX_ALIGN. Valid because
 // sizeof(T) is always a multiple of alignof(T).
 static inline size_t wc_align_for_size(size_t elm_size)
@@ -206,15 +210,17 @@ static inline size_t wc_align_for_size(size_t elm_size)
 }
 
 
-/* typed helpers (allocator first) */
+/* typed helpers (allocator first)
+ * Free takes the POINTER, not a type: size and align come from *p, so a wrong
+ * type can't be passed*/
 
-#define WC_NEW(a, T)            ((T*)wc_alloc((a), sizeof(T), alignof(T)))
-#define WC_NEW_N(a, T, n)       ((T*)wc_alloc((a), wc_mul((n), sizeof(T)), alignof(T)))
-#define WC_DELETE(a, T, p)      wc_free((a), (p), sizeof(T), alignof(T))
-#define WC_DELETE_N(a, T, p, n) wc_free((a), (p), wc_mul((n), sizeof(T)), alignof(T))
-#define WC_REALLOC_N(a, T, p, old_n, n) \
-    ((T*)wc_realloc((a), (p), wc_mul((old_n), sizeof(T)), wc_mul((n), sizeof(T)), alignof(T)))
-
+#define WC_NEW(a, T)      ((T*)wc_alloc((a), sizeof(T), alignof(T)))
+#define WC_NEW_N(a, T, n) ((T*)wc_alloc((a), wc_mul((n), sizeof(T)), alignof(T)))
+#define WC_REALLOC_N(a, p, old_n, n)                                                               \
+    ((__typeof__(p))wc_realloc((a), (p), wc_mul((old_n), sizeof(*(p))), wc_mul((n), sizeof(*(p))), \
+                               alignof(__typeof__(*(p)))))
+#define WC_FREE(a, p)      (wc_free((a), (p), sizeof(*(p)), alignof(__typeof__(*(p)))))
+#define WC_FREE_N(a, p, n) (wc_free((a), (p), wc_mul((n), sizeof(*(p))), alignof(__typeof__(*(p)))))
 
 
 #endif // WC_ALLOCATOR_H
@@ -254,22 +260,26 @@ static inline size_t wc_align_for_size(size_t elm_size)
 /*
  * DIAGNOSTICS
  *
- * Every macro below is an EXPRESSION of type void (no do { } while (0)), so
- * it composes anywhere: statements, comma expressions, ({ }) blocks, ?:.
- *
  *   SURVIVES EVERY BUILD (Debug and Release)
  *     FATAL(fmt, ...)                 abort with a message
+ *
  *     FATAL_IF(cond, fmt, ...)        abort if cond is TRUE. Absolute failures
  *                                     only: allocation failed, mutation of a
  *                                     zeroed (moved-from/destroyed) container.
+ *
  *     WARN(fmt, ...)                  print a warning to stderr, continue
+ *
  *     WARN_IF(cond, fmt, ...)         warn if cond is TRUE, continue
+ *
  *     WARN_IF_RET(cond, ret, fmt, ...) warn and `return ret` if cond is TRUE
- *                                     (GNU statement expression: it can return)
- *     LOG(fmt, ...)                   print to stdout
+ *                                     (GNU statement expression can return)
+ *
+ *     LOG(fmt, ...)                   print to stderr
+ *
  *     LOG_IF(cond, fmt, ...)          log if cond is TRUE
  *
  *   STRIPPED UNDER NDEBUG (Release)
+ *
  *     WC_ASSERT(cond, fmt, ...)       abort if cond is FALSE. cond is the
  *                                     INVARIANT (`i < size`), not the failure.
  *                                     For programmer errors: bounds, API misuse.
@@ -278,7 +288,7 @@ static inline size_t wc_align_for_size(size_t elm_size)
  *
  * The rule: if continuing past the failure would corrupt memory even in a
  * correct program (an allocator returned NULL), use FATAL_IF. If the failure
- * means the CALLER has a bug, use WC_ASSERT. Never WC_ASSERT an allocation.
+ * means the CALLER has a bug, use WC_ASSERT
  *
  * Branch prediction: failure paths are WC_UNLIKELY, and the reporters are
  * `cold, noinline` functions defined once in wc_errno.c. The compiler moves
@@ -291,6 +301,14 @@ static inline size_t wc_align_for_size(size_t elm_size)
 
 __attribute__((cold, noinline, noreturn, format(printf, 4, 5))) void
 wc_fatal_report(const char* file, int line, const char* func, const char* fmt, ...);
+
+/* Fatal handler. Every FATAL / FATAL_IF formats its message and calls the
+ * installed handler. The handler must not return: abort, exit, or longjmp out
+ * (tests can verify that something FATALs). If it does return, the program
+ * exits. NULL restores the default (print to stderr, exit(EXIT_FAILURE)).
+ * Returns the previous handler. Set it once at startup: it is not thread-local. */
+typedef void (*wc_fatal_fn)(const char* file, int line, const char* func, const char* msg);
+wc_fatal_fn wc_set_fatal_handler(wc_fatal_fn fn);
 
 __attribute__((cold, noinline, format(printf, 4, 5))) void wc_warn_report(const char* file, int line, const char* func,
                                                                           const char* fmt, ...);
@@ -315,8 +333,9 @@ __attribute__((cold, noinline, format(printf, 4, 5))) void wc_warn_report(const 
         (void)0;                                      \
     })
 
-
-#define LOG(fmt, ...) ((void)printf(WC_COLOR_CYAN "[LOG] %s(): " fmt "\n" WC_COLOR_RESET, __func__, ##__VA_ARGS__))
+// stderr, like WARN/FATAL: diagnostics never mix into program output.
+#define LOG(fmt, ...) \
+    ((void)fprintf(stderr, WC_COLOR_CYAN "[LOG] %s(): " fmt "\n" WC_COLOR_RESET, __func__, ##__VA_ARGS__))
 
 #define LOG_IF(cond, fmt, ...) ((void)((cond) && (LOG(fmt, ##__VA_ARGS__), 0)))
 
@@ -334,7 +353,9 @@ __attribute__((cold, noinline, format(printf, 4, 5))) void wc_warn_report(const 
 #endif
 
 
-// token pasting that expands its arguments first (for __COUNTER__/__LINE__ names)
+// Token pasting that expands its arguments first. `a##b` pastes BEFORE expansion,
+// so WC_CAT_(x, __LINE__) gives `x__LINE__`; the extra level expands __LINE__ to
+// 42 first and then pastes, giving `x42`. Used for __COUNTER__/__LINE__ names.
 #define WC_CAT_(a, b) a##b
 #define WC_CAT(a, b)  WC_CAT_(a, b)
 
@@ -345,36 +366,48 @@ __attribute__((cold, noinline, format(printf, 4, 5))) void wc_warn_report(const 
 #include <stdint.h>
 
 typedef uint8_t  u8;
-typedef uint8_t  b8;
 typedef uint16_t u16;
 typedef uint32_t u32;
 typedef uint64_t u64;
 
+typedef int8_t  i8;
+typedef int16_t i16;
+typedef int32_t i32;
+typedef int64_t i64;
+
+// we are using unsigned indices/sizes
 #define WC_NOT_FOUND ((u64) - 1)
 
 
 // GENERIC FUNCTIONS
 
 
+/* ELEMENT OPS
+ *
+ * Memory rule B5: every element is TRIVIALLY RELOCATABLE. A container may move
+ * an element to another address with a raw memcpy (growth, insert/remove shifts,
+ * hash table shuffles, queue compaction, taking an element out) and never asks
+ * the element first. A type that holds a pointer to itself, or that something
+ * outside points into, cannot be stored by value: store it by pointer.
+ *
+ */
+
 // Deep-copy `src` INTO `dest`, allocating any owned resources from `dst`.
-// `dest` is uninitialised raw slot memory (plan 3.3).
-typedef void (*wc_copy_fn)(wc_allocator dst, void* dest, const void* src);
-// Transfer ownership: `dest` takes over everything `src` owned; `src` is left
-// ZEROED (safe to destroy, not usable). Containers do memcpy + zero when NULL.
-typedef void (*wc_move_fn)(void* dest, void* src);
+// `dest` is uninitialised raw slot memory: never read or free it (B3).
+// Called ONLY when both sides keep the value (B8).
+typedef void (*wc_copy_fn)(const wc_allocator* dst, void* dest, const void* src);
 // Release owned resources of the element (not the slot). Elements that own
-// memory store their own allocator, so no allocator argument is needed.
+// memory store their own allocator, so no allocator argument is needed (B2).
 typedef void (*wc_delete_fn)(void* elm);
 typedef void (*wc_print_fn)(const void* elm);
 typedef int (*wc_compare_fn)(const void* a, const void* b, u64 size);
 
 
-// Vtable: one instance shared across all vectors of the same type.
-// Pass NULL for any callback not needed.
-// For POD types, pass NULL for the whole ops pointer.
+// vtable: one instance shared across all objects of the same type.
+// Pass NULL for any callback not needed (no copy_fn: copies are memcpy;
+// no del_fn: nothing is freed per element). For plain data pass NULL ops.
 typedef struct {
     wc_copy_fn   copy_fn; // Deep copy function for owned resources (or NULL)
-    wc_move_fn   move_fn; // Transfer ownership and null original (or NULL)
     wc_delete_fn del_fn;  // Cleanup function for owned resources (or NULL)
 } wc_container_ops;
 
@@ -383,13 +416,12 @@ typedef struct {
 //   GenVec* v = WC_BOX_IN(A, GenVec, GenVec_create, 8, sizeof(int), NULL);
 // Invariant: the shell comes from the same allocator the child stores, so a
 // by-pointer delete can free the shell with the child's own allocator.
-#define WC_BOX_IN(A, T, init_fn, ...)                                  \
-    ({                                                                 \
-        wc_allocator _wbx_a = (A);                                     \
-        T*           _wbx_p = wc_alloc(_wbx_a, sizeof(T), alignof(T)); \
-        FATAL_IF(!_wbx_p, "WC_BOX_IN(" #T "): allocation failed");     \
-        *_wbx_p = init_fn(_wbx_a, __VA_ARGS__);                        \
-        _wbx_p;                                                        \
+#define WC_BOX_IN(A, T, init_fn, ...)                              \
+    ({                                                             \
+        T* _wbx_p = wc_alloc(A, sizeof(T), alignof(T));            \
+        FATAL_IF(!_wbx_p, "WC_BOX_IN(" #T "): allocation failed"); \
+        *_wbx_p = init_fn(A, __VA_ARGS__);                         \
+        _wbx_p;                                                    \
     })
 
 
@@ -474,7 +506,6 @@ static inline void wc_print_cstr(const void* elm)
 
 
 /* wc_errno.h — Error reporting for WCtoolkit
- * ============================================
  *
  * Three tiers:
  *
@@ -603,36 +634,35 @@ static inline void wc_perror(const char* prefix)
 
 
 
-#include <string.h>
 
 
 
 // ROW MAJOR 2D MATRIX
 //
-// Value type. Storage comes from `alloc`, which the matrix stores (40 bytes).
+// Value type. Storage comes from `alloc`, which the matrix stores (32 bytes).
 // Zero state (moved-from / destroyed) is dead: only destroy or re-create it.
 // Every mutating op on a zeroed matrix (m == 0) is an unconditional FATAL.
 typedef struct {
     float*       data;
     u64          m; // rows
     u64          n; // cols
-    wc_allocator alloc;
+    const wc_allocator* alloc;
 } Matrixf;
 
-_Static_assert(sizeof(Matrixf) == 40, "Matrixf layout: data + m + n + 16-byte allocator");
+_Static_assert(sizeof(Matrixf) == 32, "Matrixf layout: data + m + n + allocator pointer");
 
 
 // CREATION AND DESTRUCTION
 // ============================================================================
 
 // m x n matrix, storage from `a`. Contents are uninitialised.
-Matrixf matrix_create(wc_allocator a, u64 m, u64 n) __attribute__((warn_unused_result));
+Matrixf matrix_create(const wc_allocator* a, u64 m, u64 n) __attribute__((nonnull(1), warn_unused_result));
 
 // m x n matrix from `a`, filled from a row-major array of m * n floats.
-Matrixf matrix_create_arr(wc_allocator a, u64 m, u64 n, const float* arr)
+Matrixf matrix_create_arr(const wc_allocator* a, u64 m, u64 n, const float* arr)
     __attribute__((nonnull(4), warn_unused_result));
 
-// Wrap caller-owned memory (stack array, static buffer). Uses wc_borrowed:
+// Wrap caller-owned memory (stack array, static buffer). Uses WC_BORROWED:
 // destroy frees nothing. `data` must outlive the matrix.
 Matrixf matrix_create_buf(u64 m, u64 n, float* data) __attribute__((nonnull(3), warn_unused_result));
 
@@ -640,7 +670,7 @@ Matrixf matrix_create_buf(u64 m, u64 n, float* data) __attribute__((nonnull(3), 
 void matrix_destroy(Matrixf* mat) __attribute__((nonnull(1)));
 
 // Deep copy of `src` into a new matrix allocated from `a` (never inherits src->alloc).
-Matrixf matrix_copy(wc_allocator a, const Matrixf* src) __attribute__((nonnull(2), warn_unused_result));
+Matrixf matrix_copy(const wc_allocator* a, const Matrixf* src) __attribute__((nonnull(1, 2), warn_unused_result));
 
 // Transfer: dest takes src's storage and allocator, src is left zeroed.
 // dest must be raw or already destroyed (it is overwritten, not freed).
@@ -725,13 +755,10 @@ void matrix_LU_Decomp(Matrixf* restrict L, Matrixf* restrict U, const Matrixf* r
 // Calculate determinant using LU decomposition
 float matrix_det(const Matrixf* mat) __attribute__((nonnull(1)));
 
-// Calculate adjugate (adjoint) matrix
-// TODO: NOT IMPLEMENTED
-void matrix_adj(Matrixf* out, const Matrixf* mat) __attribute__((nonnull(1, 2)));
-
-// Calculate matrix inverse: out = mat^(-1)
-// TODO: NOT IMPLEMENTED
-void matrix_inv(Matrixf* out, const Matrixf* mat) __attribute__((nonnull(1, 2)));
+// Matrix inverse: out = mat^(-1). Gauss-Jordan with partial pivoting, done in
+// place in `out` (no allocation). Returns false if mat is singular; out is
+// then unspecified. out and mat may not alias.
+bool matrix_inv(Matrixf* restrict out, const Matrixf* restrict mat) __attribute__((nonnull(1, 2)));
 
 
 // UTILITIES
@@ -771,7 +798,12 @@ void matrix_print(const Matrixf* mat) __attribute__((nonnull(1)));
 
 
 
-/* wc_borrowed: non-owning allocator (plan 3.2) */
+/* wc_libc: the only allocator with vt == NULL */
+
+const wc_allocator wc_libc = {.vt = NULL, .ctx = NULL};
+
+
+/* wc_borrowed: non-owning allocator */
 
 static void* wc_borrowed_alloc(void* ctx, size_t size, size_t align)
 {
@@ -811,7 +843,6 @@ const wc_allocator wc_borrowed = {.vt = &wc_borrowed_vt, .ctx = NULL};
 #include <stdlib.h>
 
 
-
 /* One definition of the thread-local error variable.
  * Every translation unit that includes wc_error.h sees the extern declaration.
  * This file provides the actual storage.
@@ -823,21 +854,34 @@ _Thread_local wc_err wc_errno = WC_OK;
  * the compiler places them, and every branch that calls them, away from hot
  * code. Both write to stderr so diagnostics never mix into program output. */
 
-// NOLINTBEGIN(clang-analyzer-valist.Uninitialized): false positive: va_start precedes vfprintf
+// The installed fatal handler; NULL means the default (print + exit).
+static wc_fatal_fn g_fatal_handler = NULL;
+
+wc_fatal_fn wc_set_fatal_handler(wc_fatal_fn fn)
+{
+    wc_fatal_fn prev = g_fatal_handler;
+    g_fatal_handler  = fn;
+    return prev;
+}
+
 void wc_fatal_report(const char* file, int line, const char* func, const char* fmt, ...)
 {
     fflush(stdout); // keep ordering with anything already printed
-    fprintf(stderr, WC_COLOR_RED "[FATAL] %s:%d:%s(): ", file, line, func);
+
+    char    msg[512];
     va_list args;
     va_start(args, fmt);
-    vfprintf(stderr, fmt, args);
+    vsnprintf(msg, sizeof(msg), fmt, args);
     va_end(args);
-    fprintf(stderr, "\n" WC_COLOR_RESET);
-    exit(EXIT_FAILURE);
-}
-// NOLINTEND(clang-analyzer-valist.Uninitialized)
 
-// NOLINTBEGIN(clang-analyzer-valist.Uninitialized): as above
+    if (g_fatal_handler) {
+        g_fatal_handler(file, line, func, msg); // must not return
+    } else {
+        fprintf(stderr, WC_COLOR_RED "[FATAL] %s:%d:%s(): %s\n" WC_COLOR_RESET, file, line, func, msg);
+    }
+    exit(EXIT_FAILURE); // default, and the backstop for a handler that returns
+}
+
 void wc_warn_report(const char* file, int line, const char* func, const char* fmt, ...)
 {
     fflush(stdout);
@@ -848,7 +892,6 @@ void wc_warn_report(const char* file, int line, const char* func, const char* fm
     va_end(args);
     fprintf(stderr, "\n" WC_COLOR_RESET);
 }
-// NOLINTEND(clang-analyzer-valist.Uninitialized)
 
 #endif /* WC_WC_ERRNO_IMPL */
 
@@ -867,11 +910,16 @@ void wc_warn_report(const char* file, int line, const char* func, const char* fm
 
 #define MAT_BYTES(m, n) wc_mul(wc_mul((m), (n)), sizeof(float))
 
+// Tile edge for the blocked transpose.
+#ifndef WC_MAT_BLOCK
+#define WC_MAT_BLOCK 16
+#endif
+
 // D4: a zeroed matrix is dead. Unconditional in every build.
 #define MAT_LIVE(mat, fn) FATAL_IF((mat)->m == 0, fn " on zeroed/moved-from matrix")
 
 
-Matrixf matrix_create(wc_allocator a, u64 m, u64 n)
+Matrixf matrix_create(const wc_allocator* a, u64 m, u64 n)
 {
     FATAL_IF(m == 0 || n == 0, "matrix_create: dims must be > 0 (got %llu x %llu)", (unsigned long long)m,
              (unsigned long long)n);
@@ -882,7 +930,7 @@ Matrixf matrix_create(wc_allocator a, u64 m, u64 n)
     return (Matrixf){.data = data, .m = m, .n = n, .alloc = a};
 }
 
-Matrixf matrix_create_arr(wc_allocator a, u64 m, u64 n, const float* arr)
+Matrixf matrix_create_arr(const wc_allocator* a, u64 m, u64 n, const float* arr)
 {
     Matrixf mat = matrix_create(a, m, n);
     memcpy(mat.data, arr, sizeof(float) * m * n);
@@ -892,13 +940,13 @@ Matrixf matrix_create_arr(wc_allocator a, u64 m, u64 n, const float* arr)
 Matrixf matrix_create_buf(u64 m, u64 n, float* data)
 {
     FATAL_IF(m == 0 || n == 0, "matrix_create_buf: dims must be > 0");
-    return (Matrixf){.data = data, .m = m, .n = n, .alloc = wc_borrowed};
+    return (Matrixf){.data = data, .m = m, .n = n, .alloc = WC_BORROWED};
 }
 
 void matrix_destroy(Matrixf* mat)
 {
     if (mat->data) {
-        wc_allocator a = mat->alloc; // read before zeroing
+        const wc_allocator* a = mat->alloc; // read before zeroing
         wc_free(a, mat->data, MAT_BYTES(mat->m, mat->n), alignof(float));
     }
     memset(mat, 0, sizeof(*mat));
@@ -1141,13 +1189,89 @@ float matrix_det(const Matrixf* mat)
 }
 
 
+/*
+    In-place Gauss-Jordan with partial pivoting.
+    For each column k: pick the row with the largest |a[i][k]| at or below k,
+    swap it up, scale the pivot row so the pivot becomes 1 (storing 1/pivot in
+    its place), and eliminate column k from every other row. Each row swap is
+    recorded; undoing them as COLUMN swaps in reverse order leaves the inverse.
+*/
+bool matrix_inv(Matrixf* restrict out, const Matrixf* restrict mat)
+{
+    MAT_LIVE(out, "matrix_inv");
+    WC_ASSERT(mat->m == mat->n, "only square matrices have an inverse");
+    WC_ASSERT(out->m == mat->m && out->n == mat->n, "out dimensions don't match");
+
+    const u64 n = mat->n;
+    float*    a = out->data;
+    memcpy(a, mat->data, sizeof(float) * n * n);
+
+    u64 piv[n]; // row swapped into position k
+
+    for (u64 k = 0; k < n; k++) {
+        u64   p    = k;
+        float best = a[(k * n) + k] < 0 ? -a[(k * n) + k] : a[(k * n) + k];
+        for (u64 i = k + 1; i < n; i++) {
+            float v = a[(i * n) + k] < 0 ? -a[(i * n) + k] : a[(i * n) + k];
+            if (v > best) {
+                best = v;
+                p    = i;
+            }
+        }
+        if (best == 0.0F) {
+            return false; // singular
+        }
+
+        piv[k] = p;
+        if (p != k) {
+            for (u64 j = 0; j < n; j++) {
+                float t          = a[(k * n) + j];
+                a[(k * n) + j]   = a[(p * n) + j];
+                a[(p * n) + j]   = t;
+            }
+        }
+
+        float inv_p    = 1.0F / a[(k * n) + k];
+        a[(k * n) + k] = 1.0F;
+        for (u64 j = 0; j < n; j++) {
+            a[(k * n) + j] *= inv_p;
+        }
+
+        for (u64 i = 0; i < n; i++) {
+            if (i == k) {
+                continue;
+            }
+            float f        = a[(i * n) + k];
+            a[(i * n) + k] = 0.0F;
+            if (f != 0.0F) {
+                for (u64 j = 0; j < n; j++) {
+                    a[(i * n) + j] -= f * a[(k * n) + j];
+                }
+            }
+        }
+    }
+
+    // undo the row swaps as column swaps, last first
+    for (u64 k = n; k-- > 0;) {
+        if (piv[k] != k) {
+            for (u64 i = 0; i < n; i++) {
+                float t                = a[(i * n) + k];
+                a[(i * n) + k]         = a[(i * n) + piv[k]];
+                a[(i * n) + piv[k]]    = t;
+            }
+        }
+    }
+    return true;
+}
+
+
 void matrix_T(Matrixf* restrict out, const Matrixf* restrict mat)
 {
     MAT_LIVE(out, "matrix_T");
     WC_ASSERT(mat->m == out->n && mat->n == out->m, "incompatible matrix dimensions");
 
-    // Block size for cache optimization (tune based on cache line size)
-    const u64 BLOCK_SIZE = 16; // TODO: user adjustable macro?
+    // Block size for cache optimization (tune with -DWC_MAT_BLOCK=n)
+    const u64 BLOCK_SIZE = WC_MAT_BLOCK;
 
     // Blocked transpose: process matrix in BLOCK_SIZE x BLOCK_SIZE tiles
     for (u64 i = 0; i < mat->m; i += BLOCK_SIZE) {
@@ -1189,7 +1313,7 @@ void matrix_div(Matrixf* restrict mat, float val)
     }
 }
 
-Matrixf matrix_copy(wc_allocator a, const Matrixf* src)
+Matrixf matrix_copy(const wc_allocator* a, const Matrixf* src)
 {
     MAT_LIVE(src, "matrix_copy");
     return matrix_create_arr(a, src->m, src->n, src->data);
@@ -1230,6 +1354,7 @@ void matrix_print(const Matrixf* mat)
 }
 
 #undef MAT_BYTES
+#undef WC_MAT_BLOCK
 #undef MAT_LIVE
 #endif /* WC_MATRIX_IMPL */
 

@@ -87,9 +87,7 @@ int main(void)
     MAP_PUT_STR_INT(&ages, "ada", 36);
     MAP_PUT_STR_INT(&ages, "alan", 41);
 
-    String key = String_from_cstr(WC_LIBC, "ada");
-    printf("ada = %d\n", MAP_GET(&ages, int, key));
-    String_destroy(&key);
+    printf("ada = %d\n", MAP_GET_CSTR(&ages, int, "ada"));   // lookup builds no String
     HashMap_destroy(&ages);
 
     // The same kind of work on an arena that frees itself
@@ -107,11 +105,12 @@ Define these on the command line (`-D...`) for the **whole build**, library sour
 
 | Macro | Default | Effect |
 |---|---|---|
-| `GENVEC_GROWTH` | `1.5F` | `GenVec` capacity multiplier on growth |
+| `GENVEC_MIN_CAPACITY` | `8` | First `GenVec` capacity when growing from 0 (then 1.5×) |
+| `QUEUE_MIN_CAP` | `8` | First `Queue` capacity when growing from 0, and the `shrink_to_fit` floor |
 | `STRING_GROWTH` | `1.5F` | `String` capacity multiplier on growth |
-| `ARENA_DEFAULT_ALIGNMENT` | `sizeof(void*)` | Alignment used by `Arena_alloc` |
 | `ARENA_DEFAULT_SIZE` | `nKB(4)` | Default arena capacity |
 | `CHAIN_ARENA_NODE_SIZE` | `nKB(4)` | Bytes per `ChainArena` node, header included |
+| `WC_MAT_BLOCK` | `16` | Tile edge for the blocked `matrix_T` |
 
 The hash table load factor (`0.75`) and initial capacity (`16`) are fixed in `map_setup.h`.
 

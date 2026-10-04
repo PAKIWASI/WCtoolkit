@@ -4,7 +4,6 @@
 #include "wc_string.h"
 
 #include <stdalign.h>
-#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -25,7 +24,7 @@ StrView StrView_from_cstr(const char* cstr, u64 clen)
     return (StrView){.ptr = cstr, .len = clen};
 }
 
-StrView StrView_copy_cstr(wc_allocator a, const char* cstr, u64 clen)
+StrView StrView_copy_cstr(const wc_allocator* a, const char* cstr, u64 clen)
 {
     char* p = wc_alloc(a, clen + 1, 1); // +1 for the NUL terminator
     FATAL_IF(!p, "StrView_copy_cstr: allocation of %llu bytes failed", (unsigned long long)clen + 1);
@@ -34,7 +33,7 @@ StrView StrView_copy_cstr(wc_allocator a, const char* cstr, u64 clen)
     return (StrView){.ptr = p, .len = clen};
 }
 
-void StrView_free_copy(wc_allocator a, StrView sv)
+void StrView_free_copy(const wc_allocator* a, StrView sv)
 {
     if (sv.ptr) {
         wc_free(a, (char*)sv.ptr, sv.len + 1, 1); // our own allocation: dropping const is fine
@@ -55,7 +54,7 @@ void StrView_print(StrView sv)
 
 #define NODE_ALIGN alignof(StringStore_node)
 
-static StringStore_node* new_node(wc_allocator a)
+static StringStore_node* new_node(const wc_allocator* a)
 {
     StringStore_node* node = wc_alloc(a, sizeof(StringStore_node), NODE_ALIGN);
     FATAL_IF(!node, "StringStore: node allocation failed");
@@ -65,14 +64,14 @@ static StringStore_node* new_node(wc_allocator a)
 }
 
 
-StringStore StringStore_create(wc_allocator a)
+StringStore StringStore_create(const wc_allocator* a)
 {
     StringStore_node* node = new_node(a);
     return (StringStore){.tail = node, .head = node, .alloc = a, .tail_off = 0, .num = 1};
 }
 
 
-static void StringStore_destroy_node(wc_allocator a, StringStore_node* node)
+static void StringStore_destroy_node(const wc_allocator* a, StringStore_node* node)
 {
     if (node->buf[StringStore_NODE_SIZE] == 0) {
         wc_free(a, node->heap, node->heap_len, 1);
@@ -83,8 +82,8 @@ static void StringStore_destroy_node(wc_allocator a, StringStore_node* node)
 
 void StringStore_destroy(StringStore* ss)
 {
-    wc_allocator      a    = ss->alloc; // read before zeroing
-    StringStore_node* curr = ss->head;
+    const wc_allocator* a    = ss->alloc; // read before zeroing
+    StringStore_node*   curr = ss->head;
     while (curr) {
         StringStore_node* next = curr->next;
         StringStore_destroy_node(a, curr);

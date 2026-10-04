@@ -3,36 +3,35 @@
 
 #include "common.h"
 #include "wc_allocator.h"
-#include <string.h>
 
 
 
 // ROW MAJOR 2D MATRIX
 //
-// Value type. Storage comes from `alloc`, which the matrix stores (40 bytes).
+// Value type. Storage comes from `alloc`, which the matrix stores (32 bytes).
 // Zero state (moved-from / destroyed) is dead: only destroy or re-create it.
 // Every mutating op on a zeroed matrix (m == 0) is an unconditional FATAL.
 typedef struct {
     float*       data;
     u64          m; // rows
     u64          n; // cols
-    wc_allocator alloc;
+    const wc_allocator* alloc;
 } Matrixf;
 
-_Static_assert(sizeof(Matrixf) == 40, "Matrixf layout: data + m + n + 16-byte allocator");
+_Static_assert(sizeof(Matrixf) == 32, "Matrixf layout: data + m + n + allocator pointer");
 
 
 // CREATION AND DESTRUCTION
 // ============================================================================
 
 // m x n matrix, storage from `a`. Contents are uninitialised.
-Matrixf matrix_create(wc_allocator a, u64 m, u64 n) __attribute__((warn_unused_result));
+Matrixf matrix_create(const wc_allocator* a, u64 m, u64 n) __attribute__((nonnull(1), warn_unused_result));
 
 // m x n matrix from `a`, filled from a row-major array of m * n floats.
-Matrixf matrix_create_arr(wc_allocator a, u64 m, u64 n, const float* arr)
+Matrixf matrix_create_arr(const wc_allocator* a, u64 m, u64 n, const float* arr)
     __attribute__((nonnull(4), warn_unused_result));
 
-// Wrap caller-owned memory (stack array, static buffer). Uses wc_borrowed:
+// Wrap caller-owned memory (stack array, static buffer). Uses WC_BORROWED:
 // destroy frees nothing. `data` must outlive the matrix.
 Matrixf matrix_create_buf(u64 m, u64 n, float* data) __attribute__((nonnull(3), warn_unused_result));
 
@@ -40,7 +39,7 @@ Matrixf matrix_create_buf(u64 m, u64 n, float* data) __attribute__((nonnull(3), 
 void matrix_destroy(Matrixf* mat) __attribute__((nonnull(1)));
 
 // Deep copy of `src` into a new matrix allocated from `a` (never inherits src->alloc).
-Matrixf matrix_copy(wc_allocator a, const Matrixf* src) __attribute__((nonnull(2), warn_unused_result));
+Matrixf matrix_copy(const wc_allocator* a, const Matrixf* src) __attribute__((nonnull(1, 2), warn_unused_result));
 
 // Transfer: dest takes src's storage and allocator, src is left zeroed.
 // dest must be raw or already destroyed (it is overwritten, not freed).
@@ -125,13 +124,10 @@ void matrix_LU_Decomp(Matrixf* restrict L, Matrixf* restrict U, const Matrixf* r
 // Calculate determinant using LU decomposition
 float matrix_det(const Matrixf* mat) __attribute__((nonnull(1)));
 
-// Calculate adjugate (adjoint) matrix
-// TODO: NOT IMPLEMENTED
-void matrix_adj(Matrixf* out, const Matrixf* mat) __attribute__((nonnull(1, 2)));
-
-// Calculate matrix inverse: out = mat^(-1)
-// TODO: NOT IMPLEMENTED
-void matrix_inv(Matrixf* out, const Matrixf* mat) __attribute__((nonnull(1, 2)));
+// Matrix inverse: out = mat^(-1). Gauss-Jordan with partial pivoting, done in
+// place in `out` (no allocation). Returns false if mat is singular; out is
+// then unspecified. out and mat may not alias.
+bool matrix_inv(Matrixf* restrict out, const Matrixf* restrict mat) __attribute__((nonnull(1, 2)));
 
 
 // UTILITIES

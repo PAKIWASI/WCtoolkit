@@ -810,7 +810,7 @@ UTEST(gen_vector, workload_chain_arena)
 }
 
 
-/* ── Borrowed buffer (GenVec_create_buf / wc_borrowed) ───────────────────── */
+/* ── Borrowed buffer (GenVec_create_buf / WC_BORROWED) ───────────────────── */
 
 UTEST(gen_vector, buf_vector_fills_buffer_in_place)
 {
@@ -821,7 +821,7 @@ UTEST(gen_vector, buf_vector_fills_buffer_in_place)
     }
     EXPECT_TRUE(v.data == (u8*)buf);
     EXPECT_EQ(buf[7], 7);
-    EXPECT_TRUE(wc_same(v.alloc, wc_borrowed));
+    EXPECT_TRUE(wc_same(v.alloc, WC_BORROWED));
     GenVec_destroy(&v); // must not free the stack buffer (ASAN would catch it)
 }
 
@@ -867,7 +867,7 @@ UTEST(gen_vector, nested_copy_children_follow_destination)
 {
     Arena a;
     Arena_create(&a, WC_LIBC, nKB(16));
-    wc_allocator al = Arena_allocator(&a);
+    const wc_allocator* al = Arena_allocator(&a);
 
     GenVec outer = VEC_OF_IN(al, GenVec, 2);
     for (int r = 0; r < 6; r++) {
@@ -881,7 +881,7 @@ UTEST(gen_vector, nested_copy_children_follow_destination)
 
     wc_test_alloc ta;
     wc_test_alloc_init(&ta, WC_LIBC);
-    wc_allocator dst = wc_test_alloc_allocator(&ta);
+    const wc_allocator* dst = wc_test_alloc_allocator(&ta);
 
     GenVec copy = GenVec_copy(dst, &outer);
     EXPECT_TRUE(wc_test_alloc_owns(&ta, copy.data));
@@ -904,7 +904,7 @@ UTEST(gen_vector, boxed_children_free_with_their_own_allocator)
 {
     wc_test_alloc ta;
     wc_test_alloc_init(&ta, WC_LIBC);
-    wc_allocator al = wc_test_alloc_allocator(&ta);
+    const wc_allocator* al = wc_test_alloc_allocator(&ta);
 
     GenVec outer = VEC_OF(GenVec*, 2); // outer on libc, children on the test allocator
     for (int i = 0; i < 5; i++) {
@@ -963,7 +963,7 @@ UTEST(gen_vector, storage_alignment_is_size_derived)
 {
     wc_test_alloc ta;
     wc_test_alloc_init(&ta, WC_LIBC);
-    wc_allocator al = wc_test_alloc_allocator(&ta);
+    const wc_allocator* al = wc_test_alloc_allocator(&ta);
 
     GenVec v1  = GenVec_create(al, 3, 1, NULL);                 // align 1
     GenVec v4  = GenVec_create(al, 3, sizeof(int), NULL);       // align 4
@@ -987,7 +987,7 @@ UTEST(gen_vector, arena_packs_small_elements)
 {
     Arena a;
     Arena_create(&a, WC_LIBC, 256);
-    wc_allocator al = Arena_allocator(&a);
+    const wc_allocator* al = Arena_allocator(&a);
     GenVec       b1 = GenVec_create(al, 3, 1, NULL); // 3 bytes
     GenVec       b2 = GenVec_create(al, 5, 1, NULL); // starts right after: no 16-byte padding
     EXPECT_TRUE(b2.data == b1.data + 3);
@@ -1061,7 +1061,7 @@ static u64 g_fail_at;
 // subarr, nested element copy.
 static u64 alloc_site_scenario(wc_test_alloc* ta)
 {
-    wc_allocator al = wc_test_alloc_allocator(ta);
+    const wc_allocator* al = wc_test_alloc_allocator(ta);
 
     GenVec v = GenVec_create(al, 2, sizeof(int), NULL); // create
     for (int i = 0; i < 20; i++) {

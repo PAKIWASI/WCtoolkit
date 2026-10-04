@@ -2,14 +2,23 @@
 
 [Back to README](../README.md)
 
-Every container takes a `wc_allocator` when it's created, stores it, and uses it for every allocation, reallocation and free it makes. There is no global allocator.
+Every container takes an allocator when it's created, stores it, and uses it for every allocation, reallocation and free it makes. There is no global allocator.
 
 ```c
 typedef struct {
-    const wc_alloc_vtable* vt;   // NULL means libc
+    const wc_alloc_vtable* vt;   // NULL only for wc_libc
     void*                  ctx;  // Arena*, ChainArena*, your own state
-} wc_allocator;                  // 16 bytes, passed and stored by value
+} wc_allocator;                  // 16 bytes
+
+// Passed and stored as a pointer, never by value:
+GenVec v = GenVec_create(WC_LIBC, 8, sizeof(int), NULL);   // WC_LIBC is &wc_libc
 ```
+
+Three rules come with the pointer:
+
+- **Never `NULL`.** libc is `WC_LIBC`, nothing else.
+- **The allocator must outlive every container that stores it.** `WC_LIBC` and `WC_BORROWED` are static. `Arena`, `ChainArena` and the test allocator embed their own `wc_allocator`, and `Arena_allocator(&arena)` returns a pointer into the arena, so the arena's lifetime covers it. If you build your own `wc_allocator` struct, keep it alive as long as anything uses it.
+- **`const`.** An allocation never changes the `{vt, ctx}` pair; only the state behind `ctx` changes.
 
 ## Choosing one
 
@@ -19,10 +28,10 @@ typedef struct {
 | `Arena` | `Arena_allocator(&arena)` | Last block only | Many allocations that die together, and you know the upper bound. |
 | `ChainArena` | `ChainArena_allocator(&ca)` | Last block only | Same, but the total size is unknown. Grows by adding nodes. |
 | `ARENA_SCOPE` | `ARENA_SCOPE(name, cap) { ... }` | When the block exits | Per-request or per-frame scratch work. |
-| borrowed | `wc_borrowed` | Never | Wrapping memory you own: `GenVec_create_buf`, `matrix_create_buf`. |
+| borrowed | `WC_BORROWED` | Never | Wrapping memory you own: `GenVec_create_buf`, `matrix_create_buf`. |
 | test | `wc_test_alloc_allocator(&ta)` | Yes | Tests. Checks leaks, double frees and free sizes. |
 
-`WC_LIBC` is simply a zeroed `wc_allocator`. That's also why a zeroed (moved-from) container must never allocate: it would silently switch to libc. See [Conventions](conventions.md#zero-state-is-dead).
+A zeroed (moved-from) container must never allocate: its allocator pointer is `NULL`. Mutating one aborts with a clear message in every build. See [Conventions](conventions.md#zero-state-is-dead).
 
 ## The allocation API
 
@@ -31,10 +40,10 @@ typedef struct {
 
 int main(void)
 {
-    wc_allocator a = WC_LIBC;
+    const wc_allocator* a = WC_LIBC;
     int* xs = WC_NEW_N(a, int, 16);          // wc_alloc(a, 16 * sizeof(int), alignof(int))
-    xs      = WC_REALLOC_N(a, int, xs, 16, 32);
-    WC_DELETE_N(a, int, xs, 32);             // the size must match the last alloc/realloc
+    xs      = WC_REALLOC_N(a, xs, 16, 32);   // size and align come from *xs
+    WC_FREE_N(a, xs, 32);                    // the count must match the last alloc/realloc
     return 0;
 }
 ```
@@ -44,7 +53,8 @@ int main(void)
 | `wc_alloc(a, n, align)` | `n == 0` returns `NULL` without calling the backend |
 | `wc_realloc(a, p, old_n, n, align)` | `p == NULL` behaves like `wc_alloc`; `n == 0` frees and returns `NULL` |
 | `wc_free(a, p, n, align)` | `n` and `align` must match the block's last `alloc` / `realloc` |
-| `WC_NEW`, `WC_NEW_N`, `WC_DELETE`, `WC_DELETE_N`, `WC_REALLOC_N` | Typed wrappers using `sizeof(T)` and `alignof(T)` |
+| `WC_NEW(a, T)`, `WC_NEW_N(a, T, n)` | Typed allocation using `sizeof(T)` and `alignof(T)` |
+| `WC_FREE(a, p)`, `WC_FREE_N(a, p, n)`, `WC_REALLOC_N(a, p, old_n, n)` | Take the **pointer**, not a type: size and align come from `*p`, so a wrong type can't be passed |
 | `wc_mul(count, size)` | Saturates to `SIZE_MAX` on overflow, so oversized requests fail instead of wrapping |
 
 Arenas ignore the size you pass to `free`. A wrong size therefore only shows up when you switch to libc or run the test allocator, which is why the tests run every container on it.
@@ -63,7 +73,7 @@ int main(void)
 {
     Arena arena;
     Arena_create(&arena, WC_LIBC, nKB(64));      // region comes from libc
-    wc_allocator a = Arena_allocator(&arena);
+    const wc_allocator* a = Arena_allocator(&arena);   // points into the arena
 
     GenVec v = VEC_IN(a, int, 8);
     for (int i = 0; i < 100; i++) { VEC_PUSH(&v, i); }   // grows in place when it's the last block
@@ -79,7 +89,7 @@ int main(void)
 | `Arena_create(&a, backing, cap)` | Takes a `cap`-byte region from `backing` |
 | `Arena_create_buf(&a, buf, size)` | Uses memory you own, for example a stack array. Destroy frees nothing. |
 | `ARENA_CREATE_BUF(&a, nbytes)` | Same, over an anonymous stack buffer that lives until the enclosing block ends |
-| `Arena_alloc(&a, n)` / `Arena_alloc_aligned(&a, n, align)` | Returns `NULL` and sets `wc_errno = WC_ERR_FULL` when full. Alignment is by address. |
+| `Arena_alloc(&a, n)` / `Arena_alloc_aligned(&a, n, align)` | Returns `NULL` and sets `wc_errno = WC_ERR_FULL` when full. Alignment is by address. `Arena_alloc` aligns to `WC_MAX_ALIGN`, like `malloc`; pass an alignment to pack tighter. |
 | `Arena_reset(&a)` | Forgets every allocation and keeps the region |
 | `Arena_destroy(&a)` | Frees the region. Safe on a zeroed arena, safe to call twice. |
 | `Arena_used(&a)` / `Arena_remaining(&a)` | Bytes used and bytes free |
@@ -132,7 +142,7 @@ int main(void)
 
 ## Scopes
 
-`ARENA_SCOPE(name, cap)` creates a libc-backed arena, exposes it inside the block as `wc_allocator name`, and destroys it when the block exits by any route. `break` leaves the scope. Scopes nest.
+`ARENA_SCOPE(name, cap)` creates a libc-backed arena, exposes it inside the block as `const wc_allocator* name`, and destroys it when the block exits by any route. `break` leaves the scope. Scopes nest.
 
 `ARENA_SCRATCH(&arena)` rolls back everything allocated inside the block, and the arena survives:
 
@@ -162,9 +172,9 @@ The manual form is `ArenaScratch s = Arena_scratch_begin(&arena); ... Arena_scra
 
 ## Pinned arenas
 
-`Arena_allocator(&arena)` hands out the arena's own address. **Never move or copy an `Arena` or `ChainArena` after creating it.** That's why they're initialized in place while every container is returned by value.
+`Arena_allocator(&arena)` hands out a pointer into the arena, whose `ctx` is the arena's own address. **Never move or copy an `Arena` or `ChainArena` after creating it.** That's why they're initialized in place while every container is returned by value.
 
-Debug builds catch it: each arena stores its own address and checks it on every call, so a copied or destroyed arena is reported, not silently corrupted.
+Debug builds catch it: the embedded allocator's `ctx` must equal the arena's address, checked on every call, so a copied or destroyed arena is reported, not silently corrupted.
 
 ## Writing your own allocator
 
@@ -215,10 +225,10 @@ static const wc_alloc_vtable counting_vt = { counting_alloc, NULL, counting_free
 
 int main(void)
 {
-    Counter      c = {0};
-    wc_allocator a = { &counting_vt, &c };
+    Counter      c       = {0};
+    wc_allocator counter = { &counting_vt, &c };   // must outlive v
 
-    GenVec v = GenVec_create(a, 8, sizeof(int), NULL);
+    GenVec v = GenVec_create(&counter, 8, sizeof(int), NULL);
     GenVec_destroy(&v);
     return c.live == 0 ? 0 : 1;        // every byte came back
 }

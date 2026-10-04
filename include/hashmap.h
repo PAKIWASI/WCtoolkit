@@ -8,23 +8,28 @@
 
 /* Generic Hashmap with Ownership Semantics
   - Robin Hood Hashing
-  - we have 3 arrays: keys, psls, and vals
+  - 3 arrays: keys, vals and psls, plus a scratch area for Robin Hood swaps.
+    All four live in ONE allocation: [keys][vals][scratch][psls], each region
+    aligned for its element. Create = 1 alloc, resize = 1 alloc + 1 free.
   - PSL: probe sequence length: the distance from hashing location
   - we actually store psl + 1 as psl = 0 means empty bucket
   - Robin Hood Invariant: all keys that hash to i come before keys that hash to i + 1
-  - vals store [val] inline
+  - keys and vals are stored inline
+
+  Memory rules: put copies or moves, del MOVES the value into `out` (B7),
+  rehash and Robin Hood shuffles are memcpy only (B5). Zero state: capacity == 0.
 */
 
 
 typedef struct {
-    u8*            keys;
-    u8*            psls;
+    u8*            keys; // start of the single block
     u8*            vals;
+    u8*            scratch; // STAGE key/val + SWAP key/val, for Robin Hood insertion
+    u8*            psls;
     u64            size;
     u64            capacity;
     u32            key_size;
     u32            val_size;
-    u8*            scratch; // key_size + val_size bytes + alignment: temp buffer for robin hood swaps
     custom_hash_fn hash_fn;
     wc_compare_fn  cmp_fn;
 
@@ -33,52 +38,56 @@ typedef struct {
     // For types with heap resources define one static ops per type:
     const wc_container_ops* key_ops;
     const wc_container_ops* val_ops;
-    wc_allocator            alloc;
+    const wc_allocator*     alloc;
 } HashMap;
 
-_Static_assert(sizeof(HashMap) == 104, "HashMap must be 104 bytes");
+_Static_assert(sizeof(HashMap) == 96, "HashMap must be 96 bytes");
+
+// TODO: make hashset a hashmap with the values as null, then provide a convinent way for users to
+// declare a hashmap with no values (allow passing 0 for val_size?). Don't make a full blown api for hashset,
+// remove hashset.h/.c altogether
 
 
 // Safely extract callbacks — always NULL-safe on ops itself.
 #define MAP_COPY(ops) ((ops) ? (ops)->copy_fn : NULL)
-#define MAP_MOVE(ops) ((ops) ? (ops)->move_fn : NULL)
 #define MAP_DEL(ops)  ((ops) ? (ops)->del_fn : NULL)
 
 
 // Create a new HashMap by value.
 // hash_fn and cmp_fn default to wyhash / default_compare if NULL.
 // key_ops / val_ops: pass NULL for POD types.
-HashMap HashMap_create(wc_allocator a, u32 key_size, u32 val_size, custom_hash_fn hash_fn, wc_compare_fn cmp_fn,
+HashMap HashMap_create(const wc_allocator* a, u32 key_size, u32 val_size, custom_hash_fn hash_fn, wc_compare_fn cmp_fn,
                        const wc_container_ops* key_ops, const wc_container_ops* val_ops)
-    __attribute__((warn_unused_result));
+    __attribute__((nonnull(1), warn_unused_result));
 
 // Destroy all elements and free internal buffers via map->alloc.
 // Safe on zeroed/moved-from maps. Leaves struct zeroed.
 void HashMap_destroy(HashMap* map) __attribute__((nonnull(1)));
 
 // Deep copy src into a new HashMap allocated from `a`.
-HashMap HashMap_copy(wc_allocator a, const HashMap* src) __attribute__((nonnull(2), warn_unused_result));
+HashMap HashMap_copy(const wc_allocator* a, const HashMap* src) __attribute__((nonnull(1, 2), warn_unused_result));
 
 // Transfer ownership from src to dest. src is left zeroed.
 void HashMap_move(HashMap* dest, HashMap* src) __attribute__((nonnull(1, 2)));
 
 // Insert or update — COPY semantics.
 // Returns 1 if key existed (updated), 0 if new key inserted.
-b8 HashMap_put(HashMap* map, const void* key, const void* val) __attribute__((nonnull(1, 2, 3)));
+bool HashMap_put(HashMap* map, const void* key, const void* val) __attribute__((nonnull(1, 2, 3)));
 
 // Insert or update, MOVE semantics: key and val point at the caller's elements, both left zeroed
-// (a duplicate key is destroyed; the map keeps its own). move_fn optional (memcpy + zero).
+// (a duplicate key is destroyed; the map keeps its own).
 // Returns 1 if key existed (updated), 0 if new key inserted.
-b8 HashMap_put_move(HashMap* map, void* key, void* val) __attribute__((nonnull(1, 2, 3)));
+bool HashMap_put_move(HashMap* map, void* key, void* val) __attribute__((nonnull(1, 2, 3)));
 
 // Mixed: key copied, val moved.
-b8 HashMap_put_val_move(HashMap* map, const void* key, void* val) __attribute__((nonnull(1, 2, 3)));
+bool HashMap_put_val_move(HashMap* map, const void* key, void* val) __attribute__((nonnull(1, 2, 3)));
 
 // Mixed: key moved, val copied.
-b8 HashMap_put_key_move(HashMap* map, void* key, const void* val) __attribute__((nonnull(1, 2, 3)));
+bool HashMap_put_key_move(HashMap* map, void* key, const void* val) __attribute__((nonnull(1, 2, 3)));
 
-// Get value for key — copies into val. Returns 1 if found, 0 if not.
-b8 HashMap_get(const HashMap* map, const void* key, void* val) __attribute__((nonnull(1, 2, 3)));
+// Get value for key: deep COPY into val (the map keeps its own). Returns 1 if found.
+// For owning values prefer HashMap_get_ptr: no copy, no allocation.
+bool HashMap_get(const HashMap* map, const void* key, void* val) __attribute__((nonnull(1, 2, 3)));
 
 // Get pointer to value
 const void* HashMap_get_ptr(const HashMap* map, const void* key) __attribute__((nonnull(1, 2)));
@@ -94,19 +103,24 @@ __attribute__((nonnull(1))) static inline u64 HashMap_bucket_count(const HashMap
     return map->capacity;
 }
 
-b8          HashMap_bucket_occupied(const HashMap* map, u64 i) __attribute__((nonnull(1)));
+bool        HashMap_bucket_occupied(const HashMap* map, u64 i) __attribute__((nonnull(1)));
 const void* HashMap_bucket_key_ptr(const HashMap* map, u64 i) __attribute__((nonnull(1)));
 void*       HashMap_bucket_val_ptr(HashMap* map, u64 i) __attribute__((nonnull(1)));
 
-// Delete key. If out is provided, value is copied to it before deletion.
+// Delete key. out != NULL: the value is MOVED into it (caller owns it, B7).
+// out == NULL: the value is deleted. The key is always deleted.
 // Returns 1 if found and deleted, 0 if not found.
-b8 HashMap_del(HashMap* map, const void* key, void* out) __attribute__((nonnull(1, 2)));
+bool HashMap_del(HashMap* map, const void* key, void* out) __attribute__((nonnull(1, 2)));
 
 // Check if key exists.
-b8 HashMap_has(const HashMap* map, const void* key) __attribute__((nonnull(1, 2)));
+bool HashMap_has(const HashMap* map, const void* key) __attribute__((nonnull(1, 2)));
 
 // Print all key-value pairs.
 void HashMap_print(const HashMap* map, wc_print_fn key_print, wc_print_fn val_print) __attribute__((nonnull(1, 2, 3)));
+
+// Make room for n elements in total so that inserting up to n never resizes.
+// No-op if the table is already large enough. Never shrinks.
+void HashMap_reserve(HashMap* map, u64 n) __attribute__((nonnull(1)));
 
 // Remove all elements, keep capacity.
 void HashMap_clear(HashMap* map) __attribute__((nonnull(1)));
@@ -119,7 +133,7 @@ static inline __attribute__((nonnull(1))) u64 HashMap_capacity(const HashMap* ma
 {
     return map->capacity;
 }
-static inline __attribute__((nonnull(1))) b8 HashMap_empty(const HashMap* map)
+static inline __attribute__((nonnull(1))) bool HashMap_empty(const HashMap* map)
 {
     return map->size == 0;
 }

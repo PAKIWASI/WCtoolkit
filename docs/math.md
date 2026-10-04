@@ -37,13 +37,14 @@ int main(void)
 | Set / get | `matrix_set_val_arr(mat, count, arr)`, `matrix_set_val_arr2(mat, m, n, rows)`, `matrix_set_elm(mat, v, i, j)`, `matrix_get_elm(mat, i, j)`, `MATRIX_AT(mat, i, j)` |
 | Element-wise | `matrix_add(out, a, b)`, `matrix_sub(out, a, b)`, `matrix_scale(mat, k)`, `matrix_div(mat, k)` |
 | Multiply | `matrix_xply(out, a, b)` (blocked i-k-j), `matrix_xply_2(out, a, b)` (transposes `b` first) |
-| Other | `matrix_T(out, mat)`, `matrix_LU_Decomp(L, U, mat)`, `matrix_det(mat)`, `matrix_print(mat)` |
+| Other | `matrix_T(out, mat)`, `matrix_LU_Decomp(L, U, mat)`, `matrix_det(mat)`, `matrix_inv(out, mat)`, `matrix_print(mat)` |
 
 Rules:
 - Dimensions must be greater than zero. A zero dimension aborts in every build.
 - Every operation writes into an `out` you provide, with matching dimensions. Mismatched dimensions are a `WC_ASSERT`.
 - `out` must not alias an input in `add`, `sub`, `xply`, `xply_2` and `T`. They are declared `restrict`.
-- `matrix_adj` and `matrix_inv` are declared but **not implemented**.
+- `matrix_inv(out, mat)` returns `false` for a singular matrix. It runs Gauss-Jordan with partial pivoting in place in `out`, so it allocates nothing and handles zero leading pivots.
+- `matrix_T` works in square tiles of `WC_MAT_BLOCK` (default 16). Define it before building to tune for your cache.
 
 Limitations to know:
 - **LU has no pivoting.** A zero pivot is treated as singular, even when the matrix isn't. For example, `matrix_det` of `[[0, 1], [1, 0]]` should be `-1`. Instead it aborts in Debug, and in Release it divides by zero.
@@ -75,10 +76,11 @@ PCG32 (XSH-RR): 64 bits of state, 32-bit output, statistically strong and fast. 
 
 int main(void)
 {
-    pcg32_rand_seed(42, 1);                   // reproducible: same seed, same sequence
-    u32   die = pcg32_rand_bounded(6) + 1;    // 1..6, no modulo bias
-    float u   = pcg32_rand_float();           // [0, 1)
-    float g   = pcg32_rand_gaussian_custom(100.0f, 15.0f);
+    WC_Pcg32 rng = PCG32_INITIALIZER;
+    pcg32_rand_seed(&rng, 42, 1);                   // reproducible: same seed, same sequence
+    u32   die = pcg32_rand_bounded(&rng, 6) + 1;    // 1..6, no modulo bias
+    float u   = pcg32_rand_float(&rng);             // [0, 1)
+    float g   = pcg32_rand_gaussian_custom(&rng, 100.0f, 15.0f);
     printf("%u %f %f\n", die, u, g);
     return 0;
 }
@@ -86,13 +88,13 @@ int main(void)
 
 | Function | Returns |
 |---|---|
-| `pcg32_rand_seed(seed, seq)` | Seeds; `seq` selects one of 2^63 independent streams |
-| `pcg32_rand_seed_time()` | Seeds from `time(NULL)`. Two calls in the same second give the same sequence. |
-| `pcg32_rand()` | Uniform `u32` |
-| `pcg32_rand_bounded(n)` | Uniform in `[0, n)`, no modulo bias; `n > 0` |
-| `pcg32_rand_float()`, `pcg32_rand_double()` | Uniform in `[0, 1)`; the double uses 53 random bits |
-| `pcg32_rand_float_range(lo, hi)`, `pcg32_rand_double_range(lo, hi)` | Uniform in `[lo, hi)` |
-| `pcg32_rand_gaussian()` | Normal, mean 0, standard deviation 1 (Box-Muller using `fast_math`) |
-| `pcg32_rand_gaussian_custom(mean, sd)` | Normal with the given mean and standard deviation |
+| `pcg32_rand_seed(&rng, seed, seq)` | Seeds; `seq` selects one of 2^63 independent streams |
+| `pcg32_rand_seed_time(&rng)` | Seeds from `time(NULL)`. Two calls in the same second give the same sequence. |
+| `pcg32_rand(&rng)` | Uniform `u32` |
+| `pcg32_rand_bounded(&rng, n)` | Uniform in `[0, n)`, no modulo bias; `n > 0` |
+| `pcg32_rand_float(&rng)`, `pcg32_rand_double(&rng)` | Uniform in `[0, 1)`; the double uses 53 random bits |
+| `pcg32_rand_float_range(&rng, lo, hi)`, `pcg32_rand_double_range(&rng, lo, hi)` | Uniform in `[lo, hi)` |
+| `pcg32_rand_gaussian(&rng)` | Normal, mean 0, standard deviation 1 (Box-Muller using `fast_math`) |
+| `pcg32_rand_gaussian_custom(&rng, mean, sd)` | Normal with the given mean and standard deviation |
 
-**The generator state is one global**, shared by every caller and not thread-safe. Apart from the thread-local `wc_errno`, it is the only global state in the toolkit. Seed once at startup; for threads, generate in a single thread.
+**Every function takes the generator.** There is no global RNG: each `WC_Pcg32` holds its own state, including the cached second Box-Muller value, so independent generators never interfere. Use one per thread.

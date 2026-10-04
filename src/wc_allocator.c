@@ -3,7 +3,12 @@
 
 
 
-/* wc_borrowed: non-owning allocator (plan 3.2) */
+/* wc_libc: the only allocator with vt == NULL */
+
+const wc_allocator wc_libc = {.vt = NULL, .ctx = NULL};
+
+
+/* wc_borrowed: non-owning allocator */
 
 static void* wc_borrowed_alloc(void* ctx, size_t size, size_t align)
 {

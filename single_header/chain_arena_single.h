@@ -20,8 +20,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define WC_MAX_ALIGN alignof(max_align_t)
 
+#define WC_MAX_ALIGN alignof(max_align_t)
 
 /* libc fallbacks */
 
@@ -42,7 +42,6 @@ static inline void* wc_libc_alloc(size_t n, size_t align)
 #endif
 }
 
-// NOLINTBEGIN(clang-analyzer-unix.Malloc): only libc blocks reach libc; the analyzer cannot see that arena allocators always set vt
 static inline void wc_libc_free(void* p, size_t align)
 {
 #ifdef _MSC_VER
@@ -54,9 +53,7 @@ static inline void wc_libc_free(void* p, size_t align)
     (void)align;
     free(p); // POSIX/glibc: fine for both
 }
-// NOLINTEND(clang-analyzer-unix.Malloc)
 
-// NOLINTBEGIN(clang-analyzer-unix.Malloc): as above
 static inline void* wc_libc_realloc(void* p, size_t old_n, size_t n, size_t align)
 {
     if (align <= WC_MAX_ALIGN) {
@@ -72,7 +69,6 @@ static inline void* wc_libc_realloc(void* p, size_t old_n, size_t n, size_t alig
     wc_libc_free(p, align);
     return q;
 }
-// NOLINTEND(clang-analyzer-unix.Malloc)
 
 
 
@@ -82,8 +78,12 @@ static inline void* wc_libc_realloc(void* p, size_t old_n, size_t n, size_t alig
  * No global allocator exists: every data structure receives its allocator at
  * construction, stores it, and uses it for every allocation.
  *
- * An allocator is a (vtable, ctx) pair, 16 bytes, passed and stored BY VALUE.
- * A zero-initialised allocator is libc: `WC_LIBC`.
+ * An allocator is a (vtable, ctx) pair. It is passed and stored as `const wc_allocator*`
+ *   - the pointer is never NULL; libc is WC_LIBC, nothing else.
+ *   - the pointed-to allocator must outlive every container that stores it.
+ *     WC_LIBC and WC_BORROWED are static; Arena, ChainArena and wc_test_alloc
+ *     embed their own allocator, so the arena's lifetime covers it
+ *   - `const`: a call never changes the (vt, ctx) pair; ctx is what mutates
  *
  * Contract (the wc_* wrappers enforce it, backends may rely on it):
  *   - callbacks are never called with p == NULL or size == 0
@@ -97,7 +97,6 @@ static inline void* wc_libc_realloc(void* p, size_t old_n, size_t n, size_t alig
  *   - wc_realloc(a, p, old, 0, ..) frees p and returns NULL
  *
 */
-
 typedef struct {
     void* (*alloc)(void* ctx, size_t size, size_t align);
     void* (*realloc)(void* ctx, void* p, size_t old_size, size_t new_size, size_t align); // may be NULL
@@ -105,56 +104,61 @@ typedef struct {
 } wc_alloc_vtable;
 
 typedef struct {
-    const wc_alloc_vtable* vt;  // NULL => libc
+    const wc_alloc_vtable* vt;  // NULL => libc (only ever true for wc_libc)
     void*                  ctx; // Arena*, ChainArena*, test allocator, ...
 } wc_allocator;
 
-_Static_assert(sizeof(wc_allocator) == 16, "wc_allocator must stay 16 bytes (stored by value in every container)");
+_Static_assert(sizeof(wc_allocator) == 16, "wc_allocator must stay 16 bytes");
 
-#define WC_LIBC ((wc_allocator){0})
+// The libc allocator. Defined once in wc_allocator.c.
+extern const wc_allocator wc_libc;
+#define WC_LIBC (&wc_libc)
 
 // Non-owning allocator: alloc -> NULL, free -> no-op. A container built on it
 // wraps caller memory, cannot grow, and frees nothing on destroy.
 extern const wc_allocator wc_borrowed;
+#define WC_BORROWED (&wc_borrowed)
 
-static inline int wc_is_libc(wc_allocator a)
+static inline __attribute__((nonnull(1))) int wc_is_libc(const wc_allocator* a)
 {
-    return a.vt == NULL;
+    return a->vt == NULL;
 }
 
-static inline int wc_same(wc_allocator a, wc_allocator b)
+// Same backend and same context: memory from one may be freed through the other.
+static inline __attribute__((nonnull(1, 2))) int wc_same(const wc_allocator* a, const wc_allocator* b)
 {
-    return a.vt == b.vt && a.ctx == b.ctx;
+    return a == b || (a->vt == b->vt && a->ctx == b->ctx);
 }
 
 #define WC_ALLOC_ASSERT_ALIGN(align) \
     assert((align) != 0 && ((align) & ((align) - 1)) == 0 && "align must be a power of two >= 1")
 
-static inline void* wc_alloc(wc_allocator a, size_t n, size_t align)
+static inline __attribute__((nonnull(1))) void* wc_alloc(const wc_allocator* a, size_t n, size_t align)
 {
     WC_ALLOC_ASSERT_ALIGN(align);
     if (n == 0 || n > (size_t)PTRDIFF_MAX) { // > PTRDIFF_MAX: overflowed size (see wc_mul)
         return NULL;
     }
-    return a.vt ? a.vt->alloc(a.ctx, n, align) : wc_libc_alloc(n, align);
+    return a->vt ? a->vt->alloc(a->ctx, n, align) : wc_libc_alloc(n, align);
 }
 
-static inline void wc_free(wc_allocator a, void* p, size_t n, size_t align)
+static inline __attribute__((nonnull(1))) void wc_free(const wc_allocator* a, void* p, size_t n, size_t align)
 {
     WC_ALLOC_ASSERT_ALIGN(align);
     if (!p) {
         return;
     }
-    if (!a.vt) {
+    if (!a->vt) {
         wc_libc_free(p, align);
         return;
     }
-    if (a.vt->free) {
-        a.vt->free(a.ctx, p, n, align);
+    if (a->vt->free) {
+        a->vt->free(a->ctx, p, n, align);
     }
 }
 
-static inline void* wc_realloc(wc_allocator a, void* p, size_t old_n, size_t n, size_t align)
+static inline __attribute__((nonnull(1))) void* wc_realloc(const wc_allocator* a, void* p, size_t old_n, size_t n,
+                                                           size_t align)
 {
     WC_ALLOC_ASSERT_ALIGN(align);
     if (!p) {
@@ -167,15 +171,15 @@ static inline void* wc_realloc(wc_allocator a, void* p, size_t old_n, size_t n, 
     if (n > (size_t)PTRDIFF_MAX) {
         return NULL; // overflowed size: fail, p stays valid
     }
-    if (!a.vt) {
+    if (!a->vt) {
         return wc_libc_realloc(p, old_n, n, align);
     }
-    if (a.vt->realloc) {
-        return a.vt->realloc(a.ctx, p, old_n, n, align);
+    if (a->vt->realloc) {
+        return a->vt->realloc(a->ctx, p, old_n, n, align);
     }
 
     // backend without realloc: emulate
-    void* q = a.vt->alloc(a.ctx, n, align);
+    void* q = a->vt->alloc(a->ctx, n, align);
     if (!q) {
         return NULL; // p left untouched
     }
@@ -193,7 +197,7 @@ static inline size_t wc_mul(size_t count, size_t size)
     return (int)__builtin_mul_overflow(count, size, &r) ? SIZE_MAX : r;
 }
 
-// Smallest safe alignment for elements of `elm_size` bytes (plan D7): the
+// Smallest safe alignment for elements of `elm_size` bytes: the
 // largest power of two dividing elm_size, capped at WC_MAX_ALIGN. Valid because
 // sizeof(T) is always a multiple of alignof(T).
 static inline size_t wc_align_for_size(size_t elm_size)
@@ -206,15 +210,17 @@ static inline size_t wc_align_for_size(size_t elm_size)
 }
 
 
-/* typed helpers (allocator first) */
+/* typed helpers (allocator first)
+ * Free takes the POINTER, not a type: size and align come from *p, so a wrong
+ * type can't be passed*/
 
-#define WC_NEW(a, T)            ((T*)wc_alloc((a), sizeof(T), alignof(T)))
-#define WC_NEW_N(a, T, n)       ((T*)wc_alloc((a), wc_mul((n), sizeof(T)), alignof(T)))
-#define WC_DELETE(a, T, p)      wc_free((a), (p), sizeof(T), alignof(T))
-#define WC_DELETE_N(a, T, p, n) wc_free((a), (p), wc_mul((n), sizeof(T)), alignof(T))
-#define WC_REALLOC_N(a, T, p, old_n, n) \
-    ((T*)wc_realloc((a), (p), wc_mul((old_n), sizeof(T)), wc_mul((n), sizeof(T)), alignof(T)))
-
+#define WC_NEW(a, T)      ((T*)wc_alloc((a), sizeof(T), alignof(T)))
+#define WC_NEW_N(a, T, n) ((T*)wc_alloc((a), wc_mul((n), sizeof(T)), alignof(T)))
+#define WC_REALLOC_N(a, p, old_n, n)                                                               \
+    ((__typeof__(p))wc_realloc((a), (p), wc_mul((old_n), sizeof(*(p))), wc_mul((n), sizeof(*(p))), \
+                               alignof(__typeof__(*(p)))))
+#define WC_FREE(a, p)      (wc_free((a), (p), sizeof(*(p)), alignof(__typeof__(*(p)))))
+#define WC_FREE_N(a, p, n) (wc_free((a), (p), wc_mul((n), sizeof(*(p))), alignof(__typeof__(*(p)))))
 
 
 #endif // WC_ALLOCATOR_H
@@ -254,22 +260,26 @@ static inline size_t wc_align_for_size(size_t elm_size)
 /*
  * DIAGNOSTICS
  *
- * Every macro below is an EXPRESSION of type void (no do { } while (0)), so
- * it composes anywhere: statements, comma expressions, ({ }) blocks, ?:.
- *
  *   SURVIVES EVERY BUILD (Debug and Release)
  *     FATAL(fmt, ...)                 abort with a message
+ *
  *     FATAL_IF(cond, fmt, ...)        abort if cond is TRUE. Absolute failures
  *                                     only: allocation failed, mutation of a
  *                                     zeroed (moved-from/destroyed) container.
+ *
  *     WARN(fmt, ...)                  print a warning to stderr, continue
+ *
  *     WARN_IF(cond, fmt, ...)         warn if cond is TRUE, continue
+ *
  *     WARN_IF_RET(cond, ret, fmt, ...) warn and `return ret` if cond is TRUE
- *                                     (GNU statement expression: it can return)
- *     LOG(fmt, ...)                   print to stdout
+ *                                     (GNU statement expression can return)
+ *
+ *     LOG(fmt, ...)                   print to stderr
+ *
  *     LOG_IF(cond, fmt, ...)          log if cond is TRUE
  *
  *   STRIPPED UNDER NDEBUG (Release)
+ *
  *     WC_ASSERT(cond, fmt, ...)       abort if cond is FALSE. cond is the
  *                                     INVARIANT (`i < size`), not the failure.
  *                                     For programmer errors: bounds, API misuse.
@@ -278,7 +288,7 @@ static inline size_t wc_align_for_size(size_t elm_size)
  *
  * The rule: if continuing past the failure would corrupt memory even in a
  * correct program (an allocator returned NULL), use FATAL_IF. If the failure
- * means the CALLER has a bug, use WC_ASSERT. Never WC_ASSERT an allocation.
+ * means the CALLER has a bug, use WC_ASSERT
  *
  * Branch prediction: failure paths are WC_UNLIKELY, and the reporters are
  * `cold, noinline` functions defined once in wc_errno.c. The compiler moves
@@ -291,6 +301,14 @@ static inline size_t wc_align_for_size(size_t elm_size)
 
 __attribute__((cold, noinline, noreturn, format(printf, 4, 5))) void
 wc_fatal_report(const char* file, int line, const char* func, const char* fmt, ...);
+
+/* Fatal handler. Every FATAL / FATAL_IF formats its message and calls the
+ * installed handler. The handler must not return: abort, exit, or longjmp out
+ * (tests can verify that something FATALs). If it does return, the program
+ * exits. NULL restores the default (print to stderr, exit(EXIT_FAILURE)).
+ * Returns the previous handler. Set it once at startup: it is not thread-local. */
+typedef void (*wc_fatal_fn)(const char* file, int line, const char* func, const char* msg);
+wc_fatal_fn wc_set_fatal_handler(wc_fatal_fn fn);
 
 __attribute__((cold, noinline, format(printf, 4, 5))) void wc_warn_report(const char* file, int line, const char* func,
                                                                           const char* fmt, ...);
@@ -315,8 +333,9 @@ __attribute__((cold, noinline, format(printf, 4, 5))) void wc_warn_report(const 
         (void)0;                                      \
     })
 
-
-#define LOG(fmt, ...) ((void)printf(WC_COLOR_CYAN "[LOG] %s(): " fmt "\n" WC_COLOR_RESET, __func__, ##__VA_ARGS__))
+// stderr, like WARN/FATAL: diagnostics never mix into program output.
+#define LOG(fmt, ...) \
+    ((void)fprintf(stderr, WC_COLOR_CYAN "[LOG] %s(): " fmt "\n" WC_COLOR_RESET, __func__, ##__VA_ARGS__))
 
 #define LOG_IF(cond, fmt, ...) ((void)((cond) && (LOG(fmt, ##__VA_ARGS__), 0)))
 
@@ -334,7 +353,9 @@ __attribute__((cold, noinline, format(printf, 4, 5))) void wc_warn_report(const 
 #endif
 
 
-// token pasting that expands its arguments first (for __COUNTER__/__LINE__ names)
+// Token pasting that expands its arguments first. `a##b` pastes BEFORE expansion,
+// so WC_CAT_(x, __LINE__) gives `x__LINE__`; the extra level expands __LINE__ to
+// 42 first and then pastes, giving `x42`. Used for __COUNTER__/__LINE__ names.
 #define WC_CAT_(a, b) a##b
 #define WC_CAT(a, b)  WC_CAT_(a, b)
 
@@ -345,36 +366,48 @@ __attribute__((cold, noinline, format(printf, 4, 5))) void wc_warn_report(const 
 #include <stdint.h>
 
 typedef uint8_t  u8;
-typedef uint8_t  b8;
 typedef uint16_t u16;
 typedef uint32_t u32;
 typedef uint64_t u64;
 
+typedef int8_t  i8;
+typedef int16_t i16;
+typedef int32_t i32;
+typedef int64_t i64;
+
+// we are using unsigned indices/sizes
 #define WC_NOT_FOUND ((u64) - 1)
 
 
 // GENERIC FUNCTIONS
 
 
+/* ELEMENT OPS
+ *
+ * Memory rule B5: every element is TRIVIALLY RELOCATABLE. A container may move
+ * an element to another address with a raw memcpy (growth, insert/remove shifts,
+ * hash table shuffles, queue compaction, taking an element out) and never asks
+ * the element first. A type that holds a pointer to itself, or that something
+ * outside points into, cannot be stored by value: store it by pointer.
+ *
+ */
+
 // Deep-copy `src` INTO `dest`, allocating any owned resources from `dst`.
-// `dest` is uninitialised raw slot memory (plan 3.3).
-typedef void (*wc_copy_fn)(wc_allocator dst, void* dest, const void* src);
-// Transfer ownership: `dest` takes over everything `src` owned; `src` is left
-// ZEROED (safe to destroy, not usable). Containers do memcpy + zero when NULL.
-typedef void (*wc_move_fn)(void* dest, void* src);
+// `dest` is uninitialised raw slot memory: never read or free it (B3).
+// Called ONLY when both sides keep the value (B8).
+typedef void (*wc_copy_fn)(const wc_allocator* dst, void* dest, const void* src);
 // Release owned resources of the element (not the slot). Elements that own
-// memory store their own allocator, so no allocator argument is needed.
+// memory store their own allocator, so no allocator argument is needed (B2).
 typedef void (*wc_delete_fn)(void* elm);
 typedef void (*wc_print_fn)(const void* elm);
 typedef int (*wc_compare_fn)(const void* a, const void* b, u64 size);
 
 
-// Vtable: one instance shared across all vectors of the same type.
-// Pass NULL for any callback not needed.
-// For POD types, pass NULL for the whole ops pointer.
+// vtable: one instance shared across all objects of the same type.
+// Pass NULL for any callback not needed (no copy_fn: copies are memcpy;
+// no del_fn: nothing is freed per element). For plain data pass NULL ops.
 typedef struct {
     wc_copy_fn   copy_fn; // Deep copy function for owned resources (or NULL)
-    wc_move_fn   move_fn; // Transfer ownership and null original (or NULL)
     wc_delete_fn del_fn;  // Cleanup function for owned resources (or NULL)
 } wc_container_ops;
 
@@ -383,13 +416,12 @@ typedef struct {
 //   GenVec* v = WC_BOX_IN(A, GenVec, GenVec_create, 8, sizeof(int), NULL);
 // Invariant: the shell comes from the same allocator the child stores, so a
 // by-pointer delete can free the shell with the child's own allocator.
-#define WC_BOX_IN(A, T, init_fn, ...)                                  \
-    ({                                                                 \
-        wc_allocator _wbx_a = (A);                                     \
-        T*           _wbx_p = wc_alloc(_wbx_a, sizeof(T), alignof(T)); \
-        FATAL_IF(!_wbx_p, "WC_BOX_IN(" #T "): allocation failed");     \
-        *_wbx_p = init_fn(_wbx_a, __VA_ARGS__);                        \
-        _wbx_p;                                                        \
+#define WC_BOX_IN(A, T, init_fn, ...)                              \
+    ({                                                             \
+        T* _wbx_p = wc_alloc(A, sizeof(T), alignof(T));            \
+        FATAL_IF(!_wbx_p, "WC_BOX_IN(" #T "): allocation failed"); \
+        *_wbx_p = init_fn(A, __VA_ARGS__);                         \
+        _wbx_p;                                                    \
     })
 
 
@@ -474,7 +506,6 @@ static inline void wc_print_cstr(const void* elm)
 
 
 /* wc_errno.h — Error reporting for WCtoolkit
- * ============================================
  *
  * Three tiers:
  *
@@ -608,9 +639,6 @@ static inline void wc_perror(const char* prefix)
 #include <string.h>
 
 
-#ifndef ARENA_DEFAULT_ALIGNMENT
-#define ARENA_DEFAULT_ALIGNMENT (sizeof(void*)) // 8 bytes
-#endif
 
 // Total bytes per regular node, header included (one backing allocation per node).
 #ifndef CHAIN_ARENA_NODE_SIZE
@@ -635,17 +663,19 @@ typedef struct ChainArenaNode {
     struct ChainArenaNode* next;
     u64                    cap;    // usable bytes in data[]
     u64                    used;   // bytes consumed in data[]
-    u8                     data[]; // TODO: fuck this bullshit and get the previous in
+    _Alignas(WC_MAX_ALIGN) u8 data[]; // first byte aligned like malloc: small requests need no padding
 } ChainArenaNode;
 
+_Static_assert(offsetof(ChainArenaNode, data) % WC_MAX_ALIGN == 0, "ChainArenaNode data must be max-aligned");
+
 typedef struct ChainArena {
-    wc_allocator             backing;
+    const wc_allocator*      backing;
     ChainArenaNode*          head;       // first node, kept by reset
     ChainArenaNode*          tail;       // current node: allocations happen here
     u64                      used;       // bytes consumed in head..tail (padding included)
     ChainArenaNode*          floor_node; // NULL: no floor
     u64                      floor_used; // floor offset inside floor_node
-    const struct ChainArena* self;       // == this while live; NULL after destroy
+    wc_allocator             self;       // this arena as an allocator: {chain_vt, this}; ctx NULL after destroy
 } ChainArena;
 
 typedef struct {
@@ -661,7 +691,7 @@ typedef struct {
 // Lifecycle (out-param: the struct is pinned)
 
 // Creates the first node from `backing`. Fatal if that allocation fails.
-void ChainArena_create(ChainArena* arena, wc_allocator backing) __attribute__((nonnull(1)));
+void ChainArena_create(ChainArena* arena, const wc_allocator* backing) __attribute__((nonnull(1, 2)));
 
 // Frees every node through the backing allocator and zeroes the struct.
 // Safe on a zeroed or already-destroyed ChainArena.
@@ -680,7 +710,7 @@ void* ChainArena_alloc_aligned(ChainArena* arena, u64 size, u64 align) __attribu
 
 static inline __attribute__((nonnull(1), alloc_size(2))) void* ChainArena_alloc(ChainArena* arena, u64 size)
 {
-    return ChainArena_alloc_aligned(arena, size, ARENA_DEFAULT_ALIGNMENT);
+    return ChainArena_alloc_aligned(arena, size, WC_MAX_ALIGN);
 }
 
 static inline __attribute__((nonnull(1))) u64 ChainArena_used(const ChainArena* arena)
@@ -688,7 +718,11 @@ static inline __attribute__((nonnull(1))) u64 ChainArena_used(const ChainArena* 
     return arena->used;
 }
 
-wc_allocator ChainArena_allocator(ChainArena* arena) __attribute__((nonnull(1)));
+// Points INTO the arena: lives exactly as long as the arena does.
+static inline __attribute__((nonnull(1), returns_nonnull)) const wc_allocator* ChainArena_allocator(ChainArena* arena)
+{
+    return &arena->self;
+}
 
 
 // Scratch: save the position and raise the floor; end frees nodes appended after
@@ -747,7 +781,12 @@ static inline void wc_chain_arena_scratch_cleanup(ChainArenaScratch* s)
 
 
 
-/* wc_borrowed: non-owning allocator (plan 3.2) */
+/* wc_libc: the only allocator with vt == NULL */
+
+const wc_allocator wc_libc = {.vt = NULL, .ctx = NULL};
+
+
+/* wc_borrowed: non-owning allocator */
 
 static void* wc_borrowed_alloc(void* ctx, size_t size, size_t align)
 {
@@ -787,7 +826,6 @@ const wc_allocator wc_borrowed = {.vt = &wc_borrowed_vt, .ctx = NULL};
 #include <stdlib.h>
 
 
-
 /* One definition of the thread-local error variable.
  * Every translation unit that includes wc_error.h sees the extern declaration.
  * This file provides the actual storage.
@@ -799,21 +837,34 @@ _Thread_local wc_err wc_errno = WC_OK;
  * the compiler places them, and every branch that calls them, away from hot
  * code. Both write to stderr so diagnostics never mix into program output. */
 
-// NOLINTBEGIN(clang-analyzer-valist.Uninitialized): false positive: va_start precedes vfprintf
+// The installed fatal handler; NULL means the default (print + exit).
+static wc_fatal_fn g_fatal_handler = NULL;
+
+wc_fatal_fn wc_set_fatal_handler(wc_fatal_fn fn)
+{
+    wc_fatal_fn prev = g_fatal_handler;
+    g_fatal_handler  = fn;
+    return prev;
+}
+
 void wc_fatal_report(const char* file, int line, const char* func, const char* fmt, ...)
 {
     fflush(stdout); // keep ordering with anything already printed
-    fprintf(stderr, WC_COLOR_RED "[FATAL] %s:%d:%s(): ", file, line, func);
+
+    char    msg[512];
     va_list args;
     va_start(args, fmt);
-    vfprintf(stderr, fmt, args);
+    vsnprintf(msg, sizeof(msg), fmt, args);
     va_end(args);
-    fprintf(stderr, "\n" WC_COLOR_RESET);
-    exit(EXIT_FAILURE);
-}
-// NOLINTEND(clang-analyzer-valist.Uninitialized)
 
-// NOLINTBEGIN(clang-analyzer-valist.Uninitialized): as above
+    if (g_fatal_handler) {
+        g_fatal_handler(file, line, func, msg); // must not return
+    } else {
+        fprintf(stderr, WC_COLOR_RED "[FATAL] %s:%d:%s(): %s\n" WC_COLOR_RESET, file, line, func, msg);
+    }
+    exit(EXIT_FAILURE); // default, and the backstop for a handler that returns
+}
+
 void wc_warn_report(const char* file, int line, const char* func, const char* fmt, ...)
 {
     fflush(stdout);
@@ -824,7 +875,6 @@ void wc_warn_report(const char* file, int line, const char* func, const char* fm
     va_end(args);
     fprintf(stderr, "\n" WC_COLOR_RESET);
 }
-// NOLINTEND(clang-analyzer-valist.Uninitialized)
 
 #endif /* WC_WC_ERRNO_IMPL */
 
@@ -847,7 +897,7 @@ void wc_warn_report(const char* file, int line, const char* func, const char* fm
 
 _Static_assert(CHAIN_ARENA_NODE_SIZE > sizeof(ChainArenaNode) + 64, "CHAIN_ARENA_NODE_SIZE too small");
 
-#define CHAIN_CHECK_LIVE(a) WC_ASSERT((a)->self == (a), "ChainArena used after destroy, or copied/moved after create")
+#define CHAIN_CHECK_LIVE(a) WC_ASSERT((a)->self.ctx == (a), "ChainArena used after destroy, or copied/moved after create")
 
 
 // Node helpers
@@ -897,7 +947,7 @@ static inline u64 node_fit(const ChainArenaNode* n, u64 size, u64 align)
 }
 
 // Is [p, p + size) the last block of the tail node, at or above the floor?
-static inline b8 is_top(const ChainArena* arena, const u8* p, u64 size)
+static inline bool is_top(const ChainArena* arena, const u8* p, u64 size)
 {
     const ChainArenaNode* t = arena->tail;
     if (p < t->data || p + size != t->data + t->used) {
@@ -910,7 +960,7 @@ static inline b8 is_top(const ChainArena* arena, const u8* p, u64 size)
 
 
 // Was `p` allocated before the innermost scratch scope began? (debug checks only)
-static __attribute__((unused)) b8 is_below_floor(const ChainArena* arena, const u8* p)
+static __attribute__((unused)) bool is_below_floor(const ChainArena* arena, const u8* p)
 {
     const ChainArenaNode* f = arena->floor_node;
     if (!f) {
@@ -930,7 +980,9 @@ static __attribute__((unused)) b8 is_below_floor(const ChainArena* arena, const 
 
 // Lifecycle
 
-void ChainArena_create(ChainArena* arena, wc_allocator backing)
+static const wc_alloc_vtable chain_vt;
+
+void ChainArena_create(ChainArena* arena, const wc_allocator* backing)
 {
     *arena = (ChainArena){.backing = backing};
 
@@ -940,12 +992,12 @@ void ChainArena_create(ChainArena* arena, wc_allocator backing)
     }
     arena->head = first;
     arena->tail = first;
-    arena->self = arena;
+    arena->self = (wc_allocator){.vt = &chain_vt, .ctx = arena};
 }
 
 void ChainArena_destroy(ChainArena* arena)
 {
-    if (arena->self == NULL) {
+    if (arena->self.ctx == NULL) {
         return; // zeroed or already destroyed
     }
     CHAIN_CHECK_LIVE(arena);
@@ -1083,13 +1135,6 @@ static const wc_alloc_vtable chain_vt = {
     .realloc = chain_vt_realloc,
     .free    = chain_vt_free,
 };
-
-wc_allocator ChainArena_allocator(ChainArena* arena)
-{
-    CHAIN_CHECK_LIVE(arena);
-    return (wc_allocator){.vt = &chain_vt, .ctx = arena};
-}
-
 
 // Scratch
 

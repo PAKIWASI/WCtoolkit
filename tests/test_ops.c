@@ -13,9 +13,9 @@
 /* ══════════════════════════════════════════════════════════════════════════
  * SECTION 1 — Vec<String> by VALUE (Strategy A)
  *
- * The slot IS the String struct (40 bytes).
+ * The slot IS the String struct (48 bytes).
  * copy_fn deep-copies the data buffer.
- * move_fn transfers the heap struct, frees container only.
+ * A move is memcpy + zero the source (rule B6): no callback.
  * del_fn  frees the data buffer, NOT the slot.
  * ══════════════════════════════════════════════════════════════════════════ */
 
@@ -24,8 +24,8 @@ UTEST(ops, strval_push_copy_independent)
     GenVec v = VEC_OF_STR(4);
     String s = String_from_cstr(WC_LIBC, "hello");
 
-    VEC_PUSH(&v, s);
-    VEC_PUSH(&v, s);
+    VEC_PUSH_COPY(&v, s);
+    VEC_PUSH_COPY(&v, s);
 
     /* mutate source — stored copies must be independent */
     String_append_cstr(&s, "_MUTATED");
@@ -83,7 +83,7 @@ UTEST(ops, strval_pop_returns_owned_String)
     VEC_PUSH_CSTR(&v, "first");
     VEC_PUSH_CSTR(&v, "second");
 
-    /* VEC_POP copies element out via copy_fn, then del_fn cleans slot */
+    /* VEC_POP moves the element out (rule B7): no copy, no allocation */
     String popped = VEC_POP(&v, String);
     EXPECT_TRUE(String_equals_cstr(&popped, "second"));
     EXPECT_EQ(GenVec_size(&v), 1u);
@@ -148,8 +148,8 @@ UTEST(ops, strptr_push_copy_independent)
     GenVec  v = VEC_OF_STR_PTR(4);
     String* s = WC_BOX_IN(WC_LIBC, String, String_from_cstr, "hello");
 
-    VEC_PUSH(&v, s);
-    VEC_PUSH(&v, s);
+    VEC_PUSH_COPY(&v, s);
+    VEC_PUSH_COPY(&v, s);
 
     /* mutate source — copies in vec must be independent */
     String_append_cstr(s, "_MUTATED");
@@ -157,7 +157,7 @@ UTEST(ops, strptr_push_copy_independent)
     EXPECT_TRUE(String_equals_cstr(VEC_AT(&v, String*, 1), "hello"));
 
     String_destroy(s);
-    wc_free(WC_LIBC, s, sizeof(String), alignof(String));
+    WC_FREE(WC_LIBC, s);
     GenVec_destroy(&v);
 }
 
@@ -214,7 +214,7 @@ UTEST(ops, strptr_replace_slot_pointer)
     String** slot        = VEC_AT_MUT(&v, String*, 0);
     String*  replacement = WC_BOX_IN(WC_LIBC, String, String_from_cstr, "new");
     String_destroy(*slot); /* free old String */
-    wc_free(WC_LIBC, *slot, sizeof(String), alignof(String));
+    WC_FREE(WC_LIBC, *slot);
     *slot = replacement; /* put new String* in slot */
 
     EXPECT_TRUE(String_equals_cstr(VEC_AT(&v, String*, 0), "new"));
@@ -225,10 +225,10 @@ UTEST(ops, strptr_replace_slot_pointer)
 /* ══════════════════════════════════════════════════════════════════════════
  * SECTION 3 — Vec<GenVec> by VALUE  (vec of int vecs)
  *
- * Outer slot IS the inner GenVec struct (56 bytes).
+ * Outer slot IS the inner GenVec struct (48 bytes).
  * Inner vec's data buffer lives on the heap.
  * vec_copy:  GenVec_copy into the outer container's allocator.
- * vec_move:  memcpy fields, zero the source.
+ * move:      memcpy fields, zero the source (no callback).
  * vec_del:   GenVec_destroy [frees data buffer only, not slot].
  * ══════════════════════════════════════════════════════════════════════════ */
 

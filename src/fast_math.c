@@ -275,7 +275,7 @@ float fast_pow(float base, float exp)
 
 
     // negative exponents
-    b8 is_negative_exp = 0;
+    bool is_negative_exp = 0;
     if (exp < 0.0f) {
         is_negative_exp = 1;
         exp             = -exp;

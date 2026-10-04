@@ -42,18 +42,6 @@ UTEST(string, from_cstr_empty)
     String_destroy(&s);
 }
 
-UTEST(string, from_String)
-{
-    String a = String_from_cstr(WC_LIBC, "copy me");
-    String b = String_from_String(WC_LIBC, &a);
-    EXPECT_TRUE(String_equals(&a, &b));
-    /* must be independent */
-    String_append_cstr(&a, "!!!");
-    EXPECT_FALSE(String_equals(&a, &b));
-    String_destroy(&a);
-    String_destroy(&b);
-}
-
 
 // Append
 
@@ -296,31 +284,31 @@ UTEST(string, shrink)
 {
     String s = String_create(WC_LIBC);
 
-    // grow within sso (usable sso capacity = STR_SSO_SIZE - 1 = 31)
-    for (int i = 0; i < 25; i++) {
+    // grow within sso (usable sso capacity = STR_SSO_SIZE - 1 = 23)
+    for (int i = 0; i < 20; i++) {
         String_append_char(&s, 'a');
     }
-    EXPECT_EQ(String_len(&s), 25u);
+    EXPECT_EQ(String_len(&s), 20u);
     EXPECT_EQ(String_capacity(&s), (u64)(STR_SSO_SIZE - 1));
     EXPECT_TRUE(String_is_sso(&s));
 
-    // grow over sso (25 + 15 = 40 > 31)
+    // grow over sso (20 + 15 = 35 > 23)
     for (int i = 0; i < 15; i++) {
         String_append_char(&s, 'b');
     }
-    EXPECT_EQ(String_len(&s), 40u);
+    EXPECT_EQ(String_len(&s), 35u);
     EXPECT_FALSE(String_is_sso(&s));
 
     // remove 15 (within sso range but no auto shrinkage)
     for (int i = 0; i < 15; i++) {
         String_pop_char(&s);
     }
-    EXPECT_EQ(String_len(&s), 25u);
+    EXPECT_EQ(String_len(&s), 20u);
     EXPECT_FALSE(String_is_sso(&s));
 
     // do the manual shrink
     String_shrink_to_fit(&s);
-    EXPECT_EQ(String_len(&s), 25u);
+    EXPECT_EQ(String_len(&s), 20u);
     EXPECT_EQ(String_capacity(&s), (u64)(STR_SSO_SIZE - 1));
     EXPECT_TRUE(String_is_sso(&s));
 
@@ -638,7 +626,7 @@ UTEST(string, test_allocator_leak_free)
 {
     wc_test_alloc ta;
     wc_test_alloc_init(&ta, WC_LIBC);
-    wc_allocator alloc = wc_test_alloc_allocator(&ta);
+    const wc_allocator* alloc = wc_test_alloc_allocator(&ta);
 
     String s = String_create(alloc);
     for (int i = 0; i < 100; i++) {

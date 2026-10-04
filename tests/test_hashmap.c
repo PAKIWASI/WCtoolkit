@@ -55,7 +55,7 @@ UTEST(hashmap, put_update)
     HashMap m = int_map();
     int     k = 1, v1 = 10, v2 = 20;
     HashMap_put(&m, &k, &v1);
-    b8 was_update = HashMap_put(&m, &k, &v2);
+    bool was_update = HashMap_put(&m, &k, &v2);
     EXPECT_TRUE(was_update);
 
     int out = 0;
@@ -761,7 +761,7 @@ UTEST(hashmap, cross_alloc_copy)
 {
     Arena a;
     Arena_create(&a, WC_LIBC, nKB(64));
-    wc_allocator al = Arena_allocator(&a);
+    const wc_allocator* al = Arena_allocator(&a);
 
     HashMap src = HashMap_create(al, sizeof(int), sizeof(int), NULL, NULL, NULL, NULL);
     for (int i = 0; i < 20; i++) {
@@ -835,13 +835,14 @@ static inline u64 golden_mix(u64 h, u64 x)
 
 UTEST(hashmap, golden_queue_hashmap_fixed_seed)
 {
-    pcg32_rand_seed(42, 54);
+    WC_Pcg32 rng = PCG32_INITIALIZER;
+    pcg32_rand_seed(&rng, 42, 54);
 
     // Queue: interleaved push/pop that wraps the circular buffer and resizes.
     Queue q     = Queue_create(WC_LIBC, 4, sizeof(u32), NULL);
     u64   q_sum = 0;
     for (int i = 0; i < 5000; i++) {
-        u32 r = pcg32_rand();
+        u32 r = pcg32_rand(&rng);
         if ((r & 3) != 0 || Queue_size(&q) == 0) {
             Queue_push(&q, &r);
         } else {
@@ -860,9 +861,9 @@ UTEST(hashmap, golden_queue_hashmap_fixed_seed)
     // HashMap: puts, overwrites and deletes over a small key space.
     HashMap m = HashMap_create(WC_LIBC, sizeof(u32), sizeof(u64), NULL, NULL, NULL, NULL);
     for (int i = 0; i < 20000; i++) {
-        u32 k = pcg32_rand_bounded(3000);
-        u64 v = pcg32_rand();
-        if (pcg32_rand_bounded(5) == 0) {
+        u32 k = pcg32_rand_bounded(&rng, 3000);
+        u64 v = pcg32_rand(&rng);
+        if (pcg32_rand_bounded(&rng, 5) == 0) {
             HashMap_del(&m, &k, NULL);
         } else {
             HashMap_put(&m, &k, &v);
@@ -884,4 +885,131 @@ UTEST(hashmap, golden_queue_hashmap_fixed_seed)
     EXPECT_EQ(q_sum, GOLDEN_QUEUE_CHECKSUM);
     EXPECT_EQ(m_sum, GOLDEN_MAP_CHECKSUM);
     EXPECT_EQ(m_size, GOLDEN_MAP_SIZE);
+}
+
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * reserve + probe-length guard (u8 PSL must never wrap to "empty")
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+UTEST(hashmap, reserve)
+{
+    HashMap m = int_map();
+    for (int i = 0; i < 100; i++) {
+        MAP_PUT(&m, i, i * 2);
+    }
+    HashMap_reserve(&m, 10000); // on a populated map: entries survive
+    u64 cap = HashMap_capacity(&m);
+    EXPECT_TRUE(cap * 3 > 10000 * 4);
+    for (int i = 100; i < 10000; i++) {
+        MAP_PUT(&m, i, i * 2);
+    }
+    EXPECT_EQ(HashMap_capacity(&m), cap); // never resized again
+    EXPECT_EQ(HashMap_size(&m), (u64)10000);
+    for (int i = 0; i < 10000; i++) {
+        const int* v = HashMap_get_ptr(&m, &i);
+        ASSERT_TRUE(v != NULL);
+        EXPECT_EQ(*v, i * 2);
+    }
+    HashMap_reserve(&m, 5); // never shrinks
+    EXPECT_EQ(HashMap_capacity(&m), cap);
+    HashMap_destroy(&m);
+}
+
+// 200 keys share one hash value: probe length reaches ~200 (< 250), the table must stay
+// correct. Before the guard, anything past 255 wrapped the u8 PSL to "empty".
+static u64 two_value_hash(const void* key, u64 len)
+{
+    (void)len;
+    return (u64)(*(const int*)key % 2);
+}
+
+UTEST(hashmap, long_probe_chains_stay_correct)
+{
+    HashMap m = HashMap_create(WC_LIBC, sizeof(int), sizeof(int), two_value_hash, NULL, NULL, NULL);
+    for (int i = 0; i < 200; i++) {
+        MAP_PUT(&m, i, i + 1);
+    }
+    EXPECT_EQ(HashMap_size(&m), (u64)200);
+    for (int i = 0; i < 200; i++) {
+        const int* v = HashMap_get_ptr(&m, &i);
+        ASSERT_TRUE(v != NULL);
+        EXPECT_EQ(*v, i + 1);
+    }
+    int missing = 5000;
+    EXPECT_TRUE(HashMap_get_ptr(&m, &missing) == NULL);
+    HashMap_destroy(&m);
+}
+
+static u64 constant_hash(const void* key, u64 len)
+{
+    (void)key;
+    (void)len;
+    return 0;
+}
+
+static void die_degenerate_hash(void)
+{
+    HashMap m = HashMap_create(WC_LIBC, sizeof(int), sizeof(int), constant_hash, NULL, NULL, NULL);
+    for (int i = 0; i < 1000; i++) {
+        MAP_PUT(&m, i, i);
+    }
+    HashMap_destroy(&m);
+}
+
+UTEST(hashmap, degenerate_hash_dies_instead_of_corrupting)
+{
+    EXPECT_DIES(die_degenerate_hash);
+}
+
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * bucket distribution on structured keys (regression: top-bit indexing once made
+ * short sequential keys cluster and tripped the probe-length guard)
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+static u32 max_stored_psl(const HashMap* m)
+{
+    u32 mx = 0;
+    for (u64 i = 0; i < m->capacity; i++) {
+        if (m->psls[i] > mx) {
+            mx = m->psls[i];
+        }
+    }
+    return mx;
+}
+
+// A healthy hash at load <= 0.75 keeps probe lengths in the tens. The guard fires at 250.
+#define PSL_HEALTHY 64
+
+UTEST(hashmap, structured_keys_distribute)
+{
+    // sequential, negative, strided and shifted keys
+    HashMap m = int_map();
+    for (int i = 0; i < 100000; i++) {
+        MAP_PUT(&m, i, i);
+    }
+    EXPECT_TRUE(max_stored_psl(&m) < PSL_HEALTHY);
+    HashMap_destroy(&m);
+
+    m = int_map();
+    for (int i = 0; i < 100000; i++) {
+        int k = -i;
+        MAP_PUT(&m, k, i);
+    }
+    EXPECT_TRUE(max_stored_psl(&m) < PSL_HEALTHY);
+    HashMap_destroy(&m);
+
+    static const u64 strides[] = {8, 4096, (u64)1 << 32};
+    for (u64 s = 0; s < sizeof(strides) / sizeof(strides[0]); s++) {
+        m = HashMap_create(WC_LIBC, sizeof(u64), sizeof(int), NULL, NULL, NULL, NULL);
+        for (u64 i = 0; i < 50000; i++) {
+            u64 k = i * strides[s];
+            int v = 1;
+            HashMap_put(&m, &k, &v);
+        }
+        EXPECT_EQ(HashMap_size(&m), (u64)50000);
+        EXPECT_TRUE(max_stored_psl(&m) < PSL_HEALTHY);
+        HashMap_destroy(&m);
+    }
 }

@@ -40,10 +40,10 @@ static inline u64 wyr4(const u8* p)
 static inline u64 wymix(u64 a, u64 b)
 {
     __uint128_t r = (__uint128_t)a * b;
-    return (u64)(r) ^ (u64)(r >> 64);
+    return (u64)r ^ (u64)(r >> 64);
 }
 
-static u64 wyhash(const void* key, u64 len)
+static inline __attribute__((always_inline)) u64 wyhash(const void* key, u64 len)
 {
     const u64 seed = 0x517cc1b727220a95ULL;
     const u64 s0   = 0x2d358dccaa6c78a5ULL;

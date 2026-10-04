@@ -14,7 +14,7 @@ typedef struct {
 } BitVec;
 
 
-BitVec BitVec_create(wc_allocator a) __attribute__((warn_unused_result));
+BitVec BitVec_create(const wc_allocator* a) __attribute__((warn_unused_result));
 void   BitVec_destroy(BitVec* bvec) __attribute__((nonnull(1)));
 
 void BitVec_set(BitVec* bvec, u64 i) __attribute__((nonnull(1)));

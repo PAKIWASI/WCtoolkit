@@ -26,15 +26,15 @@ int main(void)
 | Area | Types |
 |---|---|
 | Containers | `GenVec`, `Stack`, `Queue`, `PriorityQueue`, `HashMap`, `HashSet`, `BitVec` |
-| Strings | `String` (31 chars inline), `StrView`, `StringStore` |
-| Memory | `wc_allocator`, `Arena`, `ChainArena`, `wc_borrowed` |
+| Strings | `String` (23 chars inline), `StrView`, `StringStore` |
+| Memory | `wc_allocator`, `Arena`, `ChainArena`, `WC_BORROWED` |
 | Math | `Matrixf`, `fast_math`, PCG `random` |
 
 ## Three rules
 
 1. **Values, not pointers.** Containers are returned by value and store elements inline.
 2. **Every container stores its allocator.** libc, an arena, a stack buffer or your own vtable, all used the same way.
-3. **No hidden cost.** No global allocator, no background work, no implicit allocation.
+3. **No hidden cost.** No global allocator, no background work, no implicit allocation. A copy happens only when both sides keep the value; taking an element out is a move. See [Memory rules](docs/memory-rules.md).
 
 ## Build
 
@@ -53,7 +53,8 @@ cmake -B build-rel -DCMAKE_BUILD_TYPE=Release && cmake --build build-rel
 |---|---|
 | [Getting started](docs/getting-started.md) | Build types, using the library in a project, first program |
 | [Conventions](docs/conventions.md) | Naming, create/destroy, copy/move, zero state, `void*` vs `u8*` |
-| [Ownership](docs/ownership.md) | `wc_container_ops`, built-in ops, writing your own, by-value vs by-pointer |
+| [Memory rules](docs/memory-rules.md) | Every allocation, copy, move and lifetime rule, in one place |
+| [Ownership](docs/ownership.md) | `wc_container_ops`, copy vs move vs take out, writing your own ops, by-value vs by-pointer |
 | [Allocators](docs/allocators.md) | libc, `Arena`, `ChainArena`, borrowed memory, scopes, lifetimes |
 | [Containers](docs/containers.md) | Every container: API, complexity, behavior |
 | [Strings](docs/strings.md) | `String`, `StrView`, `StringStore` |

@@ -13,7 +13,7 @@
 
 _Static_assert(CHAIN_ARENA_NODE_SIZE > sizeof(ChainArenaNode) + 64, "CHAIN_ARENA_NODE_SIZE too small");
 
-#define CHAIN_CHECK_LIVE(a) WC_ASSERT((a)->self == (a), "ChainArena used after destroy, or copied/moved after create")
+#define CHAIN_CHECK_LIVE(a) WC_ASSERT((a)->self.ctx == (a), "ChainArena used after destroy, or copied/moved after create")
 
 
 // Node helpers
@@ -63,7 +63,7 @@ static inline u64 node_fit(const ChainArenaNode* n, u64 size, u64 align)
 }
 
 // Is [p, p + size) the last block of the tail node, at or above the floor?
-static inline b8 is_top(const ChainArena* arena, const u8* p, u64 size)
+static inline bool is_top(const ChainArena* arena, const u8* p, u64 size)
 {
     const ChainArenaNode* t = arena->tail;
     if (p < t->data || p + size != t->data + t->used) {
@@ -76,7 +76,7 @@ static inline b8 is_top(const ChainArena* arena, const u8* p, u64 size)
 
 
 // Was `p` allocated before the innermost scratch scope began? (debug checks only)
-static __attribute__((unused)) b8 is_below_floor(const ChainArena* arena, const u8* p)
+static __attribute__((unused)) bool is_below_floor(const ChainArena* arena, const u8* p)
 {
     const ChainArenaNode* f = arena->floor_node;
     if (!f) {
@@ -96,7 +96,9 @@ static __attribute__((unused)) b8 is_below_floor(const ChainArena* arena, const 
 
 // Lifecycle
 
-void ChainArena_create(ChainArena* arena, wc_allocator backing)
+static const wc_alloc_vtable chain_vt;
+
+void ChainArena_create(ChainArena* arena, const wc_allocator* backing)
 {
     *arena = (ChainArena){.backing = backing};
 
@@ -106,12 +108,12 @@ void ChainArena_create(ChainArena* arena, wc_allocator backing)
     }
     arena->head = first;
     arena->tail = first;
-    arena->self = arena;
+    arena->self = (wc_allocator){.vt = &chain_vt, .ctx = arena};
 }
 
 void ChainArena_destroy(ChainArena* arena)
 {
-    if (arena->self == NULL) {
+    if (arena->self.ctx == NULL) {
         return; // zeroed or already destroyed
     }
     CHAIN_CHECK_LIVE(arena);
@@ -249,13 +251,6 @@ static const wc_alloc_vtable chain_vt = {
     .realloc = chain_vt_realloc,
     .free    = chain_vt_free,
 };
-
-wc_allocator ChainArena_allocator(ChainArena* arena)
-{
-    CHAIN_CHECK_LIVE(arena);
-    return (wc_allocator){.vt = &chain_vt, .ctx = arena};
-}
-
 
 // Scratch
 

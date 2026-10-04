@@ -6,12 +6,12 @@
 
 
 
-Stack Stack_create(wc_allocator a, u64 n, u32 data_size, const wc_container_ops* ops)
+Stack Stack_create(const wc_allocator* a, u64 n, u32 data_size, const wc_container_ops* ops)
 {
     return GenVec_create(a, n, data_size, ops);
 }
 
-Stack Stack_create_val(wc_allocator a, u64 n, const void* val, u32 data_size, const wc_container_ops* ops)
+Stack Stack_create_val(const wc_allocator* a, u64 n, const void* val, u32 data_size, const wc_container_ops* ops)
 {
     return GenVec_create_val(a, n, val, data_size, ops);
 }
@@ -21,7 +21,7 @@ void Stack_destroy(Stack* stk)
     GenVec_destroy(stk);
 }
 
-Stack Stack_copy(wc_allocator a, const Stack* src)
+Stack Stack_copy(const wc_allocator* a, const Stack* src)
 {
     return GenVec_copy(a, src);
 }

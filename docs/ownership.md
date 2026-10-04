@@ -2,19 +2,17 @@
 
 [Back to README](../README.md)
 
-Containers never guess how to copy, move or free your data. You describe it once, in a `wc_container_ops` table, and every container (vector, stack, queue, priority queue, map, set) uses the same table.
+Containers never guess how to copy or free your data. You describe it once, in a `wc_container_ops` table, and every container (vector, stack, queue, priority queue, map, set) uses the same table. The full rule set is in [Memory rules](memory-rules.md).
 
 ## The ops table
 
 ```c
 typedef struct {
     wc_copy_fn   copy_fn;   // deep copy src into dest, allocating from `dst`
-    wc_move_fn   move_fn;   // dest takes over src; src is left zeroed
     wc_delete_fn del_fn;    // free what the element owns, not the slot
 } wc_container_ops;
 
-typedef void (*wc_copy_fn)  (wc_allocator dst, void* dest, const void* src);
-typedef void (*wc_move_fn)  (void* dest, void* src);
+typedef void (*wc_copy_fn)  (const wc_allocator* dst, void* dest, const void* src);
 typedef void (*wc_delete_fn)(void* elm);
 ```
 
@@ -23,10 +21,33 @@ typedef void (*wc_delete_fn)(void* elm);
 | Plain data: `int`, `float`, structs without pointers | `NULL`. Containers use `memcpy` and skip deletion. |
 | A type that owns memory | A `wc_container_ops*` |
 
-Any single callback may be `NULL`:
+Either callback may be `NULL`:
 - **No `copy_fn`:** copies are `memcpy`.
-- **No `move_fn`:** moves are `memcpy`, then the source is zeroed.
 - **No `del_fn`:** nothing is freed per element.
+
+There is no move callback. See [Elements are trivially relocatable](#elements-are-trivially-relocatable).
+
+## Copy, move, take out
+
+Every element operation is one of three things. Which one runs depends only on whether the source survives the call.
+
+| Operation | Source afterwards | What runs | Examples |
+|---|---|---|---|
+| **Copy** | You keep it, the container keeps its own | `copy_fn` (allocates) | `GenVec_push`, `HashMap_put`, `GenVec_get`, `Queue_peek`, `X_copy` |
+| **Move in** | Zeroed: the container owns it now | `memcpy` + zero | `GenVec_push_move`, `HashMap_put_move`, `*_MOVE` macros |
+| **Take out** | The container forgets the slot: you own it now | `memcpy` | `GenVec_pop`, `GenVec_remove`, `GenVec_swap_pop`, `Queue_pop`, `HashMap_del`, `PriorityQueue_pop` |
+
+A copy only happens when both sides keep the value. Taking an element out never copies: popping a heap `String` costs no allocation, because the buffer moves to you with the struct. Pass `NULL` as `out` and the element is deleted instead.
+
+A value you take out keeps the container's allocator. Pop from an arena-backed vector and the `String` you get lives in that arena.
+
+## Elements are trivially relocatable
+
+Containers move elements to new addresses with a plain `memcpy` and never ask the element first: on growth, on insert and remove shifts, during hash table rehashing, during queue compaction, and when taking an element out. So every element type must survive being moved byte for byte.
+
+That holds for every toolkit type and for any struct of plain data, pointers to elsewhere, `String`s and `GenVec`s. It does **not** hold for a type that stores a pointer to itself, or that something outside points into. Store such a type by pointer.
+
+This is also why there is no `move_fn`: a move is always `memcpy` + zero the source.
 
 ## Built-in ops
 
@@ -39,14 +60,13 @@ Any single callback may be `NULL`:
 | `wc_vec_ops` | `GenVec` | By value (vector of vectors) |
 | `wc_vec_ptr_ops` | `GenVec*` | By pointer |
 
-The `WC_OPS(T)` macro picks the right one from the type, and returns `NULL` for any other type. `VEC_OF`, `VEC_OF_IN`, `MAP_OF` and `MAP_OF_IN` use it, so for these types you rarely name the ops yourself.
+The `WC_OPS(T)` macro picks the right one from the type, and returns `NULL` for any other type. `VEC_OF`, `VEC_OF_IN`, `MAP_OF`, `MAP_OF_IN` and `VEC_FROM_ARR` use it, so for these types you rarely name the ops yourself.
 
 ## Writing your own
 
 The rules for each callback:
 
 - **`copy_fn(dst, dest, src)`**: `dest` is raw, uninitialized slot memory. Never read or free it. Allocate any owned resources from `dst`, which is the container's allocator, so the copy follows its container.
-- **`move_fn(dest, src)`**: transfer everything and leave `src` zeroed. For most types this is `memcpy` + `memset`, which is the default when `move_fn` is `NULL`.
 - **`del_fn(elm)`**: free what the element owns, using the element's **own stored allocator**. Never free `elm` itself: it's a slot inside the container.
 
 A struct that owns a `String` and a `GenVec`:
@@ -63,7 +83,7 @@ typedef struct {
     int    id;
 } Player;
 
-static void player_copy(wc_allocator dst, void* dest, const void* src)
+static void player_copy(const wc_allocator* dst, void* dest, const void* src)
 {
     const Player* s = src;
     Player*       d = dest;
@@ -79,8 +99,7 @@ static void player_del(void* elm)
     GenVec_destroy(&p->scores);
 }
 
-// No move_fn: memcpy + zero is correct for this struct.
-static const wc_container_ops player_ops = { player_copy, NULL, player_del };
+static const wc_container_ops player_ops = {.copy_fn = player_copy, .del_fn = player_del};
 
 int main(void)
 {
@@ -106,7 +125,7 @@ int main(void)
 | Addresses | Change when the container grows | Stable |
 | Ops | `wc_str_ops`, `wc_vec_ops`, yours | `wc_str_ptr_ops`, `wc_vec_ptr_ops` |
 
-Use by-pointer storage only when something outside the container keeps the element's address.
+Use by-pointer storage when something outside the container keeps the element's address, or when the type is not trivially relocatable.
 
 ## Boxing
 
@@ -130,10 +149,14 @@ int main(void)
 
 `WC_BOX_IN(A, T, init_fn, args...)` calls `init_fn(A, args...)`, so the allocator is passed once.
 
-**Invariant:** a boxed element's shell comes from the same allocator the element stores. When a container frees the slot, it destroys the element and then frees the shell with that same allocator. A shell allocated any other way breaks this.
+**Invariant:** a boxed element's shell comes from the same allocator the element stores. When a container frees the slot, it destroys the element and then frees the shell with that same allocator (`WC_FREE(elm->alloc, elm)`). A shell allocated any other way breaks this.
 
 ## Nested containers follow their parent
 
 Copy callbacks receive the destination container's allocator. A deep copy of an arena-backed `GenVec<GenVec<String>>` into `WC_LIBC` therefore produces a tree with no pointers left into the arena. That's how a result escapes a scratch arena; see [Allocators](allocators.md#lifetimes).
 
 Macros that build elements also use the container's allocator: `VEC_PUSH_CSTR`, `MAP_PUT_STR_*`, `SET_INSERT_CSTR` and `QUEUE_PUSH_CSTR`.
+
+## Don't pass an element of the container to itself
+
+The element you hand to `push`, `insert` or `replace` must not live inside that container's own buffer. If the call grows the container, the old buffer is freed before your element is read. Debug builds check this. Copy the element out first.

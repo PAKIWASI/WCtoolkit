@@ -22,7 +22,7 @@ static GenVec* two_sum(const int* arr, u32 size, int target)
     for (u32 i = 0; i < size; i++) {
         int remaining = target - arr[i];
         u32 idx       = size;
-        b8  has       = HashMap_get(map, cast(remaining), cast(idx));
+        bool  has       = HashMap_get(map, cast(remaining), cast(idx));
         if (has) {
             GenVec_push(v, cast(idx)); // push the stored index
             GenVec_push(v, cast(i));   // push the current index

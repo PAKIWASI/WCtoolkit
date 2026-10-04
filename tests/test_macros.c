@@ -32,20 +32,13 @@ static int cmp_int(const void* a, const void* b, u64 size)
 
 /* -- Phase 1-D: SET_INSERT_MOVE ------------------------------------------- */
 
-/* move: transfer the int into the set slot, leave the source zeroed */
-static void int_move(void* dest, void* src)
-{
-    memcpy(dest, src, sizeof(int));
-    memset(src, 0, sizeof(int));
-}
-
 /* del: the set stores the int by value; nothing extra to free */
 static void int_del(void* elm)
 {
     (void)elm;
 }
 
-static const wc_container_ops int_move_ops = {NULL, int_move, int_del};
+static const wc_container_ops int_move_ops = {.copy_fn = NULL, .del_fn = int_del};
 
 /*
  * Before the fix, SET_INSERT_MOVE referenced (vec) instead of (set),
@@ -130,12 +123,12 @@ UTEST(macros, map_get_and_try_get)
 
     /* MAP_TRY_GET */
     int out = 0;
-    b8  hit = MAP_TRY_GET(&m, int, k1, &out);
+    bool  hit = MAP_TRY_GET(&m, int, k1, &out);
     EXPECT_TRUE(hit);
     EXPECT_EQ(out, 10);
 
     int miss_k = 999;
-    b8  miss   = MAP_TRY_GET(&m, int, miss_k, &out);
+    bool  miss   = MAP_TRY_GET(&m, int, miss_k, &out);
     EXPECT_FALSE(miss);
 
     /* MAP_FOREACH_KEY / VAL */

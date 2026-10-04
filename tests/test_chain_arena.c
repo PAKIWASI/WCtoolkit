@@ -116,7 +116,7 @@ UTEST(chain_arena, oversize_request_gets_dedicated_node)
 UTEST(chain_arena, realloc_in_place_then_moves_across_node)
 {
     WITH_CHAIN(ca, ta);
-    wc_allocator al = ChainArena_allocator(&ca);
+    const wc_allocator* al = ChainArena_allocator(&ca);
 
     u8* p = wc_alloc(al, 64, 8);
     for (int i = 0; i < 64; i++) {
@@ -136,7 +136,7 @@ UTEST(chain_arena, realloc_in_place_then_moves_across_node)
 UTEST(chain_arena, free_rewinds_last_block)
 {
     WITH_CHAIN(ca, ta);
-    wc_allocator al = ChainArena_allocator(&ca);
+    const wc_allocator* al = ChainArena_allocator(&ca);
     u8*          p1 = wc_alloc(al, 32, 8);
     u8*          p2 = wc_alloc(al, 32, 8);
     u64          u  = ChainArena_used(&ca);
@@ -210,7 +210,7 @@ static void grow_outer_block_inside_chain_scratch(void)
 {
     ChainArena ca;
     ChainArena_create(&ca, WC_LIBC);
-    wc_allocator al = ChainArena_allocator(&ca);
+    const wc_allocator* al = ChainArena_allocator(&ca);
     u8*          v  = wc_alloc(al, 64, 8);
     CHAIN_ARENA_SCRATCH (&ca) {
         v = wc_realloc(al, v, 64, 512, 8);
@@ -223,7 +223,7 @@ static void grow_block_from_earlier_node_inside_chain_scratch(void)
 {
     ChainArena ca;
     ChainArena_create(&ca, WC_LIBC);
-    wc_allocator al = ChainArena_allocator(&ca);
+    const wc_allocator* al = ChainArena_allocator(&ca);
     u8*          v  = wc_alloc(al, 64, 8);
     for (int i = 0; i < 10; i++) {
         ChainArena_alloc(&ca, 1000); // v's node is no longer the tail
@@ -244,7 +244,7 @@ UTEST(chain_arena, floor_grow_outer_block_inside_scratch)
     EXPECT_DIES(grow_block_from_earlier_node_inside_chain_scratch);
 #else
     WITH_CHAIN(ca, ta);
-    wc_allocator al = ChainArena_allocator(&ca);
+    const wc_allocator* al = ChainArena_allocator(&ca);
     u8*          v  = wc_alloc(al, 64, 8);
     u64          u  = ChainArena_used(&ca);
     CHAIN_ARENA_SCRATCH (&ca) {
@@ -261,7 +261,7 @@ UTEST(chain_arena, floor_grow_outer_block_inside_scratch)
 UTEST(chain_arena, floor_free_inside_scratch_does_not_rewind)
 {
     WITH_CHAIN(ca, ta);
-    wc_allocator al    = ChainArena_allocator(&ca);
+    const wc_allocator* al    = ChainArena_allocator(&ca);
     u8*          outer = wc_alloc(al, 64, 8);
     u64          u     = ChainArena_used(&ca);
     CHAIN_ARENA_SCRATCH (&ca) {
@@ -313,7 +313,7 @@ UTEST(chain_arena, A3_chain_arena_oversize_request)
 {
     ChainArena ca;
     ChainArena_create(&ca, WC_LIBC);
-    wc_allocator al = ChainArena_allocator(&ca);
+    const wc_allocator* al = ChainArena_allocator(&ca);
 
     u8* p = NULL;
     u64 n = 0;

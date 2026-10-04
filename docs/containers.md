@@ -45,21 +45,23 @@ int main(void)
 | Destroy | `GenVec_destroy` (calls `del_fn` per element, frees storage, zeroes struct) | O(n) |
 | Clear | `GenVec_clear` (delete elements, keep capacity), `GenVec_reset` (delete elements and free storage; allocator kept) | O(n) |
 | Capacity | `GenVec_reserve(v, cap)` (never shrinks), `GenVec_reserve_val(v, cap, &val)` (grow and fill), `GenVec_shrink_to_fit` | O(n) |
-| Push / pop | `GenVec_push`, `GenVec_push_move`, `GenVec_pop(v, out_or_NULL)` | Amortized O(1) |
-| Read | `GenVec_get(v, i, out)` (copies out), `GenVec_get_ptr`, `GenVec_get_ptr_mut`, `GenVec_front`, `GenVec_back` | O(1) |
+| Push / pop | `GenVec_push` (copy), `GenVec_push_move`, `GenVec_pop(v, out_or_NULL)` (moves out) | Amortized O(1) |
+| Read | `GenVec_get(v, i, out)` (deep copy), `GenVec_get_ptr`, `GenVec_get_ptr_mut`, `GenVec_front`, `GenVec_back` | O(1) |
 | Read, no check | `GenVec_get_ptr_unsafe`, `GenVec_get_ptr_mut_unsafe` | O(1) |
-| Write | `GenVec_replace`, `GenVec_replace_move` (old element deleted), `GenVec_swap` | O(1) |
+| Write | `GenVec_replace`, `GenVec_replace_move` (old element deleted), `GenVec_swap` (never allocates) | O(1) |
 | Insert | `GenVec_insert`, `GenVec_insert_move`, `GenVec_insert_multi`, `GenVec_insert_multi_move` | O(n) |
-| Remove | `GenVec_remove(v, i, out_or_NULL)` (keeps order), `GenVec_swap_pop(v, i, out)` (moves the last element into `i`), `GenVec_remove_range(v, start, len)` | O(n), O(1), O(n) |
+| Remove | `GenVec_remove(v, i, out_or_NULL)` (keeps order), `GenVec_swap_pop(v, i, out_or_NULL)` (moves the last element into `i`), `GenVec_remove_range(v, start, len)` | O(n), O(1), O(n) |
 | Search | `GenVec_find(v, &x, cmp_or_NULL)` (`memcmp` if `NULL`); returns the index or `WC_NOT_FOUND` | O(n) |
 | Slice | `GenVec_subarr(v, a, start, len)`: a new vector of deep copies | O(len) |
-| Whole | `GenVec_copy(a, &src)`, `GenVec_move(&dst, &src)`, `GenVec_print(v, print_fn)` | |
+| Whole | `GenVec_copy(a, &src)` (capacity sized to the contents), `GenVec_move(&dst, &src)`, `GenVec_print(v, print_fn)` | |
 | Size | `GenVec_size`, `GenVec_capacity`, `GenVec_empty` | O(1) |
 
 Notes:
 - On an empty vector, `GenVec_pop` does nothing and `GenVec_front` / `GenVec_back` return `NULL`. All three set `wc_errno = WC_ERR_EMPTY` instead of aborting.
-- When `pop` / `remove` copy an element out, the copy's owned resources come from the vector's allocator, and the original is deleted.
+- `pop`, `remove` and `swap_pop` **move** the element into `out`: no copy, no allocation. It keeps the vector's allocator. With `out == NULL` the element is deleted.
+- Growth: capacity 0 jumps to `GENVEC_MIN_CAPACITY` (8), then 1.5×. Bulk inserts grow to at least the size they need.
 - Pointers from `get_ptr` become invalid when the vector grows.
+- The element passed to `push` / `insert` / `replace` must not point into the same vector (Debug checks it).
 
 ## Stack
 
@@ -69,28 +71,30 @@ Notes:
 |---|---|
 | `Stack_create(a, n, size, ops)`, `Stack_create_val`, `Stack_destroy`, `Stack_copy`, `Stack_move` | As `GenVec` |
 | `Stack_push`, `Stack_push_move`, `Stack_pop(s, out)` | Top is the end |
-| `Stack_peek(s, out)` (copies), `Stack_peek_ptr(s)` | Empty: `wc_errno = WC_ERR_EMPTY` |
+| `Stack_peek(s, out)` (deep copy), `Stack_peek_ptr(s)` | Empty: `wc_errno = WC_ERR_EMPTY` |
 | `Stack_clear`, `Stack_reset`, `Stack_size`, `Stack_empty`, `Stack_capacity`, `Stack_print` | |
 
 ## Queue
 
-A circular buffer over a `GenVec`. Push at the tail, pop from the head or the tail.
+A circular buffer over a `GenVec`'s storage. Push at the tail, pop from the head or the tail. Slots outside the live range are raw memory: push writes into them without deleting anything.
 
 | Function | Notes |
 |---|---|
-| `Queue_create(a, n, size, ops)` | `n` must be at least 1 |
-| `Queue_push`, `Queue_push_move` | Amortized O(1). Grows by 1.5×, minimum capacity 4. |
-| `Queue_pop(q, out)`, `Queue_pop_back(q, out)` | O(1). Shrinks by half when load drops below 25%. |
-| `Queue_peek(q, out)`, `Queue_peek_ptr(q)` | The head |
+| `Queue_create(a, n, size, ops)` | `n` may be 0 |
+| `Queue_push` (copy), `Queue_push_move` | Amortized O(1). Grows by 1.5× (0 jumps to `QUEUE_MIN_CAP`, 8) with one `realloc`: elements are relocated, never copied. |
+| `Queue_pop(q, out)`, `Queue_pop_back(q, out)` | O(1). The element is **moved** into `out`, or deleted when `out` is `NULL`. The queue never shrinks on its own. |
+| `Queue_peek(q, out)` (deep copy), `Queue_peek_ptr(q)` | The head |
 | `Queue_get(q, i)` | The `i`-th element from the head, wrap-around handled |
-| `Queue_swap(q, i, j)` | Logical positions |
-| `Queue_clear`, `Queue_reset`, `Queue_shrink_to_fit`, `Queue_copy`, `Queue_move`, `Queue_size`, `Queue_empty`, `Queue_capacity`, `Queue_print` | |
+| `Queue_swap(q, i, j)` | Logical positions. Never allocates. |
+| `Queue_shrink_to_fit` | The only way capacity goes down |
+| `Queue_copy(a, &src)` | Compacted: head at 0, capacity sized to the contents |
+| `Queue_clear`, `Queue_reset`, `Queue_move`, `Queue_size`, `Queue_empty`, `Queue_capacity`, `Queue_print` | |
 
 Pop and peek on an empty queue set `wc_errno = WC_ERR_EMPTY`.
 
 ## PriorityQueue
 
-A binary heap stored in a `Queue`. The comparison function decides priority: **`cmp(a, b) < 0` means `a` comes out first.** With a plain ascending comparison you get a min-heap.
+A binary heap stored in a `GenVec`. The comparison function decides priority: **`cmp(a, b) < 0` means `a` comes out first.** With a plain ascending comparison you get a min-heap.
 
 ```c
 #include "priority_queue.h"
@@ -118,14 +122,18 @@ int main(void)
 | Function | Cost |
 |---|---|
 | `PriorityQueue_create(a, n, size, ops, cmp)` | O(n) |
-| `PriorityQueue_from_vec(a, &vec, cmp)`: heapifies a copy | O(n) |
-| `PriorityQueue_push`, `PriorityQueue_pop(pq, out)`, `PriorityQueue_remove(pq, i, out)` | O(log n) |
-| `PriorityQueue_peek`, `PriorityQueue_get(pq, i)`, `PriorityQueue_size` | O(1) |
+| `PriorityQueue_from_vec(a, &vec, cmp)`: heapifies a deep copy | O(n) |
+| `PriorityQueue_from_vec_move(&vec, cmp)`: takes over the vector's buffer, no copy; `vec` is zeroed | O(n) |
+| `PriorityQueue_push` (copy), `PriorityQueue_push_move` | O(log n) |
+| `PriorityQueue_pop(pq, out_or_NULL)`, `PriorityQueue_remove(pq, i, out_or_NULL)`: moved out | O(log n) |
+| `PriorityQueue_peek`, `PriorityQueue_get(pq, i)`, `PriorityQueue_size`, `PriorityQueue_empty` | O(1) |
+
+Sifting uses the hole technique: the moving element waits in a spare slot and each level costs one element move, not a swap. The heap therefore keeps one slot of spare capacity.
 
 
 ## HashMap
 
-Open addressing with Robin Hood probing and backward-shift deletion. Capacity starts at 16, is always a power of two, and doubles at 75% load. Keys, values and probe lengths live in separate arrays.
+Open addressing with Robin Hood probing and backward-shift deletion. Capacity starts at 16, is always a power of two, and doubles at 75% load. Keys, values, probe lengths and a small scratch area live in one allocation, each region aligned for what it holds: creating a map is 1 allocation, a resize is 1 allocation and 1 free.
 
 ```c
 #include "hashmap.h"
@@ -155,10 +163,10 @@ int main(void)
 |---|---|
 | `HashMap_put(m, &k, &v)` | `1` if the key existed (value replaced), `0` if new |
 | `HashMap_put_move`, `HashMap_put_key_move`, `HashMap_put_val_move` | Same; the moved arguments are zeroed. A duplicate moved-in key is destroyed. |
-| `HashMap_get(m, &k, &out)` | `1` if found; copies the value into `out` |
+| `HashMap_get(m, &k, &out)` | `1` if found; deep-copies the value into `out`. For owning values prefer `get_ptr`. |
 | `HashMap_get_ptr(m, &k)`, `HashMap_get_ptr_mut(m, &k)` | Pointer to the value, or `NULL` |
 | `HashMap_has(m, &k)` | `1` if present |
-| `HashMap_del(m, &k, out_or_NULL)` | `1` if removed |
+| `HashMap_del(m, &k, out_or_NULL)` | `1` if removed. The value is **moved** into `out`, or deleted. |
 | `HashMap_clear` | Removes everything, keeps capacity |
 | `HashMap_copy`, `HashMap_move`, `HashMap_size`, `HashMap_capacity`, `HashMap_empty`, `HashMap_print(m, key_print, val_print)` | |
 
@@ -199,6 +207,7 @@ The same table as `HashMap`, without values.
 | `HashSet_has`, `HashSet_get_ptr`, `HashSet_get_ptr_mut` | |
 | `HashSet_remove(s, &x)` | `1` if removed |
 | `HashSet_bucket_count`, `HashSet_bucket_occupied`, `HashSet_bucket_elm_ptr` | Iteration; or `SET_FOREACH` |
+| `HashSet_reserve(s, n)` | Make room for `n` elements so inserting up to `n` never resizes |
 | `HashSet_clear`, `HashSet_copy`, `HashSet_move`, `HashSet_size`, `HashSet_capacity`, `HashSet_empty`, `HashSet_print` | |
 
 ## BitVec

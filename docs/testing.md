@@ -114,7 +114,7 @@ UTEST(gen_vector, strings_leak_free)
 {
     wc_test_alloc ta;
     wc_test_alloc_init(&ta, WC_LIBC);
-    wc_allocator a = wc_test_alloc_allocator(&ta);
+    const wc_allocator* a = wc_test_alloc_allocator(&ta);   // points into ta
 
     GenVec v = VEC_OF_IN(a, String, 2);
     for (int i = 0; i < 50; i++) { VEC_PUSH_CSTR(&v, "a string long enough for the heap"); }
@@ -125,7 +125,16 @@ UTEST(gen_vector, strings_leak_free)
 }
 ```
 
-It catches:
+It also counts every call (`n_alloc`, `n_realloc`, `n_free`). `tests/test_memory_rules.c` uses those counts to prove the [memory rules](memory-rules.md): popping a `String` must leave them unchanged, creating a hash map must cost exactly one allocation, and so on.
+
+```c
+// the shape of a counting test
+u64 before = ta.n_alloc + ta.n_realloc + ta.n_free;
+String s = VEC_POP(&v, String);                     // a move: no allocator call
+EXPECT_EQ(ta.n_alloc + ta.n_realloc + ta.n_free, before);
+```
+
+The checker catches:
 - double frees, and reallocs of freed blocks;
 - pointers it never handed out;
 - `free` / `realloc` with a size or alignment different from the block's last allocation;

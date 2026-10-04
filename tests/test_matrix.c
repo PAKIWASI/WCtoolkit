@@ -63,7 +63,7 @@ UTEST(matrix, create_buf_borrows)
     EXPECT_EQ(m.m, 2u);
     EXPECT_EQ(m.n, 3u);
     EXPECT_TRUE(m.data == data); // must point at the provided array
-    matrix_destroy(&m);          // frees nothing (wc_borrowed): ASAN would flag a stack free
+    matrix_destroy(&m);          // frees nothing (WC_BORROWED): ASAN would flag a stack free
     EXPECT_TRUE(is_zeroed(&m));
 }
 
@@ -133,7 +133,7 @@ UTEST(matrix, copy_across_allocators)
     Arena_create(&arena, WC_LIBC, nKB(1));
     Matrixf src  = matrix_create_arr(Arena_allocator(&arena), 2, 2, (float[]){1, 2, 3, 4});
     Matrixf dest = matrix_copy(WC_LIBC, &src);
-    EXPECT_TRUE(dest.alloc.vt == NULL); // libc
+    EXPECT_TRUE(dest.alloc == WC_LIBC);
     Arena_destroy(&arena);              // src's memory gone; dest must survive
     float expected[] = {1, 2, 3, 4};
     EXPECT_TRUE(mat_eq(&dest, expected, FLOAT_EPS));
@@ -361,7 +361,7 @@ UTEST(matrix, arena_backed)
 {
     Arena arena;
     Arena_create(&arena, WC_LIBC, nKB(4));
-    wc_allocator al         = Arena_allocator(&arena);
+    const wc_allocator* al         = Arena_allocator(&arena);
     Matrixf      m          = matrix_create_arr(al, 2, 2, (float[]){1, 2, 3, 4});
     float        expected[] = {1, 2, 3, 4};
     EXPECT_TRUE(mat_eq(&m, expected, FLOAT_EPS));
@@ -376,7 +376,7 @@ UTEST(matrix, arena_scratch_temporaries)
     // Temporaries inside scratch don't leak; result outside scratch survives
     Arena arena;
     Arena_create(&arena, WC_LIBC, nKB(2));
-    wc_allocator al     = Arena_allocator(&arena);
+    const wc_allocator* al     = Arena_allocator(&arena);
     Matrixf      result = matrix_create(al, 2, 2);
 
     ARENA_SCRATCH (&arena) {
@@ -395,7 +395,7 @@ UTEST(matrix, test_allocator_leak_free)
 {
     wc_test_alloc ta;
     wc_test_alloc_init(&ta, WC_LIBC);
-    wc_allocator al = wc_test_alloc_allocator(&ta);
+    const wc_allocator* al = wc_test_alloc_allocator(&ta);
 
     Matrixf a = matrix_create_arr(al, 3, 3, (float[]){3, 2, 4, 2, 0, 2, 4, 2, 3});
     Matrixf b = matrix_copy(al, &a);

@@ -1,177 +1,190 @@
 #include "priority_queue.h"
 #include "common.h"
 #include "gen_vector.h"
-#include "queue.h"
 #include "wc_allocator.h"
+#include "wc_errno.h"
 
 #include <stdio.h>
+#include <string.h>
 
 
-#define PARENT(i)     ((((i)) - 1) / 2)
+#define PARENT(i)     (((i) - 1) / 2)
 #define LEFT_NODE(i)  ((2 * (i)) + 1)
 #define RIGHT_NODE(i) ((2 * (i)) + 2)
 
-// CMP(pq, i, j) < 0  means element i has HIGHER priority than element j.
-// i and j are LOGICAL heap indices; Queue_get() maps them through `head` to their real physical slot
-#define CMP(pq, i, j) ((pq)->cmp_fn(Queue_get(&(pq)->q, i), Queue_get(&(pq)->q, j), (pq)->q.arr.data_size))
+#define DS(pq)           ((u64)(pq)->v.data_size)
+#define AT(pq, i)        ((pq)->v.data + ((u64)(i) * DS(pq)))
+#define HOLE(pq)         AT((pq), (pq)->v.size) // spare slot: the element being sifted waits here
+#define BETTER(pq, a, b) ((pq)->cmp_fn((a), (b), DS(pq)) < 0)
 
 
-static void heapify_down(PriorityQueue* pq, u64 idx);
-static void heapify_up(PriorityQueue* pq, u64 idx);
-static void build_heap(PriorityQueue* pq);
+static void pq_sift_up(PriorityQueue* pq, u64 idx);
+static void pq_sift_down(PriorityQueue* pq, u64 idx);
+static void pq_build_heap(PriorityQueue* pq);
+
+// Keep capacity > size so HOLE(pq) is always a valid slot.
+static inline void pq_ensure_hole(PriorityQueue* pq)
+{
+    if (WC_UNLIKELY(pq->v.size + 1 >= pq->v.capacity)) {
+        u64 cap = pq->v.capacity < GENVEC_MIN_CAPACITY ? GENVEC_MIN_CAPACITY : pq->v.capacity + (pq->v.capacity / 2);
+        if (cap < pq->v.size + 2) {
+            cap = pq->v.size + 2;
+        }
+        GenVec_reserve(&pq->v, cap);
+    }
+}
 
 
-
-PriorityQueue PriorityQueue_create(wc_allocator a, u64 n, u32 data_size, const wc_container_ops* ops,
+PriorityQueue PriorityQueue_create(const wc_allocator* a, u64 n, u32 data_size, const wc_container_ops* ops,
                                    wc_compare_fn cmp_fn)
 {
-    PriorityQueue pq;
-    pq.q      = Queue_create(a, n, data_size, ops);
-    pq.cmp_fn = cmp_fn;
-    return pq;
+    return (PriorityQueue){.v = GenVec_create(a, n, data_size, ops), .cmp_fn = cmp_fn};
 }
 
 void PriorityQueue_destroy(PriorityQueue* pq)
 {
-    Queue_destroy(&pq->q);
+    GenVec_destroy(&pq->v);
     pq->cmp_fn = NULL;
 }
 
-PriorityQueue PriorityQueue_from_vec(wc_allocator a, const GenVec* vec, wc_compare_fn cmp_fn)
+PriorityQueue PriorityQueue_from_vec(const wc_allocator* a, const GenVec* vec, wc_compare_fn cmp_fn)
 {
-    PriorityQueue pq;
-
-    pq.q.arr = GenVec_copy(a, vec); // deep copy all elements into allocator `a`
-
-    // A freshly-copied GenVec has no wraparound yet, so head starts at 0 and
-    // tail/size follow the same convention Queue_create_val uses.
-    pq.q.head = 0;
-    pq.q.tail = vec->size % GenVec_capacity(&pq.q.arr);
-    pq.q.size = vec->size;
-
-    pq.cmp_fn = cmp_fn;
-
-    build_heap(&pq);
-
+    PriorityQueue pq = {.v = GenVec_copy(a, vec), .cmp_fn = cmp_fn};
+    pq_build_heap(&pq);
     return pq;
 }
 
-void PriorityQueue_push(PriorityQueue* pq, void* data)
+PriorityQueue PriorityQueue_from_vec_move(GenVec* vec, wc_compare_fn cmp_fn)
 {
-    u64 off = Queue_size(&pq->q); // logical index the new element will land at
-    Queue_push(&pq->q, data);
-    heapify_up(pq, off);
+    PriorityQueue pq = {.cmp_fn = cmp_fn};
+    GenVec_move(&pq.v, vec);
+    pq_build_heap(&pq);
+    return pq;
+}
+
+
+const void* PriorityQueue_peek(const PriorityQueue* pq)
+{
+    WC_SET_RET(WC_ERR_EMPTY, pq->v.size == 0, NULL);
+    return AT(pq, 0);
+}
+
+void PriorityQueue_push(PriorityQueue* pq, const void* data)
+{
+    pq_ensure_hole(pq);
+    GenVec_push(&pq->v, data); // the one deep copy (B8)
+    pq_sift_up(pq, pq->v.size - 1);
+}
+
+void PriorityQueue_push_move(PriorityQueue* pq, void* data)
+{
+    pq_ensure_hole(pq);
+    GenVec_push_move(&pq->v, data);
+    pq_sift_up(pq, pq->v.size - 1);
 }
 
 void PriorityQueue_pop(PriorityQueue* pq, void* popped)
 {
-    WC_ASSERT(!Queue_empty(&pq->q), "queue is empty");
-
-    // Standard heap-extract, adapted for circular storage
-    // logical index 0 (== q.head) is the root we want to return.
-    // swap it with the last logical element
-    u64 last = pq->q.size - 1;
-    Queue_swap(&pq->q, 0, last);
-
-    // then pop that last slot (which now holds the old root) off the
-    // BACK of the queue. This shrinks size by one without disturbing head
-    // disturing the head will void the heap property, as the tree structure is
-    // determined by the head index, which is the logical index 0
-    Queue_pop_back(&pq->q, popped);
-
-    // sift the new root down to restore the heap property.
-    if (!Queue_empty(&pq->q)) {
-        heapify_down(pq, 0);
-    }
+    PriorityQueue_remove(pq, 0, popped);
 }
 
 void PriorityQueue_remove(PriorityQueue* pq, u64 idx, void* out)
 {
-    WC_ASSERT(!Queue_empty(&pq->q), "queue is empty");
-    WC_ASSERT(idx < pq->q.size, "idx out of range");
+    WC_SET_RET(WC_ERR_EMPTY, pq->v.size == 0, );
+    WC_ASSERT(idx < pq->v.size, "idx out of range");
 
-    // swap the element to remove with the last one
-    Queue_swap(&pq->q, idx, pq->q.size - 1);
-    // pop from the back to reduce the size and/or get the element
-    Queue_pop_back(&pq->q, out);
-    // run heapify down on the swapped element to put it in a valid position
-    if (!Queue_empty(&pq->q)) {
-        heapify_down(pq, idx);
+    // swap_pop: element idx moved out (or deleted), the last element fills idx
+    GenVec_swap_pop(&pq->v, idx, out);
+
+    if (idx < pq->v.size) {
+        // the filler may need to go either way
+        if (idx > 0 && BETTER(pq, AT(pq, idx), AT(pq, PARENT(idx)))) {
+            pq_sift_up(pq, idx);
+        } else {
+            pq_sift_down(pq, idx);
+        }
     }
 }
 
-static inline void print_tree(Queue* q, u64 i, u32 depth, wc_print_fn print_fn)
+
+static void pq_print_tree(const PriorityQueue* pq, u64 i, u32 depth, wc_print_fn print_fn)
 {
-    if (i >= q->size) {
+    if (i >= pq->v.size) {
         return;
     }
 
-    print_tree(q, RIGHT_NODE(i), depth + 1, print_fn); // right subtree above
+    pq_print_tree(pq, RIGHT_NODE(i), depth + 1, print_fn); // right subtree above
 
     for (u32 d = 0; d < depth; d++) {
         printf("    "); // 4 spaces per level of depth
     }
-    print_fn(Queue_get(q, i));
+    print_fn(AT(pq, i));
     putchar('\n');
 
-    print_tree(q, LEFT_NODE(i), depth + 1, print_fn); // left subtree below
+    pq_print_tree(pq, LEFT_NODE(i), depth + 1, print_fn); // left subtree below
 }
 
-
-
-void PriorityQueue_print(PriorityQueue* pq, wc_print_fn print_fn)
+void PriorityQueue_print(const PriorityQueue* pq, wc_print_fn print_fn)
 {
     putchar('\n');
-    print_tree(&pq->q, 0, 0, print_fn);
+    pq_print_tree(pq, 0, 0, print_fn);
     putchar('\n');
 }
 
 
 // Private Functions
+// Every sift lifts the moving element into HOLE, shifts parents/children one
+// level each (one memcpy per level), then drops the element into place.
 
-static void heapify_up(PriorityQueue* pq, u64 idx)
+static void pq_sift_up(PriorityQueue* pq, u64 idx)
 {
-    while (idx > 0) {
-        if (CMP(pq, idx, PARENT(idx)) >= 0) {
-            break; // idx does not have higher priority than its parent, done
-        }
-
-        Queue_swap(&pq->q, idx, PARENT(idx));
-        idx = PARENT(idx); // we swapped, now check with it's parent
+    if (idx == 0 || !BETTER(pq, AT(pq, idx), AT(pq, PARENT(idx)))) {
+        return; // already in place: no moves at all
     }
+
+    u64 ds   = DS(pq);
+    u8* hole = HOLE(pq);
+    memcpy(hole, AT(pq, idx), ds);
+
+    while (idx > 0 && BETTER(pq, hole, AT(pq, PARENT(idx)))) {
+        memcpy(AT(pq, idx), AT(pq, PARENT(idx)), ds);
+        idx = PARENT(idx);
+    }
+    memcpy(AT(pq, idx), hole, ds);
 }
 
-static void heapify_down(PriorityQueue* pq, u64 idx)
+static void pq_sift_down(PriorityQueue* pq, u64 idx)
 {
-    while (true) {
-        u64 left  = LEFT_NODE(idx);
-        u64 right = RIGHT_NODE(idx);
-        u64 best  = idx;
+    u64 n    = pq->v.size;
+    u64 ds   = DS(pq);
+    u8* hole = HOLE(pq);
+    memcpy(hole, AT(pq, idx), ds);
 
-        if (left < pq->q.size && CMP(pq, left, best) < 0) {
-            best = left;
-        }
-        if (right < pq->q.size && CMP(pq, right, best) < 0) {
-            best = right;
-        }
-
-        if (best == idx) {
+    for (;;) {
+        u64 best = LEFT_NODE(idx);
+        if (best >= n) {
             break;
         }
-
-        Queue_swap(&pq->q, idx, best);
+        u64 right = best + 1;
+        if (right < n && BETTER(pq, AT(pq, right), AT(pq, best))) {
+            best = right;
+        }
+        if (!BETTER(pq, AT(pq, best), hole)) {
+            break;
+        }
+        memcpy(AT(pq, idx), AT(pq, best), ds);
         idx = best;
     }
+    memcpy(AT(pq, idx), hole, ds);
 }
 
-static void build_heap(PriorityQueue* pq)
+static void pq_build_heap(PriorityQueue* pq)
 {
-    if (pq->q.size > 1) {
-        // calling heapify_down on every internal node, from the bottom up. O(n)
-        // last internal node is at size/2 - 1
-        // Leaves (size/2 ... size-1) are already valid heaps
-        for (u64 i = pq->q.size / 2; i-- > 0;) {
-            heapify_down(pq, i);
+    if (pq->v.size > 1) {
+        pq_ensure_hole(pq);
+        // sift every internal node down, bottom up: O(n). Leaves are valid heaps.
+        for (u64 i = pq->v.size / 2; i-- > 0;) {
+            pq_sift_down(pq, i);
         }
     }
 }

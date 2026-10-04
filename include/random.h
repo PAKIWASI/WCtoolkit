@@ -36,27 +36,26 @@
 
 /*
    PCG32 Random Number Generator State
-   
-   This structure holds the internal state of the RNG. Users typically don't
-   need to interact with this directly - just use the global RNG functions.
-   
+
+   Every function takes the generator explicitly: there is no global RNG, so
+   independent generators (one per thread, one per subsystem) never interfere.
+
    Fields:
-     state - The 64-bit internal state (all possible values)
-     inc   - The increment/sequence selector (MUST be ODD for full period)
-             This determines which of 2^63 possible random sequences to Use
+     state     - The 64-bit internal state (all possible values)
+     inc       - The increment/sequence selector (MUST be ODD for full period)
+                 This determines which of 2^63 possible random sequences to use
+     spare     - The second Box-Muller value, cached for the next gaussian call
+     has_spare - Whether `spare` holds a value
 */
 typedef struct {
-    u64 state; // RNG state - advances with each random number generated
-    u64 inc;   // Sequence selector - must be odd (ensures full period LCG)
+    u64   state;     // RNG state - advances with each random number generated
+    u64   inc;       // Sequence selector - must be odd (ensures full period LCG)
+    float spare;     // cached second gaussian
+    bool  has_spare; // 1 if spare is valid
 } WC_Pcg32;
 
-
 // Default initializer with pre-chosen values for state and increment.
-#define PCG32_INITIALIZER                            \
-    {                                                \
-        0x853c49e6748fea9bULL, 0xda3e39cb94b95bdbULL \
-    }
-
+#define PCG32_INITIALIZER {.state = 0x853c49e6748fea9bULL, .inc = 0xda3e39cb94b95bdbULL}
 
 
 // SEEDING FUNCTIONS
@@ -72,7 +71,7 @@ typedef struct {
      seed - Initial seed value (any 64-bit value works)
      seq  - Sequence selector (chooses which of 2^63 random sequences to use)
 */
-void pcg32_rand_seed(u64 seed, u64 seq);
+void pcg32_rand_seed(WC_Pcg32* rng, u64 seed, u64 seq) __attribute__((nonnull(1)));
 
 
 /*
@@ -84,7 +83,7 @@ void pcg32_rand_seed(u64 seed, u64 seq);
    Note: If called multiple times in the same second, will produce the
          same sequence. Use pcg32_rand_seed_time_hp() for finer precision.
 */
-void pcg32_rand_seed_time(void);
+void pcg32_rand_seed_time(WC_Pcg32* rng) __attribute__((nonnull(1)));
 
 
 // INTEGER RANDOM GENERATION
@@ -100,7 +99,7 @@ void pcg32_rand_seed_time(void);
    
    Returns: Random u32 in range [0, 4294967295]
 */
-u32 pcg32_rand(void);
+u32 pcg32_rand(WC_Pcg32* rng) __attribute__((nonnull(1)));
 
 
 /*
@@ -113,7 +112,7 @@ u32 pcg32_rand(void);
    
    Returns: Random u32 in range [0, bound-1]
 */
-u32 pcg32_rand_bounded(u32 bound);
+u32 pcg32_rand_bounded(WC_Pcg32* rng, u32 bound) __attribute__((nonnull(1)));
 
 
 // FLOATING POINT UNIFORM DISTRIBUTION
@@ -126,7 +125,7 @@ u32 pcg32_rand_bounded(u32 bound);
    
    Returns: Random float in range [0.0, 1.0) - note: 0.0 possible, 1.0 never
  */
-float pcg32_rand_float(void);
+float pcg32_rand_float(WC_Pcg32* rng) __attribute__((nonnull(1)));
 
 
 /*
@@ -137,7 +136,7 @@ float pcg32_rand_float(void);
    
    Returns: Random double in [0.0, 1.0) with ~15-16 digits of precision
 */
-double pcg32_rand_double(void);
+double pcg32_rand_double(WC_Pcg32* rng) __attribute__((nonnull(1)));
 
 
 /*
@@ -153,7 +152,7 @@ double pcg32_rand_double(void);
    
    Returns: Random float in [min, max)
 */
-float pcg32_rand_float_range(float min, float max);
+float pcg32_rand_float_range(WC_Pcg32* rng, float min, float max) __attribute__((nonnull(1)));
 
 
 /*
@@ -167,7 +166,7 @@ float pcg32_rand_float_range(float min, float max);
    
    Returns: Random double in [min, max)
 */
-double pcg32_rand_double_range(double min, double max);
+double pcg32_rand_double_range(WC_Pcg32* rng, double min, double max) __attribute__((nonnull(1)));
 
 
 // GAUSSIAN (NORMAL) DISTRIBUTION
@@ -196,7 +195,7 @@ double pcg32_rand_double_range(double min, double max);
    
    Returns: Random float from N(0, 1) distribution
 */
-float pcg32_rand_gaussian(void);
+float pcg32_rand_gaussian(WC_Pcg32* rng) __attribute__((nonnull(1)));
 
 
 /*
@@ -219,7 +218,7 @@ float pcg32_rand_gaussian(void);
    
    Returns: Random float from N(mean, stddev²) distribution
 */
-float pcg32_rand_gaussian_custom(float mean, float stddev);
+float pcg32_rand_gaussian_custom(WC_Pcg32* rng, float mean, float stddev) __attribute__((nonnull(1)));
 
 
 
