@@ -176,6 +176,8 @@ static inline void map_cpy(void* d, const void* s, u32 n)
     }
 }
 
+// TODO: change the default hash func and don't do this
+//
 // Default hash is called directly (inlinable) instead of through the pointer.
 // The result is ALWAYS multiplied by the golden-ratio constant (Fibonacci hashing),
 // including the default wyhash: the bucket index below comes from the TOP bits, and
