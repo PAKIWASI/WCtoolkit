@@ -107,6 +107,10 @@ extern const wc_allocator wc_libc;
 extern const wc_allocator wc_borrowed;
 #define WC_BORROWED (&wc_borrowed)
 
+// TODO: 
+extern const wc_allocator wc_mmap;
+#define WC_MMAP (&wc_mmap);
+
 static inline __attribute__((nonnull(1))) int wc_is_libc(const wc_allocator* a)
 {
     return a->vt == NULL;

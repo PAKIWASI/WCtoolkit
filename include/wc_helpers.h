@@ -37,6 +37,7 @@
 
 #include "common.h"
 #include "gen_vector.h"
+#include "wc_hash.h"
 #include "wc_allocator.h"
 #include "wc_string.h"
 #include <stdalign.h>
@@ -182,5 +183,26 @@ static const wc_container_ops wc_str_ptr_ops = {.copy_fn = str_copy_ptr, .del_fn
 static const wc_container_ops wc_vec_ops     = {.copy_fn = vec_copy, .del_fn = vec_del};
 static const wc_container_ops wc_vec_ptr_ops = {.copy_fn = vec_copy_ptr, .del_fn = vec_del_ptr};
 
+
+/*
+    Hash functions for string ops
+*/
+
+
+// String keys: hash the characters, not the struct (which holds a pointer).
+// Pair with str_cmp / str_cmp_ptr from wc_helpers.h. MAP_OF picks both for you.
+static inline u64 wc_hash_str(const void* key, u64 size)
+{
+    (void)size;
+    const String* str = key;
+    return wc_hash(String_data_ptr(str), String_len(str));
+}
+
+static inline u64 wc_hash_str_ptr(const void* key, u64 size)
+{
+    (void)size;
+    const String* str = *(String* const*)key;
+    return wc_hash(String_data_ptr(str), String_len(str));
+}
 
 #endif // HELPERS_H

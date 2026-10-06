@@ -63,7 +63,7 @@
  *   16 - two words: a string view (ptr + len), a pair of u64
  *   48 - String, GenVec
  *
- * The defaults are measured, not guessed (docs/specialization.md). Widening
+ * The defaults are measured. Widening
  * both lists to 1 2 4 8 16 24 32 48 64 cut instructions 8% for a 24-byte
  * value, but cost up to 6% more on EVERY hashmap lookup (a wider switch runs
  * per call) and doubled the hashmap's code. A list entry pays off only for a size that
@@ -205,7 +205,7 @@ static inline __attribute__((always_inline)) bool wc_equal_n(const void* a, cons
         memcpy(&x1, (const u8*)a + 8, 8);
         memcpy(&y0, b, 8);
         memcpy(&y1, (const u8*)b + 8, 8);
-        return x0 == y0 && x1 == y1;
+        return (x0 == y0 && x1 == y1) != 0;
     }
     default:
         return memcmp(a, b, n) == 0;
@@ -231,9 +231,8 @@ static inline __attribute__((always_inline)) bool wc_equal_n(const void* a, cons
 
 
 /*
- * ============================================================================
  * MACRO MACHINERY
- * ============================================================================
+ * ==================
  * Call sites use only WC_SPECIALIZE and WC_SPECIALIZE_2 (plus wc_copy_n and
  * wc_equal_n above). Names ending in `_` are internal.
  *
@@ -295,14 +294,14 @@ static inline __attribute__((always_inline)) bool wc_equal_n(const void* a, cons
  *   - It is a statement, not an expression.
  *   - The default arm casts `size_expr` to u32. Element sizes never exceed it.
  */
-#define WC_SPECIALIZE(size, N, ...)                                 \
-    switch (size) {                                                 \
-        WC_SPECIALIZE_SIZES(WC_SPECIALIZE_CASE_, N, __VA_ARGS__)    \
-    default: {                                                      \
-        const u32 N = (u32)(size);                                  \
-        __VA_ARGS__;                                                \
-        break;                                                      \
-    }                                                               \
+#define WC_SPECIALIZE(size, N, ...)                              \
+    switch (size) {                                              \
+        WC_SPECIALIZE_SIZES(WC_SPECIALIZE_CASE_, N, __VA_ARGS__) \
+    default: {                                                   \
+        const u32 N = (u32)(size);                               \
+        __VA_ARGS__;                                             \
+        break;                                                   \
+    }                                                            \
     }
 
 
@@ -311,18 +310,18 @@ static inline __attribute__((always_inline)) bool wc_equal_n(const void* a, cons
  * size2 over WC_SPECIALIZE_SIZES_2ND. The inner default keeps N1 constant and
  * binds N2 to the runtime size2: the one-dimension fallback.
  */
-#define WC_SPECIALIZE_2_ROW_(v1, N1, size2, N2, ...)                       \
-    case (v1): {                                                           \
-        enum { N1 = (v1) };                                                \
-        switch (size2) {                                                   \
-            WC_SPECIALIZE_SIZES_2ND(WC_SPECIALIZE_CASE_, N2, __VA_ARGS__)  \
-        default: {                                                         \
-            const u32 N2 = (u32)(size2);                                   \
-            __VA_ARGS__;                                                   \
-            break;                                                         \
-        }                                                                  \
-        }                                                                  \
-        break;                                                             \
+#define WC_SPECIALIZE_2_ROW_(v1, N1, size2, N2, ...)                      \
+    case (v1): {                                                          \
+        enum { N1 = (v1) };                                               \
+        switch (size2) {                                                  \
+            WC_SPECIALIZE_SIZES_2ND(WC_SPECIALIZE_CASE_, N2, __VA_ARGS__) \
+        default: {                                                        \
+            const u32 N2 = (u32)(size2);                                  \
+            __VA_ARGS__;                                                  \
+            break;                                                        \
+        }                                                                 \
+        }                                                                 \
+        break;                                                            \
     }
 
 /*
@@ -374,15 +373,15 @@ static inline __attribute__((always_inline)) bool wc_equal_n(const void* a, cons
  * Pitfalls: everything WC_SPECIALIZE warns about, for both sizes. size2 is
  *   evaluated once per row: pass a plain field. Do not nest.
  */
-#define WC_SPECIALIZE_2(size1, N1, size2, N2, ...)                                \
-    switch (size1) {                                                              \
-        WC_SPECIALIZE_SIZES(WC_SPECIALIZE_2_ROW_, N1, size2, N2, __VA_ARGS__)     \
-    default: {                                                                    \
-        const u32 N1 = (u32)(size1);                                              \
-        const u32 N2 = (u32)(size2);                                              \
-        __VA_ARGS__;                                                              \
-        break;                                                                    \
-    }                                                                             \
+#define WC_SPECIALIZE_2(size1, N1, size2, N2, ...)                            \
+    switch (size1) {                                                          \
+        WC_SPECIALIZE_SIZES(WC_SPECIALIZE_2_ROW_, N1, size2, N2, __VA_ARGS__) \
+    default: {                                                                \
+        const u32 N1 = (u32)(size1);                                          \
+        const u32 N2 = (u32)(size2);                                          \
+        __VA_ARGS__;                                                          \
+        break;                                                                \
+    }                                                                         \
     }
 // NOLINTEND(bugprone-macro-parentheses)
 

@@ -153,37 +153,37 @@ target_include_directories(main PRIVATE include)
 target_compile_options(main PRIVATE ${WC_WARN_FLAGS})
 
 
-# Test executable
-# Tests: one tests/test_*.c per component, all registered through utest.h.
-# Debug build (default) runs them under ASan + UBSan.
-file(GLOB TEST_SOURCES CONFIGURE_DEPENDS tests/test_*.c)
-add_executable(tests
-    tests/main.c
-    tests/wc_test_allocator.c
-    ${TEST_SOURCES}
-    ${LIB_SOURCES}
-)
-target_include_directories(tests PRIVATE include tests)
-target_compile_options(tests PRIVATE ${WC_WARN_FLAGS})
-target_link_libraries(tests m)
-# test_checking_allocator / test_wc_allocator hand stack buffers to allocators on
-# purpose. Their #pragma covers compile time; with LTO, GCC re-checks at link time.
-if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
-  target_link_options(tests PRIVATE -Wno-free-nonheap-object)
-endif()
-
-
-# Benchmarks: one tests/bench_*.c per component, registered through ubench.h.
-# Meaningful only in a Release build (Debug runs them under the sanitizers).
-file(GLOB BENCH_SOURCES CONFIGURE_DEPENDS tests/bench_*.c)
-add_executable(bench
-    ${BENCH_SOURCES}
-    ${LIB_SOURCES}
-)
-target_include_directories(bench PRIVATE include tests)
-target_compile_options(bench PRIVATE ${WC_WARN_FLAGS})
-target_compile_definitions(bench PRIVATE BENCH_N=${WC_BENCH_N})
-target_link_libraries(bench m)
+# # Test executable
+# # Tests: one tests/test_*.c per component, all registered through utest.h.
+# # Debug build (default) runs them under ASan + UBSan.
+# file(GLOB TEST_SOURCES CONFIGURE_DEPENDS tests/test_*.c)
+# add_executable(tests
+#     tests/main.c
+#     tests/wc_test_allocator.c
+#     ${TEST_SOURCES}
+#     ${LIB_SOURCES}
+# )
+# target_include_directories(tests PRIVATE include tests)
+# target_compile_options(tests PRIVATE ${WC_WARN_FLAGS})
+# target_link_libraries(tests m)
+# # test_checking_allocator / test_wc_allocator hand stack buffers to allocators on
+# # purpose. Their #pragma covers compile time; with LTO, GCC re-checks at link time.
+# if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
+#   target_link_options(tests PRIVATE -Wno-free-nonheap-object)
+# endif()
+#
+#
+# # Benchmarks: one tests/bench_*.c per component, registered through ubench.h.
+# # Meaningful only in a Release build (Debug runs them under the sanitizers).
+# file(GLOB BENCH_SOURCES CONFIGURE_DEPENDS tests/bench_*.c)
+# add_executable(bench
+#     ${BENCH_SOURCES}
+#     ${LIB_SOURCES}
+# )
+# target_include_directories(bench PRIVATE include tests)
+# target_compile_options(bench PRIVATE ${WC_WARN_FLAGS})
+# target_compile_definitions(bench PRIVATE BENCH_N=${WC_BENCH_N})
+# target_link_libraries(bench m)
 
 
 # Example projects

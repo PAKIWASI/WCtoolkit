@@ -27,6 +27,8 @@
 #define WC_COLOR_CYAN   "\033[1;36m"
 
 
+// TODO: use [[nodiscard]] instead of the warn_unused_result thing
+// use the WC_NONULL(...) instead of the manual
 
 /*
  * DIAGNOSTICS
@@ -131,6 +133,9 @@ __attribute__((cold, noinline, format(printf, 4, 5))) void wc_warn_report(const 
 #define WC_CAT(a, b)  WC_CAT_(a, b)
 
 
+#define WC_NONULL(...) __attribute__((nonnull(__VA_ARGS__)))
+
+
 // TYPES
 
 #include <stdbool.h>
@@ -207,7 +212,7 @@ typedef struct {
 
 // RAW BYTES TO HEX
 
-static inline void print_hex(const u8* ptr, u64 size, u32 bytes_per_line)
+static inline void print_hex(const void* ptr, u64 size, u32 bytes_per_line)
 {
     if (ptr == NULL || size == 0 || bytes_per_line == 0) {
         return;
@@ -217,8 +222,8 @@ static inline void print_hex(const u8* ptr, u64 size, u32 bytes_per_line)
     const char* hex = "0123456789ABCDEF";
 
     for (u64 i = 0; i < size; i++) {
-        u8 val1 = ptr[i] >> 4;   // get upper 4 bits as num b/w 0-15
-        u8 val2 = ptr[i] & 0x0F; // get lower 4 bits as num b/w 0-15
+        u8 val1 = *((u8*)ptr + i) >> 4;   // get upper 4 bits as num b/w 0-15
+        u8 val2 = *((u8*)ptr + i) & 0x0F; // get lower 4 bits as num b/w 0-15
 
         printf("%c%c", hex[val1], hex[val2]);
 

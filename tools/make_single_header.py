@@ -20,8 +20,8 @@ Several single headers can be included in the same file. Headers keep their own
 include guards and each implementation has a WC_<NAME>_IMPL guard, so shared
 dependencies (common, wc_allocator, ...) are emitted once.
 
-Dependencies are read from the #include "..." lines of include/ and src/, so the
-graph never goes stale. The only hand-written edges are EXTRA_DEPS below.
+Dependencies are read from the #include "..." lines of include/ and src/
+The only hand-written edges are EXTRA_DEPS below
 """
 
 import argparse
@@ -32,7 +32,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 # Support headers: inlined wherever needed, never built as a file of their own.
-INTERNAL = {"common", "wc_errno"}
+INTERNAL = {"wc_errno", "wc_hash", "wc_specialize"}
 
 # Always part of every output: common.h's FATAL/WARN call wc_errno.c, and
 # common.h includes wc_allocator.h.

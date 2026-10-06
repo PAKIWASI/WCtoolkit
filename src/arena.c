@@ -1,162 +1,97 @@
 #include "arena.h"
 #include "common.h"
 #include "wc_allocator.h"
-#include "wc_errno.h"
 
+#include <stdalign.h>
+#include <stddef.h>
 #include <stdint.h>
-#include <string.h>
+#include <sys/mman.h>
 
 
-// Region alignment requested from the alloc allocator.
-#define ARENA_BASE_ALIGN WC_MAX_ALIGN
+
+#define ARENA_DEFAULT_ALIGNMENT ((u64)alignof(max_align_t))
+
+#define ALIGN_UP(p, align) ((u8*)(((uintptr_t)(p) + ((uintptr_t)(align) - 1)) & ~((uintptr_t)(align) - 1)))
+
+#define IS_POW_2(align) (((align) & ((align) - 1)) == 0)
 
 
-static const wc_alloc_vtable arena_vt;
-
-#define ARENA_CHECK_LIVE(a) WC_ASSERT((a)->self.ctx == (a), "Arena used after destroy, or copied/moved after create")
-
-
-// Lifecycle
-
-void Arena_create(Arena* arena, const wc_allocator* backing, u64 capacity)
+Varena Varena_create(u64 cap)
 {
-    if (capacity == 0) {
-        capacity = ARENA_DEFAULT_SIZE;
+    if (cap < VARENA_MIN_SIZE) {
+        cap = VARENA_MIN_SIZE;
     }
 
-    u8* base = wc_alloc(backing, capacity, ARENA_BASE_ALIGN);
-    FATAL_IF(!base, "Arena base allocation of %llu bytes failed", (unsigned long long)capacity);
+    u8* base =
+        mmap(NULL,                        // let kernel choose the virtual address
+             cap,                         // the allocation size
+             PROT_READ | PROT_WRITE,      // mapping is readable and writable
+             MAP_PRIVATE | MAP_ANONYMOUS, // MAP_PRIVATE: writes are copy-on-write, MAP_ANONYMOUS: not backed by a file
+             -1,                          // -1 for MAP_ANONYMOUS
+             0);                          // ignored for MAP_ANONYMOUS
+    FATAL_IF(base == MAP_FAILED, "mmap call failed for cap: %lu", cap);
 
-    *arena = (Arena){
-        .backing = backing,
-        .base    = base,
-        .size    = capacity,
-        .idx     = 0,
-        .floor   = 0,
-        .self    = {.vt = &arena_vt, .ctx = arena},
+    return (Varena){
+        .base = base,
+        .cap  = cap,
+        .off  = 0,
     };
 }
 
-void Arena_create_buf(Arena* arena, void* buf, u64 size)
-{
-    FATAL_IF(size == 0, "Arena_create_buf: size can't be 0");
 
-    *arena = (Arena){
-        .backing = WC_BORROWED, // destroy hands the buffer back to nobody
-        .base    = buf,
-        .size    = size,
-        .idx     = 0,
-        .floor   = 0,
-        .self    = {.vt = &arena_vt, .ctx = arena},
+
+void* Varena_alloc(Varena* va, u64 size)
+{
+    WC_ASSERT(size != 0, "can't allocate 0 bytes");
+    WC_ASSERT(va->off <= va->cap, "arena corrupted");
+    WC_ASSERT(size <= va->cap - va->off, "arena full");
+
+    u8* alloc   = va->base + va->off;
+    u8* aligned = ALIGN_UP(alloc, ARENA_DEFAULT_ALIGNMENT);
+    u64 pad     = (u64)(aligned - alloc);
+
+    WC_ASSERT(pad <= va->cap - va->off - size, "arena full (alignment padding)");
+
+    va->off += pad + size;
+    return aligned; //  return the aligned address (padding inserted BEFORE each allocation)
+}
+
+void* Varena_alloc_aligned(Varena* va, u64 size, u64 align)
+{
+    WC_ASSERT(size != 0, "can't allocate 0 bytes");
+    WC_ASSERT(align != 0 && IS_POW_2(align), "alignment must be a power of two");
+    WC_ASSERT(va->off <= va->cap, "arena corrupted");
+    WC_ASSERT(size <= va->cap - va->off, "arena full");
+
+    u8* alloc   = va->base + va->off;
+    u8* aligned = ALIGN_UP(alloc, align);
+    u64 pad     = (u64)(aligned - alloc);
+
+    WC_ASSERT(pad <= va->cap - va->off - size, "arena full (alignment padding)");
+
+    va->off += pad + size;
+    return aligned;
+}
+
+
+// wc_allocator interface
+
+static inline void* varena_alloc(void* ctx, size_t size, size_t align)
+{
+    return Varena_alloc_aligned(((Varena*)ctx), size, align);
+}
+
+// only alloc is needed for this. realloc is trivial and no free
+static const wc_alloc_vtable varena_alloc_vtable_base = {.alloc = varena_alloc, .realloc = NULL, .free = NULL};
+const wc_alloc_vtable*       varena_alloc_vtable      = &varena_alloc_vtable_base;
+
+
+wc_allocator Varena_create_allocator(Varena* va)
+{
+    return (wc_allocator){
+        .ctx = va,
+        .vt  = varena_alloc_vtable,
     };
 }
 
-void Arena_destroy(Arena* arena)
-{
-    if (arena->self.ctx == NULL) {
-        return; // zeroed or already destroyed
-    }
-    ARENA_CHECK_LIVE(arena);
-    wc_free(arena->backing, arena->base, arena->size, ARENA_BASE_ALIGN);
-    memset(arena, 0, sizeof(*arena));
-}
 
-void Arena_reset(Arena* arena)
-{
-    ARENA_CHECK_LIVE(arena);
-    arena->idx   = 0;
-    arena->floor = 0;
-}
-
-
-// Allocation
-
-void* Arena_alloc(Arena* arena, u64 size)
-{
-    return Arena_alloc_aligned(arena, size, WC_MAX_ALIGN);
-}
-
-void* Arena_alloc_aligned(Arena* arena, u64 size, u64 align)
-{
-    ARENA_CHECK_LIVE(arena);
-    WC_ASSERT(size != 0, "can't have allocation of size = 0");
-    WC_ASSERT(align != 0 && (align & (align - 1)) == 0, "alignment must be a power of two");
-
-    // Align the ADDRESS, not the offset: the base itself may be unaligned.
-    uintptr_t base    = (uintptr_t)arena->base;
-    uintptr_t cur     = base + arena->idx;
-    uintptr_t aligned = (cur + (align - 1)) & ~(uintptr_t)(align - 1);
-    u64       off     = (u64)(aligned - base);
-
-    // Two-step check so nothing underflows (A1): the aligned start itself may be past the end.
-    WC_SET_RET(WC_ERR_FULL, off > arena->size || arena->size - off < size, NULL);
-
-    arena->idx = off + size;
-    return arena->base + off;
-}
-
-
-// Allocator backend
-
-// Is [p, p + size) the last block, at or above the floor?
-static inline bool arena_is_top(const Arena* arena, const u8* p, u64 size)
-{
-    return (p >= arena->base + arena->floor && p + size == arena->base + arena->idx) != 0;
-}
-
-static void* arena_vt_alloc(void* ctx, size_t size, size_t align)
-{
-    return Arena_alloc_aligned((Arena*)ctx, size, align);
-}
-
-static void* arena_vt_realloc(void* ctx, void* ptr, size_t old_size, size_t new_size, size_t align)
-{
-    Arena* arena = ctx;
-    u8*    p     = ptr;
-    ARENA_CHECK_LIVE(arena);
-
-    // Growing a block that predates the innermost scratch scope is a lifetime
-    // bug either way: in place, scratch_end would truncate it; copied, it would
-    // live in scratch memory and dangle at scope end. The floor (D10) keeps the
-    // arena's own invariant (nothing below the mark moves or resizes in place);
-    // this check makes the caller's bug loud in debug builds.
-    WC_ASSERT(new_size <= old_size || p >= arena->base + arena->floor,
-              "growing a block allocated before the current scratch scope (it would dangle at scope end)");
-
-    // p keeps its alignment when it stays in place: no re-alignment needed.
-    if (arena_is_top(arena, p, old_size)) {
-        u64 off = (u64)(p - arena->base);
-        WC_SET_RET(WC_ERR_FULL, arena->size - off < new_size, NULL); // nothing past the top can fit either
-        arena->idx = off + new_size;                                 // grow or shrink in place (A4)
-        return p;
-    }
-
-    if (new_size <= old_size) {
-        return p; // shrinking a block that is not on top: keep it, the tail is simply unused
-    }
-
-    u8* q = Arena_alloc_aligned(arena, new_size, align);
-    if (!q) {
-        return NULL; // p stays valid
-    }
-    memcpy(q, p, old_size);
-    return q; // the old block is abandoned until reset/scratch end
-}
-
-static void arena_vt_free(void* ctx, void* ptr, size_t size, size_t align)
-{
-    (void)align;
-    Arena* arena = ctx;
-    u8*    p     = ptr;
-    ARENA_CHECK_LIVE(arena);
-
-    if (arena_is_top(arena, p, size)) {
-        arena->idx = (u64)(p - arena->base); // rewind; padding before p stays used
-    }
-}
-
-static const wc_alloc_vtable arena_vt = {
-    .alloc   = arena_vt_alloc,
-    .realloc = arena_vt_realloc,
-    .free    = arena_vt_free,
-};

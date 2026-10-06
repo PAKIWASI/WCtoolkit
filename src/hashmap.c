@@ -1,5 +1,6 @@
 #include "hashmap.h"
 #include "common.h"
+#include "wc_hash.h"
 #include "wc_allocator.h"
 #include "wc_specialize.h"
 
