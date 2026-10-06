@@ -245,7 +245,7 @@ static inline size_t wc_align_for_size(size_t elm_size)
 #include <stdalign.h>
 #include <stdarg.h>
 #include <stdio.h>
-#include <stdlib.h>
+// #include <stdlib.h>
 
 // ANSI Color Codes
 #define WC_COLOR_RESET  "\033[0m"
@@ -886,10 +886,10 @@ static inline __attribute__((nonnull(1))) bool GenVec_empty(const GenVec* vec)
  * without deleting anything, pop moves out of it and forgets it.
  *
  * Memory rules:
- *   - pop / pop_back MOVE the element into `out` (B7), or delete it (out NULL)
- *   - growth relocates with realloc + memcpy, never copy_fn (B5, B8)
- *   - the queue never shrinks on its own; call Queue_shrink_to_fit (F2)
- *   - element pointers (peek_ptr, get) are invalidated by push and pop (D1)
+ *   - pop / pop_back MOVE the element into `out`, or delete it (out NULL)
+ *   - growth relocates with realloc + memcpy, never copy_fn,
+ *   - the queue never shrinks on its own; call Queue_shrink_to_fit
+ *   - element pointers (peek_ptr, get) are invalidated by push and pop
  */
 typedef struct {
     GenVec arr;  // ring storage (arr.size unused, always 0)
@@ -1598,6 +1598,7 @@ void GenVec_print(const GenVec* vec, wc_print_fn fn)
     printf("[ ");
     for (u64 i = 0; i < vec->size; i++) {
         fn(GET_PTR(vec, i));
+        putchar(' ');
     }
     putchar(']');
 }
@@ -1709,7 +1710,7 @@ static void queue_grow(Queue* q);
 static void queue_relayout(Queue* q, u64 new_capacity);
 
 
-// Copy one element into a raw slot: copy_fn if any, else memcpy (B8: push only).
+// Copy one element into a raw slot: copy_fn if any, else memcpy (push only).
 static inline void q_copy_into(const Queue* q, u8* dest, const void* src)
 {
     wc_copy_fn copy = q->arr.is_pod ? NULL : VEC_COPY_FN(&q->arr);
@@ -1813,7 +1814,7 @@ void Queue_shrink_to_fit(Queue* q)
 void Queue_push(Queue* q, const void* x)
 {
     WC_ASSERT(!(q->arr.data && (const u8*)x >= q->arr.data && (const u8*)x < q->arr.data + (CAP(q) * DS(q))),
-              "input element points into this queue's own buffer (rule D4): copy it out first");
+              "input element points into this queue's own buffer: copy it out first");
     if (WC_UNLIKELY(q->size == CAP(q))) {
         queue_grow(q);
     }
@@ -1825,7 +1826,7 @@ void Queue_push(Queue* q, const void* x)
 void Queue_push_move(Queue* q, void* x)
 {
     WC_ASSERT(!(q->arr.data && (const u8*)x >= q->arr.data && (const u8*)x < q->arr.data + (CAP(q) * DS(q))),
-              "input element points into this queue's own buffer (rule D4): copy it out first");
+              "input element points into this queue's own buffer: copy it out first");
     if (WC_UNLIKELY(q->size == CAP(q))) {
         queue_grow(q);
     }
@@ -1942,7 +1943,7 @@ static void queue_grow(Queue* q)
     if (new_cap <= old_cap) {
         new_cap = old_cap + 1;
     }
-    u64 ds      = DS(q);
+    u64 ds = DS(q);
 
     u8* data = wc_realloc(q->arr.alloc, q->arr.data, old_cap * ds, wc_mul(new_cap, ds), DATA_ALIGN(q));
     FATAL_IF(!data, "Queue: growth to %llu elements failed (arena full, or borrowed buffer)",
@@ -1952,9 +1953,9 @@ static void queue_grow(Queue* q)
 
     // Wrapped ring: [head, old_cap) then [0, tail). Unwrapped needs nothing.
     if (q->head + q->size > old_cap) {
-        u64 front_len = old_cap - q->head;          // run at the end of the old buffer
-        u64 tail_len  = q->size - front_len;        // run at the start
-        u64 room      = new_cap - old_cap;          // fresh slots after the old end
+        u64 front_len = old_cap - q->head;   // run at the end of the old buffer
+        u64 tail_len  = q->size - front_len; // run at the start
+        u64 room      = new_cap - old_cap;   // fresh slots after the old end
         if (tail_len <= room && tail_len <= front_len) {
             // append the start run after the old end: ring becomes contiguous
             memcpy(data + (old_cap * ds), data, tail_len * ds);

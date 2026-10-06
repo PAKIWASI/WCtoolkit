@@ -125,7 +125,6 @@ set(LIB_SOURCES
     src/fast_math.c
     src/gen_vector.c
     src/hashmap.c
-    src/hashset.c
     src/matrix.c
     src/queue.c
     src/priority_queue.c

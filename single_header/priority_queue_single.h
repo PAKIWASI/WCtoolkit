@@ -245,7 +245,7 @@ static inline size_t wc_align_for_size(size_t elm_size)
 #include <stdalign.h>
 #include <stdarg.h>
 #include <stdio.h>
-#include <stdlib.h>
+// #include <stdlib.h>
 
 // ANSI Color Codes
 #define WC_COLOR_RESET  "\033[0m"
@@ -901,8 +901,8 @@ static inline __attribute__((nonnull(1))) bool GenVec_empty(const GenVec* vec)
     spare slot (index size) and each level costs one element move, not a swap.
     The heap therefore keeps capacity > size at all times.
 
-    Memory rules: pop / remove MOVE the element into `out` (B7). Sifting is
-    relocation, so it is memcpy only (B5): no copy_fn, no allocation.
+    Memory rules: pop / remove MOVE the element into `out`. Sifting is
+    relocation, so it is memcpy only: no copy_fn, no allocation.
 */
 
 typedef struct {
@@ -1596,6 +1596,7 @@ void GenVec_print(const GenVec* vec, wc_print_fn fn)
     printf("[ ");
     for (u64 i = 0; i < vec->size; i++) {
         fn(GET_PTR(vec, i));
+        putchar(' ');
     }
     putchar(']');
 }
@@ -1698,9 +1699,9 @@ static void GenVec_grow_to(GenVec* vec, u64 needed)
 #define LEFT_NODE(i)  ((2 * (i)) + 1)
 #define RIGHT_NODE(i) ((2 * (i)) + 2)
 
-#define DS(pq)       ((u64)(pq)->v.data_size)
-#define AT(pq, i)    ((pq)->v.data + ((u64)(i) * DS(pq)))
-#define HOLE(pq)     AT((pq), (pq)->v.size) // spare slot: the element being sifted waits here
+#define DS(pq)           ((u64)(pq)->v.data_size)
+#define AT(pq, i)        ((pq)->v.data + ((u64)(i) * DS(pq)))
+#define HOLE(pq)         AT((pq), (pq)->v.size) // spare slot: the element being sifted waits here
 #define BETTER(pq, a, b) ((pq)->cmp_fn((a), (b), DS(pq)) < 0)
 
 

@@ -245,7 +245,7 @@ static inline size_t wc_align_for_size(size_t elm_size)
 #include <stdalign.h>
 #include <stdarg.h>
 #include <stdio.h>
-#include <stdlib.h>
+// #include <stdlib.h>
 
 // ANSI Color Codes
 #define WC_COLOR_RESET  "\033[0m"
@@ -636,6 +636,7 @@ static inline void wc_perror(const char* prefix)
 
 
 #include <stdalign.h>
+#include <stddef.h>
 #include <string.h>
 
 
@@ -661,21 +662,23 @@ static inline void wc_perror(const char* prefix)
 typedef struct ChainArenaNode {
     struct ChainArenaNode* prev;
     struct ChainArenaNode* next;
-    u64                    cap;    // usable bytes in data[]
-    u64                    used;   // bytes consumed in data[]
+    u64                    cap;       // usable bytes in data[]
+    u64                    used;      // bytes consumed in data[]
     _Alignas(WC_MAX_ALIGN) u8 data[]; // first byte aligned like malloc: small requests need no padding
 } ChainArenaNode;
+
+// TODO: have data inline with a constant, compile-time size. this is one more indirection
 
 _Static_assert(offsetof(ChainArenaNode, data) % WC_MAX_ALIGN == 0, "ChainArenaNode data must be max-aligned");
 
 typedef struct ChainArena {
-    const wc_allocator*      backing;
-    ChainArenaNode*          head;       // first node, kept by reset
-    ChainArenaNode*          tail;       // current node: allocations happen here
-    u64                      used;       // bytes consumed in head..tail (padding included)
-    ChainArenaNode*          floor_node; // NULL: no floor
-    u64                      floor_used; // floor offset inside floor_node
-    wc_allocator             self;       // this arena as an allocator: {chain_vt, this}; ctx NULL after destroy
+    const wc_allocator* backing;
+    ChainArenaNode*     head;       // first node, kept by reset
+    ChainArenaNode*     tail;       // current node: allocations happen here
+    u64                 used;       // bytes consumed in head..tail (padding included)
+    ChainArenaNode*     floor_node; // NULL: no floor
+    u64                 floor_used; // floor offset inside floor_node
+    wc_allocator        self;       // this arena as an allocator: {chain_vt, this}; ctx NULL after destroy
 } ChainArena;
 
 typedef struct {
@@ -759,12 +762,12 @@ static inline void wc_chain_arena_scratch_cleanup(ChainArenaScratch* s)
     })
 // NOLINTEND(bugprone-macro-parentheses)
 // NOLINTBEGIN(bugprone-macro-parentheses): T is a type; (T)* would parse as a cast
-#define CHAIN_ARENA_ALLOC_ZERO_N(arena, T, n)                                                               \
-    ({                                                                                                      \
-        u64 _cazn = (u64)(n);                                                                               \
-        T*  _caz  = CHAIN_ARENA_ALLOC_N(                                                                    \
+#define CHAIN_ARENA_ALLOC_ZERO_N(arena, T, n)                                                             \
+    ({                                                                                                    \
+        u64 _cazn = (u64)(n);                                                                             \
+        T*  _caz  = CHAIN_ARENA_ALLOC_N(                                                                  \
             arena, T, _cazn); /* NOLINT(bugprone-macro-parentheses): T is a type: (T)* would be a cast */ \
-        _caz ? (T*)memset(_caz, 0, sizeof(T) * _cazn) : (T*)NULL;                                           \
+        _caz ? (T*)memset(_caz, 0, sizeof(T) * _cazn) : (T*)NULL;                                         \
     })
 // NOLINTEND(bugprone-macro-parentheses)
 

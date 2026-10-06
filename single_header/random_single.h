@@ -245,7 +245,7 @@ static inline size_t wc_align_for_size(size_t elm_size)
 #include <stdalign.h>
 #include <stdarg.h>
 #include <stdio.h>
-#include <stdlib.h>
+// #include <stdlib.h>
 
 // ANSI Color Codes
 #define WC_COLOR_RESET  "\033[0m"
@@ -750,10 +750,7 @@ typedef struct {
 } WC_Pcg32;
 
 // Default initializer with pre-chosen values for state and increment.
-#define PCG32_INITIALIZER                                        \
-    {                                                            \
-        .state = 0x853c49e6748fea9bULL, .inc = 0xda3e39cb94b95bdbULL \
-    }
+#define PCG32_INITIALIZER {.state = 0x853c49e6748fea9bULL, .inc = 0xda3e39cb94b95bdbULL}
 
 
 // SEEDING FUNCTIONS

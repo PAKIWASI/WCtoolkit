@@ -112,7 +112,7 @@ Define these on the command line (`-D...`) for the **whole build**, library sour
 | `CHAIN_ARENA_NODE_SIZE` | `nKB(4)` | Bytes per `ChainArena` node, header included |
 | `WC_MAT_BLOCK` | `16` | Tile edge for the blocked `matrix_T` |
 
-The hash table load factor (`0.75`) and initial capacity (`16`) are fixed in `map_setup.h`.
+The hash table load factor (`0.75`) is fixed. The initial capacity is `HASHMAP_INIT_CAPACITY` (`16`, a power of two) in `hashmap.h`.
 
 ## Where to go next
 

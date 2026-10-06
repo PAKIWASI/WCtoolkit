@@ -8,7 +8,6 @@
 #include "common.h"
 #include "gen_vector.h"
 #include "hashmap.h"
-#include "hashset.h"
 #include "matrix.h"
 #include "priority_queue.h"
 #include "queue.h"
@@ -61,15 +60,15 @@ UTEST(memory_rules, A4_arena_allocator_lives_in_the_arena)
     ChainArena_destroy(&ca);
 }
 
-UTEST(memory_rules, A9_hashset_elements_aligned_on_arena)
+UTEST(memory_rules, A9_set_elements_aligned_on_arena)
 {
     // An odd-sized burn first so the arena's next address is misaligned.
     Arena a;
     Arena_create(&a, WC_LIBC, nKB(16));
     EXPECT_TRUE(Arena_alloc_aligned(&a, 3, 1) != NULL);
 
-    HashSet s = HashSet_create(Arena_allocator(&a), sizeof(String), wyhash_str, str_cmp, &wc_str_ops);
-    EXPECT_EQ((uintptr_t)s.elms % alignof(String), 0u);
+    HashMap s = HashMap_create(Arena_allocator(&a), sizeof(String), 0, wc_hash_str, str_cmp, &wc_str_ops, NULL);
+    EXPECT_EQ((uintptr_t)s.keys % alignof(String), 0u);
     SET_INSERT_CSTR(&s, LONG_A);
     SET_FOREACH (&s, String, e) {
         EXPECT_EQ((uintptr_t)e % alignof(String), 0u);
@@ -79,7 +78,7 @@ UTEST(memory_rules, A9_hashset_elements_aligned_on_arena)
     EXPECT_EQ((uintptr_t)m.keys % alignof(u64), 0u);
     EXPECT_EQ((uintptr_t)m.vals % alignof(double), 0u);
 
-    HashSet_destroy(&s);
+    HashMap_destroy(&s);
     HashMap_destroy(&m);
     Arena_destroy(&a);
 }
@@ -431,22 +430,22 @@ UTEST(memory_rules, hashmap_single_block)
     EXPECT_EQ(wc_test_alloc_destroy(&ta), 0u);
 }
 
-UTEST(memory_rules, hashset_single_block_and_reserve)
+UTEST(memory_rules, set_single_block_and_reserve)
 {
     wc_test_alloc ta;
     wc_test_alloc_init(&ta, WC_LIBC);
 
-    HashSet s = HashSet_create(wc_test_alloc_allocator(&ta), sizeof(int), NULL, NULL, NULL);
+    HashMap s = HashMap_create(wc_test_alloc_allocator(&ta), sizeof(int), 0, NULL, NULL, NULL, NULL);
     EXPECT_EQ(ta.n_alloc, 1u);
-    HashSet_reserve(&s, 1000);
+    HashMap_reserve(&s, 1000);
     u64 allocs = ta.n_alloc;
     for (int i = 0; i < 1000; i++) {
         SET_INSERT(&s, i);
     }
     EXPECT_EQ(ta.n_alloc, allocs); // reserved: no resize
-    EXPECT_EQ(HashSet_size(&s), 1000u);
+    EXPECT_EQ(HashMap_size(&s), 1000u);
 
-    HashSet_destroy(&s);
+    HashMap_destroy(&s);
     EXPECT_EQ(ta.n_errors, 0u);
     EXPECT_EQ(wc_test_alloc_destroy(&ta), 0u);
 }
@@ -461,11 +460,11 @@ UTEST(memory_rules, set_from_vec_reserves_once)
         VEC_PUSH(&v, i);
     }
     u64     allocs = ta.n_alloc;
-    HashSet s      = SET_FROM_VEC(&v, NULL, NULL);
+    HashMap s      = SET_FROM_VEC(&v, NULL, NULL);
     EXPECT_LE(ta.n_alloc, allocs + 2); // create + one reserve
-    EXPECT_EQ(HashSet_size(&s), 500u);
+    EXPECT_EQ(HashMap_size(&s), 500u);
 
-    HashSet_destroy(&s);
+    HashMap_destroy(&s);
     GenVec_destroy(&v);
     EXPECT_EQ(wc_test_alloc_destroy(&ta), 0u);
 }
@@ -500,7 +499,7 @@ UTEST(memory_rules, E1_cstr_lookups_never_allocate)
     EXPECT_FALSE(MAP_PUT_STR_INT(&m, LONG_C, 3));
     EXPECT_EQ(ta.n_alloc, allocs + 1);
 
-    HashSet s = HashSet_create(al, sizeof(String), wyhash_str, str_cmp, &wc_str_ops);
+    HashMap s = HashMap_create(al, sizeof(String), 0, wc_hash_str, str_cmp, &wc_str_ops, NULL);
     SET_INSERT_CSTR(&s, LONG_A);
     before = calls(&ta);
     EXPECT_TRUE(SET_INSERT_CSTR(&s, LONG_A)); // duplicate: nothing built, nothing freed
@@ -508,7 +507,7 @@ UTEST(memory_rules, E1_cstr_lookups_never_allocate)
     EXPECT_FALSE(SET_HAS_CSTR(&s, LONG_B));
     EXPECT_EQ(calls(&ta), before);
 
-    HashSet_destroy(&s);
+    HashMap_destroy(&s);
     HashMap_destroy(&m);
     EXPECT_EQ(ta.n_errors, 0u);
     EXPECT_EQ(wc_test_alloc_destroy(&ta), 0u);

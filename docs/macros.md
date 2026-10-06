@@ -4,7 +4,7 @@
 
 `wc_macros.h` is a typed layer over the `void*` C API. Where a macro takes the element type `T`, it checks `sizeof(T)` against the container's element size, so passing the wrong type aborts in Debug (`WC_ASSERT_ELEM_SIZE`). Macros never allocate or free anything you don't see.
 
-Include `wc_macros.h`. It pulls in every container header, `wc_string.h`, `map_setup.h` and the built-in ops from `wc_helpers.h`.
+Include `wc_macros.h`. It pulls in every container header, `wc_string.h` and the built-in ops from `wc_helpers.h`.
 
 ## Plain data vs owning elements
 
@@ -23,7 +23,7 @@ VEC_PUSH: owning element type, use the _MOVE or _COPY form
 VEC_AT: owning struct by value would alias the container, use the pointer form
 ```
 
-The check knows the toolkit's own types (`String`, `GenVec`, `HashMap`, `HashSet`, `Queue`, `PriorityQueue`, `BitVec`, `Matrixf`, `StringStore`) and pointers to `String` and `GenVec`. Your own owning types aren't known to it: use the `_MOVE` / `_COPY` forms for them by hand.
+The check knows the toolkit's own types (`String`, `GenVec`, `HashMap`, `Queue`, `PriorityQueue`, `BitVec`, `Matrixf`, `StringStore`) and pointers to `String` and `GenVec`. Your own owning types aren't known to it: use the `_MOVE` / `_COPY` forms for them by hand.
 
 Read macros accept pointer elements (`VEC_AT(&v, String*, i)` returns the `String*`): a returned pointer is a visible borrow. Popping works for every type: `VEC_POP` / `QUEUE_POP` **move** the element out, so the value you get is yours.
 
@@ -68,7 +68,7 @@ Like every `WC_ASSERT`, the check is gone in Release, so a mismatch there reads 
 | `QUEUE_CREATE(T, cap)`, `QUEUE_CREATE_CX`, `QUEUE_CREATE_IN`, `QUEUE_CREATE_CX_IN` | Queues |
 | `VEC_MAKE_OPS(copy, del)` | A `wc_container_ops` compound literal |
 
-`MAP_OF` chooses `wyhash_str` and `str_cmp` for `String` keys, and the `_ptr` versions for `String*` keys. Every other key type is hashed and compared as raw bytes, which is only correct for keys without pointers.
+`MAP_OF` and `SET_OF` choose `wc_hash_str` and `str_cmp` for `String` keys, and the `_ptr` versions for `String*` keys. Every other key type is hashed and compared as raw bytes, which is only correct for keys without pointers.
 
 ## Vectors
 
@@ -164,15 +164,18 @@ int main(void)
 
 ## Sets
 
+A set is a `HashMap` with no values (`val_size == 0`). Declare one with `SET_OF(T)` or `SET_OF_IN(A, T)`; query it with `HashMap_has`, `HashMap_del(&s, &x, NULL)` and `HashMap_get_key_ptr`. The `SET_*` macros assert in Debug that they were given a set.
+
 | Macro | Notes |
 |---|---|
+| `SET_OF(T)`, `SET_OF_IN(A, T)` | A new set of `T`. Hash, compare and ops picked from `T`, like `MAP_OF`. |
 | `SET_INSERT(&s, val)` | Plain data. Returns `bool`: `1` if it was already present. Size-checked in Debug. |
 | `SET_INSERT_COPY(&s, lval)` | Deep-copies an lvalue in; you keep it |
 | `SET_INSERT_MOVE(&s, lval)` | Moves in, or destroys `lval` if already present. `lval` is zeroed either way. |
 | `SET_INSERT_CSTR(&s, "text")` | Probes with a borrowed `String`: an existing string costs nothing, a new one is copied once into the set's allocator |
 | `SET_HAS_CSTR(&s, "text")` | No allocation |
 | `SET_FROM_VEC(&v, hash, cmp)` | A new set of deep copies of `v`'s elements, on `v`'s allocator. Reserved once up front. |
-| `SET_FOREACH(&s, T, x) { ... }` | `x` is a `const T*` |
+| `SET_FOREACH(&s, T, x) { ... }` | `x` is a `const T*` to each key. Works on any map too. |
 
 ## Stacks and queues
 

@@ -7,8 +7,6 @@
 #include "common.h"
 #include "gen_vector.h"
 #include "hashmap.h"
-#include "hashset.h"
-#include "map_setup.h"
 #include "matrix.h"
 #include "priority_queue.h"
 #include "queue.h"
@@ -56,10 +54,10 @@
  * type, at compile time, without evaluating it. `(T*)0` is used so that any T
  * works, including arrays and incomplete types, without needing a value.
  */
-#define WC_OWNING_VALUE_CASES_                                                                                       \
-    String* : 1, const String* : 1, GenVec* : 1, const GenVec* : 1, HashMap* : 1, const HashMap* : 1, HashSet* : 1,  \
-        const HashSet* : 1, Queue* : 1, const Queue* : 1, PriorityQueue* : 1, const PriorityQueue* : 1, BitVec* : 1, \
-        const BitVec* : 1, Matrixf* : 1, const Matrixf* : 1, StringStore* : 1, const StringStore* : 1
+#define WC_OWNING_VALUE_CASES_                                                                                    \
+    String* : 1, const String* : 1, GenVec* : 1, const GenVec* : 1, HashMap* : 1, const HashMap* : 1, Queue* : 1,  \
+        const Queue* : 1, PriorityQueue* : 1, const PriorityQueue* : 1, BitVec* : 1, const BitVec* : 1,              \
+        Matrixf* : 1, const Matrixf* : 1, StringStore* : 1, const StringStore* : 1
 
 #define WC_IS_OWNING_VALUE(T) _Generic((T*)0, WC_OWNING_VALUE_CASES_, default: 0)
 
@@ -163,13 +161,13 @@
 
 /* Key hash/compare picked from K, like WC_OPS. Owning keys must hash their
  * CONTENT: hashing the raw String struct (pointer, capacity, allocator) makes
- * every lookup miss. NULL = wyhash / memcmp over the key bytes (POD keys).
+ * every lookup miss. NULL = wc_hash / byte equality over the key bytes (POD keys).
  * GenVec keys have no content hash: pass explicit functions to HashMap_create. */
 #define WC_HASH_FN(K)                               \
     _Generic((K*)0,                                 \
-        String*: (custom_hash_fn)wyhash_str,        \
-        String * *: (custom_hash_fn)wyhash_str_ptr, \
-        default: (custom_hash_fn)NULL)
+        String*: (wc_hash_fn)wc_hash_str,        \
+        String * *: (wc_hash_fn)wc_hash_str_ptr, \
+        default: (wc_hash_fn)NULL)
 
 #define WC_CMP_FN(K)                            \
     _Generic((K*)0,                             \
@@ -179,6 +177,11 @@
 
 #define MAP_OF_IN(A, K, V) HashMap_create((A), sizeof(K), sizeof(V), WC_HASH_FN(K), WC_CMP_FN(K), WC_OPS(K), WC_OPS(V))
 #define MAP_OF(K, V)       MAP_OF_IN(WC_LIBC, K, V)
+
+// A set of K: a HashMap with no values (val_size 0). Use HashMap_has / _del /
+// _get_key_ptr on it directly, and the SET_* macros below to insert and iterate.
+#define SET_OF_IN(A, K) HashMap_create((A), sizeof(K), 0, WC_HASH_FN(K), WC_CMP_FN(K), WC_OPS(K), NULL)
+#define SET_OF(K)       SET_OF_IN(WC_LIBC, K)
 
 #define VEC_MAKE_OPS(copy, del) \
     (wc_container_ops)          \
@@ -591,17 +594,21 @@ Usage:
 // NOLINTEND(bugprone-macro-parentheses)
 
 
-// Hashset shorthands
+// Set shorthands. A set is a HashMap with val_size 0 (SET_OF): these insert
+// keys only and iterate keys only.
+
+#define WC_ASSERT_IS_SET(set, what) WC_ASSERT((set)->val_size == 0, what ": not a set (val_size != 0)")
 
 // A new set of vec's elements (deep copies), on vec's allocator. Sized once up
 // front: no intermediate resizes.
 #define SET_FROM_VEC(vec, hash_fn, cmp_fn) SET_FROM_VEC_((vec), hash_fn, cmp_fn, __LINE__)
 #define SET_FROM_VEC_(vec, hash_fn, cmp_fn, L)                                                                     \
     ({                                                                                                             \
-        HashSet WC_FE_(set, L) = HashSet_create((vec)->alloc, (vec)->data_size, hash_fn, cmp_fn, (vec)->ops);      \
-        HashSet_reserve(&WC_FE_(set, L), GenVec_size(vec));                                                        \
+        HashMap WC_FE_(set, L) =                                                                                   \
+            HashMap_create((vec)->alloc, (vec)->data_size, 0, hash_fn, cmp_fn, (vec)->ops, NULL);                  \
+        HashMap_reserve(&WC_FE_(set, L), GenVec_size(vec));                                                        \
         for (u64 WC_FE_(i, L) = 0, WC_FE_(n, L) = GenVec_size(vec); WC_FE_(i, L) < WC_FE_(n, L); WC_FE_(i, L)++) { \
-            HashSet_insert(&WC_FE_(set, L), GenVec_get_ptr((vec), WC_FE_(i, L)));                                  \
+            HashMap_put(&WC_FE_(set, L), GenVec_get_ptr((vec), WC_FE_(i, L)), NULL);                               \
         }                                                                                                          \
         WC_FE_(set, L);                                                                                            \
     })
@@ -610,36 +617,40 @@ Usage:
 #define SET_INSERT(set, elm)                                          \
     ({                                                                \
         WC_REQUIRE_POD(typeof(elm), "SET_INSERT");                    \
+        WC_ASSERT_IS_SET((set), "SET_INSERT");                        \
         typeof(elm) _temp = (elm);                                    \
-        WC_ASSERT_SIZE(sizeof(_temp), (set)->elm_size, "SET_INSERT"); \
-        HashSet_insert((set), (const void*)&(_temp));                 \
+        WC_ASSERT_SIZE(sizeof(_temp), (set)->key_size, "SET_INSERT"); \
+        HashMap_put((set), (const void*)&(_temp), NULL);              \
     })
 
 // Deep-copy an lvalue in; you keep it (B8).
 #define SET_INSERT_COPY(set, lval)                                        \
     ({                                                                    \
-        WC_ASSERT_SIZE(sizeof(lval), (set)->elm_size, "SET_INSERT_COPY"); \
-        HashSet_insert((set), (const void*)&(lval));                      \
+        WC_ASSERT_IS_SET((set), "SET_INSERT_COPY");                       \
+        WC_ASSERT_SIZE(sizeof(lval), (set)->key_size, "SET_INSERT_COPY"); \
+        HashMap_put((set), (const void*)&(lval), NULL);                   \
     })
 
 // lval is left zeroed (moved in, or destroyed if already present)
 #define SET_INSERT_MOVE(set, lval)                                        \
     ({                                                                    \
-        WC_ASSERT_SIZE(sizeof(lval), (set)->elm_size, "SET_INSERT_MOVE"); \
-        HashSet_insert_move((set), (void*)&(lval));                       \
+        WC_ASSERT_IS_SET((set), "SET_INSERT_MOVE");                       \
+        WC_ASSERT_SIZE(sizeof(lval), (set)->key_size, "SET_INSERT_MOVE"); \
+        HashMap_put_key_move((set), (void*)&(lval), NULL);                \
     })
 
-#define WC_ASSERT_STR_SET(set, what)                                                  \
-    WC_ASSERT((set)->elm_size == sizeof(String) && (set)->ops && (set)->ops->copy_fn, \
-              what ": set elements must be String with wc_str_ops")
+#define WC_ASSERT_STR_SET(set, what)                                                                       \
+    WC_ASSERT((set)->val_size == 0 && (set)->key_size == sizeof(String) && (set)->key_ops &&               \
+                  (set)->key_ops->copy_fn,                                                                 \
+              what ": must be a set of String with wc_str_ops")
 
 // Insert a C string into a String set. Probes with a borrowed String first: an
 // existing string costs no allocation; a new one is copied once into the set's allocator.
-#define SET_INSERT_CSTR(set, cstr)                   \
-    ({                                               \
-        WC_ASSERT_STR_SET((set), "SET_INSERT_CSTR"); \
-        String _s = WC_CSTR_PROBE(cstr);             \
-        HashSet_insert((set), (const void*)&_s);     \
+#define SET_INSERT_CSTR(set, cstr)                       \
+    ({                                                   \
+        WC_ASSERT_STR_SET((set), "SET_INSERT_CSTR");     \
+        String _s = WC_CSTR_PROBE(cstr);                 \
+        HashMap_put((set), (const void*)&_s, NULL);      \
     })
 
 // bool: is the C string in a String set? No allocation.
@@ -647,16 +658,17 @@ Usage:
     ({                                            \
         WC_ASSERT_STR_SET((set), "SET_HAS_CSTR"); \
         String _s = WC_CSTR_PROBE(cstr);          \
-        HashSet_has((set), (const void*)&_s);     \
+        HashMap_has((set), (const void*)&_s);     \
     })
 
 
+// Iterate the keys of a set (or of any map): name is a const T* to each key.
 #define SET_FOREACH(c, T, name) SET_FOREACH_(c, T, name, __LINE__)
 #define SET_FOREACH_(c, T, name, L)                                                                 \
-    for (u64 WC_FE_(k, L) = 1, WC_FE_(i, L) = 0, WC_FE_(n, L) = HashSet_bucket_count(c);            \
+    for (u64 WC_FE_(k, L) = 1, WC_FE_(i, L) = 0, WC_FE_(n, L) = HashMap_bucket_count(c);            \
          WC_FE_(k, L) && WC_FE_(i, L) < WC_FE_(n, L); WC_FE_(k, L) = !WC_FE_(k, L), WC_FE_(i, L)++) \
-        for (const T*(name)             = HashSet_bucket_occupied((c), WC_FE_(i, L))                \
-                                              ? (const T*)HashSet_bucket_elm_ptr((c), WC_FE_(i, L)) \
+        for (const T*(name)             = HashMap_bucket_occupied((c), WC_FE_(i, L))                \
+                                              ? (const T*)HashMap_bucket_key_ptr((c), WC_FE_(i, L)) \
                                               : NULL;                                               \
              WC_FE_(k, L); WC_FE_(k, L) = !WC_FE_(k, L))                                            \
             if (!(name)) {                                                                          \

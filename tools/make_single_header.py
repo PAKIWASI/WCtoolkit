@@ -32,7 +32,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 # Support headers: inlined wherever needed, never built as a file of their own.
-INTERNAL = {"common", "wc_errno", "map_setup"}
+INTERNAL = {"common", "wc_errno"}
 
 # Always part of every output: common.h's FATAL/WARN call wc_errno.c, and
 # common.h includes wc_allocator.h.

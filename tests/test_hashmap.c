@@ -1,7 +1,6 @@
 #include "arena.h"
 #include "common.h"
 #include "hashmap.h"
-#include "map_setup.h"
 #include "queue.h"
 #include "random.h"
 #include "test_support.h"
@@ -30,7 +29,7 @@ static HashMap int_str_map(void)
 
 static HashMap str_str_map(void)
 {
-    return HashMap_create(WC_LIBC, sizeof(String), sizeof(String), wyhash_str, str_cmp, &wc_str_ops, &wc_str_ops);
+    return HashMap_create(WC_LIBC, sizeof(String), sizeof(String), wc_hash_str, str_cmp, &wc_str_ops, &wc_str_ops);
 }
 
 
@@ -979,8 +978,9 @@ static u32 max_stored_psl(const HashMap* m)
     return mx;
 }
 
-// A healthy hash at load <= 0.75 keeps probe lengths in the tens. The guard fires at 250.
-#define PSL_HEALTHY 64
+// At load <= 0.75 a good hash keeps the longest probe under ~12 for 100k keys
+// (measured: 7 to 9 with wc_hash). The guard fires at 250.
+#define PSL_HEALTHY 24
 
 UTEST(hashmap, structured_keys_distribute)
 {
@@ -1000,7 +1000,8 @@ UTEST(hashmap, structured_keys_distribute)
     EXPECT_TRUE(max_stored_psl(&m) < PSL_HEALTHY);
     HashMap_destroy(&m);
 
-    static const u64 strides[] = {8, 4096, (u64)1 << 32};
+    // keys that differ only in their top bits: (i << 44) for i < 2^20
+    static const u64 strides[] = {8, 4096, (u64)1 << 32, (u64)1 << 44};
     for (u64 s = 0; s < sizeof(strides) / sizeof(strides[0]); s++) {
         m = HashMap_create(WC_LIBC, sizeof(u64), sizeof(int), NULL, NULL, NULL, NULL);
         for (u64 i = 0; i < 50000; i++) {
@@ -1012,4 +1013,165 @@ UTEST(hashmap, structured_keys_distribute)
         EXPECT_TRUE(max_stored_psl(&m) < PSL_HEALTHY);
         HashMap_destroy(&m);
     }
+}
+
+
+// Identity hash: the weakest a custom hash gets. The Fibonacci step in map_home
+// must still spread sequential keys over the top bits.
+static u64 identity_hash(const void* key, u64 size)
+{
+    (void)size;
+    u64 k = 0;
+    memcpy(&k, key, sizeof(int));
+    return k;
+}
+
+UTEST(hashmap, weak_custom_hash_still_distributes)
+{
+    HashMap m = HashMap_create(WC_LIBC, sizeof(int), sizeof(int), identity_hash, NULL, NULL, NULL);
+    for (int i = 0; i < 100000; i++) {
+        MAP_PUT(&m, i, i);
+    }
+    EXPECT_TRUE(max_stored_psl(&m) < PSL_HEALTHY);
+    HashMap_destroy(&m);
+}
+
+UTEST(hashmap, set_mode_distributes)
+{
+    HashMap s = SET_OF(u64);
+    for (u64 i = 0; i < 100000; i++) {
+        u64 k = i << 40;
+        SET_INSERT(&s, k);
+    }
+    EXPECT_EQ(HashMap_size(&s), (u64)100000);
+    EXPECT_TRUE(max_stored_psl(&s) < PSL_HEALTHY);
+    HashMap_destroy(&s);
+}
+
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * wc_hash: rapidhash nano
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+// Outputs of upstream rapidhashNano() (seed 0) over bytes i * 7 + 3. Covers every
+// length branch: 0, 1-3, 4-7, 8-16, 17-48, > 48 (bulk loop).
+UTEST(hash, matches_rapidhash_reference)
+{
+#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+    static const struct {
+        u64 len;
+        u64 hash;
+    } ref[] = {
+        {0, 0x0338dc4be2cecdaeULL},  {1, 0xc6939e8fb00709ffULL},   {3, 0x5655e9f764e8fb47ULL},
+        {4, 0x49227fb2f401a8fcULL},  {7, 0xf8d2bdfe7f388df8ULL},   {8, 0xf5980b646f822e89ULL},
+        {15, 0x71bb053c322ab7cbULL}, {16, 0xd0e68844cb24a480ULL},  {17, 0x7998c836066e171bULL},
+        {33, 0x50f708a727e0a6f9ULL}, {48, 0x78e892266d502576ULL},  {49, 0x3b64ec2b4166561cULL},
+        {100, 0xde3884105eba67a1ULL}, {128, 0xb5e9b5cc7dcaac79ULL},
+    };
+    u8 buf[128];
+    for (u32 i = 0; i < 128; i++) {
+        buf[i] = (u8)((i * 7) + 3);
+    }
+    for (u64 i = 0; i < sizeof(ref) / sizeof(ref[0]); i++) {
+        EXPECT_EQ(wc_hash(buf, ref[i].len), ref[i].hash);
+    }
+#endif
+}
+
+// Flip one input bit: every output bit must flip about half the time. The old
+// default failed this on 4 and 8 byte keys (some output bits never moved, bias 0.5).
+// Sampling noise over 4096 (in, out) pairs at T = 4000 stays under ~0.035.
+static double worst_avalanche_bias(u64 len, bool sequential)
+{
+    enum { T = 4000 };
+    static u32 flips[64][64];
+    memset(flips, 0, sizeof(flips));
+
+    WC_Pcg32 rng = PCG32_INITIALIZER;
+    pcg32_rand_seed(&rng, 42, 54);
+    u8 key[8] = {0};
+
+    for (u32 t = 0; t < T; t++) {
+        u64 v = sequential ? t : ((u64)pcg32_rand(&rng) << 32) | pcg32_rand(&rng);
+        memcpy(key, &v, len);
+        u64 h0 = wc_hash(key, len);
+        for (u64 bit = 0; bit < len * 8; bit++) {
+            key[bit / 8] ^= (u8)(1U << (bit % 8));
+            u64 d = wc_hash(key, len) ^ h0;
+            key[bit / 8] ^= (u8)(1U << (bit % 8));
+            for (u32 o = 0; o < 64; o++) {
+                flips[bit][o] += (u32)((d >> o) & 1);
+            }
+        }
+    }
+
+    double worst = 0;
+    for (u64 bit = 0; bit < len * 8; bit++) {
+        for (u32 o = 0; o < 64; o++) {
+            double p   = (double)flips[bit][o] / T;
+            double dev = p > 0.5 ? p - 0.5 : 0.5 - p;
+            worst      = dev > worst ? dev : worst;
+        }
+    }
+    return worst;
+}
+
+UTEST(hash, avalanche_short_keys)
+{
+    EXPECT_LT(worst_avalanche_bias(4, false), 0.05);
+    EXPECT_LT(worst_avalanche_bias(8, false), 0.05);
+    EXPECT_LT(worst_avalanche_bias(4, true), 0.05);
+    EXPECT_LT(worst_avalanche_bias(8, true), 0.05);
+}
+
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * sets (val_size 0) and key access
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+static void die_set_with_val_ops(void)
+{
+    HashMap s = HashMap_create(WC_LIBC, sizeof(int), 0, NULL, NULL, NULL, &wc_str_ops);
+    HashMap_destroy(&s);
+}
+
+UTEST(hashmap, set_rejects_val_ops)
+{
+    EXPECT_DIES(die_set_with_val_ops);
+}
+
+UTEST(hashmap, set_takes_no_value_memory)
+{
+    HashMap s = SET_OF(int);
+    EXPECT_EQ(s.val_size, 0u);
+    EXPECT_TRUE(s.vals == s.scratch); // the values region is 0 bytes
+    for (int i = 0; i < 1000; i++) {
+        EXPECT_FALSE(HashMap_put(&s, &i, NULL));
+    }
+    int dup = 7;
+    EXPECT_TRUE(HashMap_put(&s, &dup, NULL));
+    EXPECT_EQ(HashMap_size(&s), (u64)1000);
+    EXPECT_TRUE(HashMap_del(&s, &dup, NULL));
+    EXPECT_FALSE(HashMap_has(&s, &dup));
+    HashMap_destroy(&s);
+}
+
+UTEST(hashmap, get_key_ptr_returns_stored_key)
+{
+    HashMap m = MAP_OF(String, int);
+    MAP_PUT_STR_INT(&m, "interned", 1);
+
+    String probe = String_from_cstr(WC_LIBC, "interned");
+    const String* stored = HashMap_get_key_ptr(&m, &probe);
+    EXPECT_TRUE(stored != NULL);
+    EXPECT_TRUE(stored != &probe);
+    EXPECT_TRUE(String_equals(stored, &probe));
+    EXPECT_TRUE(stored == HashMap_bucket_key_ptr(&m, (u64)((const u8*)stored - m.keys) / sizeof(String)));
+
+    String absent = String_from_cstr(WC_LIBC, "absent");
+    EXPECT_TRUE(HashMap_get_key_ptr(&m, &absent) == NULL);
+
+    String_destroy(&absent);
+    String_destroy(&probe);
+    HashMap_destroy(&m);
 }

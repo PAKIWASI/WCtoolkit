@@ -11,7 +11,7 @@ All containers share the rules in [Conventions](conventions.md): created by valu
 | [`Queue`](#queue) | `queue.h` | Circular buffer | FIFO, and pops from both ends |
 | [`PriorityQueue`](#priorityqueue) | `priority_queue.h` | Binary heap | Always-take-the-best order |
 | [`HashMap`](#hashmap) | `hashmap.h` | Open addressing, Robin Hood | Key to value lookup |
-| [`HashSet`](#hashset) | `hashset.h` | Open addressing, Robin Hood | Membership |
+| [Sets](#sets) | `hashmap.h` | A `HashMap` with `val_size == 0` | Membership |
 | [`BitVec`](#bitvec) | `bit_vector.h` | `GenVec` of bytes | Dense flags |
 
 Most code uses these through the [macro layer](macros.md), which adds compile-time element-type checks.
@@ -140,7 +140,7 @@ Open addressing with Robin Hood probing and backward-shift deletion. Capacity st
 
 int main(void)
 {
-    // int -> double, default hash (wyhash over the key bytes) and memcmp
+    // int -> double, default hash (wc_hash over the key bytes) and byte equality
     HashMap m = HashMap_create(WC_LIBC, sizeof(int), sizeof(double), NULL, NULL, NULL, NULL);
 
     int    k = 7;
@@ -157,7 +157,9 @@ int main(void)
 }
 ```
 
-`HashMap_create(a, key_size, val_size, hash, cmp, key_ops, val_ops)`. `hash` and `cmp` default to `wyhash` and `memcmp` when `NULL`. That's only correct for keys without pointers. For `String` keys pass `wyhash_str` and `str_cmp`, or use `MAP_OF(String, V)`, which picks them for you.
+`HashMap_create(a, key_size, val_size, hash, cmp, key_ops, val_ops)`. `hash` and `cmp` default to `wc_hash` (rapidhash) and byte equality when `NULL`. That's only correct for keys without pointers. For `String` keys pass `wc_hash_str` and `str_cmp`, or use `MAP_OF(String, V)`, which picks them for you.
+
+The bucket comes from the top bits of the hash after a Fibonacci multiply, so a weak custom hash (even identity on integers) still spreads. A hash whose probe lengths pass 250 aborts instead of corrupting the table.
 
 | Function | Returns |
 |---|---|
@@ -165,10 +167,11 @@ int main(void)
 | `HashMap_put_move`, `HashMap_put_key_move`, `HashMap_put_val_move` | Same; the moved arguments are zeroed. A duplicate moved-in key is destroyed. |
 | `HashMap_get(m, &k, &out)` | `1` if found; deep-copies the value into `out`. For owning values prefer `get_ptr`. |
 | `HashMap_get_ptr(m, &k)`, `HashMap_get_ptr_mut(m, &k)` | Pointer to the value, or `NULL` |
+| `HashMap_get_key_ptr(m, &k)` | Pointer to the **stored** key, or `NULL`. A set's element, or a map's canonical key (interning). Never change what the hash reads through it. |
 | `HashMap_has(m, &k)` | `1` if present |
 | `HashMap_del(m, &k, out_or_NULL)` | `1` if removed. The value is **moved** into `out`, or deleted. |
 | `HashMap_clear` | Removes everything, keeps capacity |
-| `HashMap_copy`, `HashMap_move`, `HashMap_size`, `HashMap_capacity`, `HashMap_empty`, `HashMap_print(m, key_print, val_print)` | |
+| `HashMap_copy`, `HashMap_move`, `HashMap_size`, `HashMap_capacity`, `HashMap_empty`, `HashMap_print(m, key_print, val_print_or_NULL)` | |
 
 Iterate the buckets directly, or use `MAP_FOREACH_KEY` / `MAP_FOREACH_VAL`:
 
@@ -196,19 +199,39 @@ int main(void)
 
 Iteration order is unspecified. Pointers into the map become invalid on any insert or delete.
 
-## HashSet
+## Sets
 
-The same table as `HashMap`, without values.
+A set is a `HashMap` with `val_size == 0`: the same table, with a values region of 0 bytes. There is no separate set type.
 
-| Function | Returns |
-|---|---|
-| `HashSet_create(a, elm_size, hash, cmp, ops)` | Defaults as `HashMap` |
-| `HashSet_insert(s, &x)`, `HashSet_insert_move(s, &x)` | `1` if it was already present (no change), `0` if inserted |
-| `HashSet_has`, `HashSet_get_ptr`, `HashSet_get_ptr_mut` | |
-| `HashSet_remove(s, &x)` | `1` if removed |
-| `HashSet_bucket_count`, `HashSet_bucket_occupied`, `HashSet_bucket_elm_ptr` | Iteration; or `SET_FOREACH` |
-| `HashSet_reserve(s, n)` | Make room for `n` elements so inserting up to `n` never resizes |
-| `HashSet_clear`, `HashSet_copy`, `HashSet_move`, `HashSet_size`, `HashSet_capacity`, `HashSet_empty`, `HashSet_print` | |
+```c
+#include "wc_macros.h"
+
+int main(void)
+{
+    HashMap seen = SET_OF(int);              // HashMap_create(WC_LIBC, sizeof(int), 0, NULL, NULL, NULL, NULL)
+    SET_INSERT(&seen, 7);                    // returns 0: new
+    SET_INSERT(&seen, 7);                    // returns 1: already present, no change
+
+    int k = 7;
+    HashMap_has(&seen, &k);                  // 1
+    HashMap_del(&seen, &k, NULL);            // 1: removed
+
+    HashMap words = SET_OF(String);          // String elements, wc_str_ops
+    SET_INSERT_CSTR(&words, "ada");
+    SET_FOREACH(&words, String, w) { String_print(w); }
+
+    HashMap_destroy(&words);
+    HashMap_destroy(&seen);
+    return 0;
+}
+```
+
+Rules for a set:
+
+- `val` arguments may be `NULL`: `HashMap_put(&s, &x, NULL)`, `HashMap_put_key_move(&s, &x, NULL)`.
+- `val_ops` must be `NULL`. Passing ops with `val_size == 0` is a FATAL.
+- `HashMap_get_key_ptr(&s, &x)` returns the stored element. `HashMap_get_ptr` points at a 0-byte value and is not useful on a set.
+- Iterate with `SET_FOREACH`, or `HashMap_bucket_key_ptr`.
 
 ## BitVec
 

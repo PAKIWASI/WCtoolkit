@@ -1,9 +1,7 @@
 #include "hashmap.h"
 #include "common.h"
-#include "gen_vector.h"
-#include "map_setup.h"
 #include "wc_allocator.h"
-#include "wc_string.h"
+#include "wc_specialize.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -20,6 +18,13 @@
 // PSL 0 == empty bucket; stored PSL is (real_psl + 1), starting at 1
 #define BUCKET_EMPTY 0
 
+// map_lookup result
+typedef enum {
+    NOT_FOUND = 0,
+    FOUND,
+    ROBINHOOD_EXIT, // stopped early: the Robin Hood invariant proves the key is absent
+} LOOKUP_RES;
+
 // Single block layout, every region aligned for what it holds:
 //   [keys: cap * key_size][vals: cap * val_size][scratch][psls: cap bytes]
 // keys/vals/scratch start on MAP_ALIGN; psls are bytes and go last.
@@ -31,8 +36,6 @@
 //     used by map_insert for Robin Hood evictions
 // The two regions must NOT overlap: map_insert is called with pointers INTO
 // the STAGE region, and it writes displaced residents into the SWAP region.
-
-_Static_assert((sizeof(String) == 48 && sizeof(GenVec) == 48) != 0, "update the 48-byte fast paths below");
 
 static inline u64 map_align_up(u64 x, u64 a)
 {
@@ -97,15 +100,23 @@ static void map_free_block(const HashMap* map, u8* block, u64 cap)
 }
 
 // Move one element into `dest` (memcpy). `src` is left zeroed.
+// size 0 (a set's value): nothing to move, and src may be NULL.
 static inline void map_move_into(u32 size, u8* dest, u8* src)
 {
+    if (size == 0) {
+        return;
+    }
     memcpy(dest, src, size);
     memset(src, 0, size);
 }
 
-// Copy one element into raw `dest`: copy_fn if any, else memcpy
+// Copy one element into raw `dest`: copy_fn if any, else memcpy.
+// size 0 (a set's value): nothing to copy, and src may be NULL.
 static inline void map_copy_into(const HashMap* map, const wc_container_ops* ops, u32 size, u8* dest, const void* src)
 {
+    if (size == 0) {
+        return;
+    }
     wc_copy_fn cp = ops ? ops->copy_fn : NULL;
     if (cp) {
         cp(map->alloc, dest, src);
@@ -126,6 +137,9 @@ static inline void map_delete_elm(const wc_container_ops* ops, u8* elm)
 // Destroy an incoming duplicate the container will not keep, and zero it.
 static inline void map_consume_dup(const wc_container_ops* ops, u32 size, u8* elm)
 {
+    if (size == 0) {
+        return;
+    }
     map_delete_elm(ops, elm);
     memset(elm, 0, size);
 }
@@ -138,136 +152,28 @@ static inline void map_consume_dup(const wc_container_ops* ops, u32 size, u8* el
 #define PSL_LIMIT      250
 #define PSL_OVERFLOW() FATAL("HashMap: probe length overflow (degenerate hash function)")
 
-// Fixed-size copies for the common element sizes: the compiler turns the constant
-// memcpy into plain loads/stores instead of a libc call with a runtime length.
-static inline void map_cpy(void* d, const void* s, u32 n)
-{
-    switch (n) {
-    case 1:
-        memcpy(d, s, 1);
-        break;
-    case 2:
-        memcpy(d, s, 2);
-        break;
-    case 4:
-        memcpy(d, s, 4);
-        break;
-    case 8:
-        memcpy(d, s, 8);
-        break;
-    case 16:
-        memcpy(d, s, 16);
-        break;
-    case 24:
-        memcpy(d, s, 24);
-        break;
-    case 32:
-        memcpy(d, s, 32);
-        break;
-    case 48:
-        memcpy(d, s, 48); // sizeof(String), sizeof(GenVec)
-        break;
-    case 64:
-        memcpy(d, s, 64);
-        break;
-    default:
-        memcpy(d, s, n);
-        break;
-    }
-}
-
-// TODO: change the default hash func and don't do this
+// Home bucket = top log2(capacity) bits of the hash. Top bits make a doubling
+// resize send bucket i to 2i or 2i+1, so rehash writes nearly in order.
 //
-// Default hash is called directly (inlinable) instead of through the pointer.
-// The result is ALWAYS multiplied by the golden-ratio constant (Fibonacci hashing),
-// including the default wyhash: the bucket index below comes from the TOP bits, and
-// wyhash's top bits are weak on short sequential keys (a 4-byte key 0,1,2,... clusters
-// badly). The multiply folds every input bit into the top bits. Custom hashes with
-// weak high bits (small integers, shifted ids) are covered by the same step.
-// `ks` is the key size: passed in so a specialised caller folds it to a constant.
-static inline __attribute__((always_inline)) u64 map_hash_k(const HashMap* map, const void* key, u32 ks)
+// Default (hash_fn == NULL): wc_hash, called directly so it inlines; with a
+// constant `ks` its length branches fold away. Its top bits are already fully
+// mixed (tests/test_hashmap.c: hash.avalanche_short_keys), so it is used as is.
+//
+// Custom hash: multiplied by 2^64 / phi first (Fibonacci hashing). Custom hashes
+// often have weak top bits (identity on ints, shifted ids); the multiply folds
+// every input bit into the top bits, so any hash_fn spreads.
+static inline __attribute__((always_inline)) u64 map_home(const HashMap* map, const void* key, u32 ks)
 {
-    u64 h = (map->hash_fn == wyhash) ? wyhash(key, ks) : map->hash_fn(key, ks);
-    return h * 0x9E3779B97F4A7C15ULL;
+    u64 h = map->hash_fn ? map->hash_fn(key, ks) * 0x9E3779B97F4A7C15ULL : wc_hash(key, ks);
+    return h >> (64 - __builtin_ctzll(map->capacity));
 }
 
-// Home bucket = top log2(capacity) bits of the hash. Doubling the table then sends the
-// element at old index i to new index 2i or 2i+1, so a resize writes the new table
-// (nearly) sequentially instead of scattering random writes across it. capacity is a
-// power of two >= HASHMAP_INIT_CAPACITY here (callers reject the zeroed state first).
-static inline __attribute__((always_inline)) u64 map_idx_k(const HashMap* map, const void* key, u32 ks)
+// The default (cmp_fn == NULL) is byte equality: 4 and 8 byte keys become one
+// integer compare.
+static inline __attribute__((always_inline)) bool map_key_eq(const HashMap* map, const u8* a, const u8* b, u32 ks)
 {
-    return map_hash_k(map, key, ks) >> (64 - __builtin_ctzll(map->capacity));
+    return (map->cmp_fn ? map->cmp_fn(a, b, ks) == 0 : (int)wc_equal_n(a, b, ks)) != 0;
 }
-
-// Default compare on 4/8 byte keys is a single integer compare.
-static inline __attribute__((always_inline)) bool map_keyeq_k(const HashMap* map, const u8* a, const u8* b, u32 ks)
-{
-    if (map->cmp_fn == default_compare) {
-        switch (ks) {
-        case 4: {
-            u32 x, y;
-            memcpy(&x, a, 4);
-            memcpy(&y, b, 4);
-            return x == y;
-        }
-        case 8: {
-            u64 x, y;
-            memcpy(&x, a, 8);
-            memcpy(&y, b, 8);
-            return x == y;
-        }
-        default:
-            return memcmp(a, b, ks) == 0;
-        }
-    }
-    return map->cmp_fn(a, b, ks) == 0;
-}
-
-#define MAP_IDX(map, key) map_idx_k((map), (key), (map)->key_size)
-
-// Run `body` once per common (key_size, val_size) pair with KS/VS as compile-time
-// constants, and once generically. kinda like a template: the body is an
-// always_inline function, so each arm is a fully specialised copy.
-#define MAP_DISPATCH(map, call)                                    \
-    switch (((u64)(map)->key_size << 32) | (u64)(map)->val_size) { \
-    case ((u64)4 << 32) | 4: {                                     \
-        enum { KS = 4, VS = 4 };                                   \
-        call;                                                      \
-        break;                                                     \
-    }                                                              \
-    case ((u64)8 << 32) | 8: {                                     \
-        enum { KS = 8, VS = 8 };                                   \
-        call;                                                      \
-        break;                                                     \
-    }                                                              \
-    case ((u64)4 << 32) | 8: {                                     \
-        enum { KS = 4, VS = 8 };                                   \
-        call;                                                      \
-        break;                                                     \
-    }                                                              \
-    case ((u64)8 << 32) | 4: {                                     \
-        enum { KS = 8, VS = 4 };                                   \
-        call;                                                      \
-        break;                                                     \
-    }                                                              \
-    case ((u64)48 << 32) | 4: {                                    \
-        enum { KS = 48, VS = 4 };                                  \
-        call;                                                      \
-        break;                                                     \
-    }                                                              \
-    case ((u64)48 << 32) | 48: {                                   \
-        enum { KS = 48, VS = 48 };                                 \
-        call;                                                      \
-        break;                                                     \
-    }                                                              \
-    default: {                                                     \
-        const u32 KS = (map)->key_size, VS = (map)->val_size;      \
-        call;                                                      \
-        break;                                                     \
-    }                                                              \
-    }
-
 
 
 /*
@@ -284,17 +190,18 @@ static void        map_resize(HashMap* map, u64 new_capacity);
 ====================PUBLIC FUNCTIONS====================
 */
 
-HashMap HashMap_create(const wc_allocator* a, u32 key_size, u32 val_size, custom_hash_fn hash_fn, wc_compare_fn cmp_fn,
+HashMap HashMap_create(const wc_allocator* a, u32 key_size, u32 val_size, wc_hash_fn hash_fn, wc_compare_fn cmp_fn,
                        const wc_container_ops* key_ops, const wc_container_ops* val_ops)
 {
-    FATAL_IF(key_size == 0 || val_size == 0, "key/val size can't be 0");
+    FATAL_IF(key_size == 0, "HashMap: key size can't be 0");
+    FATAL_IF(val_size == 0 && val_ops != NULL, "HashMap: a set (val_size 0) can't have val_ops");
 
     HashMap map = {
         .size     = 0,
         .key_size = key_size,
         .val_size = val_size,
-        .hash_fn  = hash_fn ? hash_fn : wyhash,
-        .cmp_fn   = cmp_fn ? cmp_fn : default_compare,
+        .hash_fn  = hash_fn,
+        .cmp_fn   = cmp_fn,
         .key_ops  = key_ops,
         .val_ops  = val_ops,
         .alloc    = a,
@@ -354,6 +261,7 @@ static inline void map_commit(HashMap* map, u8 psl, u64 slot)
 bool HashMap_put(HashMap* map, const void* key, const void* val)
 {
     FATAL_IF(map->capacity == 0, "HashMap mutation on zeroed/moved-from table");
+    WC_ASSERT(val || map->val_size == 0, "val is NULL on a map with values");
 
     LOOKUP_RES res;
     u8         out_psl;
@@ -362,13 +270,13 @@ bool HashMap_put(HashMap* map, const void* key, const void* val)
     if (res == FOUND) {
         map_delete_elm(map->val_ops, GET_VAL(map, slot));
         map_copy_into(map, map->val_ops, map->val_size, GET_VAL(map, slot), val);
-        return 1;
+        return true;
     }
 
     map_copy_into(map, map->key_ops, map->key_size, STAGE_KEY(map), key);
     map_copy_into(map, map->val_ops, map->val_size, STAGE_VAL(map), val);
     map_commit(map, out_psl, slot);
-    return 0;
+    return false;
 }
 
 
@@ -377,6 +285,7 @@ bool HashMap_put(HashMap* map, const void* key, const void* val)
 bool HashMap_put_move(HashMap* map, void* key, void* val)
 {
     FATAL_IF(map->capacity == 0, "HashMap mutation on zeroed/moved-from table");
+    WC_ASSERT(val || map->val_size == 0, "val is NULL on a map with values");
 
     LOOKUP_RES res;
     u8         out_psl;
@@ -386,13 +295,13 @@ bool HashMap_put_move(HashMap* map, void* key, void* val)
         map_delete_elm(map->val_ops, GET_VAL(map, slot));
         map_move_into(map->val_size, GET_VAL(map, slot), val);
         map_consume_dup(map->key_ops, map->key_size, key);
-        return 1;
+        return true;
     }
 
     map_move_into(map->key_size, STAGE_KEY(map), key);
     map_move_into(map->val_size, STAGE_VAL(map), val);
     map_commit(map, out_psl, slot);
-    return 0;
+    return false;
 }
 
 
@@ -400,6 +309,7 @@ bool HashMap_put_move(HashMap* map, void* key, void* val)
 bool HashMap_put_val_move(HashMap* map, const void* key, void* val)
 {
     FATAL_IF(map->capacity == 0, "HashMap mutation on zeroed/moved-from table");
+    WC_ASSERT(val || map->val_size == 0, "val is NULL on a map with values");
 
     LOOKUP_RES res;
     u8         out_psl;
@@ -408,13 +318,13 @@ bool HashMap_put_val_move(HashMap* map, const void* key, void* val)
     if (res == FOUND) {
         map_delete_elm(map->val_ops, GET_VAL(map, slot));
         map_move_into(map->val_size, GET_VAL(map, slot), val);
-        return 1;
+        return true;
     }
 
     map_copy_into(map, map->key_ops, map->key_size, STAGE_KEY(map), key);
     map_move_into(map->val_size, STAGE_VAL(map), val);
     map_commit(map, out_psl, slot);
-    return 0;
+    return false;
 }
 
 
@@ -422,6 +332,7 @@ bool HashMap_put_val_move(HashMap* map, const void* key, void* val)
 bool HashMap_put_key_move(HashMap* map, void* key, const void* val)
 {
     FATAL_IF(map->capacity == 0, "HashMap mutation on zeroed/moved-from table");
+    WC_ASSERT(val || map->val_size == 0, "val is NULL on a map with values");
 
     LOOKUP_RES res;
     u8         out_psl;
@@ -431,13 +342,13 @@ bool HashMap_put_key_move(HashMap* map, void* key, const void* val)
         map_delete_elm(map->val_ops, GET_VAL(map, slot));
         map_copy_into(map, map->val_ops, map->val_size, GET_VAL(map, slot), val);
         map_consume_dup(map->key_ops, map->key_size, key);
-        return 1;
+        return true;
     }
 
     map_move_into(map->key_size, STAGE_KEY(map), key);
     map_copy_into(map, map->val_ops, map->val_size, STAGE_VAL(map), val);
     map_commit(map, out_psl, slot);
-    return 0;
+    return false;
 }
 
 
@@ -446,7 +357,7 @@ bool HashMap_put_key_move(HashMap* map, void* key, const void* val)
 bool HashMap_get(const HashMap* map, const void* key, void* val)
 {
     if (map->capacity == 0) {
-        return 0;
+        return false;
     }
 
     LOOKUP_RES res;
@@ -454,11 +365,11 @@ bool HashMap_get(const HashMap* map, const void* key, void* val)
     u64        slot = map_lookup(map, key, &res, &out_psl);
 
     if (res != FOUND) {
-        return 0;
+        return false;
     }
 
     map_copy_into(map, map->val_ops, map->val_size, val, GET_VAL(map, slot));
-    return 1;
+    return true;
 }
 
 
@@ -476,6 +387,19 @@ const void* HashMap_get_ptr(const HashMap* map, const void* key)
     u64        slot = map_lookup(map, key, &res, &out_psl);
 
     return (res == FOUND) ? GET_VAL(map, slot) : NULL;
+}
+
+const void* HashMap_get_key_ptr(const HashMap* map, const void* key)
+{
+    if (map->capacity == 0) {
+        return NULL;
+    }
+
+    LOOKUP_RES res;
+    u8         out_psl;
+    u64        slot = map_lookup(map, key, &res, &out_psl);
+
+    return (res == FOUND) ? GET_KEY(map, slot) : NULL;
 }
 
 bool HashMap_bucket_occupied(const HashMap* map, u64 i)
@@ -514,12 +438,12 @@ bool HashMap_del(HashMap* map, const void* key, void* out)
     u64        slot = map_lookup(map, key, &res, &out_psl);
 
     if (res != FOUND) {
-        return 0;
+        return false;
     }
 
     // B7: the value is MOVED into out (caller owns it), or deleted.
     if (out) {
-        memcpy(out, GET_VAL(map, slot), map->val_size);
+        wc_copy_n(out, GET_VAL(map, slot), map->val_size);
     } else {
         map_delete_elm(map->val_ops, GET_VAL(map, slot));
     }
@@ -541,14 +465,14 @@ bool HashMap_del(HashMap* map, const void* key, void* out)
 
         // Shift next entry one slot back; its PSL decreases by 1.
         *GET_PSL(map, cur) = next_psl - 1;
-        memcpy(GET_KEY(map, cur), GET_KEY(map, next), map->key_size);
-        memcpy(GET_VAL(map, cur), GET_VAL(map, next), map->val_size);
+        wc_copy_n(GET_KEY(map, cur), GET_KEY(map, next), map->key_size);
+        wc_copy_n(GET_VAL(map, cur), GET_VAL(map, next), map->val_size);
 
         cur = next;
     }
 
     map->size--;
-    return 1;
+    return true;
 }
 
 
@@ -556,7 +480,7 @@ bool HashMap_del(HashMap* map, const void* key, void* out)
 bool HashMap_has(const HashMap* map, const void* key)
 {
     if (map->capacity == 0) {
-        return 0;
+        return false;
     }
 
     LOOKUP_RES res;
@@ -579,8 +503,10 @@ void HashMap_print(const HashMap* map, wc_print_fn key_print, wc_print_fn val_pr
         }
         putchar('\t');
         key_print(GET_KEY(map, i));
-        printf(" => ");
-        val_print(GET_VAL(map, i));
+        if (val_print) {
+            printf(" => ");
+            val_print(GET_VAL(map, i));
+        }
         putchar('\n');
     }
 
@@ -678,33 +604,32 @@ static inline void map_maybe_resize(HashMap* map)
     }
 }
 
+// Find `key`. Returns the slot where it is (FOUND) or where it would go
+// (NOT_FOUND / ROBINHOOD_EXIT), and the probe length at that slot in out_psl.
+// ks is the key size, a constant for common sizes (see map_lookup).
 static inline __attribute__((always_inline)) u64 map_lookup_k(const HashMap* map, const u8* key, LOOKUP_RES* res,
                                                               u8* out_psl, u32 ks)
 {
-    u64 idx = map_idx_k(map, key, ks);
-    u8  psl = 1; // stored PSL=1 means real probe distance 0 (home slot)
+    u8 psl = 1; // stored PSL 1 = real probe distance 0 (home slot)
 
-    for (u64 i = idx;; i = MAP_NEXT(map, i)) {
+    for (u64 i = map_home(map, key, ks);; i = MAP_NEXT(map, i)) {
         u8 slot_psl = *GET_PSL(map, i);
+        *out_psl    = psl;
 
         if (slot_psl == BUCKET_EMPTY) {
-            *res     = NOT_FOUND;
-            *out_psl = psl;
+            *res = NOT_FOUND;
             return i;
         }
 
         if (slot_psl < psl) {
-            // The resident has a lower PSL — it's closer to its home than we are.
-            // Under Robin Hood, our key would have displaced this resident on insert,
-            // so our key cannot exist at or beyond this slot.
-            *res     = ROBINHOOD_EXIT;
-            *out_psl = psl;
+            // The resident is closer to its home than we are. Under Robin Hood our
+            // key would have displaced it on insert, so it can't be further ahead.
+            *res = ROBINHOOD_EXIT;
             return i;
         }
 
-        if (map_keyeq_k(map, GET_KEY(map, i), key, ks)) {
-            *res     = FOUND;
-            *out_psl = psl;
+        if (map_key_eq(map, map->keys + ((u64)ks * i), key, ks)) {
+            *res = FOUND;
             return i;
         }
 
@@ -714,29 +639,27 @@ static inline __attribute__((always_inline)) u64 map_lookup_k(const HashMap* map
 
 static u64 map_lookup(const HashMap* map, const u8* key, LOOKUP_RES* res, u8* out_psl)
 {
-    switch (map->key_size) {
-    case 4:
-        return map_lookup_k(map, key, res, out_psl, 4);
-    case 8:
-        return map_lookup_k(map, key, res, out_psl, 8);
-    case 48:
-        return map_lookup_k(map, key, res, out_psl, 48); // String keys
-    default:
-        return map_lookup_k(map, key, res, out_psl, map->key_size);
-    }
+    WC_SPECIALIZE(map->key_size, KS, return map_lookup_k(map, key, res, out_psl, KS));
 }
 
-// Insert key/val with the given starting psl at slot idx.
-// key and val are already OWNED by the caller (staged copy or moved pointer).
-// This function never calls copy/del: it only shuffles raw bytes between slots.
+
+// Place key/val (already owned by the map) starting at bucket idx with probe
+// length psl. Only relocates raw bytes: never calls copy/del (B5).
 //
-// Phase 1 walks to the first empty slot or the first resident we out-rank, with no
-// copying. An empty slot is filled straight from key/val. Only when a resident must
-// be displaced do we stage the in-hand element in scratch (Robin Hood, phase 2).
-// Displaced residents are buffered in the SWAP half of scratch, disjoint from STAGE.
+// Walk to the first empty slot or the first resident we out-rank, copying
+// nothing. An empty slot is filled straight from key/val. Only when a resident
+// must be displaced does the element in hand move into scratch: it alternates
+// between STAGE and SWAP, so it never aliases the slot being written.
+//
+// ks/vs are the key/val sizes. map_insert passes both as compile-time constants
+// for the common size pairs (WC_SPECIALIZE_2), so every copy below is a
+// fixed-size move and every slot address is a constant-stride multiply.
 static inline __attribute__((always_inline)) void map_insert_k(HashMap* map, u8* key, u8* val, u8 psl0, u64 idx, u32 ks,
                                                                u32 vs)
 {
+#define KEY_AT(i) (map->keys + ((u64)ks * (i)))
+#define VAL_AT(i) (map->vals + ((u64)vs * (i)))
+
     u32 psl = psl0;
     u64 i   = idx;
 
@@ -745,8 +668,8 @@ static inline __attribute__((always_inline)) void map_insert_k(HashMap* map, u8*
 
         if (slot_psl == BUCKET_EMPTY) {
             *GET_PSL(map, i) = (u8)psl;
-            map_cpy(GET_KEY(map, i), key, ks);
-            map_cpy(GET_VAL(map, i), val, vs);
+            wc_copy_n(KEY_AT(i), key, ks);
+            wc_copy_n(VAL_AT(i), val, vs);
             map->size++;
             return;
         }
@@ -763,12 +686,12 @@ static inline __attribute__((always_inline)) void map_insert_k(HashMap* map, u8*
     u8* swp_key = SWAP_KEY(map);
     u8* swp_val = SWAP_VAL(map);
 
-    // key/val may already be STAGE: only copy if not already there
+    // key/val may already be STAGE (put): copy only if not
     if (key != cur_key) {
-        map_cpy(cur_key, key, ks);
+        wc_copy_n(cur_key, key, ks);
     }
     if (val != cur_val) {
-        map_cpy(cur_val, val, vs);
+        wc_copy_n(cur_val, val, vs);
     }
 
     for (;; i = MAP_NEXT(map, i)) {
@@ -776,74 +699,79 @@ static inline __attribute__((always_inline)) void map_insert_k(HashMap* map, u8*
 
         if (slot_psl == BUCKET_EMPTY) {
             *GET_PSL(map, i) = (u8)psl;
-            map_cpy(GET_KEY(map, i), cur_key, ks);
-            map_cpy(GET_VAL(map, i), cur_val, vs);
+            wc_copy_n(KEY_AT(i), cur_key, ks);
+            wc_copy_n(VAL_AT(i), cur_val, vs);
             map->size++;
             return;
         }
 
+        // Robin Hood: evict the resident closer to home, put ours in its slot
         if (slot_psl < psl) {
-            // Evict into swp (disjoint from cur), put cur in the slot
-            map_cpy(swp_key, GET_KEY(map, i), ks);
-            map_cpy(swp_val, GET_VAL(map, i), vs);
+            wc_copy_n(swp_key, KEY_AT(i), ks);
+            wc_copy_n(swp_val, VAL_AT(i), vs);
 
             *GET_PSL(map, i) = (u8)psl;
-            map_cpy(GET_KEY(map, i), cur_key, ks);
-            map_cpy(GET_VAL(map, i), cur_val, vs);
+            wc_copy_n(KEY_AT(i), cur_key, ks);
+            wc_copy_n(VAL_AT(i), cur_val, vs);
 
-            // Evicted resident becomes the in-hand element
+            // the evicted resident is the element in hand now
             u8* tmp = cur_key;
             cur_key = swp_key;
             swp_key = tmp;
             tmp     = cur_val;
             cur_val = swp_val;
             swp_val = tmp;
-            psl     = (u32)slot_psl;
+            psl     = slot_psl;
         }
 
         if (++psl > PSL_LIMIT) {
             PSL_OVERFLOW();
         }
     }
+
+#undef KEY_AT
+#undef VAL_AT
 }
 
 static void map_insert(HashMap* map, u8* key, u8* val, u8 psl0, u64 idx)
 {
-    MAP_DISPATCH(map, map_insert_k(map, key, val, psl0, idx, KS, VS));
+    WC_SPECIALIZE_2(map->key_size, KS, map->val_size, VS, map_insert_k(map, key, val, psl0, idx, KS, VS));
 }
 
-static inline __attribute__((always_inline)) void map_rehash_k(HashMap* map, const u8* old_keys, const u8* old_psls,
-                                                               const u8* old_vals, u64 old_cap, u32 ks, u32 vs)
+
+// Reinsert every element of the old block. Keys are already unique, so no
+// lookup and no compare: each element starts at its home bucket and Robin Hood
+// insertion does the rest. Raw bytes move, no copy/del (B5).
+static inline __attribute__((always_inline)) void map_rehash_k(HashMap* map, u8* old_keys, u8* old_vals,
+                                                               const u8* old_psls, u64 old_cap, u32 ks, u32 vs)
 {
     for (u64 i = 0; i < old_cap; i++) {
         if (old_psls[i] == BUCKET_EMPTY) {
             continue;
         }
-        u8* old_key = (u8*)old_keys + ((u64)ks * i);
-        u8* old_val = (u8*)old_vals + ((u64)vs * i);
-        map_insert_k(map, old_key, old_val, 1, map_idx_k(map, old_key, ks), ks, vs);
+        u8* key = old_keys + ((u64)ks * i);
+        u8* val = old_vals + ((u64)vs * i);
+        map_insert_k(map, key, val, 1, map_home(map, key, ks), ks, vs);
     }
 }
 
-// Rehash into a new array of new_capacity (must be power-of-2).
-// Ownership transfers as raw bytes: no copy/del callbacks are invoked.
-// Keys are already unique, so there is no lookup and no compare: each element goes
-// straight to its home slot and Robin Hood insertion does the rest.
+// Move everything into a new block of new_capacity (a power of two).
 static void map_resize(HashMap* map, u64 new_capacity)
 {
     if (new_capacity < HASHMAP_INIT_CAPACITY) {
         new_capacity = HASHMAP_INIT_CAPACITY;
     }
 
-    u8* old_block = map->keys;
-    u8* old_vals  = map->vals;
-    u8* old_psls  = map->psls;
-    u64 old_cap   = map->capacity;
+    u8* old_keys = map->keys;
+    u8* old_vals = map->vals;
+    u8* old_psls = map->psls;
+    u64 old_cap  = map->capacity;
 
-    map_alloc_block(map, new_capacity); // new keys/vals/scratch/psls in one allocation
+    map_alloc_block(map, new_capacity);
     map->size = 0;
 
-    MAP_DISPATCH(map, map_rehash_k(map, old_block, old_psls, old_vals, old_cap, KS, VS));
+    WC_SPECIALIZE_2(map->key_size, KS, map->val_size, VS,
+                    map_rehash_k(map, old_keys, old_vals, old_psls, old_cap, KS, VS));
 
-    map_free_block(map, old_block, old_cap);
+    map_free_block(map, old_keys, old_cap);
 }

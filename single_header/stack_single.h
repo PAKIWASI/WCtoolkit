@@ -245,7 +245,7 @@ static inline size_t wc_align_for_size(size_t elm_size)
 #include <stdalign.h>
 #include <stdarg.h>
 #include <stdio.h>
-#include <stdlib.h>
+// #include <stdlib.h>
 
 // ANSI Color Codes
 #define WC_COLOR_RESET  "\033[0m"
@@ -903,7 +903,7 @@ static inline __attribute__((nonnull(1))) u64 Stack_size(const Stack* stk)
 {
     return GenVec_size(stk);
 }
-static inline __attribute__((nonnull(1))) u8 Stack_empty(const Stack* stk)
+static inline __attribute__((nonnull(1))) bool Stack_empty(const Stack* stk)
 {
     return GenVec_empty(stk);
 }
@@ -1544,6 +1544,7 @@ void GenVec_print(const GenVec* vec, wc_print_fn fn)
     printf("[ ");
     for (u64 i = 0; i < vec->size; i++) {
         fn(GET_PTR(vec, i));
+        putchar(' ');
     }
     putchar(']');
 }

@@ -61,7 +61,7 @@ A zeroed container's allocator pointer is `NULL`, so allocating through it would
 | Type | Zero-state check |
 |---|---|
 | `GenVec`, `Stack`, `Queue`, `PriorityQueue`, `BitVec` | `data_size == 0` |
-| `String`, `HashMap`, `HashSet` | `capacity == 0` |
+| `String`, `HashMap` (maps and sets) | `capacity == 0` |
 | `Arena`, `ChainArena` | `self.ctx == NULL` |
 | `Matrixf` | `m == 0` |
 | `StringStore` | `tail == NULL` |

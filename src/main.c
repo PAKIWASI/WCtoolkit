@@ -1,6 +1,5 @@
 #include "gen_vector.h"
 #include "hashmap.h"
-#include "map_setup.h"
 #include "wc_allocator.h"
 #include "wc_helpers.h"
 #include "wc_macros.h"
@@ -20,7 +19,7 @@ int main(void)
 
 static int run1(void)
 {
-    HashMap m = HashMap_create(WC_LIBC, sizeof(String), sizeof(String), wyhash_str, str_cmp, &wc_str_ops, &wc_str_ops);
+    HashMap m = HashMap_create(WC_LIBC, sizeof(String), sizeof(String), wc_hash_str, str_cmp, &wc_str_ops, &wc_str_ops);
 
     String key = String_from_cstr(WC_LIBC, "hello");
     String val = String_from_cstr(WC_LIBC, "world");

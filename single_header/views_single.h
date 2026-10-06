@@ -245,7 +245,7 @@ static inline size_t wc_align_for_size(size_t elm_size)
 #include <stdalign.h>
 #include <stdarg.h>
 #include <stdio.h>
-#include <stdlib.h>
+// #include <stdlib.h>
 
 // ANSI Color Codes
 #define WC_COLOR_RESET  "\033[0m"
@@ -892,11 +892,11 @@ typedef struct StringStore_node {
 // Views stay valid until StringStore_destroy. Zeroed store is dead: only
 // destroy or re-create it; StringStore_cstr on it is an unconditional FATAL.
 typedef struct {
-    StringStore_node* tail;
-    StringStore_node* head;
-    const wc_allocator*      alloc;
-    u32               tail_off; // how much of the tail node is used
-    u32               num;      // total number of nodes
+    StringStore_node*   tail;
+    StringStore_node*   head;
+    const wc_allocator* alloc;
+    u32                 tail_off; // how much of the tail node is used
+    u32                 num;      // total number of nodes
 } StringStore;
 
 _Static_assert(sizeof(StringStore) == 32, "StringStore layout: 2 ptrs + allocator ptr + 2 u32");
@@ -1593,7 +1593,6 @@ static inline void ensure_capacity(String* s, u64 needed)
 
 
 #include <stdalign.h>
-#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -1672,8 +1671,8 @@ static void StringStore_destroy_node(const wc_allocator* a, StringStore_node* no
 
 void StringStore_destroy(StringStore* ss)
 {
-    const wc_allocator*      a    = ss->alloc; // read before zeroing
-    StringStore_node* curr = ss->head;
+    const wc_allocator* a    = ss->alloc; // read before zeroing
+    StringStore_node*   curr = ss->head;
     while (curr) {
         StringStore_node* next = curr->next;
         StringStore_destroy_node(a, curr);

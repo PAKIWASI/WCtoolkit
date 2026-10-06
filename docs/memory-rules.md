@@ -37,7 +37,7 @@ Every rule the toolkit follows about allocation, copying, moving and lifetimes, 
 | B7 | **Taking out is a move.** `pop`, `remove`, `swap_pop`, `Queue_pop`, `Queue_pop_back`, `HashMap_del`, `PriorityQueue_pop` / `_remove` memcpy the element into `out` and forget the slot. With `out == NULL` they call `del_fn`. | Tests count zero allocator calls |
 | B8 | **A copy happens only when both sides keep the value**: push/put/insert from an argument, get/peek into `out`, `X_copy`, `subarr`, `create_val`, `from_vec`. Internal operations (growth, compaction, rehash, take out) never call `copy_fn`. | Tests |
 | B9 | A value taken out still uses the container's allocator. | Behavior of B7 |
-| B10 | Move-inserting a duplicate destroys the incoming value. The source is zeroed either way. | `HashMap_put_move`, `HashSet_insert_move` |
+| B10 | Move-inserting a duplicate destroys the incoming value. The source is zeroed either way. | `HashMap_put_move`, `HashMap_put_key_move` (sets) |
 | B11 | Replace/put on an existing key destroys the old value, then copies or moves the new one in. | |
 | B12 | Boxed shells come only from `WC_BOX_IN`, from the same allocator the element stores. `del_ptr` frees the shell with that allocator. | `wc_helpers.h` |
 | B13 | Store by pointer when something outside keeps the element's address, or when the type is not trivially relocatable. | Documentation |

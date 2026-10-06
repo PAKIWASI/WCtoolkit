@@ -1,7 +1,6 @@
 #include "common.h"
 #include "gen_vector.h"
 #include "hashmap.h"
-#include "hashset.h"
 #include "queue.h"
 #include "stack.h"
 #include "test_support.h"
@@ -47,7 +46,7 @@ static const wc_container_ops int_move_ops = {.copy_fn = NULL, .del_fn = int_del
  */
 UTEST(macros, set_insert_move_compiles_and_works)
 {
-    HashSet set = HashSet_create(WC_LIBC, sizeof(int), hash_int, cmp_int, &int_move_ops);
+    HashMap set = HashMap_create(WC_LIBC, sizeof(int), 0, hash_int, cmp_int, &int_move_ops, NULL);
 
     int val = 42;
 
@@ -58,9 +57,9 @@ UTEST(macros, set_insert_move_compiles_and_works)
 
     /* element must be present in the set */
     int key = 42;
-    EXPECT_TRUE(HashSet_has(&set, &key));
+    EXPECT_TRUE(HashMap_has(&set, &key));
 
-    HashSet_destroy(&set);
+    HashMap_destroy(&set);
 }
 
 
@@ -156,8 +155,8 @@ UTEST(macros, set_foreach_and_from_vec)
         GenVec_push(&v, &i);
     }
 
-    HashSet s = SET_FROM_VEC(&v, hash_int, cmp_int);
-    EXPECT_EQ(HashSet_size(&s), 3u);
+    HashMap s = SET_FROM_VEC(&v, hash_int, cmp_int);
+    EXPECT_EQ(HashMap_size(&s), 3u);
 
     int sum = 0;
     SET_FOREACH (&s, int, elm) {
@@ -165,7 +164,7 @@ UTEST(macros, set_foreach_and_from_vec)
     }
     EXPECT_EQ(sum, 6);
 
-    HashSet_destroy(&s);
+    HashMap_destroy(&s);
     GenVec_destroy(&v);
 }
 
@@ -373,7 +372,7 @@ static void queue_push_int_into_double(void)
 
 static void set_insert_int_into_u64(void)
 {
-    HashSet s = HashSet_create(WC_LIBC, sizeof(u64), NULL, NULL, NULL);
+    HashMap s = HashMap_create(WC_LIBC, sizeof(u64), 0, NULL, NULL, NULL, NULL);
     SET_INSERT(&s, 1);
 }
 
@@ -530,7 +529,7 @@ UTEST(macros, map_foreach_break_stops)
 
 UTEST(macros, set_foreach_break_stops)
 {
-    HashSet s = HashSet_create(WC_LIBC, sizeof(int), NULL, NULL, NULL);
+    HashMap s = HashMap_create(WC_LIBC, sizeof(int), 0, NULL, NULL, NULL, NULL);
     for (int i = 0; i < 10; i++) {
         SET_INSERT(&s, i);
     }
@@ -541,7 +540,7 @@ UTEST(macros, set_foreach_break_stops)
         break;
     }
     EXPECT_EQ(visited, 1);
-    HashSet_destroy(&s);
+    HashMap_destroy(&s);
 }
 
 UTEST(macros, foreach_on_empty_runs_zero_times)
