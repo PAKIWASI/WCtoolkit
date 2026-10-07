@@ -5,12 +5,11 @@
 #include <stdalign.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <string.h>
 #include <sys/mman.h>
 
 
 #define ALIGN_UP(p, align) ((u8*)(((uintptr_t)(p) + ((uintptr_t)(align) - 1)) & ~((uintptr_t)(align) - 1)))
-
-#define IS_POW_2(align) (((align) & ((align) - 1)) == 0)
 
 
 Arena Arena_create(const wc_allocator* alloc, u64 cap)
@@ -29,38 +28,42 @@ Arena Arena_create(const wc_allocator* alloc, u64 cap)
     };
 }
 
+void Arena_destroy(Arena* a)
+{
+    wc_free(a->alloc, a->base, a->cap, WC_MAX_ALIGN);
+    memset(a, 0, sizeof(Arena));
+}
 
-
-void* Arena_alloc(Arena* va, u64 size)
+void* Arena_alloc(Arena* a, u64 size)
 {
     WC_ASSERT(size != 0, "can't allocate 0 bytes");
-    WC_ASSERT(va->off <= va->cap, "arena corrupted");
-    WC_ASSERT(size <= va->cap - va->off, "arena full");
+    WC_ASSERT(a->off <= a->cap, "arena corrupted");
+    WC_ASSERT(size <= a->cap - a->off, "arena full");
 
-    u8* alloc   = va->base + va->off;
+    u8* alloc   = a->base + a->off;
     u8* aligned = ALIGN_UP(alloc, WC_MAX_ALIGN); // TODO: should we default align to 16 bytes or 8 bytes?
     u64 pad     = (u64)(aligned - alloc);
 
-    WC_ASSERT(pad <= va->cap - va->off - size, "arena full (alignment padding)");
+    WC_ASSERT(pad <= a->cap - a->off - size, "arena full (alignment padding)");
 
-    va->off += pad + size;
+    a->off += pad + size;
     return aligned; //  return the aligned address (padding inserted BEFORE each allocation)
 }
 
-void* Arena_alloc_aligned(Arena* va, u64 size, u64 align)
+void* Arena_alloc_aligned(Arena* a, u64 size, u64 align)
 {
     WC_ASSERT(size != 0, "can't allocate 0 bytes");
     WC_ALLOC_ASSERT_ALIGN(align);
-    WC_ASSERT(va->off <= va->cap, "arena corrupted");
-    WC_ASSERT(size <= va->cap - va->off, "arena full");
+    WC_ASSERT(a->off <= a->cap, "arena corrupted");
+    WC_ASSERT(size <= a->cap - a->off, "arena full");
 
-    u8* alloc   = va->base + va->off;
+    u8* alloc   = a->base + a->off;
     u8* aligned = ALIGN_UP(alloc, align);
     u64 pad     = (u64)(aligned - alloc);
 
-    WC_ASSERT(pad <= va->cap - va->off - size, "arena full (alignment padding)");
+    WC_ASSERT(pad <= a->cap - a->off - size, "arena full (alignment padding)");
 
-    va->off += pad + size;
+    a->off += pad + size;
     return aligned;
 }
 
@@ -77,12 +80,10 @@ static const wc_alloc_vtable varena_alloc_vtable_base = {.alloc = varena_alloc, 
 const wc_alloc_vtable*       varena_alloc_vtable      = &varena_alloc_vtable_base;
 
 
-wc_allocator Arena_create_allocator(Arena* va)
+wc_allocator Arena_create_allocator(Arena* a)
 {
     return (wc_allocator){
-        .ctx = va,
+        .ctx = a,
         .vt  = varena_alloc_vtable,
     };
 }
-
-

@@ -159,7 +159,7 @@ void GenVec_destroy(GenVec* vec)
         vec_delete_range(vec, vec->data, vec->size);
         wc_free(vec->alloc, vec->data, GET_SCALED(vec, vec->capacity), DATA_ALIGN(vec));
     }
-    memset(vec, 0, sizeof(*vec));
+    memset(vec, 0, sizeof(GenVec));
 }
 
 void GenVec_clear(GenVec* vec)

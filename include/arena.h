@@ -24,22 +24,24 @@ typedef struct {
 
 [[nodiscard]] Arena Arena_create(const wc_allocator* alloc, u64 cap) WC_NONULL(1);
 
-[[nodiscard]] void* Arena_alloc(Arena* va, u64 size) WC_NONULL(1);
+void Arena_destroy(Arena* a) WC_NONULL(1);
 
-[[nodiscard]] void* Arena_alloc_aligned(Arena* va, u64 size, u64 align) WC_NONULL(1);
+[[nodiscard]] void* Arena_alloc(Arena* a, u64 size) WC_NONULL(1);
+
+[[nodiscard]] void* Arena_alloc_aligned(Arena* a, u64 size, u64 align) WC_NONULL(1);
 
 
 // wc_allocator interface
 const extern wc_alloc_vtable* varena_alloc_vtable;
 
-[[nodiscard]] wc_allocator Arena_create_allocator(Arena* va) WC_NONULL(1);
+[[nodiscard]] wc_allocator Arena_create_allocator(Arena* a) WC_NONULL(1);
 
 
 // TYPED ALLOCATION MACROS
 
-#define VARENA_ALLOC(va, T) Arena_alloc_aligned(va, sizeof(T), alignof(T))
+#define VARENA_ALLOC(a, T) Arena_alloc_aligned(a, sizeof(T), alignof(T))
 
-#define VARENA_ALLOC_N(va, T, n) Arena_alloc_aligned(va, sizeof(T) * (n), alignof(T))
+#define VARENA_ALLOC_N(a, T, n) Arena_alloc_aligned(a, sizeof(T) * (n), alignof(T))
 
 
 
@@ -48,16 +50,16 @@ const extern wc_alloc_vtable* varena_alloc_vtable;
 // When doing scratch allocations per iteration that are discarded afterwards
 typedef struct {
     const Arena* arena;
-    const u64     mark; // the offset value to go back to
+    const u64    mark; // the offset value to go back to
 } ArenaScratch;
 
 
 [[nodiscard]] static inline WC_NONULL(1) // TODO: fix clang format for this
-    ArenaScratch ArenaScratch_create(Arena* va)
+    ArenaScratch ArenaScratch_create(Arena* a)
 {
     return (ArenaScratch){
-        .arena = va,
-        .mark  = va->off,
+        .arena = a,
+        .mark  = a->off,
     };
 }
 
@@ -78,7 +80,7 @@ static inline void ArenaScratch_destroy(ArenaScratch scratch)
 // VARENA_SCRATCH(va) {
 //  temp allocations...
 // }
-#define VARENA_SCRATCH(va)\
+#define VARENA_SCRATCH(a)
 
 
 #endif // ARENA_H
