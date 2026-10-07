@@ -16,30 +16,30 @@
 // use this for allocations that persist for the entire program
 //  and you know the upper bound
 typedef struct {
-    u8* base;
+    u8*                 base;
     const wc_allocator* alloc;
-    u64 off;
-    u64 cap;
-} Varena;
+    u64                 off;
+    u64                 cap;
+} Arena;
 
-[[nodiscard]] Varena Varena_create(const wc_allocator* alloc, u64 cap) WC_NONULL(1);
+[[nodiscard]] Arena Arena_create(const wc_allocator* alloc, u64 cap) WC_NONULL(1);
 
-[[nodiscard]] void* Varena_alloc(Varena* va, u64 size) WC_NONULL(1);
+[[nodiscard]] void* Arena_alloc(Arena* va, u64 size) WC_NONULL(1);
 
-[[nodiscard]] void* Varena_alloc_aligned(Varena* va, u64 size, u64 align) WC_NONULL(1);
+[[nodiscard]] void* Arena_alloc_aligned(Arena* va, u64 size, u64 align) WC_NONULL(1);
 
 
 // wc_allocator interface
 const extern wc_alloc_vtable* varena_alloc_vtable;
 
-[[nodiscard]] wc_allocator Varena_create_allocator(Varena* va) WC_NONULL(1);
+[[nodiscard]] wc_allocator Arena_create_allocator(Arena* va) WC_NONULL(1);
 
 
 // TYPED ALLOCATION MACROS
 
-#define VARENA_ALLOC(va, T) Varena_alloc_aligned(va, sizeof(T), alignof(T))
+#define VARENA_ALLOC(va, T) Arena_alloc_aligned(va, sizeof(T), alignof(T))
 
-#define VARENA_ALLOC_N(va, T, n) Varena_alloc_aligned(va, sizeof(T) * (n), alignof(T))
+#define VARENA_ALLOC_N(va, T, n) Arena_alloc_aligned(va, sizeof(T) * (n), alignof(T))
 
 
 
@@ -47,29 +47,29 @@ const extern wc_alloc_vtable* varena_alloc_vtable;
 
 // When doing scratch allocations per iteration that are discarded afterwards
 typedef struct {
-    const Varena* arena;
+    const Arena* arena;
     const u64     mark; // the offset value to go back to
-} VarenaScratch;
+} ArenaScratch;
 
 
 [[nodiscard]] static inline WC_NONULL(1) // TODO: fix clang format for this
-    VarenaScratch VarenaScratch_create(Varena* va)
+    ArenaScratch ArenaScratch_create(Arena* va)
 {
-    return (VarenaScratch){
+    return (ArenaScratch){
         .arena = va,
         .mark  = va->off,
     };
 }
 
-static inline void VarenaScratch_scratch_off(VarenaScratch scratch)
+static inline void ArenaScratch_scratch_off(ArenaScratch scratch)
 {
     WC_ASSERT(scratch.arena, "arena is null");
-    ((Varena*)scratch.arena)->off = scratch.mark;
+    ((Arena*)scratch.arena)->off = scratch.mark;
 }
 
-static inline void VarenaScratch_destroy(VarenaScratch scratch)
+static inline void ArenaScratch_destroy(ArenaScratch scratch)
 {
-    VarenaScratch_scratch_off(scratch);
+    ArenaScratch_scratch_off(scratch);
     scratch.arena = NULL;
 }
 
@@ -78,7 +78,7 @@ static inline void VarenaScratch_destroy(VarenaScratch scratch)
 // VARENA_SCRATCH(va) {
 //  temp allocations...
 // }
-#define VARENA_SCRATCH(va) for ()
+#define VARENA_SCRATCH(va)\
 
 
 #endif // ARENA_H

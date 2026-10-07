@@ -9,7 +9,6 @@
 
 const wc_allocator wc_libc = {.vt = NULL, .ctx = NULL};
 
-// TODO: study usage
 /* wc_borrowed: non-owning allocator */
 
 static void* wc_borrowed_alloc(void* ctx, size_t size, size_t align)

@@ -13,7 +13,7 @@
 #define IS_POW_2(align) (((align) & ((align) - 1)) == 0)
 
 
-Varena Varena_create(const wc_allocator* alloc, u64 cap)
+Arena Arena_create(const wc_allocator* alloc, u64 cap)
 {
     if (cap < VARENA_MIN_SIZE) {
         cap = VARENA_MIN_SIZE;
@@ -22,7 +22,7 @@ Varena Varena_create(const wc_allocator* alloc, u64 cap)
     u8* base = wc_alloc(alloc, cap, WC_MAX_ALIGN);
     FATAL_IF(!base, "alloc failed for cap %lu, alignment %lu", cap, WC_MAX_ALIGN);
 
-    return (Varena){
+    return (Arena){
         .base = base,
         .cap  = cap,
         .off  = 0,
@@ -31,7 +31,7 @@ Varena Varena_create(const wc_allocator* alloc, u64 cap)
 
 
 
-void* Varena_alloc(Varena* va, u64 size)
+void* Arena_alloc(Arena* va, u64 size)
 {
     WC_ASSERT(size != 0, "can't allocate 0 bytes");
     WC_ASSERT(va->off <= va->cap, "arena corrupted");
@@ -47,7 +47,7 @@ void* Varena_alloc(Varena* va, u64 size)
     return aligned; //  return the aligned address (padding inserted BEFORE each allocation)
 }
 
-void* Varena_alloc_aligned(Varena* va, u64 size, u64 align)
+void* Arena_alloc_aligned(Arena* va, u64 size, u64 align)
 {
     WC_ASSERT(size != 0, "can't allocate 0 bytes");
     WC_ALLOC_ASSERT_ALIGN(align);
@@ -69,7 +69,7 @@ void* Varena_alloc_aligned(Varena* va, u64 size, u64 align)
 
 static inline void* varena_alloc(void* ctx, size_t size, size_t align)
 {
-    return Varena_alloc_aligned(((Varena*)ctx), size, align);
+    return Arena_alloc_aligned(((Arena*)ctx), size, align);
 }
 
 // only alloc is needed for this. realloc is trivial and no free
@@ -77,7 +77,7 @@ static const wc_alloc_vtable varena_alloc_vtable_base = {.alloc = varena_alloc, 
 const wc_alloc_vtable*       varena_alloc_vtable      = &varena_alloc_vtable_base;
 
 
-wc_allocator Varena_create_allocator(Varena* va)
+wc_allocator Arena_create_allocator(Arena* va)
 {
     return (wc_allocator){
         .ctx = va,

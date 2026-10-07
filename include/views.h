@@ -31,6 +31,7 @@ void StrView_free_copy(const wc_allocator* a, StrView sv) __attribute__((nonnull
 void StrView_print(StrView sv);
 
 
+// TODO: use chain arena for this
 
 #define StringStore_NODE_SIZE 1015 // + 1 + 8 = 1024
 
