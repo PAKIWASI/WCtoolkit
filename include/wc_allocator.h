@@ -16,39 +16,32 @@
 static inline void* wc_libc_alloc(size_t n, size_t align)
 {
     if (align <= WC_MAX_ALIGN) {
-        return malloc(n);
+        return malloc(n); // malloc promises it's result is aligned if for max_align_t (16 bytes)
     }
+
+    // if more alignment is needed, we need aligned alloc
 
     size_t rounded = (n + align - 1) & ~(align - 1); // aligned_alloc: size % align == 0
     if (rounded < n) {
         return NULL; // overflow
     }
-#ifdef _MSC_VER
-    return _aligned_malloc(rounded, align);
-#else
     return aligned_alloc(align, rounded);
-#endif
 }
 
 static inline void wc_libc_free(void* p, size_t align)
 {
-#ifdef _MSC_VER
-    if (align > WC_MAX_ALIGN) {
-        _aligned_free(p); // MSVC can't free() these
-        return;
-    }
-#endif
     (void)align;
-    free(p); // POSIX/glibc: fine for both
+    free(p);
 }
 
 static inline void* wc_libc_realloc(void* p, size_t old_n, size_t n, size_t align)
 {
     if (align <= WC_MAX_ALIGN) {
-        return realloc(p, n);
+        return realloc(p, n); // realloc garentees 16-byte alinment, like malloc
     }
 
     // libc realloc doesn't preserve alignment above max_align_t: alloc, copy, free
+
     void* q = wc_libc_alloc(n, align);
     if (!q) {
         return NULL; // p left untouched
@@ -107,9 +100,10 @@ extern const wc_allocator wc_libc;
 extern const wc_allocator wc_borrowed;
 #define WC_BORROWED (&wc_borrowed)
 
-// TODO: 
+// TODO:
 extern const wc_allocator wc_mmap;
-#define WC_MMAP (&wc_mmap);
+#define WC_MMAP (&wc_mmap)
+
 
 static inline __attribute__((nonnull(1))) int wc_is_libc(const wc_allocator* a)
 {
@@ -128,7 +122,7 @@ static inline __attribute__((nonnull(1, 2))) int wc_same(const wc_allocator* a, 
 static inline __attribute__((nonnull(1))) void* wc_alloc(const wc_allocator* a, size_t n, size_t align)
 {
     WC_ALLOC_ASSERT_ALIGN(align);
-    if (n == 0 || n > (size_t)PTRDIFF_MAX) { // > PTRDIFF_MAX: overflowed size (see wc_mul)
+    if (n == 0 || n > (size_t)PTRDIFF_MAX) { // any valid allocation will be less than PTRDIFF_MAX
         return NULL;
     }
     return a->vt ? a->vt->alloc(a->ctx, n, align) : wc_libc_alloc(n, align);
@@ -160,7 +154,7 @@ static inline __attribute__((nonnull(1))) void* wc_realloc(const wc_allocator* a
         wc_free(a, p, old_n, align);
         return NULL;
     }
-    if (n > (size_t)PTRDIFF_MAX) {
+    if (n > (size_t)PTRDIFF_MAX) { 
         return NULL; // overflowed size: fail, p stays valid
     }
     if (!a->vt) {
@@ -180,6 +174,11 @@ static inline __attribute__((nonnull(1))) void* wc_realloc(const wc_allocator* a
     return q;
 }
 
+/*
+PTRDIFF_MAX is the largest value a ptrdiff_t can hold. That's the signed type you get from subtracting two pointers.
+On 64-bit it's about 2⁶³ − 1. C says no single object can be bigger than that, because otherwise end - start within 
+the object couldn't be represented. So any valid allocation size is <= PTRDIFF_MAX.
+*/
 // count * size, saturating to SIZE_MAX on overflow. SIZE_MAX can never be
 // satisfied, so an overflowing request fails in the backend instead of wrapping
 // to a small size. (Returning 0 would be wrong: realloc to 0 means free.)

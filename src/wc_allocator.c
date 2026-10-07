@@ -39,25 +39,30 @@ const wc_allocator wc_borrowed = {.vt = &wc_borrowed_vt, .ctx = NULL};
 
 /* wc_mmap: block allocator that lives for the whole duration of the program */
 
+// we only need alloc. realloc will do the manual alloc then copy. There is no free
 static void* wc_mmap_alloc(void* ctx, size_t size, size_t align)
 {
-    if (align > WC_MAX_ALIGN) {
-        size_t rounded = (size + align - 1) & ~(align - 1);
-        if (rounded < size) {
-            return NULL; // overflow
-        }
-    }
-    // TODO:
-
     (void)ctx;
+    // we need to align the size to the desired boundry. so that size % align == 0
+    size_t rounded = (size + align - 1) & ~(align - 1);
+
     u8* base =
         mmap(NULL,                        // let kernel choose the virtual address
-             size,                        // the allocation size
+             rounded,                     // the allocation size
              PROT_READ | PROT_WRITE,      // mapping is readable and writable
              MAP_PRIVATE | MAP_ANONYMOUS, // MAP_PRIVATE: writes are copy-on-write, MAP_ANONYMOUS: not backed by a file
              -1,                          // -1 for MAP_ANONYMOUS
              0);                          // ignored for MAP_ANONYMOUS
-    FATAL_IF(base == MAP_FAILED, "mmap call failed for size: %lu, align: %lu", size, align);
 
     return base;
 }
+
+static const wc_alloc_vtable wc_mmap_vt = {
+    .alloc   = wc_mmap_alloc,
+    .realloc = NULL,
+    .free    = NULL,
+};
+
+const wc_allocator wc_mmap = {.vt = &wc_mmap_vt, .ctx = NULL};
+
+

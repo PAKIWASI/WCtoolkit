@@ -8,10 +8,38 @@
 
 int main(void)
 {
-    Varena va = Varena_create(0);
-    const wc_allocator vallocator = Varena_create_allocator(&va);
+    Varena va = Varena_create(WC_MMAP, nKB(4));
 
-    GenVec v = GenVec_create(&vallocator, 5, sizeof(int), NULL);
+    u8* d1 = Varena_alloc(&va, 10);
+    d1[0] = 69;
+    d1[9] = 69;
+
+    u8* d2 = Varena_alloc(&va, 10);
+    d2[0] = 69;
+    d2[9] = 69;
+
+    u8* d3 = Varena_alloc_aligned(&va, 4, 4);
+    d3[0] = 69;
+    d3[3] = 69;
+
+    u8* d4 = Varena_alloc(&va, 16);
+    d4[0] = 69;
+    d4[15] = 69;
+
+    LOG("arena usage: %lu", va.off);
+    VarenaScratch vas = VarenaScratch_create(&va);
+    for (int i = 0; i < 1000; i++) {
+        u8* d5 = Varena_alloc(&va, nKB(1));
+        d5[0] = 56;
+        d5[nKB(1) - 1] = 50;
+        VarenaScratch_scratch_off(vas);
+    }
+    VarenaScratch_destroy(vas);
+    LOG("arena usage: %lu", va.off);
+
+
+    wc_allocator va_alloc = Varena_create_allocator(&va);
+    GenVec v = GenVec_create(&va_alloc, 5, sizeof(int), NULL);
     VEC_PUSH(&v, 1);
     VEC_PUSH(&v, 2);
     VEC_PUSH(&v, 3);
@@ -20,22 +48,7 @@ int main(void)
 
     VEC_PUSH(&v, 5);
     VEC_PUSH(&v, 6);
-
+    VEC_PUSH(&v, 7);
     GenVec_print(&v, wc_print_int); putchar('\n');
 
-    GenVec_print(&v, wc_print_int); putchar('\n');
-
-    LOG("arena usage: %lu", va.off);
-    VarenaScratch vas = VarenaScratch_create(&va);
-    for (int i = 0; i < 10; i++) {
-        int* data = VARENA_ALLOC_N(&va, int, 10);
-        LOG("arena usage: %lu", va.off);
-        VarenaScratch_scratch_off(vas);
-    }
-    VarenaScratch_destroy(vas);
-    LOG("arena usage: %lu", va.off);
-
-
-
-    return 0;
 }

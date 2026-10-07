@@ -3,14 +3,9 @@
 
 #include "common.h"
 #include "wc_allocator.h"
+
 #include <stdalign.h>
 #include <string.h>
-
-
-// TODO: make another arena that supports a custom allocator that may free the arena as a whole
-// maybe we can pass an allocator to Varena_create? if none passed, we assume the mmap version
-// or we should make a mmap allocator backend: it can alloc, realloc and free is no op
-
 
 #ifndef VARENA_MIN_SIZE
 #define VARENA_MIN_SIZE (nKB(4)) // 4 KB
@@ -27,7 +22,7 @@ typedef struct {
     u64 cap;
 } Varena;
 
-[[nodiscard]] Varena Varena_create(u64 cap);
+[[nodiscard]] Varena Varena_create(const wc_allocator* alloc, u64 cap) WC_NONULL(1);
 
 [[nodiscard]] void* Varena_alloc(Varena* va, u64 size) WC_NONULL(1);
 
