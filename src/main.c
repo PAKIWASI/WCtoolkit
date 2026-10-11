@@ -15,13 +15,13 @@ static int run1(void)
     ChainArena_create(&ca, WC_MMAP, nKB(4));
 
     volatile u8* d1 = ChainArena_alloc(&ca, 10);
-    d1[0]  = 69;
-    d1[9]  = 69;
+    d1[0]           = 69;
+    d1[9]           = 69;
 
     volatile u8* large = ChainArena_alloc(&ca, nKB(8));
-    large[0] = 69;
-    large[nKB(1)] = 69;
-    large[nKB(4)] = 69;
+    large[0]           = 69;
+    large[nKB(1)]      = 69;
+    large[nKB(4)]      = 69;
 
     GenVec v = GenVec_create(ChainArena_allocator(&ca), 5, sizeof(int), NULL);
     VEC_PUSH(&v, 1);
@@ -41,17 +41,30 @@ static int run1(void)
     ChainArenaScratch cas = ChainArenaScratch_create(&ca);
 
     // BUG: gdb output look kinda wrong?
-    volatile u8* normal = ChainArena_alloc(&ca, nKB(3)); // same node
-    normal[nKB(2)] = 69;
+    volatile u8* normal  = ChainArena_alloc(&ca, nKB(3)); // same node
+    normal[nKB(2)]       = 69;
     volatile u8* normal2 = ChainArena_alloc(&ca, nKB(3)); // new node
-    normal2[nKB(2)] = 69;
+    normal2[nKB(2)]      = 69;
     volatile u8* normal3 = ChainArena_alloc(&ca, nKB(3)); // new node
-    normal3[nKB(2)] = 69;
+    normal3[nKB(2)]      = 69;
 
     volatile u8* huge = ChainArena_alloc(&ca, nMB(2)); // seperate big node
-    huge[nMB(1)] = 69;
+    huge[nMB(1)]      = 69;
 
     ChainArenaScratch_destroy(cas);
+
+    CARENA_SCRATCH(&ca)
+    {
+        volatile u8* normal  = ChainArena_alloc(&ca, nKB(3)); // same node
+        normal[nKB(2)]       = 69;
+        volatile u8* normal2 = ChainArena_alloc(&ca, nKB(3)); // new node
+        normal2[nKB(2)]      = 69;
+        volatile u8* normal3 = ChainArena_alloc(&ca, nKB(3)); // new node
+        normal3[nKB(2)]      = 69;
+
+        volatile u8* huge = ChainArena_alloc(&ca, nMB(2)); // seperate big node
+        huge[nMB(1)]      = 69;
+    }
 
     return 0;
 }

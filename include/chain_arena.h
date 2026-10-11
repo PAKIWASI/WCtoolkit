@@ -36,7 +36,7 @@ typedef struct {
 
 // Initialises `ca` in place. Allocates nothing (the first block is taken on first use), so it
 // can't fail. `ca` must not be moved or copied afterwards.
-void ChainArena_create(ChainArena* ca, const wc_allocator* backing, u64 node_cap) WC_NONULL(1, 2);
+void ChainArena_create(ChainArena* ca, const wc_allocator* backing, u64 normal_cap) WC_NONULL(1, 2);
 
 // Gives every block back to the backing allocator and zeroes the arena. Safe on a zeroed
 // arena and safe to call twice.
@@ -85,6 +85,19 @@ static inline void ChainArenaScratch_destroy(ChainArenaScratch scratch)
     ChainArenaScratch_scratch_off(scratch);
     scratch.chain_arena = NULL;
 }
+
+// CArena_Scratch
+
+static inline void ChainArenaScratch_cleanup(ChainArenaScratch* cas)
+{
+    ChainArenaScratch_scratch_off(*cas);
+}
+#define CARENA_SCRATCH(a) CARENA_SCRATCH_((a), WC_CAT(_wsc_once_, __LINE__), WC_CAT(_wsc_, __LINE__))
+#define CARENA_SCRATCH_(a, once, s)                                                                                 \
+    for (int(once) = 1; once; (once) = 0)                                                                           \
+        for (ChainArenaScratch s __attribute__((cleanup(ChainArenaScratch_cleanup))) = ChainArenaScratch_create(a); \
+             once; (once)                                                            = 0)
+
 
 
 #endif // CHAIN_ARENA_H

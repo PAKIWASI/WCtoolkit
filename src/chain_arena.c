@@ -69,14 +69,14 @@ static void* carena_alloc(void* ctx, size_t size, size_t align)
 static const wc_alloc_vtable carena_vtable = {.alloc = carena_alloc, .realloc = NULL, .free = NULL};
 
 
-void ChainArena_create(ChainArena* ca, const wc_allocator* backing, u64 node_cap)
+void ChainArena_create(ChainArena* ca, const wc_allocator* backing, u64 normal_cap)
 {
     ca->big   = NULL;
     ca->alloc = backing;
     // `self` has to be built here, in place, because its ctx is this arena's own address.
     ca->self = (wc_allocator){.vt = &carena_vtable, .ctx = ca};
     // need to set allocator before calling this
-    ca->normal = new_node(ca, node_cap);
+    ca->normal = new_node(ca, normal_cap);
 }
 
 void ChainArena_destroy(ChainArena* ca)
@@ -150,6 +150,3 @@ void ChainArenaScratch_scratch_off(ChainArenaScratch scratch)
     // set the mark
     scratch.chain_arena->normal->off = scratch.mark;
 }
-
-
-

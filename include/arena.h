@@ -36,10 +36,13 @@ void Arena_destroy(Arena* a) WC_NONULL(1);
 
 [[nodiscard]] void* Arena_alloc_aligned(Arena* a, u64 size, u64 align) WC_NONULL(1);
 
-// The allocator to give to containers. Points into the arena, so it lives as long as the arena
-[[nodiscard]] static inline const wc_allocator* Arena_allocator(Arena* a) WC_NONULL(1);
+WC_NONULL(1) static inline void Arena_clear(Arena* a)
+{
+    a->off = 0;
+}
 
-static inline const wc_allocator* Arena_allocator(Arena* a)
+// The allocator to give to containers. Points into the arena, so it lives as long as the arena
+[[nodiscard]] WC_NONULL(1) static inline const wc_allocator* Arena_allocator(Arena* a)
 {
     // zeroed self has vt == NULL, which would silently read as WC_LIBC
     FATAL_IF(!a->self.ctx, "Arena_allocator on zeroed/destroyed Arena");
