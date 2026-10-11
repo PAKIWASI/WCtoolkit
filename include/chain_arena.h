@@ -63,5 +63,6 @@ static inline const wc_allocator* ChainArena_allocator(ChainArena* ca)
     return &ca->self;
 }
 
+// TODO: scratch
 
 #endif // CHAIN_ARENA_H

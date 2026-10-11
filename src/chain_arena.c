@@ -72,13 +72,14 @@ static const wc_alloc_vtable carena_vtable = {.alloc = carena_alloc, .realloc = 
 
 void ChainArena_create(ChainArena* ca, const wc_allocator* backing)
 {
-    ChainArenaNodeHDR* first = new_node(ca, REG_CAP);
-    ca->head                 = first;
-    ca->tail                 = first;
     ca->big                  = NULL;
     ca->alloc                = backing;
     // `self` has to be built here, in place, because its ctx is this arena's own address.
     ca->self = (wc_allocator){.vt = &carena_vtable, .ctx = ca};
+    // need to set allocator before calling this
+    ChainArenaNodeHDR* first = new_node(ca, REG_CAP);
+    ca->head                 = first;
+    ca->tail                 = first;
 }
 
 void ChainArena_destroy(ChainArena* ca)
