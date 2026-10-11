@@ -21,15 +21,14 @@
 
 // the header for each block. the allocation region comes right the aligned header
 typedef struct ChainArenaNode {
-    struct ChainArenaNode* prev;
-    u64                    cap; // payload bytes
-    u64                    off; // payload bytes used
+    struct ChainArenaNode* prev; // the prev node in the chain. NULL for last node
+    u64                    cap;  // payload bytes
+    u64                    off;  // payload bytes used
 } ChainArenaNodeHDR;
 
 typedef struct {
     ChainArenaNodeHDR* normal; // nodes with normal capacity. normal points to the newest node,
-    // the oldest node points to null
-    u64                 normal_cap; // each node's regular capacity. user provides this at creation
+    // the oldest node (at the end of the chain) points to null
     ChainArenaNodeHDR*  big;        // dedicated blocks for oversized requests, newest first
     const wc_allocator* alloc;      // backing allocator every block comes from and goes back to
     wc_allocator        self;       // what containers store; ctx == this ChainArena

@@ -70,9 +70,8 @@ static const wc_alloc_vtable carena_vtable = {.alloc = carena_alloc, .realloc = 
 
 void ChainArena_create(ChainArena* ca, const wc_allocator* backing, u64 node_cap)
 {
-    ca->big        = NULL;
-    ca->alloc      = backing;
-    ca->normal_cap = node_cap;
+    ca->big   = NULL;
+    ca->alloc = backing;
     // `self` has to be built here, in place, because its ctx is this arena's own address.
     ca->self = (wc_allocator){.vt = &carena_vtable, .ctx = ca};
     // need to set allocator before calling this
@@ -134,7 +133,7 @@ void* ChainArena_alloc_aligned(ChainArena* ca, u64 size, u64 align)
 
     // Current node is full. chain on a new regular block. Whatever
     // is left in the old block is abandoned, which is the normal arena trade.
-    ChainArenaNodeHDR* n = new_node(ca, ca->normal_cap);
+    ChainArenaNodeHDR* n = new_node(ca, curr->cap); // each normal node saves the cap supplied by the user
     if (!n) {
         return NULL;
     }
