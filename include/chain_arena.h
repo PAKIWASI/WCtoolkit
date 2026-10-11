@@ -21,18 +21,18 @@
 
 // the header for each block. the allocation region comes right the aligned header
 typedef struct ChainArenaNode {
-    struct ChainArenaNode* next;
+    struct ChainArenaNode* prev;
     u64                    cap; // payload bytes
     u64                    off; // payload bytes used
 } ChainArenaNodeHDR;
 
 typedef struct {
-    ChainArenaNodeHDR*  head;     // first regular block (oldest). Regular blocks are chained oldest -> newest
-    ChainArenaNodeHDR*  tail;     // the regular block we bump from
-    u64                 node_cap; // each node's regular capacity. user provides this at creation
-    ChainArenaNodeHDR*  big;      // dedicated blocks for oversized requests, newest first
-    const wc_allocator* alloc;    // backing allocator every block comes from and goes back to
-    wc_allocator        self;     // what containers store; ctx == this ChainArena
+    ChainArenaNodeHDR* normal; // nodes with normal capacity. normal points to the newest node,
+    // the oldest node points to null
+    u64                 normal_cap; // each node's regular capacity. user provides this at creation
+    ChainArenaNodeHDR*  big;        // dedicated blocks for oversized requests, newest first
+    const wc_allocator* alloc;      // backing allocator every block comes from and goes back to
+    wc_allocator        self;       // what containers store; ctx == this ChainArena
 } ChainArena;
 
 // Initialises `ca` in place. Allocates nothing (the first block is taken on first use), so it
@@ -61,5 +61,27 @@ static inline const wc_allocator* ChainArena_allocator(ChainArena* ca)
 }
 
 // TODO: scratch
+
+
+typedef struct {
+    ChainArena*        chain_arena; // the chain arena used
+    ChainArenaNodeHDR* normal;      // the node that was tail when scratch was created
+    ChainArenaNodeHDR* big;
+    u64                mark; // the offset of node n;
+} ChainArenaScratch;
+
+[[nodiscard]] static inline ChainArenaScratch ChainArenaScratch_create(ChainArena* ca)
+{
+    return (ChainArenaScratch){
+        .chain_arena = ca,
+        .normal      = ca->normal,
+        .big         = ca->big,
+        .mark        = ca->normal->off,
+    };
+}
+
+// TODO: delete all the nodes that are allocated after we called ChainArenaScratch_create()
+void ChainArenaScratch_scratch_off(ChainArenaScratch scratch);
+
 
 #endif // CHAIN_ARENA_H

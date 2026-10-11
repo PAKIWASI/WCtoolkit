@@ -27,7 +27,7 @@
 static u64 node_count(const ChainArena* ca)
 {
     u64 n = 0;
-    for (const ChainArenaNodeHDR* x = ca->head; x; x = x->next) {
+    for (const ChainArenaNodeHDR* x = ca->head; x; x = x->prev) {
         n++;
     }
     return n;

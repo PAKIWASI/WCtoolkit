@@ -16,6 +16,7 @@
 #define NODE_BYTES(n) (HDR + (n)->cap)
 
 
+
 // Take one block from the backing allocator. NULL if it can't.
 static ChainArenaNodeHDR* new_node(ChainArena* ca, u64 payload_cap)
 {
@@ -23,7 +24,7 @@ static ChainArenaNodeHDR* new_node(ChainArena* ca, u64 payload_cap)
     if (!n) {
         return NULL;
     }
-    n->next = NULL;
+    n->prev = NULL;
     n->cap  = payload_cap;
     n->off  = 0;
     return n;
@@ -45,13 +46,16 @@ static void* node_bump(ChainArenaNodeHDR* n, u64 size, u64 align)
     return p;
 }
 
-static void free_list(ChainArena* ca, ChainArenaNodeHDR* n)
+// walk back from `start` and delete till `end`. pass `end` as NULL to delete the whole chain
+static void free_list(ChainArena* ca, ChainArenaNodeHDR* start, const ChainArenaNodeHDR* end)
 {
-    while (n) {
-        ChainArenaNodeHDR* next = n->next; // read before the block is gone
-        wc_free(ca->alloc, n, NODE_BYTES(n), WC_MAX_ALIGN);
-        n = next;
-    }
+    ChainArenaNodeHDR* prev;
+    do {
+        prev = start->prev; // save prev before deallocating the current start
+        wc_free(ca->alloc, start, NODE_BYTES(start), WC_MAX_ALIGN);
+        start = prev;
+    } while (start && start != end); // if end = NULL, and start also NULL, first check fails.
+    // otherwise, we do this until start becomes NULL or start and end match
 }
 
 
@@ -66,15 +70,13 @@ static const wc_alloc_vtable carena_vtable = {.alloc = carena_alloc, .realloc = 
 
 void ChainArena_create(ChainArena* ca, const wc_allocator* backing, u64 node_cap)
 {
-    ca->big      = NULL;
-    ca->alloc    = backing;
-    ca->node_cap = node_cap;
+    ca->big        = NULL;
+    ca->alloc      = backing;
+    ca->normal_cap = node_cap;
     // `self` has to be built here, in place, because its ctx is this arena's own address.
     ca->self = (wc_allocator){.vt = &carena_vtable, .ctx = ca};
     // need to set allocator before calling this
-    ChainArenaNodeHDR* first = new_node(ca, node_cap);
-    ca->head                 = first;
-    ca->tail                 = first;
+    ca->normal = new_node(ca, node_cap);
 }
 
 void ChainArena_destroy(ChainArena* ca)
@@ -82,8 +84,8 @@ void ChainArena_destroy(ChainArena* ca)
     if (!ca->self.ctx) {
         return; // zeroed or already destroyed
     }
-    free_list(ca, ca->head);
-    free_list(ca, ca->big);
+    free_list(ca, ca->normal, NULL);
+    free_list(ca, ca->big, NULL);
     memset(ca, 0, sizeof(ChainArena)); // also clears self.ctx, so a stale allocator is detectable
 }
 
@@ -109,7 +111,7 @@ void* ChainArena_alloc_aligned(ChainArena* ca, u64 size, u64 align)
     u64 slack = align > WC_MAX_ALIGN ? align : 0;
     u64 need  = size + slack;
 
-    ChainArenaNodeHDR* curr = ca->tail;
+    ChainArenaNodeHDR* curr = ca->normal;
 
     // request larger than remaining space in current tail node
     if (need > curr->cap - curr->off) {
@@ -119,7 +121,7 @@ void* ChainArena_alloc_aligned(ChainArena* ca, u64 size, u64 align)
         if (!n) {
             return NULL;
         }
-        n->next = ca->big;
+        n->prev = ca->big;
         ca->big = n;
         return node_bump(n, size, align); // always fits: cap == size + slack
     }
@@ -132,11 +134,13 @@ void* ChainArena_alloc_aligned(ChainArena* ca, u64 size, u64 align)
 
     // Current node is full. chain on a new regular block. Whatever
     // is left in the old block is abandoned, which is the normal arena trade.
-    ChainArenaNodeHDR* n = new_node(ca, ca->node_cap);
+    ChainArenaNodeHDR* n = new_node(ca, ca->normal_cap);
     if (!n) {
         return NULL;
     }
-    ca->tail->next = n;
-    ca->tail       = n;
-    return node_bump(n, size, align); // fits: need <= node_cap
+
+    n->prev    = ca->normal; // save the current latest normal node as the new node's prev
+    ca->normal = n;          // update the latest node
+
+    return node_bump(n, size, align); // fits need <= node_cap
 }
