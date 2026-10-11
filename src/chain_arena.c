@@ -10,16 +10,10 @@
 // Each block is ONE backing allocation: [ header | payload ]. The header is
 // padded at the end to WC_MAX_ALIGN so the payload starts aligned like malloc memory
 #define HDR ((u64)((sizeof(ChainArenaNodeHDR) + WC_MAX_ALIGN - 1) / WC_MAX_ALIGN * WC_MAX_ALIGN))
-// what we alloc for normal blocks (HDR added back in new_node)
-#define REG_CAP ((u64)CARENA_NODE_SIZE - HDR)
 // go to the start of the payload
 #define PAYLOAD(n) ((u8*)(n) + HDR)
 // Total bytes of the backing allocation for a node: what wc_free needs to be told.
 #define NODE_BYTES(n) (HDR + (n)->cap)
-
-_Static_assert(CARENA_NODE_SIZE > sizeof(ChainArenaNodeHDR) * 2,
-               "CARENA_NODE_SIZE is too small to hold a header and any payload");
-
 
 
 // Take one block from the backing allocator. NULL if it can't.
@@ -70,14 +64,15 @@ static void* carena_alloc(void* ctx, size_t size, size_t align)
 static const wc_alloc_vtable carena_vtable = {.alloc = carena_alloc, .realloc = NULL, .free = NULL};
 
 
-void ChainArena_create(ChainArena* ca, const wc_allocator* backing)
+void ChainArena_create(ChainArena* ca, const wc_allocator* backing, u64 node_cap)
 {
-    ca->big                  = NULL;
-    ca->alloc                = backing;
+    ca->big      = NULL;
+    ca->alloc    = backing;
+    ca->node_cap = node_cap;
     // `self` has to be built here, in place, because its ctx is this arena's own address.
     ca->self = (wc_allocator){.vt = &carena_vtable, .ctx = ca};
     // need to set allocator before calling this
-    ChainArenaNodeHDR* first = new_node(ca, REG_CAP);
+    ChainArenaNodeHDR* first = new_node(ca, node_cap);
     ca->head                 = first;
     ca->tail                 = first;
 }
@@ -137,11 +132,11 @@ void* ChainArena_alloc_aligned(ChainArena* ca, u64 size, u64 align)
 
     // Current node is full. chain on a new regular block. Whatever
     // is left in the old block is abandoned, which is the normal arena trade.
-    ChainArenaNodeHDR* n = new_node(ca, REG_CAP);
+    ChainArenaNodeHDR* n = new_node(ca, ca->node_cap);
     if (!n) {
         return NULL;
     }
     ca->tail->next = n;
     ca->tail       = n;
-    return node_bump(n, size, align); // fits: need <= REG_CAP
+    return node_bump(n, size, align); // fits: need <= node_cap
 }

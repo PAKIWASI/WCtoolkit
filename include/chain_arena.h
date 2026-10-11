@@ -18,10 +18,6 @@
  * address, so it is PINNED.
  */
 
-#ifndef CARENA_NODE_SIZE
-#define CARENA_NODE_SIZE (nKB(4)) // bytes per regular block, header included
-#endif
-
 
 // the header for each block. the allocation region comes right the aligned header
 typedef struct ChainArenaNode {
@@ -31,16 +27,17 @@ typedef struct ChainArenaNode {
 } ChainArenaNodeHDR;
 
 typedef struct {
-    ChainArenaNodeHDR*  head;  // first regular block (oldest). Regular blocks are chained oldest -> newest
-    ChainArenaNodeHDR*  tail;  // the regular block we bump from
-    ChainArenaNodeHDR*  big;   // dedicated blocks for oversized requests, newest first
-    const wc_allocator* alloc; // backing allocator every block comes from and goes back to
-    wc_allocator        self;  // what containers store; ctx == this ChainArena
+    ChainArenaNodeHDR*  head;     // first regular block (oldest). Regular blocks are chained oldest -> newest
+    ChainArenaNodeHDR*  tail;     // the regular block we bump from
+    u64                 node_cap; // each node's regular capacity. user provides this at creation
+    ChainArenaNodeHDR*  big;      // dedicated blocks for oversized requests, newest first
+    const wc_allocator* alloc;    // backing allocator every block comes from and goes back to
+    wc_allocator        self;     // what containers store; ctx == this ChainArena
 } ChainArena;
 
 // Initialises `ca` in place. Allocates nothing (the first block is taken on first use), so it
 // can't fail. `ca` must not be moved or copied afterwards.
-void ChainArena_create(ChainArena* ca, const wc_allocator* backing) WC_NONULL(1, 2);
+void ChainArena_create(ChainArena* ca, const wc_allocator* backing, u64 node_cap) WC_NONULL(1, 2);
 
 // Gives every block back to the backing allocator and zeroes the arena. Safe on a zeroed
 // arena and safe to call twice.

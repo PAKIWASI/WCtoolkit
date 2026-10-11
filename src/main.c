@@ -12,7 +12,7 @@
 static int run1(void)
 {
     ChainArena ca;
-    ChainArena_create(&ca, WC_MMAP);
+    ChainArena_create(&ca, WC_MMAP, nKB(4));
 
     u8* d1 = ChainArena_alloc(&ca, 10);
     d1[0]  = 69;
