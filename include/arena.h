@@ -82,6 +82,7 @@ static inline void ArenaScratch_scratch_off(ArenaScratch scratch)
 static inline void ArenaScratch_destroy(ArenaScratch scratch)
 {
     ArenaScratch_scratch_off(scratch);
+    scratch.arena = NULL;
 }
 
 

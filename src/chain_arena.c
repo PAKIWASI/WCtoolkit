@@ -46,16 +46,15 @@ static void* node_bump(ChainArenaNodeHDR* n, u64 size, u64 align)
     return p;
 }
 
-// walk back from `start` and delete till `end`. pass `end` as NULL to delete the whole chain
-static void free_list(ChainArena* ca, ChainArenaNodeHDR* start, const ChainArenaNodeHDR* end)
+// walk back from `start` and delete till the first node (which points to NULL)
+static void free_list(ChainArena* ca, ChainArenaNodeHDR* start)
 {
     ChainArenaNodeHDR* prev;
-    do {
+    while (start) {
         prev = start->prev; // save prev before deallocating the current start
         wc_free(ca->alloc, start, NODE_BYTES(start), WC_MAX_ALIGN);
         start = prev;
-    } while (start && start != end); // if end = NULL, and start also NULL, first check fails.
-    // otherwise, we do this until start becomes NULL or start and end match
+    }
 }
 
 
@@ -83,8 +82,8 @@ void ChainArena_destroy(ChainArena* ca)
     if (!ca->self.ctx) {
         return; // zeroed or already destroyed
     }
-    free_list(ca, ca->normal, NULL);
-    free_list(ca, ca->big, NULL);
+    free_list(ca, ca->normal);
+    free_list(ca, ca->big);
     memset(ca, 0, sizeof(ChainArena)); // also clears self.ctx, so a stale allocator is detectable
 }
 
@@ -99,11 +98,6 @@ void* ChainArena_alloc_aligned(ChainArena* ca, u64 size, u64 align)
     WC_ASSERT(size != 0, "can't allocate 0 bytes");
     WC_ALLOC_ASSERT_ALIGN(align);
     WC_ASSERT(ca->self.ctx == ca, "chain arena was moved or copied after ChainArena_create");
-
-    // TODO: alreay checked in wc_alloc
-    // if (size > PTRDIFF_MAX || align > PTRDIFF_MAX) {
-    //     return NULL;
-    // }
 
     // Block memory is aligned to WC_MAX_ALIGN already. Only a bigger alignment needs room
     // to slide the pointer forward inside the payload.
@@ -142,4 +136,32 @@ void* ChainArena_alloc_aligned(ChainArena* ca, u64 size, u64 align)
     ca->normal = n;          // update the latest node
 
     return node_bump(n, size, align); // fits need <= node_cap
+}
+
+
+void ChainArenaScratch_scratch_off(ChainArenaScratch scratch)
+{
+    ChainArenaNodeHDR* curr = NULL;
+    ChainArenaNodeHDR* prev = NULL;
+
+    // delete the scratch big nodes
+    curr = scratch.chain_arena->big;
+    while (curr != scratch.big) {
+        prev = curr->prev;
+        wc_free(scratch.chain_arena->alloc, curr, NODE_BYTES(curr), WC_MAX_ALIGN);
+        curr = prev;
+    }
+    scratch.chain_arena->big = curr;
+
+    // delete the scratch normal nodes
+    curr = scratch.chain_arena->normal;
+    while (curr != scratch.normal) {
+        prev = curr->prev;
+        wc_free(scratch.chain_arena->alloc, curr, NODE_BYTES(curr), WC_MAX_ALIGN);
+        curr = prev;
+    }
+    scratch.chain_arena->normal = curr;
+
+    // set the mark
+    curr->off = scratch.mark;
 }

@@ -61,7 +61,6 @@ static inline const wc_allocator* ChainArena_allocator(ChainArena* ca)
 
 // TODO: scratch
 
-
 typedef struct {
     ChainArena*        chain_arena; // the chain arena used
     ChainArenaNodeHDR* normal;      // the node that was tail when scratch was created
@@ -79,8 +78,13 @@ typedef struct {
     };
 }
 
-// TODO: delete all the nodes that are allocated after we called ChainArenaScratch_create()
 void ChainArenaScratch_scratch_off(ChainArenaScratch scratch);
+
+static inline void ChainArenaScratch_destroy(ChainArenaScratch scratch)
+{
+    ChainArenaScratch_scratch_off(scratch);
+    scratch.chain_arena = NULL;
+}
 
 
 #endif // CHAIN_ARENA_H
