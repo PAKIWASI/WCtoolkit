@@ -59,7 +59,6 @@ static inline const wc_allocator* ChainArena_allocator(ChainArena* ca)
     return &ca->self;
 }
 
-// TODO: scratch
 
 typedef struct {
     ChainArena*        chain_arena; // the chain arena used
@@ -79,6 +78,7 @@ typedef struct {
 }
 
 void ChainArenaScratch_scratch_off(ChainArenaScratch scratch);
+
 
 static inline void ChainArenaScratch_destroy(ChainArenaScratch scratch)
 {

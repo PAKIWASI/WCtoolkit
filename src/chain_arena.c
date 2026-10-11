@@ -46,15 +46,17 @@ static void* node_bump(ChainArenaNodeHDR* n, u64 size, u64 align)
     return p;
 }
 
-// walk back from `start` and delete till the first node (which points to NULL)
-static void free_list(ChainArena* ca, ChainArenaNodeHDR* start)
+// walk back from `start` and delete until (but not including) `end` node. pass `end = NULL` to delete the whole chain
+// check the return value to get the new latest node (matches `end` if reached, otherwise NULL if end reached first).
+static ChainArenaNodeHDR* free_list(ChainArena* ca, ChainArenaNodeHDR* start, const ChainArenaNodeHDR* end)
 {
     ChainArenaNodeHDR* prev;
-    while (start) {
+    while (start && start != end) {
         prev = start->prev; // save prev before deallocating the current start
         wc_free(ca->alloc, start, NODE_BYTES(start), WC_MAX_ALIGN);
         start = prev;
     }
+    return start;
 }
 
 
@@ -82,8 +84,8 @@ void ChainArena_destroy(ChainArena* ca)
     if (!ca->self.ctx) {
         return; // zeroed or already destroyed
     }
-    free_list(ca, ca->normal);
-    free_list(ca, ca->big);
+    free_list(ca, ca->normal, NULL);
+    free_list(ca, ca->big, NULL);
     memset(ca, 0, sizeof(ChainArena)); // also clears self.ctx, so a stale allocator is detectable
 }
 
@@ -141,27 +143,10 @@ void* ChainArena_alloc_aligned(ChainArena* ca, u64 size, u64 align)
 
 void ChainArenaScratch_scratch_off(ChainArenaScratch scratch)
 {
-    ChainArenaNodeHDR* curr = NULL;
-    ChainArenaNodeHDR* prev = NULL;
-
-    // delete the scratch big nodes
-    curr = scratch.chain_arena->big;
-    while (curr != scratch.big) {
-        prev = curr->prev;
-        wc_free(scratch.chain_arena->alloc, curr, NODE_BYTES(curr), WC_MAX_ALIGN);
-        curr = prev;
-    }
-    scratch.chain_arena->big = curr;
-
-    // delete the scratch normal nodes
-    curr = scratch.chain_arena->normal;
-    while (curr != scratch.normal) {
-        prev = curr->prev;
-        wc_free(scratch.chain_arena->alloc, curr, NODE_BYTES(curr), WC_MAX_ALIGN);
-        curr = prev;
-    }
-    scratch.chain_arena->normal = curr;
-
+    // delete all newer nodes till (but not including) scratch.big. reset big.
+    scratch.chain_arena->big = free_list(scratch.chain_arena, scratch.chain_arena->big, scratch.big);
+    // delete all newer nodes till (but not including) scratch.normal. reset normal.
+    scratch.chain_arena->normal = free_list(scratch.chain_arena, scratch.chain_arena->normal, scratch.normal);
     // set the mark
-    curr->off = scratch.mark;
+    scratch.chain_arena->normal->off = scratch.mark;
 }
