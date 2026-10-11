@@ -1,116 +1,146 @@
 #include "chain_arena.h"
 #include "common.h"
-#include "gen_vector.h"
-#include "priority_queue.h"
 #include "wc_allocator.h"
+
+#include <stddef.h>
+#include <stdint.h>
 #include <string.h>
 
 
-#define FINAL_BYTE           (CARENA_INLINE_SIZE - 1)
-#define IS_EXTERNAL_ALLOC(n) ((n)->inlined[FINAL_BYTE] == 0)
+// Each block is ONE backing allocation: [ header | payload ]. The header is
+// padded at the end to WC_MAX_ALIGN so the payload starts aligned like malloc memory
+#define HDR ((u64)((sizeof(ChainArenaNodeHDR) + WC_MAX_ALIGN - 1) / WC_MAX_ALIGN * WC_MAX_ALIGN))
+// what we alloc for normal blocks (HDR added back in new_node)
+#define REG_CAP ((u64)CARENA_NODE_SIZE - HDR)
+// go to the start of the payload
+#define PAYLOAD(n) ((u8*)(n) + HDR)
+// Total bytes of the backing allocation for a node: what wc_free needs to be told.
+#define NODE_BYTES(n) (HDR + (n)->cap)
 
-#define FREE_BLOCK_CUTOFF 16  // ignore blocks smaller than this for free list
-#define WASTE_THRESHOLD   0.3 // how much wasted space is acceptable (allocation_size/free_block)
+_Static_assert(CARENA_NODE_SIZE > sizeof(ChainArenaNodeHDR) * 2,
+               "CARENA_NODE_SIZE is too small to hold a header and any payload");
 
 
-typedef struct {
-    u8* ptr;
-    u64 len;
-} Block;
 
-static inline int smaller_block_cmp(const void* a, const void* b, u64 size)
+// Take one block from the backing allocator. NULL if it can't.
+static ChainArenaNodeHDR* new_node(ChainArena* ca, u64 payload_cap)
 {
-    (void)size;
-    return memcmp(&((Block*)a)->len, &((Block*)b)->len, sizeof(((Block*)a)->len));
-}
-
-static inline ChainArenaNode* new_node(ChainArena* ca)
-{
-    ChainArenaNode* n = wc_alloc(ca->alloc, sizeof(ChainArenaNode), WC_MAX_ALIGN);
-    FATAL_IF(!n, "node alloc failed");
-
-    n->inlined[FINAL_BYTE] = 1; // inline is active
-    n->off                 = 0;
-    n->next                = NULL;
-
-    if (ca->head == NULL) { // first allocation
-        ca->head = n;
-    } else {
-        ca->tail->next = n;
-        // add wasted space to free list
-        // dont do anything if last node was externally alloced
-        u64 wasted = FINAL_BYTE - ca->tail->off;
-        if (!IS_EXTERNAL_ALLOC(ca->tail) && wasted > FREE_BLOCK_CUTOFF) {
-            PriorityQueue_push(&ca->free_ranges, &(Block){
-                                                     .ptr = ca->tail->inlined + ca->tail->off,
-                                                     .len = CARENA_INLINE_SIZE - ca->tail->off,
-                                                 });
-        }
+    ChainArenaNodeHDR* n = wc_alloc(ca->alloc, HDR + payload_cap, WC_MAX_ALIGN);
+    if (!n) {
+        return NULL;
     }
-    ca->tail = n;
-
+    n->next = NULL;
+    n->cap  = payload_cap;
+    n->off  = 0;
     return n;
 }
 
-
-
-ChainArena ChainArena_create(const wc_allocator* alloc)
+// Carve `size` bytes, aligned by ADDRESS to `align`, out of one block. NULL if it doesn't fit
+static void* node_bump(ChainArenaNodeHDR* n, u64 size, u64 align)
 {
-    ChainArena ca = {
-        .head        = NULL,
-        .tail        = NULL,
-        .alloc       = alloc,
-        .free_ranges = PriorityQueue_create(alloc, 8, sizeof(Block), NULL, smaller_block_cmp),
-    };
-    new_node(&ca);
+    u64       room = n->cap - n->off;
+    uintptr_t cur  = (uintptr_t)PAYLOAD(n) + (uintptr_t)n->off;
+    u64       pad  = (u64)((0 - cur) & (uintptr_t)(align - 1));
 
-    return ca;
+    if (pad > room || size > room - pad) {
+        return NULL;
+    }
+
+    u8* p = PAYLOAD(n) + n->off + pad;
+    n->off += pad + size;
+    return p;
+}
+
+static void free_list(ChainArena* ca, ChainArenaNodeHDR* n)
+{
+    while (n) {
+        ChainArenaNodeHDR* next = n->next; // read before the block is gone
+        wc_free(ca->alloc, n, NODE_BYTES(n), WC_MAX_ALIGN);
+        n = next;
+    }
+}
+
+
+// wc_allocator interface: alloc only. free is a no-op and realloc is emulated (alloc + copy).
+static void* carena_alloc(void* ctx, size_t size, size_t align)
+{
+    return ChainArena_alloc_aligned((ChainArena*)ctx, size, align);
+}
+
+static const wc_alloc_vtable carena_vtable = {.alloc = carena_alloc, .realloc = NULL, .free = NULL};
+
+
+void ChainArena_create(ChainArena* ca, const wc_allocator* backing)
+{
+    ChainArenaNodeHDR* first = new_node(ca, REG_CAP);
+    ca->head                 = first;
+    ca->tail                 = first;
+    ca->big                  = NULL;
+    ca->alloc                = backing;
+    // `self` has to be built here, in place, because its ctx is this arena's own address.
+    ca->self = (wc_allocator){.vt = &carena_vtable, .ctx = ca};
 }
 
 void ChainArena_destroy(ChainArena* ca)
 {
-    PriorityQueue_destroy(&ca->free_ranges);
-
-    ChainArenaNode* n = ca->head;
-    do {
-        if (WC_UNLIKELY(n->inlined[FINAL_BYTE] == 0)) { // external alloc is used
-            wc_free(ca->alloc, n->ex, n->ex_cap, WC_MAX_ALIGN);
-        }
-        wc_free(ca->alloc, n, sizeof(ChainArenaNode), WC_MAX_ALIGN);
-        n = n->next;
-    } while (n != ca->tail);
-
-    memset(ca, 0, sizeof(ChainArena));
+    if (!ca->self.ctx) {
+        return; // zeroed or already destroyed
+    }
+    free_list(ca, ca->head);
+    free_list(ca, ca->big);
+    memset(ca, 0, sizeof(ChainArena)); // also clears self.ctx, so a stale allocator is detectable
 }
 
 void* ChainArena_alloc(ChainArena* ca, u64 size)
 {
+    return ChainArena_alloc_aligned(ca, size, WC_MAX_ALIGN);
+}
+
+void* ChainArena_alloc_aligned(ChainArena* ca, u64 size, u64 align)
+{
+    FATAL_IF(!ca->self.ctx, "ChainArena is in the zero state (moved-from or destroyed): re-create it first");
     WC_ASSERT(size != 0, "can't allocate 0 bytes");
+    WC_ALLOC_ASSERT_ALIGN(align);
+    WC_ASSERT(ca->self.ctx == ca, "chain arena was moved or copied after ChainArena_create");
 
-    if (WC_UNLIKELY(size > FINAL_BYTE)) { // need to allocate externally
-        ChainArenaNode* n      = new_node(ca);
-        n->inlined[FINAL_BYTE] = 0; // use external
-        n->ex                  = wc_alloc(ca->alloc, size, WC_MAX_ALIGN);
-        n->ex_cap              = size;
+    // TODO: alreay checked in wc_alloc
+    // if (size > PTRDIFF_MAX || align > PTRDIFF_MAX) {
+    //     return NULL;
+    // }
 
-        // a lot of space is wasted if we allocate externally
-        // we can easily add that space into free list, minus the starting struct and the final byte
-        PriorityQueue_push(&ca->free_ranges,
-                           &(Block){
-                               .ptr = ca->tail->inlined + sizeof(Block),      // struct {ex, ex_cap}
-                               .len = CARENA_INLINE_SIZE - sizeof(Block) - 1, // sub the struct and the final byte
-                           });
-        return n->ex;
-    }
+    // Block memory is aligned to WC_MAX_ALIGN already. Only a bigger alignment needs room
+    // to slide the pointer forward inside the payload.
+    u64 slack = align > WC_MAX_ALIGN ? align : 0;
+    u64 need  = size + slack;
 
-    // TODO: check the free list
-    // iterate down the tree from the leaves and find the block that will waste the least space
-    // after finding the best fit, allocate and place the remaining back into the free list
-    PriorityQueue* pq = &ca->free_ranges;
-    for (u64 i = 0; i < pq->v.size; i++) {
-        const Block* b = GenVec_get_ptr_unsafe(&pq->v, i);
-        if ((double)size <= WASTE_THRESHOLD * (double)b->len) { // acceptable waste
-            break;
+    ChainArenaNodeHDR* curr = ca->tail;
+
+    // request larger than remaining space in current tail node
+    if (need > curr->cap - curr->off) {
+        // Dedicated block, sized to fit. The current regular block is untouched, so its
+        // remaining space is still available to later small requests.
+        ChainArenaNodeHDR* n = new_node(ca, need);
+        if (!n) {
+            return NULL;
         }
+        n->next = ca->big;
+        ca->big = n;
+        return node_bump(n, size, align); // always fits: cap == size + slack
     }
+
+    // tail node can satify request
+    void* p = node_bump(curr, size, align);
+    if (p) {
+        return p;
+    }
+
+    // Current node is full. chain on a new regular block. Whatever
+    // is left in the old block is abandoned, which is the normal arena trade.
+    ChainArenaNodeHDR* n = new_node(ca, REG_CAP);
+    if (!n) {
+        return NULL;
+    }
+    ca->tail->next = n;
+    ca->tail       = n;
+    return node_bump(n, size, align); // fits: need <= REG_CAP
 }

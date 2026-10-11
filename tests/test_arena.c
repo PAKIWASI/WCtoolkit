@@ -684,3 +684,70 @@ UTEST(arena, A4_arena_grows_last_block_in_place)
     EXPECT_EQ(Arena_used(&a), 512u); // no dead blocks
     Arena_destroy(&a);
 }
+
+
+/* ── Regressions from the review of the first Arena draft ────────────────── */
+
+// Arena_create never stored the backing allocator, so destroy freed through NULL
+UTEST(arena, destroy_uses_the_backing_it_was_created_with)
+{
+    wc_test_alloc ta;
+    wc_test_alloc_init(&ta, WC_LIBC);
+    Arena a;
+    Arena_create(&a, wc_test_alloc_allocator(&ta), 512);
+    EXPECT_TRUE(a.backing == wc_test_alloc_allocator(&ta));
+    Arena_destroy(&a);
+    EXPECT_EQ(wc_test_alloc_destroy(&ta), 0u);
+}
+
+UTEST(arena, scratch_ends_on_break)
+{
+    Arena a;
+    Arena_create(&a, WC_LIBC, nKB(4));
+    ARENA_SCRATCH (&a) {
+        Arena_alloc(&a, 512);
+        break;
+    }
+    EXPECT_EQ(a.idx, 0u);
+    EXPECT_EQ(a.floor, 0u);
+    Arena_destroy(&a);
+}
+
+
+// Zero state is dead (C3): aborts in every build, Release included.
+static void alloc_on_zeroed_arena(void)
+{
+    Arena z;
+    memset(&z, 0, sizeof(z));
+    (void)Arena_alloc(&z, 8);
+}
+
+static void alloc_aligned_on_zeroed_arena(void)
+{
+    Arena z;
+    memset(&z, 0, sizeof(z));
+    (void)Arena_alloc_aligned(&z, 8, 8);
+}
+
+static void allocator_of_zeroed_arena(void)
+{
+    Arena z;
+    memset(&z, 0, sizeof(z));
+    (void)Arena_allocator(&z); // zeroed self (vt == NULL) would read as WC_LIBC
+}
+
+static void alloc_after_arena_destroy(void)
+{
+    Arena a;
+    Arena_create(&a, WC_LIBC, 64);
+    Arena_destroy(&a);
+    (void)Arena_alloc(&a, 8);
+}
+
+UTEST(arena, zero_state_is_dead)
+{
+    EXPECT_DIES(alloc_on_zeroed_arena);
+    EXPECT_DIES(alloc_aligned_on_zeroed_arena);
+    EXPECT_DIES(allocator_of_zeroed_arena);
+    EXPECT_DIES(alloc_after_arena_destroy);
+}

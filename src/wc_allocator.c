@@ -1,7 +1,9 @@
 #include "wc_allocator.h"
 #include "common.h"
 #include <stddef.h>
+#include <stdint.h>
 #include <sys/mman.h>
+#include <unistd.h>
 
 
 
@@ -36,32 +38,77 @@ static const wc_alloc_vtable wc_borrowed_vt = {
 const wc_allocator wc_borrowed = {.vt = &wc_borrowed_vt, .ctx = NULL};
 
 
-/* wc_mmap: block allocator that lives for the whole duration of the program */
+/* wc_mmap: page-granular allocator backed by anonymous mmap
+ *
+ * Every allocation is its own mapping, so it costs one syscall and at least
+ * one page. Use it for big, long-lived regions (an Arena reservation, large
+ * ChainArena nodes), not for small blocks.
+ *
+ *   - failure returns NULL
+ *   - any power-of-two alignment is honoured, including above the page size
+ *   - fresh pages are zero-filled by the kernel and committed lazily
+ */
 
-// we only need alloc. realloc will do the manual alloc then copy. There is no free
+static size_t wc_page_size(void)
+{
+    static size_t cached;
+    size_t        ps = cached;
+    if (ps == 0) {
+        long v = sysconf(_SC_PAGESIZE);
+        ps     = v > 0 ? (size_t)v : 4096;
+        cached = ps;
+    }
+    return ps;
+}
+
 static void* wc_mmap_alloc(void* ctx, size_t size, size_t align)
 {
     (void)ctx;
-    // we need to align the size to the desired boundry. so that size % align == 0
-    size_t rounded = (size + align - 1) & ~(align - 1);
+    const size_t page = wc_page_size();
 
-    u8* base =
-        mmap(NULL,                        // let kernel choose the virtual address
-             rounded,                     // the allocation size
-             PROT_READ | PROT_WRITE,      // mapping is readable and writable
-             MAP_PRIVATE | MAP_ANONYMOUS, // MAP_PRIVATE: writes are copy-on-write, MAP_ANONYMOUS: not backed by a file
-             -1,                          // -1 for MAP_ANONYMOUS
-             0);                          // ignored for MAP_ANONYMOUS
+    if (size > SIZE_MAX - page) { // page rounding would overflow
+        return NULL;
+    }
 
-    return base;
+    if (align <= page) { // mmap already returns page-aligned addresses
+        void* p = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        return p == MAP_FAILED ? NULL : p;
+    }
+
+    // align > page size: over-map, then unmap the unaligned head and the unused tail
+    if (size > SIZE_MAX - page - align) {
+        return NULL;
+    }
+    const size_t len = (size + page - 1) & ~(page - 1); // what the caller keeps
+    const size_t big = len + align;
+    u8*          raw = mmap(NULL, big, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (raw == MAP_FAILED) {
+        return NULL;
+    }
+
+    u8*    aligned = (u8*)(((uintptr_t)raw + align - 1) & ~((uintptr_t)align - 1));
+    size_t head    = (size_t)(aligned - raw);
+    size_t tail    = big - head - len;
+    if (head) {
+        munmap(raw, head);
+    }
+    if (tail) {
+        munmap(aligned + len, tail);
+    }
+    return aligned;
+}
+
+static void wc_mmap_free(void* ctx, void* p, size_t size, size_t align)
+{
+    (void)ctx;
+    (void)align;
+    munmap(p, size); // the kernel rounds size up to whole pages, same as at alloc
 }
 
 static const wc_alloc_vtable wc_mmap_vt = {
     .alloc   = wc_mmap_alloc,
-    .realloc = NULL,
-    .free    = NULL,
+    .realloc = NULL, // emulated: alloc + copy + free
+    .free    = wc_mmap_free,
 };
 
 const wc_allocator wc_mmap = {.vt = &wc_mmap_vt, .ctx = NULL};
-
-

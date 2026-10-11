@@ -2,88 +2,88 @@
 #include "common.h"
 #include "wc_allocator.h"
 
+#include <inttypes.h>
 #include <stdalign.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
-#include <sys/mman.h>
 
 
-#define ALIGN_UP(p, align) ((u8*)(((uintptr_t)(p) + ((uintptr_t)(align) - 1)) & ~((uintptr_t)(align) - 1)))
 
-
-Arena Arena_create(const wc_allocator* alloc, u64 cap)
+// Carve `size` bytes, aligned by ADDRESS to `align`, out of the arena. NULL if it doesn't fit.
+static void* arena_bump(Arena* a, u64 size, u64 align)
 {
-    if (cap < VARENA_MIN_SIZE) {
-        cap = VARENA_MIN_SIZE;
+    WC_ASSERT(a->off <= a->cap, "arena corrupted");
+
+    u64       room = a->cap - a->off;
+    uintptr_t cur  = (uintptr_t)a->base + (uintptr_t)a->off;
+    u64       pad  = (u64)((0 - cur) & (uintptr_t)(align - 1)); // bytes up to the next aligned address
+
+    if (pad > room || size > room - pad) {
+        return NULL; // arena is full
     }
 
-    u8* base = wc_alloc(alloc, cap, WC_MAX_ALIGN);
-    FATAL_IF(!base, "alloc failed for cap %lu, alignment %lu", cap, WC_MAX_ALIGN);
-
-    return (Arena){
-        .base = base,
-        .cap  = cap,
-        .off  = 0,
-    };
-}
-
-void Arena_destroy(Arena* a)
-{
-    wc_free(a->alloc, a->base, a->cap, WC_MAX_ALIGN);
-    memset(a, 0, sizeof(Arena));
-}
-
-void* Arena_alloc(Arena* a, u64 size)
-{
-    WC_ASSERT(size != 0, "can't allocate 0 bytes");
-    WC_ASSERT(a->off <= a->cap, "arena corrupted");
-    WC_ASSERT(size <= a->cap - a->off, "arena full");
-
-    u8* alloc   = a->base + a->off;
-    u8* aligned = ALIGN_UP(alloc, WC_MAX_ALIGN); // TODO: should we default align to 16 bytes or 8 bytes?
-    u64 pad     = (u64)(aligned - alloc);
-
-    WC_ASSERT(pad <= a->cap - a->off - size, "arena full (alignment padding)");
-
-    a->off += pad + size;
-    return aligned; //  return the aligned address (padding inserted BEFORE each allocation)
-}
-
-void* Arena_alloc_aligned(Arena* a, u64 size, u64 align)
-{
-    WC_ASSERT(size != 0, "can't allocate 0 bytes");
-    WC_ALLOC_ASSERT_ALIGN(align);
-    WC_ASSERT(a->off <= a->cap, "arena corrupted");
-    WC_ASSERT(size <= a->cap - a->off, "arena full");
-
-    u8* alloc   = a->base + a->off;
-    u8* aligned = ALIGN_UP(alloc, align);
-    u64 pad     = (u64)(aligned - alloc);
-
-    WC_ASSERT(pad <= a->cap - a->off - size, "arena full (alignment padding)");
-
-    a->off += pad + size;
-    return aligned;
+    u8* p = a->base + a->off + pad;
+    a->off += pad + size; // padding goes BEFORE the allocation
+    return p;
 }
 
 
 // wc_allocator interface
 
-static inline void* varena_alloc(void* ctx, size_t size, size_t align)
+// Only alloc is provided. free is a no-op and realloc is emulated (alloc + copy) by wc_realloc.
+// Exhaustion returns NULL.
+static void* arena_alloc(void* ctx, size_t size, size_t align)
 {
-    return Arena_alloc_aligned(((Arena*)ctx), size, align);
+    return Arena_alloc_aligned((Arena*)ctx, size, align);
 }
 
-// only alloc is needed for this. realloc is trivial and no free
-static const wc_alloc_vtable varena_alloc_vtable_base = {.alloc = varena_alloc, .realloc = NULL, .free = NULL};
-const wc_alloc_vtable*       varena_alloc_vtable      = &varena_alloc_vtable_base;
+static const wc_alloc_vtable arena_vtable = {.alloc = arena_alloc, .realloc = NULL, .free = NULL};
 
 
-wc_allocator Arena_create_allocator(Arena* a)
+void Arena_create(Arena* a, const wc_allocator* backing, u64 cap)
 {
-    return (wc_allocator){
-        .ctx = a,
-        .vt  = varena_alloc_vtable,
+    if (cap < ARENA_MIN_SIZE) {
+        cap = ARENA_MIN_SIZE;
+    }
+
+    u8* base = wc_alloc(backing, cap, WC_MAX_ALIGN);
+    FATAL_IF(!base, "arena backing alloc failed (cap %" PRIu64 ")", cap);
+
+    // `self` has to be built here, in place, because its ctx is this arena's own address.
+    *a = (Arena){
+        .base  = base,
+        .alloc = backing, // remembered so Arena_destroy can give the region back
+        .off   = 0,
+        .cap   = cap,
+        .self  = {.vt = &arena_vtable, .ctx = a},
     };
 }
+
+void Arena_destroy(Arena* a)
+{
+    if (!a->self.ctx) {
+        return; // zeroed or already destroyed
+    }
+    wc_free(a->alloc, a->base, a->cap, WC_MAX_ALIGN);
+    memset(a, 0, sizeof(Arena)); // also clears self.ctx, so a stale allocator is detectable
+}
+
+void* Arena_alloc(Arena* a, u64 size)
+{
+    FATAL_IF(!a->self.ctx, "Arena is in the zero state (moved-from or destroyed): re-create it first");
+    WC_ASSERT(size != 0, "can't allocate 0 bytes");
+    WC_ASSERT(a->self.ctx == a, "arena was moved or copied after Arena_create");
+    return arena_bump(a, size, WC_MAX_ALIGN);
+}
+
+void* Arena_alloc_aligned(Arena* a, u64 size, u64 align)
+{
+    FATAL_IF(!a->self.ctx, "Arena is in the zero state (moved-from or destroyed): re-create it first");
+    WC_ASSERT(size != 0, "can't allocate 0 bytes");
+    WC_ALLOC_ASSERT_ALIGN(align);
+    WC_ASSERT(a->self.ctx == a, "arena was moved or copied after Arena_create");
+    return arena_bump(a, size, align);
+}
+
+

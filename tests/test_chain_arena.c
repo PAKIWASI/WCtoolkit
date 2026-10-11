@@ -27,7 +27,7 @@
 static u64 node_count(const ChainArena* ca)
 {
     u64 n = 0;
-    for (const ChainArenaNode* x = ca->head; x; x = x->next) {
+    for (const ChainArenaNodeHDR* x = ca->head; x; x = x->next) {
         n++;
     }
     return n;
@@ -351,4 +351,90 @@ UTEST(chain_arena, typed_zero_macros)
     }
 
     ChainArena_destroy(&ca);
+}
+
+
+/* ── Regressions from the review of the first ChainArena draft ───────────── */
+
+// destroy walked `n = n->next` after freeing n, and never freed the tail node
+UTEST(chain_arena, destroy_frees_tail_and_every_node)
+{
+    wc_test_alloc ta;
+    wc_test_alloc_init(&ta, WC_LIBC);
+    ChainArena ca;
+    ChainArena_create(&ca, wc_test_alloc_allocator(&ta));
+    for (int i = 0; i < 50; i++) {
+        ChainArena_alloc(&ca, 1000);
+    }
+    ChainArena_alloc(&ca, nKB(20)); // dedicated tail node
+    ChainArena_destroy(&ca);
+    EXPECT_EQ(ta.n_errors, 0u);
+    EXPECT_EQ(wc_test_alloc_destroy(&ta), 0u); // zero leaked blocks
+}
+
+// a backing allocator that fails must give NULL back, not abort inside the arena
+UTEST(chain_arena, backing_failure_returns_null)
+{
+    ChainArena ca;
+    ChainArena_create(&ca, WC_LIBC);
+    EXPECT_TRUE(ChainArena_alloc(&ca, (u64)PTRDIFF_MAX) == NULL);
+    EXPECT_TRUE(ChainArena_alloc(&ca, 16) != NULL); // arena still usable
+    ChainArena_destroy(&ca);
+}
+
+UTEST(chain_arena, scratch_ends_on_break)
+{
+    wc_test_alloc ta;
+    wc_test_alloc_init(&ta, WC_LIBC);
+    ChainArena ca;
+    ChainArena_create(&ca, wc_test_alloc_allocator(&ta));
+    CHAIN_ARENA_SCRATCH (&ca) {
+        for (int i = 0; i < 30; i++) {
+            ChainArena_alloc(&ca, 1000);
+        }
+        break;
+    }
+    EXPECT_EQ(ta.live_blocks, 1u);
+    EXPECT_TRUE(ca.floor_node == NULL);
+    ChainArena_destroy(&ca);
+    EXPECT_EQ(wc_test_alloc_destroy(&ta), 0u);
+}
+
+
+// Zero state is dead (C3): aborts in every build, Release included.
+static void alloc_on_zeroed_chain(void)
+{
+    ChainArena z;
+    memset(&z, 0, sizeof(z));
+    (void)ChainArena_alloc(&z, 8);
+}
+
+static void alloc_aligned_on_zeroed_chain(void)
+{
+    ChainArena z;
+    memset(&z, 0, sizeof(z));
+    (void)ChainArena_alloc_aligned(&z, 8, 8);
+}
+
+static void allocator_of_zeroed_chain(void)
+{
+    ChainArena z;
+    memset(&z, 0, sizeof(z));
+    (void)ChainArena_allocator(&z);
+}
+
+static void alloc_after_chain_destroy(void)
+{
+    ChainArena ca;
+    ChainArena_create(&ca, WC_LIBC);
+    ChainArena_destroy(&ca);
+    (void)ChainArena_alloc(&ca, 8);
+}
+
+UTEST(chain_arena, zero_state_is_dead)
+{
+    EXPECT_DIES(alloc_on_zeroed_chain);
+    EXPECT_DIES(alloc_aligned_on_zeroed_chain);
+    EXPECT_DIES(allocator_of_zeroed_chain);
+    EXPECT_DIES(alloc_after_chain_destroy);
 }

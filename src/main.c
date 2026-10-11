@@ -5,15 +5,15 @@
 #include "wc_macros.h"
 #include <stdio.h>
 
-// TODO: unique ptr, shared ptr types using attribute cleanup??
+// TODO:
 // iterators?
-// using [[discard]] vs attribute warn unused result and others like this
 
 
 
 int main(void)
 {
-    Arena va = Arena_create(WC_MMAP, nKB(4));
+    Arena va;
+    Arena_create(&va, WC_MMAP, nKB(4));
 
     u8* d1 = Arena_alloc(&va, 10);
     d1[0] = 69;
@@ -43,8 +43,7 @@ int main(void)
     LOG("arena usage: %lu", va.off);
 
 
-    wc_allocator va_alloc = Arena_create_allocator(&va);
-    GenVec v = GenVec_create(&va_alloc, 5, sizeof(int), NULL);
+    GenVec v = GenVec_create(Arena_allocator(&va), 5, sizeof(int), NULL);
     VEC_PUSH(&v, 1);
     VEC_PUSH(&v, 2);
     VEC_PUSH(&v, 3);
