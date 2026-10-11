@@ -29,9 +29,9 @@ typedef struct ChainArenaNode {
 typedef struct {
     ChainArenaNodeHDR* normal; // nodes with normal capacity. normal points to the newest node,
     // the oldest node (at the end of the chain) points to null
-    ChainArenaNodeHDR*  big;        // dedicated blocks for oversized requests, newest first
-    const wc_allocator* alloc;      // backing allocator every block comes from and goes back to
-    wc_allocator        self;       // what containers store; ctx == this ChainArena
+    ChainArenaNodeHDR*  big;   // dedicated blocks for oversized requests, newest first
+    const wc_allocator* alloc; // backing allocator every block comes from and goes back to
+    wc_allocator        self;  // what containers store; ctx == this ChainArena
 } ChainArena;
 
 // Initialises `ca` in place. Allocates nothing (the first block is taken on first use), so it
