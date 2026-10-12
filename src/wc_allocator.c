@@ -8,7 +8,7 @@
 
 
 
-/* libc fallbacks */
+/* the global libc allocator */
 
 static inline void* wc_libc_alloc(void* ctx, size_t n, size_t align)
 {

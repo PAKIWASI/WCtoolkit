@@ -15,6 +15,7 @@
 
 #include <assert.h>
 #include <stdalign.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -23,46 +24,6 @@
 #define WC_MAX_ALIGN alignof(max_align_t)
 
 // TODO: maybe we shouldn't implicitly default to libc. if no valid allocator is provided, we should fail
-
-/* libc fallbacks */
-
-static inline void* wc_libc_alloc(size_t n, size_t align)
-{
-    if (align <= WC_MAX_ALIGN) {
-        return malloc(n); // malloc promises it's result is aligned if for max_align_t (16 bytes)
-    }
-
-    // if more alignment is needed, we need aligned alloc (unix)
-    size_t rounded = (n + align - 1) & ~(align - 1); // aligned_alloc: size % align == 0
-    if (rounded < n) {
-        return NULL; // overflow
-    }
-    return aligned_alloc(align, rounded);
-}
-
-static inline void wc_libc_free(void* p, size_t align)
-{
-    (void)align;
-    free(p);
-}
-
-static inline void* wc_libc_realloc(void* p, size_t old_n, size_t n, size_t align)
-{
-    if (align <= WC_MAX_ALIGN) {
-        return realloc(p, n); // realloc garentees 16-byte alinment, like malloc
-    }
-
-    // libc realloc doesn't preserve alignment above max_align_t: alloc, copy, free
-    void* q = wc_libc_alloc(n, align);
-    if (!q) {
-        return NULL; // p left untouched
-    }
-    memcpy(q, p, old_n < n ? old_n : n);
-    wc_libc_free(p, align);
-    return q;
-}
-
-
 
 /*
  * ALLOCATOR API
@@ -100,7 +61,6 @@ typedef struct {
     void*                  ctx; // Arena*, ChainArena*, test allocator, ...
 } wc_allocator;
 
-_Static_assert(sizeof(wc_allocator) == 16, "wc_allocator must stay 16 bytes");
 
 // The libc allocator. Defined once in wc_allocator.c.
 extern const wc_allocator wc_libc;
@@ -115,12 +75,12 @@ extern const wc_allocator wc_mmap;
 #define WC_MMAP (&wc_mmap)
 
 
-static inline __attribute__((nonnull(1))) int wc_is_libc(const wc_allocator* a)
+static inline __attribute__((nonnull(1))) bool wc_is_libc(const wc_allocator* a)
 {
     return a->vt == NULL;
 }
 
-// Same backend and same context: memory from one may be freed through the other.
+// Same backend and same context: memory from one may be freed through the other
 static inline __attribute__((nonnull(1, 2))) int wc_same(const wc_allocator* a, const wc_allocator* b)
 {
     return a == b || (a->vt == b->vt && a->ctx == b->ctx);
@@ -135,7 +95,8 @@ static inline __attribute__((nonnull(1))) void* wc_alloc(const wc_allocator* a, 
     if (n == 0 || n > (size_t)PTRDIFF_MAX) { // any valid allocation will be less than PTRDIFF_MAX
         return NULL;
     }
-    return a->vt ? a->vt->alloc(a->ctx, n, align) : wc_libc_alloc(n, align);
+    assert(a->vt && a->vt->alloc && "wc_alloc: no allocator"); // an allocator really only needs the alloc function
+    return a->vt->alloc(a->ctx, n, align);
 }
 
 static inline __attribute__((nonnull(1))) void wc_free(const wc_allocator* a, void* p, size_t n, size_t align)
@@ -144,10 +105,7 @@ static inline __attribute__((nonnull(1))) void wc_free(const wc_allocator* a, vo
     if (!p) {
         return;
     }
-    if (!a->vt) {
-        wc_libc_free(p, align);
-        return;
-    }
+    assert(a->vt && "wc_alloc: no allocator");
     if (a->vt->free) {
         a->vt->free(a->ctx, p, n, align);
     }
@@ -167,9 +125,7 @@ static inline __attribute__((nonnull(1))) void* wc_realloc(const wc_allocator* a
     if (n > (size_t)PTRDIFF_MAX) {
         return NULL; // overflowed size: fail, p stays valid
     }
-    if (!a->vt) {
-        return wc_libc_realloc(p, old_n, n, align);
-    }
+    assert(a->vt && "wc_alloc: no allocator");
     if (a->vt->realloc) {
         return a->vt->realloc(a->ctx, p, old_n, n, align);
     }
@@ -665,9 +621,9 @@ void Arena_destroy(Arena* a) WC_NONULL(1);
 
 // Both return NULL when the arena can't fit the request. Arena_alloc aligns to WC_MAX_ALIGN
 // (like malloc). Arena_alloc_aligned aligns the ADDRESS to `align` (a power of two).
-[[nodiscard]] void* Arena_alloc(Arena* a, u64 size) WC_NONULL(1);
+WC_NODISCARD void* Arena_alloc(Arena* a, u64 size) WC_NONULL(1);
 
-[[nodiscard]] void* Arena_alloc_aligned(Arena* a, u64 size, u64 align) WC_NONULL(1);
+WC_NODISCARD void* Arena_alloc_aligned(Arena* a, u64 size, u64 align) WC_NONULL(1);
 
 WC_NONULL(1) static inline void Arena_clear(Arena* a)
 {
@@ -675,7 +631,7 @@ WC_NONULL(1) static inline void Arena_clear(Arena* a)
 }
 
 // The allocator to give to containers. Points into the arena, so it lives as long as the arena
-[[nodiscard]] WC_NONULL(1) static inline const wc_allocator* Arena_allocator(Arena* a)
+WC_NODISCARD WC_NONULL(1) static inline const wc_allocator* Arena_allocator(Arena* a)
 {
     // zeroed self has vt == NULL, which would silently read as WC_LIBC
     FATAL_IF(!a->self.ctx, "Arena_allocator on zeroed/destroyed Arena");
@@ -699,7 +655,7 @@ typedef struct {
 } ArenaScratch;
 
 
-[[nodiscard]] static inline WC_NONULL(1) // TODO: fix clang format for this
+WC_NODISCARD static inline WC_NONULL(1) // TODO: fix clang format for this
     ArenaScratch ArenaScratch_create(Arena* a)
 {
     return (ArenaScratch){
@@ -727,14 +683,57 @@ static inline void ArenaScratch_to_mark(ArenaScratch scratch)
 
 #include <stddef.h>
 #include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
 #include <sys/mman.h>
 #include <unistd.h>
 
 
 
-/* wc_libc: the only allocator with vt == NULL */
+/* the global libc allocator */
 
-const wc_allocator wc_libc = {.vt = NULL, .ctx = NULL};
+static inline void* wc_libc_alloc(void* ctx, size_t n, size_t align)
+{
+    (void)ctx;
+    if (align <= WC_MAX_ALIGN) {
+        return malloc(n); // malloc promises it's result is aligned if for max_align_t (16 bytes)
+    }
+
+    // if more alignment is needed, we need aligned alloc (unix)
+    size_t rounded = (n + align - 1) & ~(align - 1); // aligned_alloc: size % align == 0
+    if (rounded < n) {
+        return NULL; // overflow
+    }
+    return aligned_alloc(align, rounded);
+}
+
+static inline void wc_libc_free(void* ctx, void* p, size_t size, size_t align)
+{
+    (void)ctx;
+    (void)size;
+    (void)align;
+    free(p);
+}
+
+static inline void* wc_libc_realloc(void* ctx, void* p, size_t old_n, size_t n, size_t align)
+{
+    if (align <= WC_MAX_ALIGN) {
+        return realloc(p, n); // realloc garentees 16-byte alinment, like malloc
+    }
+
+    // libc realloc doesn't preserve alignment above max_align_t: alloc, copy, free
+    void* q = wc_libc_alloc(ctx, n, align);
+    if (!q) {
+        return NULL; // p left untouched
+    }
+    memcpy(q, p, old_n < n ? old_n : n);
+    wc_libc_free(ctx, p, old_n, align);
+    return q;
+}
+
+static const wc_alloc_vtable wc_libc_vt = {.alloc = wc_libc_alloc, .realloc = wc_libc_realloc, .free = wc_libc_free};
+const wc_allocator           wc_libc    = {.vt = &wc_libc_vt, .ctx = NULL};
+
 
 /* wc_borrowed: non-owning allocator */
 
@@ -743,7 +742,7 @@ static void* wc_borrowed_alloc(void* ctx, size_t size, size_t align)
     (void)ctx;
     (void)size;
     (void)align;
-    return NULL; // can't allocate with a borrowed object's allocator
+    return NULL; // can't allocate with a borrowed object's allocator. FAIL
 }
 
 static void wc_borrowed_free(void* ctx, void* p, size_t size, size_t align)
@@ -806,14 +805,14 @@ static void* wc_mmap_alloc(void* ctx, size_t size, size_t align)
     }
     const size_t len = (size + page - 1) & ~(page - 1); // what the caller keeps
     const size_t big = len + align;
-    uint8_t*          raw = mmap(NULL, big, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    uint8_t*     raw = mmap(NULL, big, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (raw == MAP_FAILED) {
         return NULL;
     }
 
-    uint8_t*    aligned = (uint8_t*)(((uintptr_t)raw + align - 1) & ~((uintptr_t)align - 1));
-    size_t head    = (size_t)(aligned - raw);
-    size_t tail    = big - head - len;
+    uint8_t* aligned = (uint8_t*)(((uintptr_t)raw + align - 1) & ~((uintptr_t)align - 1));
+    size_t   head    = (size_t)(aligned - raw);
+    size_t   tail    = big - head - len;
     if (head) {
         munmap(raw, head);
     }

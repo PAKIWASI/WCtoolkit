@@ -15,6 +15,7 @@
 
 #include <assert.h>
 #include <stdalign.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -23,46 +24,6 @@
 #define WC_MAX_ALIGN alignof(max_align_t)
 
 // TODO: maybe we shouldn't implicitly default to libc. if no valid allocator is provided, we should fail
-
-/* libc fallbacks */
-
-static inline void* wc_libc_alloc(size_t n, size_t align)
-{
-    if (align <= WC_MAX_ALIGN) {
-        return malloc(n); // malloc promises it's result is aligned if for max_align_t (16 bytes)
-    }
-
-    // if more alignment is needed, we need aligned alloc (unix)
-    size_t rounded = (n + align - 1) & ~(align - 1); // aligned_alloc: size % align == 0
-    if (rounded < n) {
-        return NULL; // overflow
-    }
-    return aligned_alloc(align, rounded);
-}
-
-static inline void wc_libc_free(void* p, size_t align)
-{
-    (void)align;
-    free(p);
-}
-
-static inline void* wc_libc_realloc(void* p, size_t old_n, size_t n, size_t align)
-{
-    if (align <= WC_MAX_ALIGN) {
-        return realloc(p, n); // realloc garentees 16-byte alinment, like malloc
-    }
-
-    // libc realloc doesn't preserve alignment above max_align_t: alloc, copy, free
-    void* q = wc_libc_alloc(n, align);
-    if (!q) {
-        return NULL; // p left untouched
-    }
-    memcpy(q, p, old_n < n ? old_n : n);
-    wc_libc_free(p, align);
-    return q;
-}
-
-
 
 /*
  * ALLOCATOR API
@@ -100,7 +61,6 @@ typedef struct {
     void*                  ctx; // Arena*, ChainArena*, test allocator, ...
 } wc_allocator;
 
-_Static_assert(sizeof(wc_allocator) == 16, "wc_allocator must stay 16 bytes");
 
 // The libc allocator. Defined once in wc_allocator.c.
 extern const wc_allocator wc_libc;
@@ -115,12 +75,12 @@ extern const wc_allocator wc_mmap;
 #define WC_MMAP (&wc_mmap)
 
 
-static inline __attribute__((nonnull(1))) int wc_is_libc(const wc_allocator* a)
+static inline __attribute__((nonnull(1))) bool wc_is_libc(const wc_allocator* a)
 {
     return a->vt == NULL;
 }
 
-// Same backend and same context: memory from one may be freed through the other.
+// Same backend and same context: memory from one may be freed through the other
 static inline __attribute__((nonnull(1, 2))) int wc_same(const wc_allocator* a, const wc_allocator* b)
 {
     return a == b || (a->vt == b->vt && a->ctx == b->ctx);
@@ -135,7 +95,8 @@ static inline __attribute__((nonnull(1))) void* wc_alloc(const wc_allocator* a, 
     if (n == 0 || n > (size_t)PTRDIFF_MAX) { // any valid allocation will be less than PTRDIFF_MAX
         return NULL;
     }
-    return a->vt ? a->vt->alloc(a->ctx, n, align) : wc_libc_alloc(n, align);
+    assert(a->vt && a->vt->alloc && "wc_alloc: no allocator"); // an allocator really only needs the alloc function
+    return a->vt->alloc(a->ctx, n, align);
 }
 
 static inline __attribute__((nonnull(1))) void wc_free(const wc_allocator* a, void* p, size_t n, size_t align)
@@ -144,10 +105,7 @@ static inline __attribute__((nonnull(1))) void wc_free(const wc_allocator* a, vo
     if (!p) {
         return;
     }
-    if (!a->vt) {
-        wc_libc_free(p, align);
-        return;
-    }
+    assert(a->vt && "wc_alloc: no allocator");
     if (a->vt->free) {
         a->vt->free(a->ctx, p, n, align);
     }
@@ -167,9 +125,7 @@ static inline __attribute__((nonnull(1))) void* wc_realloc(const wc_allocator* a
     if (n > (size_t)PTRDIFF_MAX) {
         return NULL; // overflowed size: fail, p stays valid
     }
-    if (!a->vt) {
-        return wc_libc_realloc(p, old_n, n, align);
-    }
+    assert(a->vt && "wc_alloc: no allocator");
     if (a->vt->realloc) {
         return a->vt->realloc(a->ctx, p, old_n, n, align);
     }
@@ -768,7 +724,7 @@ typedef struct {
      seed - Initial seed value (any 64-bit value works)
      seq  - Sequence selector (chooses which of 2^63 random sequences to use)
 */
-void pcg32_rand_seed(WC_Pcg32* rng, u64 seed, u64 seq) __attribute__((nonnull(1)));
+void pcg32_rand_seed(WC_Pcg32* rng, u64 seed, u64 seq) WC_NONULL(1);
 
 
 /*
@@ -780,7 +736,7 @@ void pcg32_rand_seed(WC_Pcg32* rng, u64 seed, u64 seq) __attribute__((nonnull(1)
    Note: If called multiple times in the same second, will produce the
          same sequence. Use pcg32_rand_seed_time_hp() for finer precision.
 */
-void pcg32_rand_seed_time(WC_Pcg32* rng) __attribute__((nonnull(1)));
+void pcg32_rand_seed_time(WC_Pcg32* rng) WC_NONULL(1);
 
 
 // INTEGER RANDOM GENERATION
@@ -796,7 +752,7 @@ void pcg32_rand_seed_time(WC_Pcg32* rng) __attribute__((nonnull(1)));
    
    Returns: Random u32 in range [0, 4294967295]
 */
-u32 pcg32_rand(WC_Pcg32* rng) __attribute__((nonnull(1)));
+u32 pcg32_rand(WC_Pcg32* rng) WC_NONULL(1);
 
 
 /*
@@ -809,7 +765,7 @@ u32 pcg32_rand(WC_Pcg32* rng) __attribute__((nonnull(1)));
    
    Returns: Random u32 in range [0, bound-1]
 */
-u32 pcg32_rand_bounded(WC_Pcg32* rng, u32 bound) __attribute__((nonnull(1)));
+u32 pcg32_rand_bounded(WC_Pcg32* rng, u32 bound) WC_NONULL(1);
 
 
 // FLOATING POINT UNIFORM DISTRIBUTION
@@ -822,7 +778,7 @@ u32 pcg32_rand_bounded(WC_Pcg32* rng, u32 bound) __attribute__((nonnull(1)));
    
    Returns: Random float in range [0.0, 1.0) - note: 0.0 possible, 1.0 never
  */
-float pcg32_rand_float(WC_Pcg32* rng) __attribute__((nonnull(1)));
+float pcg32_rand_float(WC_Pcg32* rng) WC_NONULL(1);
 
 
 /*
@@ -833,7 +789,7 @@ float pcg32_rand_float(WC_Pcg32* rng) __attribute__((nonnull(1)));
    
    Returns: Random double in [0.0, 1.0) with ~15-16 digits of precision
 */
-double pcg32_rand_double(WC_Pcg32* rng) __attribute__((nonnull(1)));
+double pcg32_rand_double(WC_Pcg32* rng) WC_NONULL(1);
 
 
 /*
@@ -849,7 +805,7 @@ double pcg32_rand_double(WC_Pcg32* rng) __attribute__((nonnull(1)));
    
    Returns: Random float in [min, max)
 */
-float pcg32_rand_float_range(WC_Pcg32* rng, float min, float max) __attribute__((nonnull(1)));
+float pcg32_rand_float_range(WC_Pcg32* rng, float min, float max) WC_NONULL(1);
 
 
 /*
@@ -863,7 +819,7 @@ float pcg32_rand_float_range(WC_Pcg32* rng, float min, float max) __attribute__(
    
    Returns: Random double in [min, max)
 */
-double pcg32_rand_double_range(WC_Pcg32* rng, double min, double max) __attribute__((nonnull(1)));
+double pcg32_rand_double_range(WC_Pcg32* rng, double min, double max) WC_NONULL(1);
 
 
 // GAUSSIAN (NORMAL) DISTRIBUTION
@@ -892,7 +848,7 @@ double pcg32_rand_double_range(WC_Pcg32* rng, double min, double max) __attribut
    
    Returns: Random float from N(0, 1) distribution
 */
-float pcg32_rand_gaussian(WC_Pcg32* rng) __attribute__((nonnull(1)));
+float pcg32_rand_gaussian(WC_Pcg32* rng) WC_NONULL(1);
 
 
 /*
@@ -915,7 +871,7 @@ float pcg32_rand_gaussian(WC_Pcg32* rng) __attribute__((nonnull(1)));
    
    Returns: Random float from N(mean, stddev²) distribution
 */
-float pcg32_rand_gaussian_custom(WC_Pcg32* rng, float mean, float stddev) __attribute__((nonnull(1)));
+float pcg32_rand_gaussian_custom(WC_Pcg32* rng, float mean, float stddev) WC_NONULL(1);
 
 
 
@@ -930,14 +886,57 @@ float pcg32_rand_gaussian_custom(WC_Pcg32* rng, float mean, float stddev) __attr
 
 #include <stddef.h>
 #include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
 #include <sys/mman.h>
 #include <unistd.h>
 
 
 
-/* wc_libc: the only allocator with vt == NULL */
+/* the global libc allocator */
 
-const wc_allocator wc_libc = {.vt = NULL, .ctx = NULL};
+static inline void* wc_libc_alloc(void* ctx, size_t n, size_t align)
+{
+    (void)ctx;
+    if (align <= WC_MAX_ALIGN) {
+        return malloc(n); // malloc promises it's result is aligned if for max_align_t (16 bytes)
+    }
+
+    // if more alignment is needed, we need aligned alloc (unix)
+    size_t rounded = (n + align - 1) & ~(align - 1); // aligned_alloc: size % align == 0
+    if (rounded < n) {
+        return NULL; // overflow
+    }
+    return aligned_alloc(align, rounded);
+}
+
+static inline void wc_libc_free(void* ctx, void* p, size_t size, size_t align)
+{
+    (void)ctx;
+    (void)size;
+    (void)align;
+    free(p);
+}
+
+static inline void* wc_libc_realloc(void* ctx, void* p, size_t old_n, size_t n, size_t align)
+{
+    if (align <= WC_MAX_ALIGN) {
+        return realloc(p, n); // realloc garentees 16-byte alinment, like malloc
+    }
+
+    // libc realloc doesn't preserve alignment above max_align_t: alloc, copy, free
+    void* q = wc_libc_alloc(ctx, n, align);
+    if (!q) {
+        return NULL; // p left untouched
+    }
+    memcpy(q, p, old_n < n ? old_n : n);
+    wc_libc_free(ctx, p, old_n, align);
+    return q;
+}
+
+static const wc_alloc_vtable wc_libc_vt = {.alloc = wc_libc_alloc, .realloc = wc_libc_realloc, .free = wc_libc_free};
+const wc_allocator           wc_libc    = {.vt = &wc_libc_vt, .ctx = NULL};
+
 
 /* wc_borrowed: non-owning allocator */
 
@@ -946,7 +945,7 @@ static void* wc_borrowed_alloc(void* ctx, size_t size, size_t align)
     (void)ctx;
     (void)size;
     (void)align;
-    return NULL; // can't allocate with a borrowed object's allocator
+    return NULL; // can't allocate with a borrowed object's allocator. FAIL
 }
 
 static void wc_borrowed_free(void* ctx, void* p, size_t size, size_t align)
@@ -1009,14 +1008,14 @@ static void* wc_mmap_alloc(void* ctx, size_t size, size_t align)
     }
     const size_t len = (size + page - 1) & ~(page - 1); // what the caller keeps
     const size_t big = len + align;
-    uint8_t*          raw = mmap(NULL, big, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    uint8_t*     raw = mmap(NULL, big, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (raw == MAP_FAILED) {
         return NULL;
     }
 
-    uint8_t*    aligned = (uint8_t*)(((uintptr_t)raw + align - 1) & ~((uintptr_t)align - 1));
-    size_t head    = (size_t)(aligned - raw);
-    size_t tail    = big - head - len;
+    uint8_t* aligned = (uint8_t*)(((uintptr_t)raw + align - 1) & ~((uintptr_t)align - 1));
+    size_t   head    = (size_t)(aligned - raw);
+    size_t   tail    = big - head - len;
     if (head) {
         munmap(raw, head);
     }

@@ -36,14 +36,14 @@ Matrixf matrix_create_arr(const wc_allocator* a, u64 m, u64 n, const float* arr)
 Matrixf matrix_create_buf(u64 m, u64 n, float* data) __attribute__((nonnull(3), warn_unused_result));
 
 // Free storage through mat->alloc and zero the struct. Safe on zeroed matrices.
-void matrix_destroy(Matrixf* mat) __attribute__((nonnull(1)));
+void matrix_destroy(Matrixf* mat) WC_NONULL(1);
 
 // Deep copy of `src` into a new matrix allocated from `a` (never inherits src->alloc).
 Matrixf matrix_copy(const wc_allocator* a, const Matrixf* src) __attribute__((nonnull(1, 2), warn_unused_result));
 
 // Transfer: dest takes src's storage and allocator, src is left zeroed.
 // dest must be raw or already destroyed (it is overwritten, not freed).
-void matrix_move(Matrixf* dest, Matrixf* src) __attribute__((nonnull(1, 2)));
+void matrix_move(Matrixf* dest, Matrixf* src) WC_NONULL(1, 2);
 
 
 // SETTERS
@@ -59,15 +59,15 @@ void matrix_move(Matrixf* dest, Matrixf* src) __attribute__((nonnull(1, 2)));
            {7, 8, 9}
        });
 */
-void matrix_set_val_arr(Matrixf* mat, u64 count, const float* arr) __attribute__((nonnull(1, 3)));
+void matrix_set_val_arr(Matrixf* mat, u64 count, const float* arr) WC_NONULL(1, 3);
 
 // for 2D arrays (array of pointers)
-void matrix_set_val_arr2(Matrixf* mat, u64 m, u64 n, const float** arr2) __attribute__((nonnull(1, 4)));
+void matrix_set_val_arr2(Matrixf* mat, u64 m, u64 n, const float** arr2) WC_NONULL(1, 4);
 
 // set the value at position (i, j) where i is row and j is column
-void matrix_set_elm(Matrixf* mat, float elm, u64 i, u64 j) __attribute__((nonnull(1)));
+void matrix_set_elm(Matrixf* mat, float elm, u64 i, u64 j) WC_NONULL(1);
 
-float matrix_get_elm(const Matrixf* mat, u64 i, u64 j) __attribute__((nonnull(1)));
+float matrix_get_elm(const Matrixf* mat, u64 i, u64 j) WC_NONULL(1);
 
 
 // BASIC OPERATIONS
@@ -76,18 +76,18 @@ float matrix_get_elm(const Matrixf* mat, u64 i, u64 j) __attribute__((nonnull(1)
 // Matrix addition: out = a + b
 // out must NOT alias a or b (restrict enables auto-vectorization)
 void matrix_add(Matrixf* restrict out, const Matrixf* restrict a, const Matrixf* restrict b)
-    __attribute__((nonnull(1, 2, 3)));
+    WC_NONULL(1, 2, 3);
 
 // Matrix subtraction: out = a - b
 // out must NOT alias a or b (restrict enables auto-vectorization)
 void matrix_sub(Matrixf* restrict out, const Matrixf* restrict a, const Matrixf* restrict b)
-    __attribute__((nonnull(1, 2, 3)));
+    WC_NONULL(1, 2, 3);
 
 // Scalar multiplication: mat = mat * val
-void matrix_scale(Matrixf* restrict mat, float val) __attribute__((nonnull(1)));
+void matrix_scale(Matrixf* restrict mat, float val) WC_NONULL(1);
 
 // Element wise division
-void matrix_div(Matrixf* restrict mat, float val) __attribute__((nonnull(1)));
+void matrix_div(Matrixf* restrict mat, float val) WC_NONULL(1);
 
 
 // MATRIX MULTIPLICATION
@@ -98,14 +98,14 @@ void matrix_div(Matrixf* restrict mat, float val) __attribute__((nonnull(1)));
 // out must NOT alias a or b
 // Uses blocked ikj multiplication for cache efficiency (good for small-medium matrices)
 void matrix_xply(Matrixf* restrict out, const Matrixf* restrict a, const Matrixf* restrict b)
-    __attribute__((nonnull(1, 2, 3)));
+    WC_NONULL(1, 2, 3);
 
 // Matrix multiplication variant 2: out = a × b
 // Transposes b internally for better cache locality
 // Takes more memory but can be faster for large matrices
 // out must NOT alias a or b
 void matrix_xply_2(Matrixf* restrict out, const Matrixf* restrict a, const Matrixf* restrict b)
-    __attribute__((nonnull(1, 2, 3)));
+    WC_NONULL(1, 2, 3);
 
 
 
@@ -114,27 +114,27 @@ void matrix_xply_2(Matrixf* restrict out, const Matrixf* restrict a, const Matri
 
 // Transpose: out = mat^T
 // out must NOT alias mat
-void matrix_T(Matrixf* restrict out, const Matrixf* restrict mat) __attribute__((nonnull(1, 2)));
+void matrix_T(Matrixf* restrict out, const Matrixf* restrict mat) WC_NONULL(1, 2);
 
 // LU Decomposition: mat = L × U
 // Decomposes square matrix into Lower and Upper triangular matrices
 void matrix_LU_Decomp(Matrixf* restrict L, Matrixf* restrict U, const Matrixf* restrict mat)
-    __attribute__((nonnull(1, 2, 3)));
+    WC_NONULL(1, 2, 3);
 
 // Calculate determinant using LU decomposition
-float matrix_det(const Matrixf* mat) __attribute__((nonnull(1)));
+float matrix_det(const Matrixf* mat) WC_NONULL(1);
 
 // Matrix inverse: out = mat^(-1). Gauss-Jordan with partial pivoting, done in
 // place in `out` (no allocation). Returns false if mat is singular; out is
 // then unspecified. out and mat may not alias.
-bool matrix_inv(Matrixf* restrict out, const Matrixf* restrict mat) __attribute__((nonnull(1, 2)));
+bool matrix_inv(Matrixf* restrict out, const Matrixf* restrict mat) WC_NONULL(1, 2);
 
 
 // UTILITIES
 // ============================================================================
 
 // print the formatted, aligned matrix to stdout
-void matrix_print(const Matrixf* mat) __attribute__((nonnull(1)));
+void matrix_print(const Matrixf* mat) WC_NONULL(1);
 
 
 #define MATRIX_TOTAL(mat)    ((u64)((mat)->n * (mat)->m))

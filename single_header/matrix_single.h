@@ -15,6 +15,7 @@
 
 #include <assert.h>
 #include <stdalign.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -23,46 +24,6 @@
 #define WC_MAX_ALIGN alignof(max_align_t)
 
 // TODO: maybe we shouldn't implicitly default to libc. if no valid allocator is provided, we should fail
-
-/* libc fallbacks */
-
-static inline void* wc_libc_alloc(size_t n, size_t align)
-{
-    if (align <= WC_MAX_ALIGN) {
-        return malloc(n); // malloc promises it's result is aligned if for max_align_t (16 bytes)
-    }
-
-    // if more alignment is needed, we need aligned alloc (unix)
-    size_t rounded = (n + align - 1) & ~(align - 1); // aligned_alloc: size % align == 0
-    if (rounded < n) {
-        return NULL; // overflow
-    }
-    return aligned_alloc(align, rounded);
-}
-
-static inline void wc_libc_free(void* p, size_t align)
-{
-    (void)align;
-    free(p);
-}
-
-static inline void* wc_libc_realloc(void* p, size_t old_n, size_t n, size_t align)
-{
-    if (align <= WC_MAX_ALIGN) {
-        return realloc(p, n); // realloc garentees 16-byte alinment, like malloc
-    }
-
-    // libc realloc doesn't preserve alignment above max_align_t: alloc, copy, free
-    void* q = wc_libc_alloc(n, align);
-    if (!q) {
-        return NULL; // p left untouched
-    }
-    memcpy(q, p, old_n < n ? old_n : n);
-    wc_libc_free(p, align);
-    return q;
-}
-
-
 
 /*
  * ALLOCATOR API
@@ -100,7 +61,6 @@ typedef struct {
     void*                  ctx; // Arena*, ChainArena*, test allocator, ...
 } wc_allocator;
 
-_Static_assert(sizeof(wc_allocator) == 16, "wc_allocator must stay 16 bytes");
 
 // The libc allocator. Defined once in wc_allocator.c.
 extern const wc_allocator wc_libc;
@@ -115,12 +75,12 @@ extern const wc_allocator wc_mmap;
 #define WC_MMAP (&wc_mmap)
 
 
-static inline __attribute__((nonnull(1))) int wc_is_libc(const wc_allocator* a)
+static inline __attribute__((nonnull(1))) bool wc_is_libc(const wc_allocator* a)
 {
     return a->vt == NULL;
 }
 
-// Same backend and same context: memory from one may be freed through the other.
+// Same backend and same context: memory from one may be freed through the other
 static inline __attribute__((nonnull(1, 2))) int wc_same(const wc_allocator* a, const wc_allocator* b)
 {
     return a == b || (a->vt == b->vt && a->ctx == b->ctx);
@@ -135,7 +95,8 @@ static inline __attribute__((nonnull(1))) void* wc_alloc(const wc_allocator* a, 
     if (n == 0 || n > (size_t)PTRDIFF_MAX) { // any valid allocation will be less than PTRDIFF_MAX
         return NULL;
     }
-    return a->vt ? a->vt->alloc(a->ctx, n, align) : wc_libc_alloc(n, align);
+    assert(a->vt && a->vt->alloc && "wc_alloc: no allocator"); // an allocator really only needs the alloc function
+    return a->vt->alloc(a->ctx, n, align);
 }
 
 static inline __attribute__((nonnull(1))) void wc_free(const wc_allocator* a, void* p, size_t n, size_t align)
@@ -144,10 +105,7 @@ static inline __attribute__((nonnull(1))) void wc_free(const wc_allocator* a, vo
     if (!p) {
         return;
     }
-    if (!a->vt) {
-        wc_libc_free(p, align);
-        return;
-    }
+    assert(a->vt && "wc_alloc: no allocator");
     if (a->vt->free) {
         a->vt->free(a->ctx, p, n, align);
     }
@@ -167,9 +125,7 @@ static inline __attribute__((nonnull(1))) void* wc_realloc(const wc_allocator* a
     if (n > (size_t)PTRDIFF_MAX) {
         return NULL; // overflowed size: fail, p stays valid
     }
-    if (!a->vt) {
-        return wc_libc_realloc(p, old_n, n, align);
-    }
+    assert(a->vt && "wc_alloc: no allocator");
     if (a->vt->realloc) {
         return a->vt->realloc(a->ctx, p, old_n, n, align);
     }
@@ -669,14 +625,14 @@ Matrixf matrix_create_arr(const wc_allocator* a, u64 m, u64 n, const float* arr)
 Matrixf matrix_create_buf(u64 m, u64 n, float* data) __attribute__((nonnull(3), warn_unused_result));
 
 // Free storage through mat->alloc and zero the struct. Safe on zeroed matrices.
-void matrix_destroy(Matrixf* mat) __attribute__((nonnull(1)));
+void matrix_destroy(Matrixf* mat) WC_NONULL(1);
 
 // Deep copy of `src` into a new matrix allocated from `a` (never inherits src->alloc).
 Matrixf matrix_copy(const wc_allocator* a, const Matrixf* src) __attribute__((nonnull(1, 2), warn_unused_result));
 
 // Transfer: dest takes src's storage and allocator, src is left zeroed.
 // dest must be raw or already destroyed (it is overwritten, not freed).
-void matrix_move(Matrixf* dest, Matrixf* src) __attribute__((nonnull(1, 2)));
+void matrix_move(Matrixf* dest, Matrixf* src) WC_NONULL(1, 2);
 
 
 // SETTERS
@@ -692,15 +648,15 @@ void matrix_move(Matrixf* dest, Matrixf* src) __attribute__((nonnull(1, 2)));
            {7, 8, 9}
        });
 */
-void matrix_set_val_arr(Matrixf* mat, u64 count, const float* arr) __attribute__((nonnull(1, 3)));
+void matrix_set_val_arr(Matrixf* mat, u64 count, const float* arr) WC_NONULL(1, 3);
 
 // for 2D arrays (array of pointers)
-void matrix_set_val_arr2(Matrixf* mat, u64 m, u64 n, const float** arr2) __attribute__((nonnull(1, 4)));
+void matrix_set_val_arr2(Matrixf* mat, u64 m, u64 n, const float** arr2) WC_NONULL(1, 4);
 
 // set the value at position (i, j) where i is row and j is column
-void matrix_set_elm(Matrixf* mat, float elm, u64 i, u64 j) __attribute__((nonnull(1)));
+void matrix_set_elm(Matrixf* mat, float elm, u64 i, u64 j) WC_NONULL(1);
 
-float matrix_get_elm(const Matrixf* mat, u64 i, u64 j) __attribute__((nonnull(1)));
+float matrix_get_elm(const Matrixf* mat, u64 i, u64 j) WC_NONULL(1);
 
 
 // BASIC OPERATIONS
@@ -709,18 +665,18 @@ float matrix_get_elm(const Matrixf* mat, u64 i, u64 j) __attribute__((nonnull(1)
 // Matrix addition: out = a + b
 // out must NOT alias a or b (restrict enables auto-vectorization)
 void matrix_add(Matrixf* restrict out, const Matrixf* restrict a, const Matrixf* restrict b)
-    __attribute__((nonnull(1, 2, 3)));
+    WC_NONULL(1, 2, 3);
 
 // Matrix subtraction: out = a - b
 // out must NOT alias a or b (restrict enables auto-vectorization)
 void matrix_sub(Matrixf* restrict out, const Matrixf* restrict a, const Matrixf* restrict b)
-    __attribute__((nonnull(1, 2, 3)));
+    WC_NONULL(1, 2, 3);
 
 // Scalar multiplication: mat = mat * val
-void matrix_scale(Matrixf* restrict mat, float val) __attribute__((nonnull(1)));
+void matrix_scale(Matrixf* restrict mat, float val) WC_NONULL(1);
 
 // Element wise division
-void matrix_div(Matrixf* restrict mat, float val) __attribute__((nonnull(1)));
+void matrix_div(Matrixf* restrict mat, float val) WC_NONULL(1);
 
 
 // MATRIX MULTIPLICATION
@@ -731,14 +687,14 @@ void matrix_div(Matrixf* restrict mat, float val) __attribute__((nonnull(1)));
 // out must NOT alias a or b
 // Uses blocked ikj multiplication for cache efficiency (good for small-medium matrices)
 void matrix_xply(Matrixf* restrict out, const Matrixf* restrict a, const Matrixf* restrict b)
-    __attribute__((nonnull(1, 2, 3)));
+    WC_NONULL(1, 2, 3);
 
 // Matrix multiplication variant 2: out = a × b
 // Transposes b internally for better cache locality
 // Takes more memory but can be faster for large matrices
 // out must NOT alias a or b
 void matrix_xply_2(Matrixf* restrict out, const Matrixf* restrict a, const Matrixf* restrict b)
-    __attribute__((nonnull(1, 2, 3)));
+    WC_NONULL(1, 2, 3);
 
 
 
@@ -747,27 +703,27 @@ void matrix_xply_2(Matrixf* restrict out, const Matrixf* restrict a, const Matri
 
 // Transpose: out = mat^T
 // out must NOT alias mat
-void matrix_T(Matrixf* restrict out, const Matrixf* restrict mat) __attribute__((nonnull(1, 2)));
+void matrix_T(Matrixf* restrict out, const Matrixf* restrict mat) WC_NONULL(1, 2);
 
 // LU Decomposition: mat = L × U
 // Decomposes square matrix into Lower and Upper triangular matrices
 void matrix_LU_Decomp(Matrixf* restrict L, Matrixf* restrict U, const Matrixf* restrict mat)
-    __attribute__((nonnull(1, 2, 3)));
+    WC_NONULL(1, 2, 3);
 
 // Calculate determinant using LU decomposition
-float matrix_det(const Matrixf* mat) __attribute__((nonnull(1)));
+float matrix_det(const Matrixf* mat) WC_NONULL(1);
 
 // Matrix inverse: out = mat^(-1). Gauss-Jordan with partial pivoting, done in
 // place in `out` (no allocation). Returns false if mat is singular; out is
 // then unspecified. out and mat may not alias.
-bool matrix_inv(Matrixf* restrict out, const Matrixf* restrict mat) __attribute__((nonnull(1, 2)));
+bool matrix_inv(Matrixf* restrict out, const Matrixf* restrict mat) WC_NONULL(1, 2);
 
 
 // UTILITIES
 // ============================================================================
 
 // print the formatted, aligned matrix to stdout
-void matrix_print(const Matrixf* mat) __attribute__((nonnull(1)));
+void matrix_print(const Matrixf* mat) WC_NONULL(1);
 
 
 #define MATRIX_TOTAL(mat)    ((u64)((mat)->n * (mat)->m))
@@ -798,14 +754,57 @@ void matrix_print(const Matrixf* mat) __attribute__((nonnull(1)));
 
 #include <stddef.h>
 #include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
 #include <sys/mman.h>
 #include <unistd.h>
 
 
 
-/* wc_libc: the only allocator with vt == NULL */
+/* the global libc allocator */
 
-const wc_allocator wc_libc = {.vt = NULL, .ctx = NULL};
+static inline void* wc_libc_alloc(void* ctx, size_t n, size_t align)
+{
+    (void)ctx;
+    if (align <= WC_MAX_ALIGN) {
+        return malloc(n); // malloc promises it's result is aligned if for max_align_t (16 bytes)
+    }
+
+    // if more alignment is needed, we need aligned alloc (unix)
+    size_t rounded = (n + align - 1) & ~(align - 1); // aligned_alloc: size % align == 0
+    if (rounded < n) {
+        return NULL; // overflow
+    }
+    return aligned_alloc(align, rounded);
+}
+
+static inline void wc_libc_free(void* ctx, void* p, size_t size, size_t align)
+{
+    (void)ctx;
+    (void)size;
+    (void)align;
+    free(p);
+}
+
+static inline void* wc_libc_realloc(void* ctx, void* p, size_t old_n, size_t n, size_t align)
+{
+    if (align <= WC_MAX_ALIGN) {
+        return realloc(p, n); // realloc garentees 16-byte alinment, like malloc
+    }
+
+    // libc realloc doesn't preserve alignment above max_align_t: alloc, copy, free
+    void* q = wc_libc_alloc(ctx, n, align);
+    if (!q) {
+        return NULL; // p left untouched
+    }
+    memcpy(q, p, old_n < n ? old_n : n);
+    wc_libc_free(ctx, p, old_n, align);
+    return q;
+}
+
+static const wc_alloc_vtable wc_libc_vt = {.alloc = wc_libc_alloc, .realloc = wc_libc_realloc, .free = wc_libc_free};
+const wc_allocator           wc_libc    = {.vt = &wc_libc_vt, .ctx = NULL};
+
 
 /* wc_borrowed: non-owning allocator */
 
@@ -814,7 +813,7 @@ static void* wc_borrowed_alloc(void* ctx, size_t size, size_t align)
     (void)ctx;
     (void)size;
     (void)align;
-    return NULL; // can't allocate with a borrowed object's allocator
+    return NULL; // can't allocate with a borrowed object's allocator. FAIL
 }
 
 static void wc_borrowed_free(void* ctx, void* p, size_t size, size_t align)
@@ -877,14 +876,14 @@ static void* wc_mmap_alloc(void* ctx, size_t size, size_t align)
     }
     const size_t len = (size + page - 1) & ~(page - 1); // what the caller keeps
     const size_t big = len + align;
-    uint8_t*          raw = mmap(NULL, big, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    uint8_t*     raw = mmap(NULL, big, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (raw == MAP_FAILED) {
         return NULL;
     }
 
-    uint8_t*    aligned = (uint8_t*)(((uintptr_t)raw + align - 1) & ~((uintptr_t)align - 1));
-    size_t head    = (size_t)(aligned - raw);
-    size_t tail    = big - head - len;
+    uint8_t* aligned = (uint8_t*)(((uintptr_t)raw + align - 1) & ~((uintptr_t)align - 1));
+    size_t   head    = (size_t)(aligned - raw);
+    size_t   tail    = big - head - len;
     if (head) {
         munmap(raw, head);
     }

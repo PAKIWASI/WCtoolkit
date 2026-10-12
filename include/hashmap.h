@@ -72,37 +72,37 @@ HashMap HashMap_create(const wc_allocator* a, u32 key_size, u32 val_size, wc_has
 
 // Destroy all elements and free internal buffers via map->alloc.
 // Safe on zeroed/moved-from maps. Leaves struct zeroed.
-void HashMap_destroy(HashMap* map) __attribute__((nonnull(1)));
+void HashMap_destroy(HashMap* map) WC_NONULL(1);
 
 // Deep copy src into a new HashMap allocated from `a`.
 HashMap HashMap_copy(const wc_allocator* a, const HashMap* src) __attribute__((nonnull(1, 2), warn_unused_result));
 
 // Transfer ownership from src to dest. src is left zeroed.
-void HashMap_move(HashMap* dest, HashMap* src) __attribute__((nonnull(1, 2)));
+void HashMap_move(HashMap* dest, HashMap* src) WC_NONULL(1, 2);
 
 // Insert or update — COPY semantics. val may be NULL for a set.
 // Returns 1 if key existed (updated), 0 if new key inserted.
-bool HashMap_put(HashMap* map, const void* key, const void* val) __attribute__((nonnull(1, 2)));
+bool HashMap_put(HashMap* map, const void* key, const void* val) WC_NONULL(1, 2);
 
 // Insert or update, MOVE semantics: key and val point at the caller's elements, both left zeroed
 // (a duplicate key is destroyed; the map keeps its own). val may be NULL for a set.
 // Returns 1 if key existed (updated), 0 if new key inserted.
-bool HashMap_put_move(HashMap* map, void* key, void* val) __attribute__((nonnull(1, 2)));
+bool HashMap_put_move(HashMap* map, void* key, void* val) WC_NONULL(1, 2);
 
 // Mixed: key copied, val moved.
-bool HashMap_put_val_move(HashMap* map, const void* key, void* val) __attribute__((nonnull(1, 2)));
+bool HashMap_put_val_move(HashMap* map, const void* key, void* val) WC_NONULL(1, 2);
 
 // Mixed: key moved, val copied.
-bool HashMap_put_key_move(HashMap* map, void* key, const void* val) __attribute__((nonnull(1, 2)));
+bool HashMap_put_key_move(HashMap* map, void* key, const void* val) WC_NONULL(1, 2);
 
 // Get value for key: deep COPY into val (the map keeps its own). Returns 1 if found.
 // For owning values prefer HashMap_get_ptr: no copy, no allocation.
-bool HashMap_get(const HashMap* map, const void* key, void* val) __attribute__((nonnull(1, 2, 3)));
+bool HashMap_get(const HashMap* map, const void* key, void* val) WC_NONULL(1, 2, 3);
 
 // Pointer to the stored value, or NULL if key is absent.
-const void* HashMap_get_ptr(const HashMap* map, const void* key) __attribute__((nonnull(1, 2)));
+const void* HashMap_get_ptr(const HashMap* map, const void* key) WC_NONULL(1, 2);
 
-__attribute__((nonnull(1, 2))) static inline void* HashMap_get_ptr_mut(HashMap* map, const void* key)
+WC_NONULL(1, 2) static inline void* HashMap_get_ptr_mut(HashMap* map, const void* key)
 {
     return (void*)HashMap_get_ptr(map, key);
 }
@@ -110,45 +110,45 @@ __attribute__((nonnull(1, 2))) static inline void* HashMap_get_ptr_mut(HashMap* 
 // Pointer to the stored KEY equal to `key`, or NULL. For a set this is the
 // element; for a map it is the canonical key (e.g. an interned String).
 // Never change the bytes the hash or compare reads through it.
-const void* HashMap_get_key_ptr(const HashMap* map, const void* key) __attribute__((nonnull(1, 2)));
+const void* HashMap_get_key_ptr(const HashMap* map, const void* key) WC_NONULL(1, 2);
 
 // Bucket iteration accessors
-__attribute__((nonnull(1))) static inline u64 HashMap_bucket_count(const HashMap* map)
+WC_NONULL(1) static inline u64 HashMap_bucket_count(const HashMap* map)
 {
     return map->capacity;
 }
 
-bool        HashMap_bucket_occupied(const HashMap* map, u64 i) __attribute__((nonnull(1)));
-const void* HashMap_bucket_key_ptr(const HashMap* map, u64 i) __attribute__((nonnull(1)));
-void*       HashMap_bucket_val_ptr(HashMap* map, u64 i) __attribute__((nonnull(1)));
+bool        HashMap_bucket_occupied(const HashMap* map, u64 i) WC_NONULL(1);
+const void* HashMap_bucket_key_ptr(const HashMap* map, u64 i) WC_NONULL(1);
+void*       HashMap_bucket_val_ptr(HashMap* map, u64 i) WC_NONULL(1);
 
 // Delete key. out != NULL: the value is MOVED into it (caller owns it, B7).
 // out == NULL: the value is deleted. The key is always deleted.
 // Returns 1 if found and deleted, 0 if not found.
-bool HashMap_del(HashMap* map, const void* key, void* out) __attribute__((nonnull(1, 2)));
+bool HashMap_del(HashMap* map, const void* key, void* out) WC_NONULL(1, 2);
 
 // Check if key exists.
-bool HashMap_has(const HashMap* map, const void* key) __attribute__((nonnull(1, 2)));
+bool HashMap_has(const HashMap* map, const void* key) WC_NONULL(1, 2);
 
 // Print all key-value pairs. val_print may be NULL (sets print keys only).
-void HashMap_print(const HashMap* map, wc_print_fn key_print, wc_print_fn val_print) __attribute__((nonnull(1, 2)));
+void HashMap_print(const HashMap* map, wc_print_fn key_print, wc_print_fn val_print) WC_NONULL(1, 2);
 
 // Make room for n elements in total so that inserting up to n never resizes.
 // No-op if the table is already large enough. Never shrinks.
-void HashMap_reserve(HashMap* map, u64 n) __attribute__((nonnull(1)));
+void HashMap_reserve(HashMap* map, u64 n) WC_NONULL(1);
 
 // Remove all elements, keep capacity.
-void HashMap_clear(HashMap* map) __attribute__((nonnull(1)));
+void HashMap_clear(HashMap* map) WC_NONULL(1);
 
-static inline __attribute__((nonnull(1))) u64 HashMap_size(const HashMap* map)
+static inline WC_NONULL(1) u64 HashMap_size(const HashMap* map)
 {
     return map->size;
 }
-static inline __attribute__((nonnull(1))) u64 HashMap_capacity(const HashMap* map)
+static inline WC_NONULL(1) u64 HashMap_capacity(const HashMap* map)
 {
     return map->capacity;
 }
-static inline __attribute__((nonnull(1))) bool HashMap_empty(const HashMap* map)
+static inline WC_NONULL(1) bool HashMap_empty(const HashMap* map)
 {
     return map->size == 0;
 }

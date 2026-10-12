@@ -15,6 +15,7 @@
 
 #include <assert.h>
 #include <stdalign.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -23,46 +24,6 @@
 #define WC_MAX_ALIGN alignof(max_align_t)
 
 // TODO: maybe we shouldn't implicitly default to libc. if no valid allocator is provided, we should fail
-
-/* libc fallbacks */
-
-static inline void* wc_libc_alloc(size_t n, size_t align)
-{
-    if (align <= WC_MAX_ALIGN) {
-        return malloc(n); // malloc promises it's result is aligned if for max_align_t (16 bytes)
-    }
-
-    // if more alignment is needed, we need aligned alloc (unix)
-    size_t rounded = (n + align - 1) & ~(align - 1); // aligned_alloc: size % align == 0
-    if (rounded < n) {
-        return NULL; // overflow
-    }
-    return aligned_alloc(align, rounded);
-}
-
-static inline void wc_libc_free(void* p, size_t align)
-{
-    (void)align;
-    free(p);
-}
-
-static inline void* wc_libc_realloc(void* p, size_t old_n, size_t n, size_t align)
-{
-    if (align <= WC_MAX_ALIGN) {
-        return realloc(p, n); // realloc garentees 16-byte alinment, like malloc
-    }
-
-    // libc realloc doesn't preserve alignment above max_align_t: alloc, copy, free
-    void* q = wc_libc_alloc(n, align);
-    if (!q) {
-        return NULL; // p left untouched
-    }
-    memcpy(q, p, old_n < n ? old_n : n);
-    wc_libc_free(p, align);
-    return q;
-}
-
-
 
 /*
  * ALLOCATOR API
@@ -100,7 +61,6 @@ typedef struct {
     void*                  ctx; // Arena*, ChainArena*, test allocator, ...
 } wc_allocator;
 
-_Static_assert(sizeof(wc_allocator) == 16, "wc_allocator must stay 16 bytes");
 
 // The libc allocator. Defined once in wc_allocator.c.
 extern const wc_allocator wc_libc;
@@ -115,12 +75,12 @@ extern const wc_allocator wc_mmap;
 #define WC_MMAP (&wc_mmap)
 
 
-static inline __attribute__((nonnull(1))) int wc_is_libc(const wc_allocator* a)
+static inline __attribute__((nonnull(1))) bool wc_is_libc(const wc_allocator* a)
 {
     return a->vt == NULL;
 }
 
-// Same backend and same context: memory from one may be freed through the other.
+// Same backend and same context: memory from one may be freed through the other
 static inline __attribute__((nonnull(1, 2))) int wc_same(const wc_allocator* a, const wc_allocator* b)
 {
     return a == b || (a->vt == b->vt && a->ctx == b->ctx);
@@ -135,7 +95,8 @@ static inline __attribute__((nonnull(1))) void* wc_alloc(const wc_allocator* a, 
     if (n == 0 || n > (size_t)PTRDIFF_MAX) { // any valid allocation will be less than PTRDIFF_MAX
         return NULL;
     }
-    return a->vt ? a->vt->alloc(a->ctx, n, align) : wc_libc_alloc(n, align);
+    assert(a->vt && a->vt->alloc && "wc_alloc: no allocator"); // an allocator really only needs the alloc function
+    return a->vt->alloc(a->ctx, n, align);
 }
 
 static inline __attribute__((nonnull(1))) void wc_free(const wc_allocator* a, void* p, size_t n, size_t align)
@@ -144,10 +105,7 @@ static inline __attribute__((nonnull(1))) void wc_free(const wc_allocator* a, vo
     if (!p) {
         return;
     }
-    if (!a->vt) {
-        wc_libc_free(p, align);
-        return;
-    }
+    assert(a->vt && "wc_alloc: no allocator");
     if (a->vt->free) {
         a->vt->free(a->ctx, p, n, align);
     }
@@ -167,9 +125,7 @@ static inline __attribute__((nonnull(1))) void* wc_realloc(const wc_allocator* a
     if (n > (size_t)PTRDIFF_MAX) {
         return NULL; // overflowed size: fail, p stays valid
     }
-    if (!a->vt) {
-        return wc_libc_realloc(p, old_n, n, align);
-    }
+    assert(a->vt && "wc_alloc: no allocator");
     if (a->vt->realloc) {
         return a->vt->realloc(a->ctx, p, old_n, n, align);
     }
@@ -675,21 +631,21 @@ String String_from_cstr(const wc_allocator* a, const char* cstr) __attribute__((
 
 // Destroy the String's internal buffer
 // Safe on a zeroed/moved-from String.
-void String_destroy(String* str) __attribute__((nonnull(1)));
+void String_destroy(String* str) WC_NONULL(1);
 
 // Deep copy src → new String in allocator `a`.
 // dest is raw/uninitialized: never reads it before writing.
 String String_copy(const wc_allocator* a, const String* src) __attribute__((nonnull(1, 2), warn_unused_result));
 
 // Transfer ownership: dest gets src's contents, src is zeroed.
-void String_move(String* dest, String* src) __attribute__((nonnull(1, 2)));
+void String_move(String* dest, String* src) WC_NONULL(1, 2);
 
 // TODO: just use a StrView for this? can we for hashmap lookup?
 // Non-owning, READ-ONLY String over `len` existing bytes: no allocation.
 // For lookups only: a String-keyed map or set hashes and compares it like an
 // owning String with the same bytes. Never store it in a container.
 // Any mutation is fatal (WC_BORROWED cannot allocate); destroy is a no-op.
-__attribute__((nonnull(1))) static inline String String_borrow(const char* p, u64 len)
+WC_NONULL(1) static inline String String_borrow(const char* p, u64 len)
 {
     String s;
     memset(&s, 0, sizeof(s)); // stk[STR_SSO_SIZE - 1] == 0: heap mode
@@ -704,13 +660,13 @@ __attribute__((nonnull(1))) static inline String String_borrow(const char* p, u6
 //  Capacity
 
 // Ensure capacity >= new_cap (never shrinks).
-void String_reserve(String* str, u64 new_cap) __attribute__((nonnull(1)));
+void String_reserve(String* str, u64 new_cap) WC_NONULL(1);
 
 // Reserve capacity and fill new slots with c.
-void String_reserve_char(String* str, u64 new_cap, char c) __attribute__((nonnull(1)));
+void String_reserve_char(String* str, u64 new_cap, char c) WC_NONULL(1);
 
 // Shrink allocation to exactly fit current size.
-void String_shrink_to_fit(String* str) __attribute__((nonnull(1)));
+void String_shrink_to_fit(String* str) WC_NONULL(1);
 
 
 //  Conversion
@@ -719,38 +675,38 @@ void String_shrink_to_fit(String* str) __attribute__((nonnull(1)));
 // must free with wc_free(a, ptr, str->size + 1, 1).
 char* String_to_cstr(const wc_allocator* a, const String* str) __attribute__((nonnull(1, 2), warn_unused_result));
 
-void String_to_cstr_buf(const String* str, char* buff, u64 n) __attribute__((nonnull(1, 2)));
+void String_to_cstr_buf(const String* str, char* buff, u64 n) WC_NONULL(1, 2);
 
 // Return a raw pointer into the internal buffer (no NUL terminator).
-char* String_data_ptr(const String* str) __attribute__((nonnull(1)));
+char* String_data_ptr(const String* str) WC_NONULL(1);
 
 // Guarantee a '\0' sits one byte past the last real character, WITHOUT
 // touching str->size. Grows exactly like String_append_char would.
-void String_ensure_null_term(String* str) __attribute__((nonnull(1)));
+void String_ensure_null_term(String* str) WC_NONULL(1);
 
 
 //  Modification
 
-void String_append_char(String* str, char c) __attribute__((nonnull(1)));
-void String_append_cstr(String* str, const char* cstr) __attribute__((nonnull(1, 2)));
-void String_append_String(String* str, const String* other) __attribute__((nonnull(1, 2)));
+void String_append_char(String* str, char c) WC_NONULL(1);
+void String_append_cstr(String* str, const char* cstr) WC_NONULL(1, 2);
+void String_append_String(String* str, const String* other) WC_NONULL(1, 2);
 // Append other then destroy it (leaves other zeroed). When str is empty and
 // both share an allocator, str takes over other's buffer: no copy.
-void String_append_String_move(String* str, String* other) __attribute__((nonnull(1, 2)));
+void String_append_String_move(String* str, String* other) WC_NONULL(1, 2);
 
-char String_pop_char(String* str) __attribute__((nonnull(1)));
+char String_pop_char(String* str) WC_NONULL(1);
 
-void String_insert_char(String* str, u64 i, char c) __attribute__((nonnull(1)));
-void String_insert_cstr(String* str, u64 i, const char* cstr) __attribute__((nonnull(1, 3)));
-void String_insert_String(String* str, u64 i, const String* other) __attribute__((nonnull(1, 3)));
+void String_insert_char(String* str, u64 i, char c) WC_NONULL(1);
+void String_insert_cstr(String* str, u64 i, const char* cstr) WC_NONULL(1, 3);
+void String_insert_String(String* str, u64 i, const String* other) WC_NONULL(1, 3);
 
-void String_remove_char(String* str, u64 i) __attribute__((nonnull(1)));
+void String_remove_char(String* str, u64 i) WC_NONULL(1);
 
 // Remove chars in range [start, start + len)
-void String_remove_range(String* str, u64 start, u64 len) __attribute__((nonnull(1)));
+void String_remove_range(String* str, u64 start, u64 len) WC_NONULL(1);
 
 // Remove all chars (keep allocation).
-__attribute__((nonnull(1))) static inline void String_clear(String* str)
+WC_NONULL(1) static inline void String_clear(String* str)
 {
     str->size = 0;
 }
@@ -758,19 +714,19 @@ __attribute__((nonnull(1))) static inline void String_clear(String* str)
 
 //  Access
 
-__attribute__((nonnull(1))) static inline char String_char_at(const String* str, u64 i)
+WC_NONULL(1) static inline char String_char_at(const String* str, u64 i)
 {
     WC_ASSERT(i < str->size, "index out of bounds");
     return ((str->stk[STR_SSO_SIZE - 1] != '\0') ? str->stk : str->heap)[i];
 }
 
 // UNCHECKED: no bounds check, even in Debug. Caller guarantees i < size.
-__attribute__((nonnull(1))) static inline char String_char_at_unsafe(const String* str, u64 i)
+WC_NONULL(1) static inline char String_char_at_unsafe(const String* str, u64 i)
 {
     return ((str->stk[STR_SSO_SIZE - 1] != '\0') ? str->stk : str->heap)[i];
 }
 
-__attribute__((nonnull(1))) static inline void String_set_char(String* str, u64 i, char c)
+WC_NONULL(1) static inline void String_set_char(String* str, u64 i, char c)
 {
     WC_ASSERT(i < str->size, "index out of bounds");
     ((str->stk[STR_SSO_SIZE - 1] != '\0') ? str->stk : str->heap)[i] = c;
@@ -780,19 +736,19 @@ __attribute__((nonnull(1))) static inline void String_set_char(String* str, u64 
 //  Comparison
 
 // 0 == equal, <0 == str1 < str2, >0 == str1 > str2
-int String_compare(const String* s1, const String* s2) __attribute__((nonnull(1, 2)));
-__attribute__((nonnull(1, 2))) static inline bool String_equals(const String* s1, const String* s2)
+int String_compare(const String* s1, const String* s2) WC_NONULL(1, 2);
+WC_NONULL(1, 2) static inline bool String_equals(const String* s1, const String* s2)
 {
     return String_compare(s1, s2) == 0;
 }
-bool String_equals_cstr(const String* str, const char* cstr) __attribute__((nonnull(1, 2)));
+bool String_equals_cstr(const String* str, const char* cstr) WC_NONULL(1, 2);
 
 
 //  Search
 
 // Returns index, or WC_NOT_FOUND if not found.
-u64 String_find_char(const String* str, char c) __attribute__((nonnull(1)));
-u64 String_find_cstr(const String* str, const char* substr) __attribute__((nonnull(1, 2)));
+u64 String_find_char(const String* str, char c) WC_NONULL(1);
+u64 String_find_cstr(const String* str, const char* substr) WC_NONULL(1, 2);
 
 // Return a String (in allocator `a`) holding `length` chars starting at `start`.
 String String_substr(const wc_allocator* a, const String* str, u64 start, u64 length)
@@ -801,27 +757,27 @@ String String_substr(const wc_allocator* a, const String* str, u64 start, u64 le
 
 //  I/O
 
-void String_print(const String* str) __attribute__((nonnull(1)));
+void String_print(const String* str) WC_NONULL(1);
 
 
 //  Inline helpers
 
-__attribute__((nonnull(1))) static inline u64 String_len(const String* str)
+WC_NONULL(1) static inline u64 String_len(const String* str)
 {
     return str->size;
 }
 
-__attribute__((nonnull(1))) static inline u64 String_capacity(const String* str)
+WC_NONULL(1) static inline u64 String_capacity(const String* str)
 {
     return str->capacity;
 }
 
-__attribute__((nonnull(1))) static inline bool String_empty(const String* str)
+WC_NONULL(1) static inline bool String_empty(const String* str)
 {
     return str->size == 0;
 }
 
-__attribute__((nonnull(1))) static inline bool String_is_sso(const String* str)
+WC_NONULL(1) static inline bool String_is_sso(const String* str)
 {
     return str->stk[STR_SSO_SIZE - 1] != '\0';
 }
@@ -829,7 +785,7 @@ __attribute__((nonnull(1))) static inline bool String_is_sso(const String* str)
 // Read-only pointer into the buffer. Unlike String_data_ptr, this never
 // returns NULL for an empty String. Internally, it uses String_ensure_null_term(),
 // which places a '\0' right after the last valid char without touching the size of the string.
-__attribute__((nonnull(1))) static inline const char* String_cstr_view(String* str)
+WC_NONULL(1) static inline const char* String_cstr_view(String* str)
 {
     String_ensure_null_term(str);
     return String_is_sso(str) ? str->stk : str->heap;
@@ -854,67 +810,27 @@ typedef struct {
     u64         len;
 } StrView;
 
-StrView StrView_from_String(String* str) __attribute__((nonnull(1)));
+StrView StrView_from_String(String* str) WC_NONULL(1);
 
-StrView StrView_from_String_ex(String* str, u64 off, u64 len) __attribute__((nonnull(1)));
+StrView StrView_from_String_ex(String* str, u64 off, u64 len) WC_NONULL(1);
 
 // View over existing memory. No allocation; `cstr` must outlive the view.
-StrView StrView_from_cstr(const char* cstr, u64 clen) __attribute__((nonnull(1)));
+StrView StrView_from_cstr(const char* cstr, u64 clen) WC_NONULL(1);
 
 // Copy clen bytes of `cstr` into memory from `a` (plus a NUL terminator) and
 // view it. LIFETIME: the view borrows from `a`. With an arena it lives until
 // the arena is reset/destroyed; with any freeing allocator (libc, test
 // allocator) release it with StrView_free_copy using the same allocator.
-StrView StrView_copy_cstr(const wc_allocator* a, const char* cstr, u64 clen) __attribute__((nonnull(1, 2)));
+StrView StrView_copy_cstr(const wc_allocator* a, const char* cstr, u64 clen) WC_NONULL(1, 2);
 
 // Release a view returned by StrView_copy_cstr(a, ...). No-op on arenas.
-void StrView_free_copy(const wc_allocator* a, StrView sv) __attribute__((nonnull(1)));
+void StrView_free_copy(const wc_allocator* a, StrView sv) WC_NONULL(1);
 
 void StrView_print(StrView sv);
 
 
-// TODO: use chain arena for this
+// TODO: use chain arena for a string store
 
-#define StringStore_NODE_SIZE 1015 // + 1 + 8 = 1024
-
-
-typedef struct StringStore_node {
-    union {
-        char buf[StringStore_NODE_SIZE + 1]; // last byte 0 -> overflow `heap` is active
-        struct {
-            char* heap;     // overflow buffer, allocated from the store's allocator
-            u64   heap_len; // its size, needed to free it through wc_free
-        };
-    };
-    struct StringStore_node* next;
-} StringStore_node;
-
-// append-only, immutable String storage with a chain Arena-like backing
-// you get StrViews over the immutable Strings
-// Nodes and overflow buffers come from `alloc`, which the store keeps (32 bytes).
-// Views stay valid until StringStore_destroy. Zeroed store is dead: only
-// destroy or re-create it; StringStore_cstr on it is an unconditional FATAL.
-typedef struct {
-    StringStore_node*   tail;
-    StringStore_node*   head;
-    const wc_allocator* alloc;
-    u32                 tail_off; // how much of the tail node is used
-    u32                 num;      // total number of nodes
-} StringStore;
-
-_Static_assert(sizeof(StringStore) == 32, "StringStore layout: 2 ptrs + allocator ptr + 2 u32");
-
-StringStore StringStore_create(const wc_allocator* a) __attribute__((nonnull(1), warn_unused_result));
-// Frees every node through ss->alloc and zeroes the struct. Safe on zeroed stores.
-void StringStore_destroy(StringStore* ss) __attribute__((nonnull(1)));
-
-StrView StringStore_cstr(StringStore* ss, const char* cstr, u64 clen) __attribute__((nonnull(1, 2)));
-
-// Store sv1 followed by sv2 as one new string. Either view may point into
-// this same store: existing data never moves.
-StrView StringStore_append(StringStore* ss, StrView sv1, StrView sv2) __attribute__((nonnull(1)));
-// Store sv followed by clen bytes of cstr as one new string.
-StrView StringStore_append_cstr(StringStore* ss, StrView sv, const char* cstr, u64 clen) __attribute__((nonnull(1, 3)));
 
 
 #endif // WC_VIEWS_H
@@ -928,14 +844,57 @@ StrView StringStore_append_cstr(StringStore* ss, StrView sv, const char* cstr, u
 
 #include <stddef.h>
 #include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
 #include <sys/mman.h>
 #include <unistd.h>
 
 
 
-/* wc_libc: the only allocator with vt == NULL */
+/* the global libc allocator */
 
-const wc_allocator wc_libc = {.vt = NULL, .ctx = NULL};
+static inline void* wc_libc_alloc(void* ctx, size_t n, size_t align)
+{
+    (void)ctx;
+    if (align <= WC_MAX_ALIGN) {
+        return malloc(n); // malloc promises it's result is aligned if for max_align_t (16 bytes)
+    }
+
+    // if more alignment is needed, we need aligned alloc (unix)
+    size_t rounded = (n + align - 1) & ~(align - 1); // aligned_alloc: size % align == 0
+    if (rounded < n) {
+        return NULL; // overflow
+    }
+    return aligned_alloc(align, rounded);
+}
+
+static inline void wc_libc_free(void* ctx, void* p, size_t size, size_t align)
+{
+    (void)ctx;
+    (void)size;
+    (void)align;
+    free(p);
+}
+
+static inline void* wc_libc_realloc(void* ctx, void* p, size_t old_n, size_t n, size_t align)
+{
+    if (align <= WC_MAX_ALIGN) {
+        return realloc(p, n); // realloc garentees 16-byte alinment, like malloc
+    }
+
+    // libc realloc doesn't preserve alignment above max_align_t: alloc, copy, free
+    void* q = wc_libc_alloc(ctx, n, align);
+    if (!q) {
+        return NULL; // p left untouched
+    }
+    memcpy(q, p, old_n < n ? old_n : n);
+    wc_libc_free(ctx, p, old_n, align);
+    return q;
+}
+
+static const wc_alloc_vtable wc_libc_vt = {.alloc = wc_libc_alloc, .realloc = wc_libc_realloc, .free = wc_libc_free};
+const wc_allocator           wc_libc    = {.vt = &wc_libc_vt, .ctx = NULL};
+
 
 /* wc_borrowed: non-owning allocator */
 
@@ -944,7 +903,7 @@ static void* wc_borrowed_alloc(void* ctx, size_t size, size_t align)
     (void)ctx;
     (void)size;
     (void)align;
-    return NULL; // can't allocate with a borrowed object's allocator
+    return NULL; // can't allocate with a borrowed object's allocator. FAIL
 }
 
 static void wc_borrowed_free(void* ctx, void* p, size_t size, size_t align)
@@ -1007,14 +966,14 @@ static void* wc_mmap_alloc(void* ctx, size_t size, size_t align)
     }
     const size_t len = (size + page - 1) & ~(page - 1); // what the caller keeps
     const size_t big = len + align;
-    uint8_t*          raw = mmap(NULL, big, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    uint8_t*     raw = mmap(NULL, big, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (raw == MAP_FAILED) {
         return NULL;
     }
 
-    uint8_t*    aligned = (uint8_t*)(((uintptr_t)raw + align - 1) & ~((uintptr_t)align - 1));
-    size_t head    = (size_t)(aligned - raw);
-    size_t tail    = big - head - len;
+    uint8_t* aligned = (uint8_t*)(((uintptr_t)raw + align - 1) & ~((uintptr_t)align - 1));
+    size_t   head    = (size_t)(aligned - raw);
+    size_t   tail    = big - head - len;
     if (head) {
         munmap(raw, head);
     }
@@ -1717,122 +1676,6 @@ void StrView_print(StrView sv)
     }
 }
 
-
-
-#define TAIL_BUF_OFF(ss) ((ss)->tail->buf + (ss)->tail_off)
-
-
-#define NODE_ALIGN alignof(StringStore_node)
-
-static StringStore_node* new_node(const wc_allocator* a)
-{
-    StringStore_node* node = wc_alloc(a, sizeof(StringStore_node), NODE_ALIGN);
-    FATAL_IF(!node, "StringStore: node allocation failed");
-    node->next                       = NULL; // must terminate the chain for StringStore_destroy
-    node->buf[StringStore_NODE_SIZE] = 1;    // heap inactive
-    return node;
-}
-
-
-StringStore StringStore_create(const wc_allocator* a)
-{
-    StringStore_node* node = new_node(a);
-    return (StringStore){.tail = node, .head = node, .alloc = a, .tail_off = 0, .num = 1};
-}
-
-
-static void StringStore_destroy_node(const wc_allocator* a, StringStore_node* node)
-{
-    if (node->buf[StringStore_NODE_SIZE] == 0) {
-        wc_free(a, node->heap, node->heap_len, 1);
-    }
-    wc_free(a, node, sizeof(StringStore_node), NODE_ALIGN);
-}
-
-
-void StringStore_destroy(StringStore* ss)
-{
-    const wc_allocator* a    = ss->alloc; // read before zeroing
-    StringStore_node*   curr = ss->head;
-    while (curr) {
-        StringStore_node* next = curr->next;
-        StringStore_destroy_node(a, curr);
-        curr = next;
-    }
-    memset(ss, 0, sizeof(*ss));
-}
-
-static inline void add_node(StringStore* ss)
-{
-    StringStore_node* node = new_node(ss->alloc);
-    ss->tail->next         = node;
-    ss->tail               = node;
-    ss->tail_off           = 0;
-    ss->num++;
-}
-
-
-// Reserve `len` contiguous bytes in the store. Never moves existing data, so
-// callers may copy from views that point into this same store.
-static char* store_reserve(StringStore* ss, u64 len)
-{
-    FATAL_IF(!ss->tail, "StringStore used after destroy (zeroed store)");
-
-    // Strings larger than a whole node go into a dedicated overflow node that
-    // owns its buffer via the `heap` union member (from ss->alloc, node is head).
-    // NOTE: views of these are NOT NUL-terminated; use (ptr, len).
-    if (len > StringStore_NODE_SIZE) {
-        StringStore_node* node = new_node(ss->alloc);
-
-        node->heap = (char*)wc_alloc(ss->alloc, len, 1);
-        FATAL_IF(!node->heap, "StringStore: overflow allocation of %llu bytes failed", (unsigned long long)len);
-        node->heap_len                   = len;
-        node->buf[StringStore_NODE_SIZE] = 0; // `heap` is live; StringStore_destroy must free it
-
-        node->next = ss->head; // chain continues from the overflow node
-        ss->head   = node;
-        ss->num++;
-
-        // Fresh empty tail so the old tail's data stays intact, its remaining
-        // free space is abandoned (append-only store, rare path, acceptable)
-        add_node(ss);
-        return node->heap;
-    }
-
-    if (StringStore_NODE_SIZE - ss->tail_off < len) {
-        add_node(ss); // doesn't fit in the current tail
-    }
-
-    char* ptr = TAIL_BUF_OFF(ss);
-    ss->tail_off += (u32)len;
-    return ptr;
-}
-
-
-StrView StringStore_cstr(StringStore* ss, const char* cstr, u64 clen)
-{
-    char* p = store_reserve(ss, clen);
-    memcpy(p, cstr, clen);
-    return (StrView){.ptr = p, .len = clen};
-}
-
-
-StrView StringStore_append(StringStore* ss, StrView sv1, StrView sv2)
-{
-    char* p = store_reserve(ss, sv1.len + sv2.len);
-    memcpy(p, sv1.ptr, sv1.len);
-    memcpy(p + sv1.len, sv2.ptr, sv2.len);
-    return (StrView){.ptr = p, .len = sv1.len + sv2.len};
-}
-
-
-StrView StringStore_append_cstr(StringStore* ss, StrView sv, const char* cstr, u64 clen)
-{
-    return StringStore_append(ss, sv, (StrView){.ptr = cstr, .len = clen});
-}
-
-#undef TAIL_BUF_OFF
-#undef NODE_ALIGN
 #endif /* WC_VIEWS_IMPL */
 
 #endif /* WC_IMPLEMENTATION */

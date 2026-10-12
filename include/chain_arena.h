@@ -43,14 +43,14 @@ void ChainArena_destroy(ChainArena* ca) WC_NONULL(1);
 
 // ChainArena_alloc aligns to WC_MAX_ALIGN (like malloc)
 // return NULL only if the backing allocator can't supply a block.
-[[nodiscard]] void* ChainArena_alloc(ChainArena* ca, u64 size) WC_NONULL(1);
+WC_NODISCARD void* ChainArena_alloc(ChainArena* ca, u64 size) WC_NONULL(1);
 
 // ChainArena_alloc_aligned aligns the ADDRESS to `align` (a power of two), including alignments larger than a page
 // return NULL only if the backing allocator can't supply a block.
-[[nodiscard]] void* ChainArena_alloc_aligned(ChainArena* ca, u64 size, u64 align) WC_NONULL(1);
+WC_NODISCARD void* ChainArena_alloc_aligned(ChainArena* ca, u64 size, u64 align) WC_NONULL(1);
 
 // The allocator to give to containers. Points into the arena, so it lives as long as the arena.
-[[nodiscard]] static inline const wc_allocator* ChainArena_allocator(ChainArena* ca) WC_NONULL(1);
+WC_NODISCARD static inline const wc_allocator* ChainArena_allocator(ChainArena* ca) WC_NONULL(1);
 
 static inline const wc_allocator* ChainArena_allocator(ChainArena* ca)
 {
@@ -67,7 +67,7 @@ typedef struct {
     u64                mark; // the offset of node n;
 } ChainArenaScratch;
 
-[[nodiscard]] static inline ChainArenaScratch ChainArenaScratch_create(ChainArena* ca)
+WC_NODISCARD static inline ChainArenaScratch ChainArenaScratch_create(ChainArena* ca)
 {
     return (ChainArenaScratch){
         .chain_arena = ca,

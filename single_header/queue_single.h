@@ -15,6 +15,7 @@
 
 #include <assert.h>
 #include <stdalign.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -23,46 +24,6 @@
 #define WC_MAX_ALIGN alignof(max_align_t)
 
 // TODO: maybe we shouldn't implicitly default to libc. if no valid allocator is provided, we should fail
-
-/* libc fallbacks */
-
-static inline void* wc_libc_alloc(size_t n, size_t align)
-{
-    if (align <= WC_MAX_ALIGN) {
-        return malloc(n); // malloc promises it's result is aligned if for max_align_t (16 bytes)
-    }
-
-    // if more alignment is needed, we need aligned alloc (unix)
-    size_t rounded = (n + align - 1) & ~(align - 1); // aligned_alloc: size % align == 0
-    if (rounded < n) {
-        return NULL; // overflow
-    }
-    return aligned_alloc(align, rounded);
-}
-
-static inline void wc_libc_free(void* p, size_t align)
-{
-    (void)align;
-    free(p);
-}
-
-static inline void* wc_libc_realloc(void* p, size_t old_n, size_t n, size_t align)
-{
-    if (align <= WC_MAX_ALIGN) {
-        return realloc(p, n); // realloc garentees 16-byte alinment, like malloc
-    }
-
-    // libc realloc doesn't preserve alignment above max_align_t: alloc, copy, free
-    void* q = wc_libc_alloc(n, align);
-    if (!q) {
-        return NULL; // p left untouched
-    }
-    memcpy(q, p, old_n < n ? old_n : n);
-    wc_libc_free(p, align);
-    return q;
-}
-
-
 
 /*
  * ALLOCATOR API
@@ -100,7 +61,6 @@ typedef struct {
     void*                  ctx; // Arena*, ChainArena*, test allocator, ...
 } wc_allocator;
 
-_Static_assert(sizeof(wc_allocator) == 16, "wc_allocator must stay 16 bytes");
 
 // The libc allocator. Defined once in wc_allocator.c.
 extern const wc_allocator wc_libc;
@@ -115,12 +75,12 @@ extern const wc_allocator wc_mmap;
 #define WC_MMAP (&wc_mmap)
 
 
-static inline __attribute__((nonnull(1))) int wc_is_libc(const wc_allocator* a)
+static inline __attribute__((nonnull(1))) bool wc_is_libc(const wc_allocator* a)
 {
     return a->vt == NULL;
 }
 
-// Same backend and same context: memory from one may be freed through the other.
+// Same backend and same context: memory from one may be freed through the other
 static inline __attribute__((nonnull(1, 2))) int wc_same(const wc_allocator* a, const wc_allocator* b)
 {
     return a == b || (a->vt == b->vt && a->ctx == b->ctx);
@@ -135,7 +95,8 @@ static inline __attribute__((nonnull(1))) void* wc_alloc(const wc_allocator* a, 
     if (n == 0 || n > (size_t)PTRDIFF_MAX) { // any valid allocation will be less than PTRDIFF_MAX
         return NULL;
     }
-    return a->vt ? a->vt->alloc(a->ctx, n, align) : wc_libc_alloc(n, align);
+    assert(a->vt && a->vt->alloc && "wc_alloc: no allocator"); // an allocator really only needs the alloc function
+    return a->vt->alloc(a->ctx, n, align);
 }
 
 static inline __attribute__((nonnull(1))) void wc_free(const wc_allocator* a, void* p, size_t n, size_t align)
@@ -144,10 +105,7 @@ static inline __attribute__((nonnull(1))) void wc_free(const wc_allocator* a, vo
     if (!p) {
         return;
     }
-    if (!a->vt) {
-        wc_libc_free(p, align);
-        return;
-    }
+    assert(a->vt && "wc_alloc: no allocator");
     if (a->vt->free) {
         a->vt->free(a->ctx, p, n, align);
     }
@@ -167,9 +125,7 @@ static inline __attribute__((nonnull(1))) void* wc_realloc(const wc_allocator* a
     if (n > (size_t)PTRDIFF_MAX) {
         return NULL; // overflowed size: fail, p stays valid
     }
-    if (!a->vt) {
-        return wc_libc_realloc(p, old_n, n, align);
-    }
+    assert(a->vt && "wc_alloc: no allocator");
     if (a->vt->realloc) {
         return a->vt->realloc(a->ctx, p, old_n, n, align);
     }
@@ -680,15 +636,11 @@ static inline void wc_perror(const char* prefix)
 typedef struct {
     u8* data; // pointer to generic data
 
-    // Pointer to shared type-ops vtable (or NULL for POD types)
-    const wc_container_ops* ops;
+    const wc_container_ops* ops;   // Pointer to shared type-ops vtable (or NULL for POD types)
+    const wc_allocator*     alloc; // every data allocation goes through this
 
-    const wc_allocator* alloc; // every data allocation goes through this
-
-    u64 size;     // Number of elements currently in vector
-    u64 capacity; // Total allocated capacity (in elements)
-
-
+    u64 size;      // Number of elements currently in vector
+    u64 capacity;  // Total allocated capacity (in elements)
     u32 data_size; // Size of each element in bytes (0 = zero state)
 
     // Cache: 1 if ops==NULL (POD fast path)
@@ -712,36 +664,35 @@ _Static_assert(sizeof(GenVec) == 48, "GenVec layout drifted from expected 48 byt
 
 // Vector with capacity n, storage from `alloc`.
 // ops: pointer to a shared wc_container_ops vtable, or NULL for POD types.
-GenVec GenVec_create(const wc_allocator* alloc, u64 n, u32 data_size, const wc_container_ops* ops)
-    __attribute__((nonnull(1), warn_unused_result));
+WC_NODISCARD GenVec GenVec_create(const wc_allocator* alloc, u64 n, u32 data_size, const wc_container_ops* ops)
+    WC_NONULL(1);
 
 // Vector of size n with every element a copy of val.
-GenVec GenVec_create_val(const wc_allocator* alloc, u64 n, const void* val, u32 data_size, const wc_container_ops* ops)
-    __attribute__((nonnull(1, 3), warn_unused_result));
+WC_NODISCARD GenVec GenVec_create_val(const wc_allocator* alloc, u64 n, const void* val, u32 data_size,
+                                      const wc_container_ops* ops) WC_NONULL(1, 3);
 
 // Vector over caller-owned storage of n elements (size 0, capacity n).
 // Uses WC_BORROWED: it can never grow (growth is a FATAL) and destroy frees nothing.
-GenVec GenVec_create_buf(void* buf, u64 n, u32 data_size, const wc_container_ops* ops)
-    __attribute__((nonnull(1), warn_unused_result));
+WC_NODISCARD GenVec GenVec_create_buf(void* buf, u64 n, u32 data_size, const wc_container_ops* ops) WC_NONULL(1);
 
 // Delete every element, free the storage through the stored allocator and
 // zero the struct. Never frees the struct itself. Safe on a zeroed vector.
-void GenVec_destroy(GenVec* vec) __attribute__((nonnull(1)));
+void GenVec_destroy(GenVec* vec) WC_NONULL(1);
 
 // Remove all elements (calls del_fn on each), keep capacity.
-void GenVec_clear(GenVec* vec) __attribute__((nonnull(1)));
+void GenVec_clear(GenVec* vec) WC_NONULL(1);
 
 // Remove all elements and free the storage; capacity 0, allocator kept.
-void GenVec_reset(GenVec* vec) __attribute__((nonnull(1)));
+void GenVec_reset(GenVec* vec) WC_NONULL(1);
 
 // Ensure vector has at least new_capacity space (never shrinks).
-void GenVec_reserve(GenVec* vec, u64 new_capacity) __attribute__((nonnull(1)));
+void GenVec_reserve(GenVec* vec, u64 new_capacity) WC_NONULL(1);
 
 // Grow to new_capacity and fill new slots with val.
-void GenVec_reserve_val(GenVec* vec, u64 new_capacity, const void* val) __attribute__((nonnull(1, 3)));
+void GenVec_reserve_val(GenVec* vec, u64 new_capacity, const void* val) WC_NONULL(1, 3);
 
 // Shrink vector to its size (reallocates).
-void GenVec_shrink_to_fit(GenVec* vec) __attribute__((nonnull(1)));
+void GenVec_shrink_to_fit(GenVec* vec) WC_NONULL(1);
 
 
 
@@ -749,119 +700,118 @@ void GenVec_shrink_to_fit(GenVec* vec) __attribute__((nonnull(1)));
 // ===========================
 
 // Append element to end (makes deep copy if copy_fn provided).
-void GenVec_push(GenVec* vec, const void* data) __attribute__((nonnull(1, 2)));
+void GenVec_push(GenVec* vec, const void* data) WC_NONULL(1, 2);
 
 // Append element to end, transfer ownership: *data is moved in and zeroed.
-void GenVec_push_move(GenVec* vec, void* data) __attribute__((nonnull(1, 2)));
+void GenVec_push_move(GenVec* vec, void* data) WC_NONULL(1, 2);
 
 // Remove the last element. popped != NULL: the element is MOVED into it and the
 // caller owns it. popped == NULL: the element is deleted.
-void GenVec_pop(GenVec* vec, void* popped) __attribute__((nonnull(1)));
+void GenVec_pop(GenVec* vec, void* popped) WC_NONULL(1);
 
 // O(1) removal from the middle when order doesn't matter: element i is moved
 // into out (or deleted if out == NULL), the last element takes its place.
-void GenVec_swap_pop(GenVec* vec, u64 i, void* out) __attribute__((nonnull(1)));
+void GenVec_swap_pop(GenVec* vec, u64 i, void* out) WC_NONULL(1);
 
 // Swap elements i and j in place. Never allocates.
-void GenVec_swap(GenVec* vec, u64 i, u64 j) __attribute__((nonnull(1)));
+void GenVec_swap(GenVec* vec, u64 i, u64 j) WC_NONULL(1);
 
 // Deep COPY of element i into out (the vector keeps its own).
-void GenVec_get(const GenVec* vec, u64 i, void* out) __attribute__((nonnull(1, 3)));
+void GenVec_get(const GenVec* vec, u64 i, void* out) WC_NONULL(1, 3);
 
 // Get pointer to element at index i.
 // Note: Pointer invalidated by push/insert/remove operations.
-const void* GenVec_get_ptr(const GenVec* vec, u64 i) __attribute__((nonnull(1)));
+WC_NODISCARD const void* GenVec_get_ptr(const GenVec* vec, u64 i) WC_NONULL(1);
 
 // Get MUTABLE pointer to element at index i.
 // Note: Pointer invalidated by push/insert/remove operations.
-void* GenVec_get_ptr_mut(GenVec* vec, u64 i) __attribute__((nonnull(1)));
+WC_NODISCARD void* GenVec_get_ptr_mut(GenVec* vec, u64 i) WC_NONULL(1);
 
 // UNCHECKED variants: same as above but with the bounds WC_ASSERT elided, even in
 // Debug. Preconditions are NOT validated: caller must guarantee i < vec->size.
 // Use on hot paths where the check is provably redundant (macros, internal loops).
-static inline __attribute__((nonnull(1))) const void* GenVec_get_ptr_unsafe(const GenVec* vec, u64 i)
+WC_NODISCARD static inline WC_NONULL(1) const void* GenVec_get_ptr_unsafe(const GenVec* vec, u64 i)
 {
     return (vec->data + (i * vec->data_size));
 }
 
-static inline __attribute__((nonnull(1))) void* GenVec_get_ptr_mut_unsafe(GenVec* vec, u64 i)
+WC_NODISCARD static inline WC_NONULL(1) void* GenVec_get_ptr_mut_unsafe(GenVec* vec, u64 i)
 {
     return (vec->data + (i * vec->data_size));
 }
 
 // Replace element at index i with data (cleans up old element).
-void GenVec_replace(GenVec* vec, u64 i, const void* data) __attribute__((nonnull(1, 3)));
+void GenVec_replace(GenVec* vec, u64 i, const void* data) WC_NONULL(1, 3);
 
 // Replace element at index i, transfer ownership (cleans up old element, zeroes *data).
-void GenVec_replace_move(GenVec* vec, u64 i, void* data) __attribute__((nonnull(1, 3)));
+void GenVec_replace_move(GenVec* vec, u64 i, void* data) WC_NONULL(1, 3);
 
 // Insert element at index i, shifting elements right.
-void GenVec_insert(GenVec* vec, u64 i, const void* data) __attribute__((nonnull(1, 3)));
+void GenVec_insert(GenVec* vec, u64 i, const void* data) WC_NONULL(1, 3);
 
 // Insert element at index i with ownership transfer (zeroes *data), shifting elements right.
-void GenVec_insert_move(GenVec* vec, u64 i, void* data) __attribute__((nonnull(1, 3)));
+void GenVec_insert_move(GenVec* vec, u64 i, void* data) WC_NONULL(1, 3);
 
 // Insert num_data elements from data array into vec at index i.
-void GenVec_insert_multi(GenVec* vec, u64 i, const void* data, u64 num_data) __attribute__((nonnull(1, 3)));
+void GenVec_insert_multi(GenVec* vec, u64 i, const void* data, u64 num_data) WC_NONULL(1, 3);
 
 // Insert (move) num_data contiguous elements from data at index i; the source range is zeroed.
-void GenVec_insert_multi_move(GenVec* vec, u64 i, void* data, u64 num_data) __attribute__((nonnull(1, 3)));
+void GenVec_insert_multi_move(GenVec* vec, u64 i, void* data, u64 num_data) WC_NONULL(1, 3);
 
 // Remove element at index i, shift elements left. out != NULL: the element is
 // MOVED into it. out == NULL: the element is deleted.
-void GenVec_remove(GenVec* vec, u64 i, void* out) __attribute__((nonnull(1)));
+void GenVec_remove(GenVec* vec, u64 i, void* out) WC_NONULL(1);
 
 // Remove elements in range [start, start + len)
-void GenVec_remove_range(GenVec* vec, u64 start, u64 len) __attribute__((nonnull(1)));
+void GenVec_remove_range(GenVec* vec, u64 start, u64 len) WC_NONULL(1);
 
 // Get pointer to first element.
-const void* GenVec_front(const GenVec* vec) __attribute__((nonnull(1)));
+WC_NODISCARD const void* GenVec_front(const GenVec* vec) WC_NONULL(1);
 
 // Get pointer to last element.
-const void* GenVec_back(const GenVec* vec) __attribute__((nonnull(1)));
+WC_NODISCARD const void* GenVec_back(const GenVec* vec) WC_NONULL(1);
 
 // Search
 // ===========================
 
 // if cmp_fn = NULL, then use memcmp
-u64 GenVec_find(const GenVec* vec, void* elm, wc_compare_fn cmp_fn) __attribute__((nonnull(1, 2)));
+WC_NODISCARD u64 GenVec_find(const GenVec* vec, void* elm, wc_compare_fn cmp_fn) WC_NONULL(1, 2);
 
 // New vector (storage from `alloc`) holding deep copies of [start, start + len).
-GenVec GenVec_subarr(const GenVec* vec, const wc_allocator* alloc, u64 start, u64 len)
-    __attribute__((nonnull(1, 2), warn_unused_result));
+WC_NODISCARD GenVec GenVec_subarr(const GenVec* vec, const wc_allocator* alloc, u64 start, u64 len) WC_NONULL(1, 2);
 
 
 // Utility
 // ===========================
 
 // Print all elements using provided print function.
-void GenVec_print(const GenVec* vec, wc_print_fn fn) __attribute__((nonnull(1, 2)));
+void GenVec_print(const GenVec* vec, wc_print_fn fn) WC_NONULL(1, 2);
 
 // Deep copy of src whose storage (and every element's owned resources, via
 // copy_fn) comes from `alloc`. Never inherits src's allocator (A14).
 // Capacity is max(size, GENVEC_MIN_CAPACITY), or 0 for an empty src: a copy
 // does not carry the source's slack (F5).
-GenVec GenVec_copy(const wc_allocator* alloc, const GenVec* src) __attribute__((nonnull(1, 2), warn_unused_result));
+WC_NODISCARD GenVec GenVec_copy(const wc_allocator* alloc, const GenVec* src) WC_NONULL(1, 2);
 
 // Transfer everything from src to dest; src is left zeroed.
 // dest must be uninitialised or destroyed (its old contents are overwritten, not freed).
-void GenVec_move(GenVec* dest, GenVec* src) __attribute__((nonnull(1, 2)));
+void GenVec_move(GenVec* dest, GenVec* src) WC_NONULL(1, 2);
 
 
 // Get number of elements in vector.
-static inline __attribute__((nonnull(1))) u64 GenVec_size(const GenVec* vec)
+WC_NODISCARD static inline WC_NONULL(1) u64 GenVec_size(const GenVec* vec)
 {
     return vec->size;
 }
 
 // Get total capacity of vector.
-static inline __attribute__((nonnull(1))) u64 GenVec_capacity(const GenVec* vec)
+WC_NODISCARD static inline WC_NONULL(1) u64 GenVec_capacity(const GenVec* vec)
 {
     return vec->capacity;
 }
 
 // Check if vector is empty
-static inline __attribute__((nonnull(1))) bool GenVec_empty(const GenVec* vec)
+WC_NODISCARD static inline WC_NONULL(1) bool GenVec_empty(const GenVec* vec)
 {
     return vec->size == 0;
 }
@@ -911,42 +861,42 @@ Queue Queue_create(const wc_allocator* a, u64 n, u32 data_size, const wc_contain
 Queue Queue_create_val(const wc_allocator* a, u64 n, const void* val, u32 data_size, const wc_container_ops* ops)
     __attribute__((nonnull(1, 3), warn_unused_result));
 
-void Queue_destroy(Queue* q) __attribute__((nonnull(1)));
+void Queue_destroy(Queue* q) WC_NONULL(1);
 // Delete every element, keep the storage.
-void Queue_clear(Queue* q) __attribute__((nonnull(1)));
+void Queue_clear(Queue* q) WC_NONULL(1);
 // Delete every element and free the storage; the allocator is kept.
-void Queue_reset(Queue* q) __attribute__((nonnull(1)));
+void Queue_reset(Queue* q) WC_NONULL(1);
 // Shrink storage to max(size, QUEUE_MIN_CAP). Only ever on request (F2).
-void Queue_shrink_to_fit(Queue* q) __attribute__((nonnull(1)));
+void Queue_shrink_to_fit(Queue* q) WC_NONULL(1);
 
 // Deep copy into `a`, compacted: head at 0, capacity max(size, QUEUE_MIN_CAP) (F5).
 Queue Queue_copy(const wc_allocator* a, const Queue* src) __attribute__((nonnull(1, 2), warn_unused_result));
-void  Queue_move(Queue* dest, Queue* src) __attribute__((nonnull(1, 2)));
+void  Queue_move(Queue* dest, Queue* src) WC_NONULL(1, 2);
 
-void Queue_push(Queue* q, const void* x) __attribute__((nonnull(1, 2)));      // deep copy of *x
-void Queue_push_move(Queue* q, void* x) __attribute__((nonnull(1, 2)));       // *x moved in and zeroed
-void Queue_pop(Queue* q, void* out) __attribute__((nonnull(1)));              // front, MOVED into out
-void Queue_pop_back(Queue* q, void* out) __attribute__((nonnull(1)));         // back, MOVED into out
-void Queue_peek(const Queue* q, void* peek) __attribute__((nonnull(1, 2)));   // deep COPY of the front
-const void* Queue_peek_ptr(const Queue* q) __attribute__((nonnull(1)));
+void Queue_push(Queue* q, const void* x) WC_NONULL(1, 2);      // deep copy of *x
+void Queue_push_move(Queue* q, void* x) WC_NONULL(1, 2);       // *x moved in and zeroed
+void Queue_pop(Queue* q, void* out) WC_NONULL(1);              // front, MOVED into out
+void Queue_pop_back(Queue* q, void* out) WC_NONULL(1);         // back, MOVED into out
+void Queue_peek(const Queue* q, void* peek) WC_NONULL(1, 2);   // deep COPY of the front
+const void* Queue_peek_ptr(const Queue* q) WC_NONULL(1);
 
 // Swap the elements at LOGICAL positions i and j. Never allocates.
-void Queue_swap(Queue* q, u64 i, u64 j) __attribute__((nonnull(1)));
+void Queue_swap(Queue* q, u64 i, u64 j) WC_NONULL(1);
 
-void Queue_print(const Queue* q, wc_print_fn print_fn) __attribute__((nonnull(1, 2)));
+void Queue_print(const Queue* q, wc_print_fn print_fn) WC_NONULL(1, 2);
 
 
-static inline __attribute__((nonnull(1))) u64 Queue_size(const Queue* q)
+static inline WC_NONULL(1) u64 Queue_size(const Queue* q)
 {
     return q->size;
 }
 
-static inline __attribute__((nonnull(1))) bool Queue_empty(const Queue* q)
+static inline WC_NONULL(1) bool Queue_empty(const Queue* q)
 {
     return q->size == 0;
 }
 
-static inline __attribute__((nonnull(1))) u64 Queue_capacity(const Queue* q)
+static inline WC_NONULL(1) u64 Queue_capacity(const Queue* q)
 {
     return q->arr.capacity;
 }
@@ -956,14 +906,14 @@ static inline __attribute__((nonnull(1))) u64 Queue_capacity(const Queue* q)
 
 // Physical slot of logical position idx. head < cap and idx < cap, so the sum
 // is below 2 * cap: one conditional subtract instead of a division.
-static inline __attribute__((nonnull(1))) u64 Queue_slot(const Queue* q, u64 idx)
+static inline WC_NONULL(1) u64 Queue_slot(const Queue* q, u64 idx)
 {
     u64 i = q->head + idx;
     return i >= q->arr.capacity ? i - q->arr.capacity : i;
 }
 
 // Pointer to the element at LOGICAL position idx (0 = front).
-static inline __attribute__((nonnull(1))) const void* Queue_get(const Queue* q, u64 idx)
+static inline WC_NONULL(1) const void* Queue_get(const Queue* q, u64 idx)
 {
     WC_ASSERT(idx < q->size, "Queue_get: idx out of bounds");
     return GenVec_get_ptr_unsafe(&q->arr, Queue_slot(q, idx));
@@ -981,14 +931,57 @@ static inline __attribute__((nonnull(1))) const void* Queue_get(const Queue* q, 
 
 #include <stddef.h>
 #include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
 #include <sys/mman.h>
 #include <unistd.h>
 
 
 
-/* wc_libc: the only allocator with vt == NULL */
+/* the global libc allocator */
 
-const wc_allocator wc_libc = {.vt = NULL, .ctx = NULL};
+static inline void* wc_libc_alloc(void* ctx, size_t n, size_t align)
+{
+    (void)ctx;
+    if (align <= WC_MAX_ALIGN) {
+        return malloc(n); // malloc promises it's result is aligned if for max_align_t (16 bytes)
+    }
+
+    // if more alignment is needed, we need aligned alloc (unix)
+    size_t rounded = (n + align - 1) & ~(align - 1); // aligned_alloc: size % align == 0
+    if (rounded < n) {
+        return NULL; // overflow
+    }
+    return aligned_alloc(align, rounded);
+}
+
+static inline void wc_libc_free(void* ctx, void* p, size_t size, size_t align)
+{
+    (void)ctx;
+    (void)size;
+    (void)align;
+    free(p);
+}
+
+static inline void* wc_libc_realloc(void* ctx, void* p, size_t old_n, size_t n, size_t align)
+{
+    if (align <= WC_MAX_ALIGN) {
+        return realloc(p, n); // realloc garentees 16-byte alinment, like malloc
+    }
+
+    // libc realloc doesn't preserve alignment above max_align_t: alloc, copy, free
+    void* q = wc_libc_alloc(ctx, n, align);
+    if (!q) {
+        return NULL; // p left untouched
+    }
+    memcpy(q, p, old_n < n ? old_n : n);
+    wc_libc_free(ctx, p, old_n, align);
+    return q;
+}
+
+static const wc_alloc_vtable wc_libc_vt = {.alloc = wc_libc_alloc, .realloc = wc_libc_realloc, .free = wc_libc_free};
+const wc_allocator           wc_libc    = {.vt = &wc_libc_vt, .ctx = NULL};
+
 
 /* wc_borrowed: non-owning allocator */
 
@@ -997,7 +990,7 @@ static void* wc_borrowed_alloc(void* ctx, size_t size, size_t align)
     (void)ctx;
     (void)size;
     (void)align;
-    return NULL; // can't allocate with a borrowed object's allocator
+    return NULL; // can't allocate with a borrowed object's allocator. FAIL
 }
 
 static void wc_borrowed_free(void* ctx, void* p, size_t size, size_t align)
@@ -1060,14 +1053,14 @@ static void* wc_mmap_alloc(void* ctx, size_t size, size_t align)
     }
     const size_t len = (size + page - 1) & ~(page - 1); // what the caller keeps
     const size_t big = len + align;
-    uint8_t*          raw = mmap(NULL, big, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    uint8_t*     raw = mmap(NULL, big, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (raw == MAP_FAILED) {
         return NULL;
     }
 
-    uint8_t*    aligned = (uint8_t*)(((uintptr_t)raw + align - 1) & ~((uintptr_t)align - 1));
-    size_t head    = (size_t)(aligned - raw);
-    size_t tail    = big - head - len;
+    uint8_t* aligned = (uint8_t*)(((uintptr_t)raw + align - 1) & ~((uintptr_t)align - 1));
+    size_t   head    = (size_t)(aligned - raw);
+    size_t   tail    = big - head - len;
     if (head) {
         munmap(raw, head);
     }

@@ -32,9 +32,9 @@ void Arena_destroy(Arena* a) WC_NONULL(1);
 
 // Both return NULL when the arena can't fit the request. Arena_alloc aligns to WC_MAX_ALIGN
 // (like malloc). Arena_alloc_aligned aligns the ADDRESS to `align` (a power of two).
-[[nodiscard]] void* Arena_alloc(Arena* a, u64 size) WC_NONULL(1);
+WC_NODISCARD void* Arena_alloc(Arena* a, u64 size) WC_NONULL(1);
 
-[[nodiscard]] void* Arena_alloc_aligned(Arena* a, u64 size, u64 align) WC_NONULL(1);
+WC_NODISCARD void* Arena_alloc_aligned(Arena* a, u64 size, u64 align) WC_NONULL(1);
 
 WC_NONULL(1) static inline void Arena_clear(Arena* a)
 {
@@ -42,7 +42,7 @@ WC_NONULL(1) static inline void Arena_clear(Arena* a)
 }
 
 // The allocator to give to containers. Points into the arena, so it lives as long as the arena
-[[nodiscard]] WC_NONULL(1) static inline const wc_allocator* Arena_allocator(Arena* a)
+WC_NODISCARD WC_NONULL(1) static inline const wc_allocator* Arena_allocator(Arena* a)
 {
     // zeroed self has vt == NULL, which would silently read as WC_LIBC
     FATAL_IF(!a->self.ctx, "Arena_allocator on zeroed/destroyed Arena");
@@ -66,7 +66,7 @@ typedef struct {
 } ArenaScratch;
 
 
-[[nodiscard]] static inline WC_NONULL(1) // TODO: fix clang format for this
+WC_NODISCARD static inline WC_NONULL(1) // TODO: fix clang format for this
     ArenaScratch ArenaScratch_create(Arena* a)
 {
     return (ArenaScratch){
