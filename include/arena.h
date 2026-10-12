@@ -66,8 +66,7 @@ typedef struct {
 } ArenaScratch;
 
 
-WC_NODISCARD static inline WC_NONULL(1) // TODO: fix clang format for this
-    ArenaScratch ArenaScratch_create(Arena* a)
+WC_NODISCARD WC_NONULL(1) static inline ArenaScratch ArenaScratch_create(Arena* a)
 {
     return (ArenaScratch){
         .arena = a,

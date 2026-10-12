@@ -141,12 +141,12 @@ WC_NODISCARD void* GenVec_get_ptr_mut(GenVec* vec, u64 i) WC_NONULL(1);
 // UNCHECKED variants: same as above but with the bounds WC_ASSERT elided, even in
 // Debug. Preconditions are NOT validated: caller must guarantee i < vec->size.
 // Use on hot paths where the check is provably redundant (macros, internal loops).
-WC_NODISCARD static inline WC_NONULL(1) const void* GenVec_get_ptr_unsafe(const GenVec* vec, u64 i)
+WC_NODISCARD WC_NONULL(1) static inline const void* GenVec_get_ptr_unsafe(const GenVec* vec, u64 i)
 {
     return (vec->data + (i * vec->data_size));
 }
 
-WC_NODISCARD static inline WC_NONULL(1) void* GenVec_get_ptr_mut_unsafe(GenVec* vec, u64 i)
+WC_NODISCARD WC_NONULL(1) static inline void* GenVec_get_ptr_mut_unsafe(GenVec* vec, u64 i)
 {
     return (vec->data + (i * vec->data_size));
 }
@@ -210,19 +210,19 @@ void GenVec_move(GenVec* dest, GenVec* src) WC_NONULL(1, 2);
 
 
 // Get number of elements in vector.
-WC_NODISCARD static inline WC_NONULL(1) u64 GenVec_size(const GenVec* vec)
+WC_NODISCARD WC_NONULL(1) static inline u64 GenVec_size(const GenVec* vec)
 {
     return vec->size;
 }
 
 // Get total capacity of vector.
-WC_NODISCARD static inline WC_NONULL(1) u64 GenVec_capacity(const GenVec* vec)
+WC_NODISCARD WC_NONULL(1) static inline u64 GenVec_capacity(const GenVec* vec)
 {
     return vec->capacity;
 }
 
 // Check if vector is empty
-WC_NODISCARD static inline WC_NONULL(1) bool GenVec_empty(const GenVec* vec)
+WC_NONULL(1) static inline bool GenVec_empty(const GenVec* vec)
 {
     return vec->size == 0;
 }

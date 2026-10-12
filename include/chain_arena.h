@@ -52,7 +52,7 @@ WC_NODISCARD void* ChainArena_alloc_aligned(ChainArena* ca, u64 size, u64 align)
 // The allocator to give to containers. Points into the arena, so it lives as long as the arena.
 WC_NODISCARD static inline const wc_allocator* ChainArena_allocator(ChainArena* ca) WC_NONULL(1);
 
-static inline const wc_allocator* ChainArena_allocator(ChainArena* ca)
+WC_NODISCARD WC_NONULL(1) static inline const wc_allocator* ChainArena_allocator(ChainArena* ca)
 {
     // zeroed self has vt == NULL, which would silently read as WC_LIBC
     FATAL_IF(!ca->self.ctx, "ChainArena_allocator on zeroed/destroyed ChainArena");
@@ -67,7 +67,7 @@ typedef struct {
     u64                mark; // the offset of node n;
 } ChainArenaScratch;
 
-WC_NODISCARD static inline ChainArenaScratch ChainArenaScratch_create(ChainArena* ca)
+WC_NODISCARD WC_NONULL(1) static inline ChainArenaScratch ChainArenaScratch_create(ChainArena* ca)
 {
     return (ChainArenaScratch){
         .chain_arena = ca,
