@@ -20,44 +20,36 @@
 #include <stdlib.h>
 #include <string.h>
 
-
 #define WC_MAX_ALIGN alignof(max_align_t)
+
+// TODO: maybe we shouldn't implicitly default to libc. if no valid allocator is provided, we should fail
 
 /* libc fallbacks */
 
 static inline void* wc_libc_alloc(size_t n, size_t align)
 {
     if (align <= WC_MAX_ALIGN) {
-        return malloc(n);
+        return malloc(n); // malloc promises it's result is aligned if for max_align_t (16 bytes)
     }
 
+    // if more alignment is needed, we need aligned alloc (unix)
     size_t rounded = (n + align - 1) & ~(align - 1); // aligned_alloc: size % align == 0
     if (rounded < n) {
         return NULL; // overflow
     }
-#ifdef _MSC_VER
-    return _aligned_malloc(rounded, align);
-#else
     return aligned_alloc(align, rounded);
-#endif
 }
 
 static inline void wc_libc_free(void* p, size_t align)
 {
-#ifdef _MSC_VER
-    if (align > WC_MAX_ALIGN) {
-        _aligned_free(p); // MSVC can't free() these
-        return;
-    }
-#endif
     (void)align;
-    free(p); // POSIX/glibc: fine for both
+    free(p);
 }
 
 static inline void* wc_libc_realloc(void* p, size_t old_n, size_t n, size_t align)
 {
     if (align <= WC_MAX_ALIGN) {
-        return realloc(p, n);
+        return realloc(p, n); // realloc garentees 16-byte alinment, like malloc
     }
 
     // libc realloc doesn't preserve alignment above max_align_t: alloc, copy, free
@@ -75,7 +67,7 @@ static inline void* wc_libc_realloc(void* p, size_t old_n, size_t n, size_t alig
 /*
  * ALLOCATOR API
  *
- * No global allocator exists: every data structure receives its allocator at
+ * Every data structure receives its allocator at
  * construction, stores it, and uses it for every allocation.
  *
  * An allocator is a (vtable, ctx) pair. It is passed and stored as `const wc_allocator*`
@@ -119,6 +111,10 @@ extern const wc_allocator wc_libc;
 extern const wc_allocator wc_borrowed;
 #define WC_BORROWED (&wc_borrowed)
 
+extern const wc_allocator wc_mmap;
+#define WC_MMAP (&wc_mmap)
+
+
 static inline __attribute__((nonnull(1))) int wc_is_libc(const wc_allocator* a)
 {
     return a->vt == NULL;
@@ -136,7 +132,7 @@ static inline __attribute__((nonnull(1, 2))) int wc_same(const wc_allocator* a, 
 static inline __attribute__((nonnull(1))) void* wc_alloc(const wc_allocator* a, size_t n, size_t align)
 {
     WC_ALLOC_ASSERT_ALIGN(align);
-    if (n == 0 || n > (size_t)PTRDIFF_MAX) { // > PTRDIFF_MAX: overflowed size (see wc_mul)
+    if (n == 0 || n > (size_t)PTRDIFF_MAX) { // any valid allocation will be less than PTRDIFF_MAX
         return NULL;
     }
     return a->vt ? a->vt->alloc(a->ctx, n, align) : wc_libc_alloc(n, align);
@@ -188,6 +184,11 @@ static inline __attribute__((nonnull(1))) void* wc_realloc(const wc_allocator* a
     return q;
 }
 
+/*
+PTRDIFF_MAX is the largest value a ptrdiff_t can hold. That's the signed type you get from subtracting two pointers.
+On 64-bit it's about 2⁶³ − 1. C says no single object can be bigger than that, because otherwise end - start within 
+the object couldn't be represented. So any valid allocation size is <= PTRDIFF_MAX.
+*/
 // count * size, saturating to SIZE_MAX on overflow. SIZE_MAX can never be
 // satisfied, so an overflowing request fails in the backend instead of wrapping
 // to a small size. (Returning 0 would be wrong: realloc to 0 means free.)
@@ -211,16 +212,15 @@ static inline size_t wc_align_for_size(size_t elm_size)
 
 
 /* typed helpers (allocator first)
- * Free takes the POINTER, not a type: size and align come from *p, so a wrong
- * type can't be passed*/
+ * Free takes the POINTER, not a type: size and align come from *p, so a wrong type can't be passed
+*/
 
 #define WC_NEW(a, T)      ((T*)wc_alloc((a), sizeof(T), alignof(T)))
 #define WC_NEW_N(a, T, n) ((T*)wc_alloc((a), wc_mul((n), sizeof(T)), alignof(T)))
-#define WC_REALLOC_N(a, p, old_n, n)                                                               \
-    ((__typeof__(p))wc_realloc((a), (p), wc_mul((old_n), sizeof(*(p))), wc_mul((n), sizeof(*(p))), \
-                               alignof(__typeof__(*(p)))))
-#define WC_FREE(a, p)      (wc_free((a), (p), sizeof(*(p)), alignof(__typeof__(*(p)))))
-#define WC_FREE_N(a, p, n) (wc_free((a), (p), wc_mul((n), sizeof(*(p))), alignof(__typeof__(*(p)))))
+#define WC_REALLOC_N(a, p, old_n, n) \
+    ((typeof(p))wc_realloc((a), (p), wc_mul((old_n), sizeof(*(p))), wc_mul((n), sizeof(*(p))), alignof(typeof(*(p)))))
+#define WC_FREE(a, p)      (wc_free((a), (p), sizeof(*(p)), alignof(typeof(*(p)))))
+#define WC_FREE_N(a, p, n) (wc_free((a), (p), wc_mul((n), sizeof(*(p))), alignof(typeof(*(p)))))
 
 
 #endif // WC_ALLOCATOR_H
@@ -254,7 +254,6 @@ static inline size_t wc_align_for_size(size_t elm_size)
 #define WC_COLOR_GREEN  "\033[1;32m"
 #define WC_COLOR_BLUE   "\033[1;34m"
 #define WC_COLOR_CYAN   "\033[1;36m"
-
 
 
 /*
@@ -360,6 +359,10 @@ __attribute__((cold, noinline, format(printf, 4, 5))) void wc_warn_report(const 
 #define WC_CAT(a, b)  WC_CAT_(a, b)
 
 
+#define WC_NONULL(...) __attribute__((nonnull(__VA_ARGS__)))
+#define WC_NODISCARD   __attribute__((warn_unused_result)) // TODO: use
+
+
 // TYPES
 
 #include <stdbool.h>
@@ -378,13 +381,12 @@ typedef int64_t i64;
 // we are using unsigned indices/sizes
 #define WC_NOT_FOUND ((u64) - 1)
 
-
 // GENERIC FUNCTIONS
 
 
 /* ELEMENT OPS
  *
- * Memory rule B5: every element is TRIVIALLY RELOCATABLE. A container may move
+ * Every element is TRIVIALLY RELOCATABLE. A container may move
  * an element to another address with a raw memcpy (growth, insert/remove shifts,
  * hash table shuffles, queue compaction, taking an element out) and never asks
  * the element first. A type that holds a pointer to itself, or that something
@@ -413,15 +415,15 @@ typedef struct {
 
 
 // Heap-box a value-returning constructor through allocator A:
-//   GenVec* v = WC_BOX_IN(A, GenVec, GenVec_create, 8, sizeof(int), NULL);
+//   GenVec* v = WC_BOX(A, GenVec, GenVec_create, 8, sizeof(int), NULL);
 // Invariant: the shell comes from the same allocator the child stores, so a
 // by-pointer delete can free the shell with the child's own allocator.
-#define WC_BOX_IN(A, T, init_fn, ...)                              \
-    ({                                                             \
-        T* _wbx_p = wc_alloc(A, sizeof(T), alignof(T));            \
-        FATAL_IF(!_wbx_p, "WC_BOX_IN(" #T "): allocation failed"); \
-        *_wbx_p = init_fn(A, __VA_ARGS__);                         \
-        _wbx_p;                                                    \
+#define WC_BOX(A, T, init_fn, ...)                              \
+    ({                                                          \
+        T* _wbx_p = wc_alloc(A, sizeof(T), alignof(T));         \
+        FATAL_IF(!_wbx_p, "WC_BOX(" #T "): allocation failed"); \
+        *_wbx_p = init_fn(A, __VA_ARGS__);                      \
+        _wbx_p;                                                 \
     })
 
 
@@ -436,7 +438,7 @@ typedef struct {
 
 // RAW BYTES TO HEX
 
-static inline void print_hex(const u8* ptr, u64 size, u32 bytes_per_line)
+static inline void print_hex(const void* ptr, u64 size, u32 bytes_per_line)
 {
     if (ptr == NULL || size == 0 || bytes_per_line == 0) {
         return;
@@ -446,8 +448,8 @@ static inline void print_hex(const u8* ptr, u64 size, u32 bytes_per_line)
     const char* hex = "0123456789ABCDEF";
 
     for (u64 i = 0; i < size; i++) {
-        u8 val1 = ptr[i] >> 4;   // get upper 4 bits as num b/w 0-15
-        u8 val2 = ptr[i] & 0x0F; // get lower 4 bits as num b/w 0-15
+        u8 val1 = *((u8*)ptr + i) >> 4;   // get upper 4 bits as num b/w 0-15
+        u8 val2 = *((u8*)ptr + i) & 0x0F; // get lower 4 bits as num b/w 0-15
 
         printf("%c%c", hex[val1], hex[val2]);
 
@@ -635,141 +637,82 @@ static inline void wc_perror(const char* prefix)
 
 
 
-#include <stdalign.h>
-#include <stddef.h>
-#include <string.h>
 
-
-
-// Total bytes per regular node, header included (one backing allocation per node).
-#ifndef CHAIN_ARENA_NODE_SIZE
-#define CHAIN_ARENA_NODE_SIZE (nKB(4))
-#endif
-
-
-/*
- * ChainArena: growing bump allocator made of nodes taken from a backing allocator.
+/* ChainArena: an arena that never runs out.
  *
- * - Nodes form an intrusive doubly linked list; no dependency on any container.
- * - Requests larger than a regular node get a dedicated node sized to fit (A3).
- * - Alignment is by address (A2).
- * - In-place realloc / last-block free in the current node, guarded by a floor
- *   exactly like Arena (plan D10).
- * - ChainArena_clear keeps every node and reuses them in order.
+ * It is a linked list of blocks. Allocation is a bump pointer in the current block; when
+ * the block is full, another one is taken from the backing allocator and becomes current.
  *
- * PINNED: its address is the allocator ctx. Do not copy or move after create.
+ * Requests that are large relative to a block get their own dedicated block, kept on a
+ * separate list, so they never waste the rest of the current block.
+ *
+ * Like Arena, a ChainArena embeds its own wc_allocator (`self`) so containers can store a
+ * `const wc_allocator*` that lives exactly as long as the arena. self.ctx is the arena's own
+ * address, so it is PINNED.
  */
-typedef struct ChainArenaNode {
-    struct ChainArenaNode* prev;
-    struct ChainArenaNode* next;
-    u64                    cap;       // usable bytes in data[]
-    u64                    used;      // bytes consumed in data[]
-    _Alignas(WC_MAX_ALIGN) u8 data[]; // first byte aligned like malloc: small requests need no padding
-} ChainArenaNode;
 
-// TODO: have data inline with a constant, compile-time size. this is one more indirection
 
-_Static_assert(offsetof(ChainArenaNode, data) % WC_MAX_ALIGN == 0, "ChainArenaNode data must be max-aligned");
-
-typedef struct ChainArena {
-    const wc_allocator* backing;
-    ChainArenaNode*     head;       // first node, kept by reset
-    ChainArenaNode*     tail;       // current node: allocations happen here
-    u64                 used;       // bytes consumed in head..tail (padding included)
-    ChainArenaNode*     floor_node; // NULL: no floor
-    u64                 floor_used; // floor offset inside floor_node
-    wc_allocator        self;       // this arena as an allocator: {chain_vt, this}; ctx NULL after destroy
-} ChainArena;
+// the header for each block. the allocation region comes right the aligned header
+typedef struct ChainArenaNodeHDR {
+    struct ChainArenaNodeHDR* prev; // the prev node in the chain. NULL for last node
+    u64                       cap;  // payload bytes
+    u64                       off;  // payload bytes used
+} ChainArenaNodeHDR;
 
 typedef struct {
-    ChainArena*     arena;
-    ChainArenaNode* node;      // tail at scope start
-    u64             node_used; // its `used` at scope start
-    u64             used;      // arena->used at scope start
-    ChainArenaNode* prev_floor_node;
-    u64             prev_floor_used;
+    ChainArenaNodeHDR* normal; // nodes with normal capacity. normal points to the newest node,
+    // the oldest node (at the end of the chain) points to null
+    ChainArenaNodeHDR*  big;   // dedicated blocks for oversized requests, newest first
+    const wc_allocator* alloc; // backing allocator every block comes from and goes back to
+    wc_allocator        self;  // what containers store; ctx == this ChainArena
+} ChainArena;
+
+// Initialises `ca` in place, it must not be moved or copied afterwards.
+void ChainArena_create(ChainArena* ca, const wc_allocator* backing, u64 normal_cap) WC_NONULL(1, 2);
+
+// Gives every block back to the backing allocator and zeroes the arena. Safe on a zeroed
+// arena and safe to call twice.
+void ChainArena_destroy(ChainArena* ca) WC_NONULL(1);
+
+// ChainArena_alloc aligns to WC_MAX_ALIGN (like malloc)
+// return NULL only if the backing allocator can't supply a block.
+[[nodiscard]] void* ChainArena_alloc(ChainArena* ca, u64 size) WC_NONULL(1);
+
+// ChainArena_alloc_aligned aligns the ADDRESS to `align` (a power of two), including alignments larger than a page
+// return NULL only if the backing allocator can't supply a block.
+[[nodiscard]] void* ChainArena_alloc_aligned(ChainArena* ca, u64 size, u64 align) WC_NONULL(1);
+
+// The allocator to give to containers. Points into the arena, so it lives as long as the arena.
+[[nodiscard]] static inline const wc_allocator* ChainArena_allocator(ChainArena* ca) WC_NONULL(1);
+
+static inline const wc_allocator* ChainArena_allocator(ChainArena* ca)
+{
+    // zeroed self has vt == NULL, which would silently read as WC_LIBC
+    FATAL_IF(!ca->self.ctx, "ChainArena_allocator on zeroed/destroyed ChainArena");
+    return &ca->self;
+}
+
+
+typedef struct {
+    ChainArena*        chain_arena; // the chain arena used
+    ChainArenaNodeHDR* normal;      // the node that was tail when scratch was created
+    ChainArenaNodeHDR* big;
+    u64                mark; // the offset of node n;
 } ChainArenaScratch;
 
-
-// Lifecycle (out-param: the struct is pinned)
-
-// Creates the first node from `backing`. Fatal if that allocation fails.
-void ChainArena_create(ChainArena* arena, const wc_allocator* backing) __attribute__((nonnull(1, 2)));
-
-// Frees every node through the backing allocator and zeroes the struct.
-// Safe on a zeroed or already-destroyed ChainArena.
-void ChainArena_destroy(ChainArena* arena) __attribute__((nonnull(1)));
-
-// Free every node except the first, which is emptied.
-void ChainArena_reset(ChainArena* arena) __attribute__((nonnull(1)));
-
-// Empty every node but keep them all for reuse.
-void ChainArena_clear(ChainArena* arena) __attribute__((nonnull(1)));
-
-
-// Allocation. NULL (wc_errno = WC_ERR_FULL) only if the backing allocator fails.
-
-void* ChainArena_alloc_aligned(ChainArena* arena, u64 size, u64 align) __attribute__((nonnull(1), alloc_size(2)));
-
-static inline __attribute__((nonnull(1), alloc_size(2))) void* ChainArena_alloc(ChainArena* arena, u64 size)
+[[nodiscard]] static inline ChainArenaScratch ChainArenaScratch_create(ChainArena* ca)
 {
-    return ChainArena_alloc_aligned(arena, size, WC_MAX_ALIGN);
+    return (ChainArenaScratch){
+        .chain_arena = ca,
+        .normal      = ca->normal,
+        .big         = ca->big,
+        .mark        = ca->normal->off,
+    };
 }
 
-static inline __attribute__((nonnull(1))) u64 ChainArena_used(const ChainArena* arena)
-{
-    return arena->used;
-}
-
-// Points INTO the arena: lives exactly as long as the arena does.
-static inline __attribute__((nonnull(1), returns_nonnull)) const wc_allocator* ChainArena_allocator(ChainArena* arena)
-{
-    return &arena->self;
-}
+void ChainArenaScratch_to_mark(ChainArenaScratch scratch);
 
 
-// Scratch: save the position and raise the floor; end frees nodes appended after
-// the mark. Scopes nest; end them in LIFO order. Do not reset/clear inside a scope.
-
-ChainArenaScratch ChainArena_scratch_begin(ChainArena* arena) __attribute__((nonnull(1)));
-
-void ChainArena_scratch_end(ChainArenaScratch scratch);
-
-static inline void wc_chain_arena_scratch_cleanup(ChainArenaScratch* s)
-{
-    if (s && s->arena) {
-        ChainArena_scratch_end(*s);
-        s->arena = NULL;
-    }
-}
-
-#define CHAIN_ARENA_SCRATCH(c_arena_ptr)                                                                              \
-    for (int _cas_once = 1; _cas_once; _cas_once = 0)                                                                 \
-        for (ChainArenaScratch                                                                                        \
-             __attribute__((cleanup(wc_chain_arena_scratch_cleanup))) _cas_s = ChainArena_scratch_begin(c_arena_ptr); \
-             _cas_once; _cas_once                                            = 0)
-
-
-// Typed allocation macros
-#define CHAIN_ARENA_ALLOC(arena, T)      ((T*)ChainArena_alloc_aligned((arena), sizeof(T), alignof(T)))
-#define CHAIN_ARENA_ALLOC_N(arena, T, n) ((T*)ChainArena_alloc_aligned((arena), wc_mul((n), sizeof(T)), alignof(T)))
-// NOLINTBEGIN(bugprone-macro-parentheses): T is a type; (T)* would parse as a cast
-#define CHAIN_ARENA_ALLOC_ZERO(arena, T)                                                                             \
-    ({                                                                                                               \
-        T* _caz =                                                                                                    \
-            CHAIN_ARENA_ALLOC(arena, T); /* NOLINT(bugprone-macro-parentheses): T is a type: (T)* would be a cast */ \
-        _caz ? (T*)memset(_caz, 0, sizeof(T)) : (T*)NULL;                                                            \
-    })
-// NOLINTEND(bugprone-macro-parentheses)
-// NOLINTBEGIN(bugprone-macro-parentheses): T is a type; (T)* would parse as a cast
-#define CHAIN_ARENA_ALLOC_ZERO_N(arena, T, n)                                                             \
-    ({                                                                                                    \
-        u64 _cazn = (u64)(n);                                                                             \
-        T*  _caz  = CHAIN_ARENA_ALLOC_N(                                                                  \
-            arena, T, _cazn); /* NOLINT(bugprone-macro-parentheses): T is a type: (T)* would be a cast */ \
-        _caz ? (T*)memset(_caz, 0, sizeof(T) * _cazn) : (T*)NULL;                                         \
-    })
-// NOLINTEND(bugprone-macro-parentheses)
 
 #endif // CHAIN_ARENA_H
 
@@ -781,13 +724,15 @@ static inline void wc_chain_arena_scratch_cleanup(ChainArenaScratch* s)
 #line 1 "src/wc_allocator.c"
 
 #include <stddef.h>
+#include <stdint.h>
+#include <sys/mman.h>
+#include <unistd.h>
 
 
 
 /* wc_libc: the only allocator with vt == NULL */
 
 const wc_allocator wc_libc = {.vt = NULL, .ctx = NULL};
-
 
 /* wc_borrowed: non-owning allocator */
 
@@ -796,7 +741,7 @@ static void* wc_borrowed_alloc(void* ctx, size_t size, size_t align)
     (void)ctx;
     (void)size;
     (void)align;
-    return NULL;
+    return NULL; // can't allocate with a borrowed object's allocator
 }
 
 static void wc_borrowed_free(void* ctx, void* p, size_t size, size_t align)
@@ -814,6 +759,82 @@ static const wc_alloc_vtable wc_borrowed_vt = {
 };
 
 const wc_allocator wc_borrowed = {.vt = &wc_borrowed_vt, .ctx = NULL};
+
+
+/* wc_mmap: page-granular allocator backed by anonymous mmap
+ *
+ * Every allocation is its own mapping, so it costs one syscall and at least
+ * one page. Use it for big, long-lived regions (an Arena reservation, large
+ * ChainArena nodes), not for small blocks.
+ *
+ *   - failure returns NULL
+ *   - any power-of-two alignment is honoured, including above the page size
+ *   - fresh pages are zero-filled by the kernel and committed lazily
+ */
+
+static size_t wc_page_size(void)
+{
+    static size_t cached;
+    size_t        ps = cached;
+    if (ps == 0) {
+        long v = sysconf(_SC_PAGESIZE);
+        ps     = v > 0 ? (size_t)v : 4096;
+        cached = ps;
+    }
+    return ps;
+}
+
+static void* wc_mmap_alloc(void* ctx, size_t size, size_t align)
+{
+    (void)ctx;
+    const size_t page = wc_page_size();
+
+    if (size > SIZE_MAX - page) { // page rounding would overflow
+        return NULL;
+    }
+
+    if (align <= page) { // mmap already returns page-aligned addresses
+        void* p = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        return p == MAP_FAILED ? NULL : p;
+    }
+
+    // align > page size: over-map, then unmap the unaligned head and the unused tail
+    if (size > SIZE_MAX - page - align) {
+        return NULL;
+    }
+    const size_t len = (size + page - 1) & ~(page - 1); // what the caller keeps
+    const size_t big = len + align;
+    uint8_t*          raw = mmap(NULL, big, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (raw == MAP_FAILED) {
+        return NULL;
+    }
+
+    uint8_t*    aligned = (uint8_t*)(((uintptr_t)raw + align - 1) & ~((uintptr_t)align - 1));
+    size_t head    = (size_t)(aligned - raw);
+    size_t tail    = big - head - len;
+    if (head) {
+        munmap(raw, head);
+    }
+    if (tail) {
+        munmap(aligned + len, tail);
+    }
+    return aligned;
+}
+
+static void wc_mmap_free(void* ctx, void* p, size_t size, size_t align)
+{
+    (void)ctx;
+    (void)align;
+    munmap(p, size); // the kernel rounds size up to whole pages, same as at alloc
+}
+
+static const wc_alloc_vtable wc_mmap_vt = {
+    .alloc   = wc_mmap_alloc,
+    .realloc = NULL, // emulated: alloc + copy + free
+    .free    = wc_mmap_free,
+};
+
+const wc_allocator wc_mmap = {.vt = &wc_mmap_vt, .ctx = NULL};
 
 #endif /* WC_WC_ALLOCATOR_IMPL */
 
@@ -889,298 +910,156 @@ void wc_warn_report(const char* file, int line, const char* func, const char* fm
 
 
 
-
+#include <stddef.h>
 #include <stdint.h>
 #include <string.h>
 
 
-#define NODE_HEADER ((u64)sizeof(ChainArenaNode))
-#define NODE_ALIGN  WC_MAX_ALIGN
-#define REGULAR_CAP ((u64)CHAIN_ARENA_NODE_SIZE - NODE_HEADER)
+// Each block is ONE backing allocation: [ header | payload ]. The header is
+// padded at the end to WC_MAX_ALIGN so the payload starts aligned like malloc memory
+#define HDR ((u64)((sizeof(ChainArenaNodeHDR) + WC_MAX_ALIGN - 1) / WC_MAX_ALIGN * WC_MAX_ALIGN))
+// go to the start of the payload
+#define PAYLOAD(n) ((u8*)(n) + HDR)
+// Total bytes of the backing allocation for a node: what wc_free needs to be told.
+#define NODE_BYTES(n) (HDR + (n)->cap)
 
-_Static_assert(CHAIN_ARENA_NODE_SIZE > sizeof(ChainArenaNode) + 64, "CHAIN_ARENA_NODE_SIZE too small");
-
-#define CHAIN_CHECK_LIVE(a) WC_ASSERT((a)->self.ctx == (a), "ChainArena used after destroy, or copied/moved after create")
 
 
-// Node helpers
-
-static ChainArenaNode* node_new(const ChainArena* arena, u64 cap)
+// Take one block from the backing allocator. NULL if it can't.
+static ChainArenaNodeHDR* new_node(ChainArena* ca, u64 payload_cap)
 {
-    if (cap > (u64)PTRDIFF_MAX - NODE_HEADER) {
-        return NULL;
-    }
-    ChainArenaNode* n = wc_alloc(arena->backing, NODE_HEADER + cap, NODE_ALIGN);
+    ChainArenaNodeHDR* n = wc_alloc(ca->alloc, HDR + payload_cap, WC_MAX_ALIGN);
     if (!n) {
         return NULL;
     }
     n->prev = NULL;
-    n->next = NULL;
-    n->cap  = cap;
-    n->used = 0;
+    n->cap  = payload_cap;
+    n->off  = 0;
     return n;
 }
 
-static void node_free(const ChainArena* arena, ChainArenaNode* n)
+// Carve `size` bytes, aligned by ADDRESS to `align`, out of one block. NULL if it doesn't fit
+static void* node_bump(ChainArenaNodeHDR* n, u64 size, u64 align)
 {
-    wc_free(arena->backing, n, NODE_HEADER + n->cap, NODE_ALIGN);
+    u64       room = n->cap - n->off;
+    uintptr_t cur  = (uintptr_t)PAYLOAD(n) + (uintptr_t)n->off;
+    u64       pad  = (u64)((0 - cur) & (uintptr_t)(align - 1));
+
+    if (pad > room || size > room - pad) {
+        return NULL;
+    }
+
+    u8* p = PAYLOAD(n) + n->off + pad;
+    n->off += pad + size;
+    return p;
 }
 
-// Free `n` and every node after it.
-static void free_from(const ChainArena* arena, ChainArenaNode* n)
+// walk back from `start` and delete until (but not including) `end` node. pass `end = NULL` to delete the whole chain
+// check the return value to get the new latest node (matches `end` if reached, otherwise NULL if end reached first).
+static ChainArenaNodeHDR* free_list(ChainArena* ca, ChainArenaNodeHDR* start, const ChainArenaNodeHDR* end)
 {
-    while (n) {
-        ChainArenaNode* next = n->next;
-        node_free(arena, n);
-        n = next;
+    ChainArenaNodeHDR* prev;
+    while (start && start != end) {
+        prev = start->prev; // save prev before deallocating the current start
+        wc_free(ca->alloc, start, NODE_BYTES(start), WC_MAX_ALIGN);
+        start = prev;
     }
-}
-
-// Offset in n->data where a `size`-byte block aligned (by address) to `align`
-// would start, or UINT64_MAX if it does not fit.
-static inline u64 node_fit(const ChainArenaNode* n, u64 size, u64 align)
-{
-    uintptr_t data    = (uintptr_t)n->data;
-    uintptr_t aligned = (data + n->used + (align - 1)) & ~(uintptr_t)(align - 1);
-    u64       off     = (u64)(aligned - data);
-    if (off > n->cap || n->cap - off < size) {
-        return UINT64_MAX;
-    }
-    return off;
-}
-
-// Is [p, p + size) the last block of the tail node, at or above the floor?
-static inline bool is_top(const ChainArena* arena, const u8* p, u64 size)
-{
-    const ChainArenaNode* t = arena->tail;
-    if (p < t->data || p + size != t->data + t->used) {
-        return 0;
-    }
-    // Nodes are only ever entered moving forward from floor_node, so a tail
-    // other than floor_node is entirely above the floor.
-    return arena->floor_node != t || p >= t->data + arena->floor_used;
+    return start;
 }
 
 
-// Was `p` allocated before the innermost scratch scope began? (debug checks only)
-static __attribute__((unused)) bool is_below_floor(const ChainArena* arena, const u8* p)
-{
-    const ChainArenaNode* f = arena->floor_node;
-    if (!f) {
-        return 0;
-    }
-    if (p >= f->data && p < f->data + f->cap) {
-        return p < f->data + arena->floor_used;
-    }
-    for (const ChainArenaNode* n = f->prev; n; n = n->prev) {
-        if (p >= n->data && p < n->data + n->cap) {
-            return 1;
-        }
-    }
-    return 0;
-}
-
-
-// Lifecycle
-
-static const wc_alloc_vtable chain_vt;
-
-void ChainArena_create(ChainArena* arena, const wc_allocator* backing)
-{
-    *arena = (ChainArena){.backing = backing};
-
-    ChainArenaNode* first = node_new(arena, REGULAR_CAP);
-    if (!first) {
-        FATAL("ChainArena first node allocation failed"); // D5: unconditional
-    }
-    arena->head = first;
-    arena->tail = first;
-    arena->self = (wc_allocator){.vt = &chain_vt, .ctx = arena};
-}
-
-void ChainArena_destroy(ChainArena* arena)
-{
-    if (arena->self.ctx == NULL) {
-        return; // zeroed or already destroyed
-    }
-    CHAIN_CHECK_LIVE(arena);
-
-    free_from(arena, arena->head);
-    memset(arena, 0, sizeof(*arena));
-}
-
-void ChainArena_reset(ChainArena* arena)
-{
-    CHAIN_CHECK_LIVE(arena);
-
-    free_from(arena, arena->head->next);
-    arena->head->next = NULL;
-    arena->head->used = 0;
-    arena->tail       = arena->head;
-    arena->used       = 0;
-    arena->floor_node = NULL;
-    arena->floor_used = 0;
-}
-
-void ChainArena_clear(ChainArena* arena)
-{
-    CHAIN_CHECK_LIVE(arena);
-
-    for (ChainArenaNode* n = arena->head; n; n = n->next) {
-        n->used = 0;
-    }
-    arena->tail       = arena->head;
-    arena->used       = 0;
-    arena->floor_node = NULL;
-    arena->floor_used = 0;
-}
-
-
-// Allocation
-
-void* ChainArena_alloc_aligned(ChainArena* arena, u64 size, u64 align)
-{
-    CHAIN_CHECK_LIVE(arena);
-    WC_ASSERT(size != 0, "allocation size must be > 0");
-    WC_ASSERT(align != 0 && (align & (align - 1)) == 0, "alignment must be a power of two");
-
-    ChainArenaNode* node = arena->tail;
-    u64             off  = node_fit(node, size, align);
-
-    if (off == UINT64_MAX) {
-        // Reuse the next node if it is spare (after clear) and big enough,
-        // otherwise insert a fresh node right after the tail.
-        ChainArenaNode* spare = node->next;
-        if (spare && (off = node_fit(spare, size, align)) != UINT64_MAX) {
-            node = spare;
-        } else {
-            WC_SET_RET(WC_ERR_FULL, size > UINT64_MAX - align, NULL);
-            u64 need = size + align - 1; // worst-case padding at the start of a node (A3)
-            u64 cap  = need > REGULAR_CAP ? need : REGULAR_CAP;
-
-            ChainArenaNode* fresh = node_new(arena, cap);
-            WC_SET_RET(WC_ERR_FULL, !fresh, NULL);
-
-            fresh->prev = node;
-            fresh->next = node->next;
-            if (node->next) {
-                node->next->prev = fresh;
-            }
-            node->next = fresh;
-
-            node = fresh;
-            off  = node_fit(node, size, align); // cannot fail: cap >= size + align - 1
-        }
-        arena->tail = node;
-    }
-
-    arena->used += (off + size) - node->used;
-    node->used = off + size;
-    return node->data + off;
-}
-
-
-// Allocator backend
-
-static void* chain_vt_alloc(void* ctx, size_t size, size_t align)
+// wc_allocator interface: alloc only. free is a no-op and realloc is emulated (alloc + copy).
+static void* carena_alloc(void* ctx, size_t size, size_t align)
 {
     return ChainArena_alloc_aligned((ChainArena*)ctx, size, align);
 }
 
-static void* chain_vt_realloc(void* ctx, void* ptr, size_t old_size, size_t new_size, size_t align)
+static const wc_alloc_vtable carena_vtable = {.alloc = carena_alloc, .realloc = NULL, .free = NULL};
+
+
+void ChainArena_create(ChainArena* ca, const wc_allocator* backing, u64 normal_cap)
 {
-    ChainArena* arena = ctx;
-    u8*         p     = ptr;
-    CHAIN_CHECK_LIVE(arena);
+    ca->big   = NULL;
+    ca->alloc = backing;
+    // `self` has to be built here, in place, because its ctx is this arena's own address.
+    ca->self = (wc_allocator){.vt = &carena_vtable, .ctx = ca};
+    // need to set allocator before calling this
+    ca->normal = new_node(ca, normal_cap);
+}
 
-    // Same rule as Arena: growing a block that predates the innermost scratch
-    // scope would leave it dangling (or truncated) at scope end.
-    WC_ASSERT(new_size <= old_size || !is_below_floor(arena, p),
-              "growing a block allocated before the current scratch scope (it would dangle at scope end)");
+void ChainArena_destroy(ChainArena* ca)
+{
+    if (!ca->self.ctx) {
+        return; // zeroed or already destroyed
+    }
+    free_list(ca, ca->normal, NULL);
+    free_list(ca, ca->big, NULL);
+    memset(ca, 0, sizeof(ChainArena)); // also clears self.ctx, so a stale allocator is detectable
+}
 
-    if (is_top(arena, p, old_size)) {
-        ChainArenaNode* t   = arena->tail;
-        u64             off = (u64)(p - t->data);
-        if (t->cap - off >= new_size) {
-            arena->used = arena->used - t->used + (off + new_size);
-            t->used     = off + new_size;
-            return p; // grown or shrunk in place
+void* ChainArena_alloc(ChainArena* ca, u64 size)
+{
+    return ChainArena_alloc_aligned(ca, size, WC_MAX_ALIGN);
+}
+
+void* ChainArena_alloc_aligned(ChainArena* ca, u64 size, u64 align)
+{
+    FATAL_IF(!ca->self.ctx, "ChainArena is in the zero state (moved-from or destroyed): re-create it first");
+    WC_ASSERT(size != 0, "can't allocate 0 bytes");
+    WC_ALLOC_ASSERT_ALIGN(align);
+    WC_ASSERT(ca->self.ctx == ca, "chain arena was moved or copied after ChainArena_create");
+
+    // Block memory is aligned to WC_MAX_ALIGN already. Only a bigger alignment needs room
+    // to slide the pointer forward inside the payload.
+    u64 slack = align > WC_MAX_ALIGN ? align : 0;
+    u64 need  = size + slack;
+
+    ChainArenaNodeHDR* curr = ca->normal;
+
+    // current node can satisfy the request
+    if (need <= curr->cap - curr->off) {
+        void* p = node_bump(curr, size, align);
+        if (p) {
+            return p;
         }
-    } else if (new_size <= old_size) {
-        return p; // shrinking a block that is not on top: keep it
     }
 
-    u8* q = ChainArena_alloc_aligned(arena, new_size, align);
-    if (!q) {
-        return NULL; // p stays valid
+    // a new node can satisfy the request. whatever is left in the old block is abandoned
+    if (need <= curr->cap) {
+        ChainArenaNodeHDR* n = new_node(ca, curr->cap); // each normal node saves the cap supplied by the user
+        if (!n) {
+            return NULL;
+        }
+
+        n->prev    = ca->normal;          // save the current latest normal node as the new node's prev
+        ca->normal = n;                   // update the latest node
+        return node_bump(n, size, align); // fits need <= node capacity
     }
-    memcpy(q, p, old_size < new_size ? old_size : new_size);
-    return q;
+
+    // only a 'big' node can satisfy the request. it's sized to fit
+    //The current regular block is untouched, so its remaining space is still available to later small requests.
+    ChainArenaNodeHDR* n = new_node(ca, need);
+    if (!n) {
+        return NULL;
+    }
+    n->prev = ca->big;
+    ca->big = n;
+    return node_bump(n, size, align); // always fits: cap == size + slack
 }
 
-static void chain_vt_free(void* ctx, void* ptr, size_t size, size_t align)
+void ChainArenaScratch_to_mark(ChainArenaScratch scratch)
 {
-    (void)align;
-    ChainArena* arena = ctx;
-    u8*         p     = ptr;
-    CHAIN_CHECK_LIVE(arena);
-
-    if (is_top(arena, p, size)) {
-        ChainArenaNode* t   = arena->tail;
-        u64             off = (u64)(p - t->data);
-        arena->used -= t->used - off;
-        t->used = off;
-    }
+    // delete all newer nodes till (but not including) scratch.big. reset big.
+    scratch.chain_arena->big = free_list(scratch.chain_arena, scratch.chain_arena->big, scratch.big);
+    // delete all newer nodes till (but not including) scratch.normal. reset normal.
+    scratch.chain_arena->normal = free_list(scratch.chain_arena, scratch.chain_arena->normal, scratch.normal);
+    // set the mark
+    scratch.chain_arena->normal->off = scratch.mark;
 }
 
-static const wc_alloc_vtable chain_vt = {
-    .alloc   = chain_vt_alloc,
-    .realloc = chain_vt_realloc,
-    .free    = chain_vt_free,
-};
-
-// Scratch
-
-ChainArenaScratch ChainArena_scratch_begin(ChainArena* arena)
-{
-    CHAIN_CHECK_LIVE(arena);
-
-    ChainArenaScratch s = {
-        .arena           = arena,
-        .node            = arena->tail,
-        .node_used       = arena->tail->used,
-        .used            = arena->used,
-        .prev_floor_node = arena->floor_node,
-        .prev_floor_used = arena->floor_used,
-    };
-    arena->floor_node = arena->tail;
-    arena->floor_used = arena->tail->used;
-    return s;
-}
-
-void ChainArena_scratch_end(ChainArenaScratch scratch)
-{
-    ChainArena* arena = scratch.arena;
-    if (!arena) {
-        return;
-    }
-    CHAIN_CHECK_LIVE(arena);
-
-    // Nodes after the mark were appended (or reused) inside the scope: release them.
-    free_from(arena, scratch.node->next);
-    scratch.node->next = NULL;
-    scratch.node->used = scratch.node_used;
-
-    arena->tail       = scratch.node;
-    arena->used       = scratch.used;
-    arena->floor_node = scratch.prev_floor_node;
-    arena->floor_used = scratch.prev_floor_used;
-}
-
-#undef NODE_HEADER
-#undef NODE_ALIGN
-#undef REGULAR_CAP
-#undef CHAIN_CHECK_LIVE
+#undef HDR
+#undef PAYLOAD
+#undef NODE_BYTES
 #endif /* WC_CHAIN_ARENA_IMPL */
 
 #endif /* WC_IMPLEMENTATION */

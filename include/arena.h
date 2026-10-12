@@ -52,8 +52,7 @@ WC_NONULL(1) static inline void Arena_clear(Arena* a)
 
 // TYPED ALLOCATION MACROS
 
-#define ARENA_ALLOC(a, T) Arena_alloc_aligned(a, sizeof(T), alignof(T))
-
+#define ARENA_ALLOC(a, T)      Arena_alloc_aligned(a, sizeof(T), alignof(T))
 #define ARENA_ALLOC_N(a, T, n) Arena_alloc_aligned(a, sizeof(T) * (n), alignof(T))
 
 
@@ -76,45 +75,11 @@ typedef struct {
     };
 }
 
-static inline void ArenaScratch_scratch_off(ArenaScratch scratch)
+static inline void ArenaScratch_to_mark(ArenaScratch scratch)
 {
     WC_ASSERT(scratch.arena, "arena is null");
     scratch.arena->off = scratch.mark;
 }
-
-static inline void ArenaScratch_destroy(ArenaScratch scratch)
-{
-    ArenaScratch_scratch_off(scratch);
-    scratch.arena = NULL;
-}
-
-
-/* ARENA_SCRATCH(&arena) { ... }
- *
- * Everything allocated from `arena` inside the block is rolled back when the block exits.
- * The arena itself survives, and so does everything allocated before the block.
- *
- *     Arena arena;
- *     Arena_create(&arena, WC_LIBC, nKB(4));
- *     ARENA_SCRATCH(&arena) {
- *         char* tmp = Arena_alloc(&arena, 1024);   // rolled back at the closing brace
- *     }
- *
- * It uses __attribute__((cleanup)), so the rollback runs on EVERY way out of the block:
- * falling off the end, `break`, `continue`, `return` and `goto`. (It does not run on
- * longjmp, exit or abort.) GCC and Clang only: elsewhere, use ArenaScratch_create and
- * ArenaScratch_destroy by hand.
- *
-*/
-
-static inline void ArenaScratch_cleanup(ArenaScratch* s)
-{
-    ArenaScratch_scratch_off(*s);
-}
-#define ARENA_SCRATCH(a) ARENA_SCRATCH_((a), WC_CAT(_wsc_once_, __LINE__), WC_CAT(_wsc_, __LINE__))
-#define ARENA_SCRATCH_(a, once, s)        \
-    for (int(once) = 1; once; (once) = 0) \
-        for (ArenaScratch s __attribute__((cleanup(ArenaScratch_cleanup))) = ArenaScratch_create(a); once; (once) = 0)
 
 
 

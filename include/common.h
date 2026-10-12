@@ -27,9 +27,6 @@
 #define WC_COLOR_CYAN   "\033[1;36m"
 
 
-// TODO: use [[nodiscard]] instead of the warn_unused_result thing
-// use the WC_NONULL(...) instead of the manual
-
 /*
  * DIAGNOSTICS
  *
@@ -134,6 +131,7 @@ __attribute__((cold, noinline, format(printf, 4, 5))) void wc_warn_report(const 
 
 
 #define WC_NONULL(...) __attribute__((nonnull(__VA_ARGS__)))
+#define WC_NODISCARD   __attribute__((warn_unused_result)) // TODO: use
 
 
 // TYPES
@@ -154,13 +152,12 @@ typedef int64_t i64;
 // we are using unsigned indices/sizes
 #define WC_NOT_FOUND ((u64) - 1)
 
-
 // GENERIC FUNCTIONS
 #include "wc_allocator.h"
 
 /* ELEMENT OPS
  *
- * Memory rule B5: every element is TRIVIALLY RELOCATABLE. A container may move
+ * Every element is TRIVIALLY RELOCATABLE. A container may move
  * an element to another address with a raw memcpy (growth, insert/remove shifts,
  * hash table shuffles, queue compaction, taking an element out) and never asks
  * the element first. A type that holds a pointer to itself, or that something
@@ -189,15 +186,15 @@ typedef struct {
 
 
 // Heap-box a value-returning constructor through allocator A:
-//   GenVec* v = WC_BOX_IN(A, GenVec, GenVec_create, 8, sizeof(int), NULL);
+//   GenVec* v = WC_BOX(A, GenVec, GenVec_create, 8, sizeof(int), NULL);
 // Invariant: the shell comes from the same allocator the child stores, so a
 // by-pointer delete can free the shell with the child's own allocator.
-#define WC_BOX_IN(A, T, init_fn, ...)                              \
-    ({                                                             \
-        T* _wbx_p = wc_alloc(A, sizeof(T), alignof(T));            \
-        FATAL_IF(!_wbx_p, "WC_BOX_IN(" #T "): allocation failed"); \
-        *_wbx_p = init_fn(A, __VA_ARGS__);                         \
-        _wbx_p;                                                    \
+#define WC_BOX(A, T, init_fn, ...)                              \
+    ({                                                          \
+        T* _wbx_p = wc_alloc(A, sizeof(T), alignof(T));         \
+        FATAL_IF(!_wbx_p, "WC_BOX(" #T "): allocation failed"); \
+        *_wbx_p = init_fn(A, __VA_ARGS__);                      \
+        _wbx_p;                                                 \
     })
 
 

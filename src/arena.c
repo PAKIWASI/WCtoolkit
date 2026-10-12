@@ -85,5 +85,3 @@ void* Arena_alloc_aligned(Arena* a, u64 size, u64 align)
     WC_ASSERT(a->self.ctx == a, "arena was moved or copied after Arena_create");
     return arena_bump(a, size, align);
 }
-
-

@@ -20,44 +20,36 @@
 #include <stdlib.h>
 #include <string.h>
 
-
 #define WC_MAX_ALIGN alignof(max_align_t)
+
+// TODO: maybe we shouldn't implicitly default to libc. if no valid allocator is provided, we should fail
 
 /* libc fallbacks */
 
 static inline void* wc_libc_alloc(size_t n, size_t align)
 {
     if (align <= WC_MAX_ALIGN) {
-        return malloc(n);
+        return malloc(n); // malloc promises it's result is aligned if for max_align_t (16 bytes)
     }
 
+    // if more alignment is needed, we need aligned alloc (unix)
     size_t rounded = (n + align - 1) & ~(align - 1); // aligned_alloc: size % align == 0
     if (rounded < n) {
         return NULL; // overflow
     }
-#ifdef _MSC_VER
-    return _aligned_malloc(rounded, align);
-#else
     return aligned_alloc(align, rounded);
-#endif
 }
 
 static inline void wc_libc_free(void* p, size_t align)
 {
-#ifdef _MSC_VER
-    if (align > WC_MAX_ALIGN) {
-        _aligned_free(p); // MSVC can't free() these
-        return;
-    }
-#endif
     (void)align;
-    free(p); // POSIX/glibc: fine for both
+    free(p);
 }
 
 static inline void* wc_libc_realloc(void* p, size_t old_n, size_t n, size_t align)
 {
     if (align <= WC_MAX_ALIGN) {
-        return realloc(p, n);
+        return realloc(p, n); // realloc garentees 16-byte alinment, like malloc
     }
 
     // libc realloc doesn't preserve alignment above max_align_t: alloc, copy, free
@@ -75,7 +67,7 @@ static inline void* wc_libc_realloc(void* p, size_t old_n, size_t n, size_t alig
 /*
  * ALLOCATOR API
  *
- * No global allocator exists: every data structure receives its allocator at
+ * Every data structure receives its allocator at
  * construction, stores it, and uses it for every allocation.
  *
  * An allocator is a (vtable, ctx) pair. It is passed and stored as `const wc_allocator*`
@@ -119,6 +111,10 @@ extern const wc_allocator wc_libc;
 extern const wc_allocator wc_borrowed;
 #define WC_BORROWED (&wc_borrowed)
 
+extern const wc_allocator wc_mmap;
+#define WC_MMAP (&wc_mmap)
+
+
 static inline __attribute__((nonnull(1))) int wc_is_libc(const wc_allocator* a)
 {
     return a->vt == NULL;
@@ -136,7 +132,7 @@ static inline __attribute__((nonnull(1, 2))) int wc_same(const wc_allocator* a, 
 static inline __attribute__((nonnull(1))) void* wc_alloc(const wc_allocator* a, size_t n, size_t align)
 {
     WC_ALLOC_ASSERT_ALIGN(align);
-    if (n == 0 || n > (size_t)PTRDIFF_MAX) { // > PTRDIFF_MAX: overflowed size (see wc_mul)
+    if (n == 0 || n > (size_t)PTRDIFF_MAX) { // any valid allocation will be less than PTRDIFF_MAX
         return NULL;
     }
     return a->vt ? a->vt->alloc(a->ctx, n, align) : wc_libc_alloc(n, align);
@@ -188,6 +184,11 @@ static inline __attribute__((nonnull(1))) void* wc_realloc(const wc_allocator* a
     return q;
 }
 
+/*
+PTRDIFF_MAX is the largest value a ptrdiff_t can hold. That's the signed type you get from subtracting two pointers.
+On 64-bit it's about 2⁶³ − 1. C says no single object can be bigger than that, because otherwise end - start within 
+the object couldn't be represented. So any valid allocation size is <= PTRDIFF_MAX.
+*/
 // count * size, saturating to SIZE_MAX on overflow. SIZE_MAX can never be
 // satisfied, so an overflowing request fails in the backend instead of wrapping
 // to a small size. (Returning 0 would be wrong: realloc to 0 means free.)
@@ -211,16 +212,15 @@ static inline size_t wc_align_for_size(size_t elm_size)
 
 
 /* typed helpers (allocator first)
- * Free takes the POINTER, not a type: size and align come from *p, so a wrong
- * type can't be passed*/
+ * Free takes the POINTER, not a type: size and align come from *p, so a wrong type can't be passed
+*/
 
 #define WC_NEW(a, T)      ((T*)wc_alloc((a), sizeof(T), alignof(T)))
 #define WC_NEW_N(a, T, n) ((T*)wc_alloc((a), wc_mul((n), sizeof(T)), alignof(T)))
-#define WC_REALLOC_N(a, p, old_n, n)                                                               \
-    ((__typeof__(p))wc_realloc((a), (p), wc_mul((old_n), sizeof(*(p))), wc_mul((n), sizeof(*(p))), \
-                               alignof(__typeof__(*(p)))))
-#define WC_FREE(a, p)      (wc_free((a), (p), sizeof(*(p)), alignof(__typeof__(*(p)))))
-#define WC_FREE_N(a, p, n) (wc_free((a), (p), wc_mul((n), sizeof(*(p))), alignof(__typeof__(*(p)))))
+#define WC_REALLOC_N(a, p, old_n, n) \
+    ((typeof(p))wc_realloc((a), (p), wc_mul((old_n), sizeof(*(p))), wc_mul((n), sizeof(*(p))), alignof(typeof(*(p)))))
+#define WC_FREE(a, p)      (wc_free((a), (p), sizeof(*(p)), alignof(typeof(*(p)))))
+#define WC_FREE_N(a, p, n) (wc_free((a), (p), wc_mul((n), sizeof(*(p))), alignof(typeof(*(p)))))
 
 
 #endif // WC_ALLOCATOR_H
@@ -254,7 +254,6 @@ static inline size_t wc_align_for_size(size_t elm_size)
 #define WC_COLOR_GREEN  "\033[1;32m"
 #define WC_COLOR_BLUE   "\033[1;34m"
 #define WC_COLOR_CYAN   "\033[1;36m"
-
 
 
 /*
@@ -360,6 +359,10 @@ __attribute__((cold, noinline, format(printf, 4, 5))) void wc_warn_report(const 
 #define WC_CAT(a, b)  WC_CAT_(a, b)
 
 
+#define WC_NONULL(...) __attribute__((nonnull(__VA_ARGS__)))
+#define WC_NODISCARD   __attribute__((warn_unused_result)) // TODO: use
+
+
 // TYPES
 
 #include <stdbool.h>
@@ -378,13 +381,12 @@ typedef int64_t i64;
 // we are using unsigned indices/sizes
 #define WC_NOT_FOUND ((u64) - 1)
 
-
 // GENERIC FUNCTIONS
 
 
 /* ELEMENT OPS
  *
- * Memory rule B5: every element is TRIVIALLY RELOCATABLE. A container may move
+ * Every element is TRIVIALLY RELOCATABLE. A container may move
  * an element to another address with a raw memcpy (growth, insert/remove shifts,
  * hash table shuffles, queue compaction, taking an element out) and never asks
  * the element first. A type that holds a pointer to itself, or that something
@@ -413,15 +415,15 @@ typedef struct {
 
 
 // Heap-box a value-returning constructor through allocator A:
-//   GenVec* v = WC_BOX_IN(A, GenVec, GenVec_create, 8, sizeof(int), NULL);
+//   GenVec* v = WC_BOX(A, GenVec, GenVec_create, 8, sizeof(int), NULL);
 // Invariant: the shell comes from the same allocator the child stores, so a
 // by-pointer delete can free the shell with the child's own allocator.
-#define WC_BOX_IN(A, T, init_fn, ...)                              \
-    ({                                                             \
-        T* _wbx_p = wc_alloc(A, sizeof(T), alignof(T));            \
-        FATAL_IF(!_wbx_p, "WC_BOX_IN(" #T "): allocation failed"); \
-        *_wbx_p = init_fn(A, __VA_ARGS__);                         \
-        _wbx_p;                                                    \
+#define WC_BOX(A, T, init_fn, ...)                              \
+    ({                                                          \
+        T* _wbx_p = wc_alloc(A, sizeof(T), alignof(T));         \
+        FATAL_IF(!_wbx_p, "WC_BOX(" #T "): allocation failed"); \
+        *_wbx_p = init_fn(A, __VA_ARGS__);                      \
+        _wbx_p;                                                 \
     })
 
 
@@ -436,7 +438,7 @@ typedef struct {
 
 // RAW BYTES TO HEX
 
-static inline void print_hex(const u8* ptr, u64 size, u32 bytes_per_line)
+static inline void print_hex(const void* ptr, u64 size, u32 bytes_per_line)
 {
     if (ptr == NULL || size == 0 || bytes_per_line == 0) {
         return;
@@ -446,8 +448,8 @@ static inline void print_hex(const u8* ptr, u64 size, u32 bytes_per_line)
     const char* hex = "0123456789ABCDEF";
 
     for (u64 i = 0; i < size; i++) {
-        u8 val1 = ptr[i] >> 4;   // get upper 4 bits as num b/w 0-15
-        u8 val2 = ptr[i] & 0x0F; // get lower 4 bits as num b/w 0-15
+        u8 val1 = *((u8*)ptr + i) >> 4;   // get upper 4 bits as num b/w 0-15
+        u8 val2 = *((u8*)ptr + i) & 0x0F; // get lower 4 bits as num b/w 0-15
 
         printf("%c%c", hex[val1], hex[val2]);
 
@@ -795,13 +797,15 @@ void matrix_print(const Matrixf* mat) __attribute__((nonnull(1)));
 #line 1 "src/wc_allocator.c"
 
 #include <stddef.h>
+#include <stdint.h>
+#include <sys/mman.h>
+#include <unistd.h>
 
 
 
 /* wc_libc: the only allocator with vt == NULL */
 
 const wc_allocator wc_libc = {.vt = NULL, .ctx = NULL};
-
 
 /* wc_borrowed: non-owning allocator */
 
@@ -810,7 +814,7 @@ static void* wc_borrowed_alloc(void* ctx, size_t size, size_t align)
     (void)ctx;
     (void)size;
     (void)align;
-    return NULL;
+    return NULL; // can't allocate with a borrowed object's allocator
 }
 
 static void wc_borrowed_free(void* ctx, void* p, size_t size, size_t align)
@@ -828,6 +832,82 @@ static const wc_alloc_vtable wc_borrowed_vt = {
 };
 
 const wc_allocator wc_borrowed = {.vt = &wc_borrowed_vt, .ctx = NULL};
+
+
+/* wc_mmap: page-granular allocator backed by anonymous mmap
+ *
+ * Every allocation is its own mapping, so it costs one syscall and at least
+ * one page. Use it for big, long-lived regions (an Arena reservation, large
+ * ChainArena nodes), not for small blocks.
+ *
+ *   - failure returns NULL
+ *   - any power-of-two alignment is honoured, including above the page size
+ *   - fresh pages are zero-filled by the kernel and committed lazily
+ */
+
+static size_t wc_page_size(void)
+{
+    static size_t cached;
+    size_t        ps = cached;
+    if (ps == 0) {
+        long v = sysconf(_SC_PAGESIZE);
+        ps     = v > 0 ? (size_t)v : 4096;
+        cached = ps;
+    }
+    return ps;
+}
+
+static void* wc_mmap_alloc(void* ctx, size_t size, size_t align)
+{
+    (void)ctx;
+    const size_t page = wc_page_size();
+
+    if (size > SIZE_MAX - page) { // page rounding would overflow
+        return NULL;
+    }
+
+    if (align <= page) { // mmap already returns page-aligned addresses
+        void* p = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        return p == MAP_FAILED ? NULL : p;
+    }
+
+    // align > page size: over-map, then unmap the unaligned head and the unused tail
+    if (size > SIZE_MAX - page - align) {
+        return NULL;
+    }
+    const size_t len = (size + page - 1) & ~(page - 1); // what the caller keeps
+    const size_t big = len + align;
+    uint8_t*          raw = mmap(NULL, big, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (raw == MAP_FAILED) {
+        return NULL;
+    }
+
+    uint8_t*    aligned = (uint8_t*)(((uintptr_t)raw + align - 1) & ~((uintptr_t)align - 1));
+    size_t head    = (size_t)(aligned - raw);
+    size_t tail    = big - head - len;
+    if (head) {
+        munmap(raw, head);
+    }
+    if (tail) {
+        munmap(aligned + len, tail);
+    }
+    return aligned;
+}
+
+static void wc_mmap_free(void* ctx, void* p, size_t size, size_t align)
+{
+    (void)ctx;
+    (void)align;
+    munmap(p, size); // the kernel rounds size up to whole pages, same as at alloc
+}
+
+static const wc_alloc_vtable wc_mmap_vt = {
+    .alloc   = wc_mmap_alloc,
+    .realloc = NULL, // emulated: alloc + copy + free
+    .free    = wc_mmap_free,
+};
+
+const wc_allocator wc_mmap = {.vt = &wc_mmap_vt, .ctx = NULL};
 
 #endif /* WC_WC_ALLOCATOR_IMPL */
 

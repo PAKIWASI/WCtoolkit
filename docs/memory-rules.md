@@ -39,7 +39,7 @@ Every rule the toolkit follows about allocation, copying, moving and lifetimes, 
 | B9 | A value taken out still uses the container's allocator. | Behavior of B7 |
 | B10 | Move-inserting a duplicate destroys the incoming value. The source is zeroed either way. | `HashMap_put_move`, `HashMap_put_key_move` (sets) |
 | B11 | Replace/put on an existing key destroys the old value, then copies or moves the new one in. | |
-| B12 | Boxed shells come only from `WC_BOX_IN`, from the same allocator the element stores. `del_ptr` frees the shell with that allocator. | `wc_helpers.h` |
+| B12 | Boxed shells come only from `WC_BOX`, from the same allocator the element stores. `del_ptr` frees the shell with that allocator. | `wc_helpers.h` |
 | B13 | Store by pointer when something outside keeps the element's address, or when the type is not trivially relocatable. | Documentation |
 | B14 | A container frees what its elements own, never the slot. `destroy` never frees the container struct. | |
 

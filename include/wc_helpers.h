@@ -30,7 +30,7 @@
  *             but NOT elm itself → GenVec_destroy, String_destroy, ...
  *
  * BY POINTER  (slot holds T*, sizeof(T*) = 8 bytes)
- *   copy_fn: *(T**)dest = a new shell from `dst` holding a deep copy (WC_BOX_IN)
+ *   copy_fn: *(T**)dest = a new shell from `dst` holding a deep copy (WC_BOX)
  *   del_fn : destroy the pointee, then free the shell with the pointee's own
  *            allocator (shell allocator == child allocator, rule B12)
  */
@@ -79,7 +79,7 @@ static inline void str_print(const void* elm)
 static inline void str_copy_ptr(const wc_allocator* dst, void* dest, const void* src)
 {
     // Box a deep copy: shell and contents both from dst
-    *(String**)dest = (String*)WC_BOX_IN(dst, String, String_copy, *(const String* const*)src);
+    *(String**)dest = (String*)WC_BOX(dst, String, String_copy, *(const String* const*)src);
 }
 
 static inline void str_del_ptr(void* elm)
@@ -147,7 +147,7 @@ static inline void vec_print_int(const void* elm)
 static inline void vec_copy_ptr(const wc_allocator* dst, void* dest, const void* src)
 {
     // shell and contents both from dst: the shell allocator equals the child's (D6)
-    *(GenVec**)dest = WC_BOX_IN(dst, GenVec, GenVec_copy, *(const GenVec* const*)src);
+    *(GenVec**)dest = WC_BOX(dst, GenVec, GenVec_copy, *(const GenVec* const*)src);
 }
 
 static inline void vec_del_ptr(void* elm)

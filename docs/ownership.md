@@ -129,7 +129,7 @@ Use by-pointer storage when something outside the container keeps the element's 
 
 ## Boxing
 
-By-pointer elements need a heap "shell". Create shells only with `WC_BOX_IN`:
+By-pointer elements need a heap "shell". Create shells only with `WC_BOX`:
 
 ```c
 #include "wc_macros.h"
@@ -138,7 +138,7 @@ int main(void)
 {
     GenVec v = VEC_OF(String*, 4);
 
-    String* s = WC_BOX_IN(WC_LIBC, String, String_from_cstr, "hello");
+    String* s = WC_BOX(WC_LIBC, String, String_from_cstr, "hello");
     // a shell from WC_LIBC holding String_from_cstr(WC_LIBC, "hello")
     VEC_PUSH_MOVE(&v, s);            // the slot owns the pointer; s is NULL now
 
@@ -147,7 +147,7 @@ int main(void)
 }
 ```
 
-`WC_BOX_IN(A, T, init_fn, args...)` calls `init_fn(A, args...)`, so the allocator is passed once.
+`WC_BOX(A, T, init_fn, args...)` calls `init_fn(A, args...)`, so the allocator is passed once.
 
 **Invariant:** a boxed element's shell comes from the same allocator the element stores. When a container frees the slot, it destroys the element and then frees the shell with that same allocator (`WC_FREE(elm->alloc, elm)`). A shell allocated any other way breaks this.
 

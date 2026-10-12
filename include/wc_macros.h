@@ -73,7 +73,7 @@
 /* Compile-time guards.
  * WC_REQUIRE_POD (E2): a value macro takes the element BY VALUE into a hidden
  *   temporary. Owning structs AND owning pointers are rejected: an rvalue
- *   (String_from_cstr(..), WC_BOX_IN(..)) would be deep-copied and then leak.
+ *   (String_from_cstr(..), WC_BOX(..)) would be deep-copied and then leak.
  * WC_REQUIRE_NO_ALIAS (E3): a read macro returns the element BY VALUE. An
  *   owning struct is rejected: the copy would share the container's buffer.
  *   Pointer elements are allowed: a returned pointer is a visible borrow.
@@ -257,7 +257,7 @@ Usage:
         } else {                                                                        \
             /* by pointer: box the String in the vec's allocator */                     \
             WC_ASSERT_ELEM_SIZE((vec), String*);                                        \
-            String* _wpc_p = WC_BOX_IN((vec)->alloc, String, String_from_cstr, (cstr)); \
+            String* _wpc_p = WC_BOX((vec)->alloc, String, String_from_cstr, (cstr)); \
             GenVec_push_move((vec), (void*)&_wpc_p); /* slot owns the pointer */        \
         }                                                                               \
     })

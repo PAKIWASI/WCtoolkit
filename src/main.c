@@ -51,21 +51,6 @@ static int run1(void)
     volatile u8* huge = ChainArena_alloc(&ca, nMB(2)); // seperate big node
     huge[nMB(1)]      = 69;
 
-    ChainArenaScratch_destroy(cas);
-
-    CARENA_SCRATCH(&ca)
-    {
-        volatile u8* normal  = ChainArena_alloc(&ca, nKB(3)); // same node
-        normal[nKB(2)]       = 69;
-        volatile u8* normal2 = ChainArena_alloc(&ca, nKB(3)); // new node
-        normal2[nKB(2)]      = 69;
-        volatile u8* normal3 = ChainArena_alloc(&ca, nKB(3)); // new node
-        normal3[nKB(2)]      = 69;
-
-        volatile u8* huge = ChainArena_alloc(&ca, nMB(2)); // seperate big node
-        huge[nMB(1)]      = 69;
-    }
-
     return 0;
 }
 
@@ -99,9 +84,8 @@ int main(void)
         u8* d5         = Arena_alloc(&va, nKB(1));
         d5[0]          = 56;
         d5[nKB(1) - 1] = 50;
-        ArenaScratch_scratch_off(vas);
+        ArenaScratch_to_mark(vas);
     }
-    ArenaScratch_destroy(vas);
     LOG("arena usage: %lu", va.off);
 
 

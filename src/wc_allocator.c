@@ -1,5 +1,4 @@
 #include "wc_allocator.h"
-#include "common.h"
 #include <stddef.h>
 #include <stdint.h>
 #include <sys/mman.h>
@@ -81,12 +80,12 @@ static void* wc_mmap_alloc(void* ctx, size_t size, size_t align)
     }
     const size_t len = (size + page - 1) & ~(page - 1); // what the caller keeps
     const size_t big = len + align;
-    u8*          raw = mmap(NULL, big, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    uint8_t*          raw = mmap(NULL, big, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (raw == MAP_FAILED) {
         return NULL;
     }
 
-    u8*    aligned = (u8*)(((uintptr_t)raw + align - 1) & ~((uintptr_t)align - 1));
+    uint8_t*    aligned = (uint8_t*)(((uintptr_t)raw + align - 1) & ~((uintptr_t)align - 1));
     size_t head    = (size_t)(aligned - raw);
     size_t tail    = big - head - len;
     if (head) {

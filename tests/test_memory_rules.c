@@ -202,12 +202,12 @@ UTEST(memory_rules, queue_pop_back_then_push_no_double_free)
 
     Queue q = QUEUE_CREATE_CX_IN(wc_test_alloc_allocator(&ta), String*, 4, &wc_str_ptr_ops);
     for (int round = 0; round < 3; round++) {
-        String* a = WC_BOX_IN(wc_test_alloc_allocator(&ta), String, String_from_cstr, LONG_A);
-        String* b = WC_BOX_IN(wc_test_alloc_allocator(&ta), String, String_from_cstr, LONG_B);
+        String* a = WC_BOX(wc_test_alloc_allocator(&ta), String, String_from_cstr, LONG_A);
+        String* b = WC_BOX(wc_test_alloc_allocator(&ta), String, String_from_cstr, LONG_B);
         QUEUE_PUSH_MOVE(&q, a);
         QUEUE_PUSH_MOVE(&q, b);
         Queue_pop_back(&q, NULL); // deletes b
-        String* c = WC_BOX_IN(wc_test_alloc_allocator(&ta), String, String_from_cstr, LONG_C);
+        String* c = WC_BOX(wc_test_alloc_allocator(&ta), String, String_from_cstr, LONG_C);
         QUEUE_PUSH_MOVE(&q, c); // lands in b's old slot
     }
     EXPECT_EQ(Queue_size(&q), 6u);

@@ -145,7 +145,7 @@ UTEST(ops, strval_triggers_growth)
 UTEST(ops, strptr_push_copy_independent)
 {
     GenVec  v = VEC_OF_STR_PTR(4);
-    String* s = WC_BOX_IN(WC_LIBC, String, String_from_cstr, "hello");
+    String* s = WC_BOX(WC_LIBC, String, String_from_cstr, "hello");
 
     VEC_PUSH_COPY(&v, s);
     VEC_PUSH_COPY(&v, s);
@@ -163,7 +163,7 @@ UTEST(ops, strptr_push_copy_independent)
 UTEST(ops, strptr_push_move_nulls_src)
 {
     GenVec  v = VEC_OF_STR_PTR(4);
-    String* s = WC_BOX_IN(WC_LIBC, String, String_from_cstr, "world");
+    String* s = WC_BOX(WC_LIBC, String, String_from_cstr, "world");
     VEC_PUSH_MOVE(&v, s);
 
     EXPECT_TRUE((s) == NULL);
@@ -175,7 +175,7 @@ UTEST(ops, strptr_address_stable_after_growth)
 {
     /* key advantage of Strategy B: address of String doesn't change on realloc */
     GenVec  v = VEC_OF_STR_PTR(2);
-    String* s = WC_BOX_IN(WC_LIBC, String, String_from_cstr, "stable");
+    String* s = WC_BOX(WC_LIBC, String, String_from_cstr, "stable");
     VEC_PUSH_MOVE(&v, s);
     String* addr = VEC_AT(&v, String*, 0); /* address of the heap String */
 
@@ -211,7 +211,7 @@ UTEST(ops, strptr_replace_slot_pointer)
 
     /* VEC_AT_MUT gives String** — we can replace which String the slot points to */
     String** slot        = VEC_AT_MUT(&v, String*, 0);
-    String*  replacement = WC_BOX_IN(WC_LIBC, String, String_from_cstr, "new");
+    String*  replacement = WC_BOX(WC_LIBC, String, String_from_cstr, "new");
     String_destroy(*slot); /* free old String */
     WC_FREE(WC_LIBC, *slot);
     *slot = replacement; /* put new String* in slot */
@@ -351,14 +351,14 @@ UTEST(ops, vecval_triggers_growth)
  * SECTION 4 — Vec<GenVec*> by POINTER  (vec of int vec pointers)
  *
  * Slot holds GenVec* (8 bytes). The inner vec's shell and data come from the
- * same allocator (WC_BOX_IN), so vec_del_ptr can free the shell with it.
+ * same allocator (WC_BOX), so vec_del_ptr can free the shell with it.
  * Stable addresses across outer vec growth.
  * ══════════════════════════════════════════════════════════════════════════ */
 
 UTEST(ops, vecptr_push_move_nulls_src)
 {
     GenVec  outer = VEC_OF_VEC_PTR(4);
-    GenVec* inner = WC_BOX_IN(WC_LIBC, GenVec, GenVec_create, 4, sizeof(int), NULL);
+    GenVec* inner = WC_BOX(WC_LIBC, GenVec, GenVec_create, 4, sizeof(int), NULL);
     VEC_PUSH(inner, 42);
 
     VEC_PUSH_VEC_PTR(&outer, inner);
@@ -372,14 +372,14 @@ UTEST(ops, vecptr_push_move_nulls_src)
 UTEST(ops, vecptr_address_stable_after_growth)
 {
     GenVec  outer = VEC_OF_VEC_PTR(2);
-    GenVec* inner = WC_BOX_IN(WC_LIBC, GenVec, GenVec_create, 4, sizeof(int), NULL);
+    GenVec* inner = WC_BOX(WC_LIBC, GenVec, GenVec_create, 4, sizeof(int), NULL);
     VEC_PUSH(inner, 99);
     VEC_PUSH_VEC_PTR(&outer, inner);
 
     GenVec* addr = VEC_AT(&outer, GenVec*, 0); /* address of the inner vec */
 
     for (int i = 0; i < 30; i++) {
-        GenVec* filler = WC_BOX_IN(WC_LIBC, GenVec, GenVec_create, 1, sizeof(int), NULL);
+        GenVec* filler = WC_BOX(WC_LIBC, GenVec, GenVec_create, 1, sizeof(int), NULL);
         VEC_PUSH(filler, i);
         VEC_PUSH_VEC_PTR(&outer, filler);
     }
@@ -392,7 +392,7 @@ UTEST(ops, vecptr_address_stable_after_growth)
 UTEST(ops, vecptr_copy_outer)
 {
     GenVec  src   = VEC_OF_VEC_PTR(4);
-    GenVec* inner = WC_BOX_IN(WC_LIBC, GenVec, GenVec_create, 4, sizeof(int), NULL);
+    GenVec* inner = WC_BOX(WC_LIBC, GenVec, GenVec_create, 4, sizeof(int), NULL);
     int     v     = 5;
     VEC_PUSH(inner, v);
     VEC_PUSH_VEC_PTR(&src, inner);

@@ -20,44 +20,36 @@
 #include <stdlib.h>
 #include <string.h>
 
-
 #define WC_MAX_ALIGN alignof(max_align_t)
+
+// TODO: maybe we shouldn't implicitly default to libc. if no valid allocator is provided, we should fail
 
 /* libc fallbacks */
 
 static inline void* wc_libc_alloc(size_t n, size_t align)
 {
     if (align <= WC_MAX_ALIGN) {
-        return malloc(n);
+        return malloc(n); // malloc promises it's result is aligned if for max_align_t (16 bytes)
     }
 
+    // if more alignment is needed, we need aligned alloc (unix)
     size_t rounded = (n + align - 1) & ~(align - 1); // aligned_alloc: size % align == 0
     if (rounded < n) {
         return NULL; // overflow
     }
-#ifdef _MSC_VER
-    return _aligned_malloc(rounded, align);
-#else
     return aligned_alloc(align, rounded);
-#endif
 }
 
 static inline void wc_libc_free(void* p, size_t align)
 {
-#ifdef _MSC_VER
-    if (align > WC_MAX_ALIGN) {
-        _aligned_free(p); // MSVC can't free() these
-        return;
-    }
-#endif
     (void)align;
-    free(p); // POSIX/glibc: fine for both
+    free(p);
 }
 
 static inline void* wc_libc_realloc(void* p, size_t old_n, size_t n, size_t align)
 {
     if (align <= WC_MAX_ALIGN) {
-        return realloc(p, n);
+        return realloc(p, n); // realloc garentees 16-byte alinment, like malloc
     }
 
     // libc realloc doesn't preserve alignment above max_align_t: alloc, copy, free
@@ -75,7 +67,7 @@ static inline void* wc_libc_realloc(void* p, size_t old_n, size_t n, size_t alig
 /*
  * ALLOCATOR API
  *
- * No global allocator exists: every data structure receives its allocator at
+ * Every data structure receives its allocator at
  * construction, stores it, and uses it for every allocation.
  *
  * An allocator is a (vtable, ctx) pair. It is passed and stored as `const wc_allocator*`
@@ -119,6 +111,10 @@ extern const wc_allocator wc_libc;
 extern const wc_allocator wc_borrowed;
 #define WC_BORROWED (&wc_borrowed)
 
+extern const wc_allocator wc_mmap;
+#define WC_MMAP (&wc_mmap)
+
+
 static inline __attribute__((nonnull(1))) int wc_is_libc(const wc_allocator* a)
 {
     return a->vt == NULL;
@@ -136,7 +132,7 @@ static inline __attribute__((nonnull(1, 2))) int wc_same(const wc_allocator* a, 
 static inline __attribute__((nonnull(1))) void* wc_alloc(const wc_allocator* a, size_t n, size_t align)
 {
     WC_ALLOC_ASSERT_ALIGN(align);
-    if (n == 0 || n > (size_t)PTRDIFF_MAX) { // > PTRDIFF_MAX: overflowed size (see wc_mul)
+    if (n == 0 || n > (size_t)PTRDIFF_MAX) { // any valid allocation will be less than PTRDIFF_MAX
         return NULL;
     }
     return a->vt ? a->vt->alloc(a->ctx, n, align) : wc_libc_alloc(n, align);
@@ -188,6 +184,11 @@ static inline __attribute__((nonnull(1))) void* wc_realloc(const wc_allocator* a
     return q;
 }
 
+/*
+PTRDIFF_MAX is the largest value a ptrdiff_t can hold. That's the signed type you get from subtracting two pointers.
+On 64-bit it's about 2⁶³ − 1. C says no single object can be bigger than that, because otherwise end - start within 
+the object couldn't be represented. So any valid allocation size is <= PTRDIFF_MAX.
+*/
 // count * size, saturating to SIZE_MAX on overflow. SIZE_MAX can never be
 // satisfied, so an overflowing request fails in the backend instead of wrapping
 // to a small size. (Returning 0 would be wrong: realloc to 0 means free.)
@@ -211,16 +212,15 @@ static inline size_t wc_align_for_size(size_t elm_size)
 
 
 /* typed helpers (allocator first)
- * Free takes the POINTER, not a type: size and align come from *p, so a wrong
- * type can't be passed*/
+ * Free takes the POINTER, not a type: size and align come from *p, so a wrong type can't be passed
+*/
 
 #define WC_NEW(a, T)      ((T*)wc_alloc((a), sizeof(T), alignof(T)))
 #define WC_NEW_N(a, T, n) ((T*)wc_alloc((a), wc_mul((n), sizeof(T)), alignof(T)))
-#define WC_REALLOC_N(a, p, old_n, n)                                                               \
-    ((__typeof__(p))wc_realloc((a), (p), wc_mul((old_n), sizeof(*(p))), wc_mul((n), sizeof(*(p))), \
-                               alignof(__typeof__(*(p)))))
-#define WC_FREE(a, p)      (wc_free((a), (p), sizeof(*(p)), alignof(__typeof__(*(p)))))
-#define WC_FREE_N(a, p, n) (wc_free((a), (p), wc_mul((n), sizeof(*(p))), alignof(__typeof__(*(p)))))
+#define WC_REALLOC_N(a, p, old_n, n) \
+    ((typeof(p))wc_realloc((a), (p), wc_mul((old_n), sizeof(*(p))), wc_mul((n), sizeof(*(p))), alignof(typeof(*(p)))))
+#define WC_FREE(a, p)      (wc_free((a), (p), sizeof(*(p)), alignof(typeof(*(p)))))
+#define WC_FREE_N(a, p, n) (wc_free((a), (p), wc_mul((n), sizeof(*(p))), alignof(typeof(*(p)))))
 
 
 #endif // WC_ALLOCATOR_H
@@ -254,7 +254,6 @@ static inline size_t wc_align_for_size(size_t elm_size)
 #define WC_COLOR_GREEN  "\033[1;32m"
 #define WC_COLOR_BLUE   "\033[1;34m"
 #define WC_COLOR_CYAN   "\033[1;36m"
-
 
 
 /*
@@ -360,6 +359,10 @@ __attribute__((cold, noinline, format(printf, 4, 5))) void wc_warn_report(const 
 #define WC_CAT(a, b)  WC_CAT_(a, b)
 
 
+#define WC_NONULL(...) __attribute__((nonnull(__VA_ARGS__)))
+#define WC_NODISCARD   __attribute__((warn_unused_result)) // TODO: use
+
+
 // TYPES
 
 #include <stdbool.h>
@@ -378,13 +381,12 @@ typedef int64_t i64;
 // we are using unsigned indices/sizes
 #define WC_NOT_FOUND ((u64) - 1)
 
-
 // GENERIC FUNCTIONS
 
 
 /* ELEMENT OPS
  *
- * Memory rule B5: every element is TRIVIALLY RELOCATABLE. A container may move
+ * Every element is TRIVIALLY RELOCATABLE. A container may move
  * an element to another address with a raw memcpy (growth, insert/remove shifts,
  * hash table shuffles, queue compaction, taking an element out) and never asks
  * the element first. A type that holds a pointer to itself, or that something
@@ -413,15 +415,15 @@ typedef struct {
 
 
 // Heap-box a value-returning constructor through allocator A:
-//   GenVec* v = WC_BOX_IN(A, GenVec, GenVec_create, 8, sizeof(int), NULL);
+//   GenVec* v = WC_BOX(A, GenVec, GenVec_create, 8, sizeof(int), NULL);
 // Invariant: the shell comes from the same allocator the child stores, so a
 // by-pointer delete can free the shell with the child's own allocator.
-#define WC_BOX_IN(A, T, init_fn, ...)                              \
-    ({                                                             \
-        T* _wbx_p = wc_alloc(A, sizeof(T), alignof(T));            \
-        FATAL_IF(!_wbx_p, "WC_BOX_IN(" #T "): allocation failed"); \
-        *_wbx_p = init_fn(A, __VA_ARGS__);                         \
-        _wbx_p;                                                    \
+#define WC_BOX(A, T, init_fn, ...)                              \
+    ({                                                          \
+        T* _wbx_p = wc_alloc(A, sizeof(T), alignof(T));         \
+        FATAL_IF(!_wbx_p, "WC_BOX(" #T "): allocation failed"); \
+        *_wbx_p = init_fn(A, __VA_ARGS__);                      \
+        _wbx_p;                                                 \
     })
 
 
@@ -436,7 +438,7 @@ typedef struct {
 
 // RAW BYTES TO HEX
 
-static inline void print_hex(const u8* ptr, u64 size, u32 bytes_per_line)
+static inline void print_hex(const void* ptr, u64 size, u32 bytes_per_line)
 {
     if (ptr == NULL || size == 0 || bytes_per_line == 0) {
         return;
@@ -446,8 +448,8 @@ static inline void print_hex(const u8* ptr, u64 size, u32 bytes_per_line)
     const char* hex = "0123456789ABCDEF";
 
     for (u64 i = 0; i < size; i++) {
-        u8 val1 = ptr[i] >> 4;   // get upper 4 bits as num b/w 0-15
-        u8 val2 = ptr[i] & 0x0F; // get lower 4 bits as num b/w 0-15
+        u8 val1 = *((u8*)ptr + i) >> 4;   // get upper 4 bits as num b/w 0-15
+        u8 val2 = *((u8*)ptr + i) & 0x0F; // get lower 4 bits as num b/w 0-15
 
         printf("%c%c", hex[val1], hex[val2]);
 
@@ -636,205 +638,82 @@ static inline void wc_perror(const char* prefix)
 
 
 #include <stdalign.h>
-#include <string.h>
 
-// TODO: arena should be a one of the default allocators. it should not take an allocator. it should allocate using mmap directly
-
-
-/*
- * Arena: single-block bump allocator with a fixed capacity.
- *
- * PINNED: `Arena_allocator(a)` hands out a pointer into the arena, whose ctx is
- * the arena's address, so an Arena must not be moved or copied after
- * Arena_create*. Debug builds check `self.ctx == arena` on every call.
- *
- * In-place ops: realloc grows/shrinks the LAST block in place and
- * free rewinds the LAST block, but only for blocks at or above `floor`.
- * A scratch scope raises the floor to the current position, so blocks created
- * before the scope are never extended past (or rewound below) the scope's mark.
- */
-typedef struct Arena {
-    const wc_allocator* backing; // where `base` came from (WC_BORROWED: caller's buffer)
-    u8*                 base;
-    u64                 size;  // capacity in bytes
-    u64                 idx;   // next free offset
-    u64                 floor; // in-place realloc/free never touch blocks below this
-    wc_allocator        self;  // this arena as an allocator: {arena_vt, this} (rule A4)
-} Arena;
-
-_Static_assert(sizeof(Arena) == 56, "Arena must be 56 bytes");
-
-
-// Tweakable settings
-#ifndef ARENA_DEFAULT_SIZE
-#define ARENA_DEFAULT_SIZE (nKB(4)) // 4 KB
+#ifndef ARENA_MIN_SIZE
+#define ARENA_MIN_SIZE (nKB(4)) // 4 KB
 #endif
 
 
-// Lifecycle
+// arena backed by another allocator (libc, WC_MMAP, ...)
+// use this for allocations that persist for the entire program and you know the upper bound
+typedef struct {
+    u8*                 base;
+    const wc_allocator* alloc; // backing allocator the region came from; Arena_destroy gives it back here
+    u64                 off;
+    u64                 cap;
+    wc_allocator        self; // what containers store. ctx == this Arena. lives as long as the arena, so allocator
+    // becomes invalidatd when arena is destroyed.
+} Arena;
 
-// Initialise `arena` in place with `capacity` bytes taken from `backing`
-// (capacity 0 -> ARENA_DEFAULT_SIZE). Fatal if the backing allocation fails.
-void Arena_create(Arena* arena, const wc_allocator* backing, u64 capacity) __attribute__((nonnull(1, 2)));
+// Takes a `cap`-byte region (at least VARENA_MIN_SIZE) from `backing`. Aborts if backing fails.
+// `a` is initialised in place and must not be moved or copied afterwards.
+void Arena_create(Arena* a, const wc_allocator* backing, u64 cap) WC_NONULL(1, 2);
 
-// Initialise `arena` in place over caller-owned memory. Destroy frees nothing.
-void Arena_create_buf(Arena* arena, void* buf, u64 size) __attribute__((nonnull(1, 2)));
+// Gives the region back to the backing allocator and zeroes the arena. Safe on a zeroed
+// arena and safe to call twice.
+void Arena_destroy(Arena* a) WC_NONULL(1);
 
-// Free the region through the backing allocator (only if owned) and zero the
-// struct. Safe on a zeroed or already-destroyed Arena.
-void Arena_destroy(Arena* arena) __attribute__((nonnull(1)));
+// Both return NULL when the arena can't fit the request. Arena_alloc aligns to WC_MAX_ALIGN
+// (like malloc). Arena_alloc_aligned aligns the ADDRESS to `align` (a power of two).
+[[nodiscard]] void* Arena_alloc(Arena* a, u64 size) WC_NONULL(1);
 
-// Forget every allocation (idx = floor = 0). Keeps the region.
-void Arena_reset(Arena* arena) __attribute__((nonnull(1)));
+[[nodiscard]] void* Arena_alloc_aligned(Arena* a, u64 size, u64 align) WC_NONULL(1);
 
-
-// Allocation. Return NULL and set wc_errno = WC_ERR_FULL when the arena is full.
-
-// Aligned to WC_MAX_ALIGN, like malloc. Pass an alignment to pack tighter.
-void* Arena_alloc(Arena* arena, u64 size) __attribute__((nonnull(1), alloc_size(2)));
-
-// `align` must be a power of two >= 1. Alignment is by ADDRESS (A2).
-void* Arena_alloc_aligned(Arena* arena, u64 size, u64 align) __attribute__((nonnull(1), alloc_size(2)));
-
-
-static inline __attribute__((nonnull(1))) u64 Arena_used(const Arena* arena)
+WC_NONULL(1) static inline void Arena_clear(Arena* a)
 {
-    return arena->idx;
+    a->off = 0;
 }
 
-static inline __attribute__((nonnull(1))) u64 Arena_remaining(const Arena* arena)
+// The allocator to give to containers. Points into the arena, so it lives as long as the arena
+[[nodiscard]] WC_NONULL(1) static inline const wc_allocator* Arena_allocator(Arena* a)
 {
-    return arena->size - arena->idx;
-}
-
-
-// Allocator views
-
-// The arena as a wc_allocator: in-place realloc of the last block, last-block
-// free, everything else is bump + copy. Points INTO the arena, so it lives
-// exactly as long as the arena does.
-static inline __attribute__((nonnull(1), returns_nonnull)) const wc_allocator* Arena_allocator(Arena* arena)
-{
-    return &arena->self;
+    // zeroed self has vt == NULL, which would silently read as WC_LIBC
+    FATAL_IF(!a->self.ctx, "Arena_allocator on zeroed/destroyed Arena");
+    return &a->self;
 }
 
 
+// TYPED ALLOCATION MACROS
 
-// Scratch scopes
+#define ARENA_ALLOC(a, T)      Arena_alloc_aligned(a, sizeof(T), alignof(T))
+#define ARENA_ALLOC_N(a, T, n) Arena_alloc_aligned(a, sizeof(T) * (n), alignof(T))
 
+
+
+// SCRATCH STUFF
+
+// When doing scratch allocations per iteration that are discarded afterwards
 typedef struct {
     Arena* arena;
-    u64    mark;       // idx at scope start
-    u64    prev_floor; // floor to restore at scope end
+    u64    mark; // the offset value to go back to
 } ArenaScratch;
 
-// Save the position and raise the floor to it. Scopes nest: end them in LIFO order.
-static inline __attribute__((nonnull(1))) ArenaScratch Arena_scratch_begin(Arena* arena)
+
+[[nodiscard]] static inline WC_NONULL(1) // TODO: fix clang format for this
+    ArenaScratch ArenaScratch_create(Arena* a)
 {
-    ArenaScratch s = {.arena = arena, .mark = arena->idx, .prev_floor = arena->floor};
-    arena->floor   = arena->idx;
-    return s;
+    return (ArenaScratch){
+        .arena = a,
+        .mark  = a->off,
+    };
 }
 
-static inline void Arena_scratch_end(ArenaScratch scratch)
+static inline void ArenaScratch_to_mark(ArenaScratch scratch)
 {
-    if (scratch.arena) {
-        scratch.arena->idx   = scratch.mark;
-        scratch.arena->floor = scratch.prev_floor;
-    }
+    WC_ASSERT(scratch.arena, "arena is null");
+    scratch.arena->off = scratch.mark;
 }
 
-static inline void wc_arena_scratch_cleanup(ArenaScratch* s)
-{
-    if (s && s->arena) {
-        Arena_scratch_end(*s);
-        s->arena = NULL;
-    }
-}
-
-// Scoped scratch: restored on scope exit, including return/break/goto.
-#define ARENA_SCRATCH(arena_ptr)                                                                                     \
-    for (int _as_once = 1; _as_once; _as_once = 0)                                                                   \
-        for (ArenaScratch __attribute__((cleanup(wc_arena_scratch_cleanup))) _as_s = Arena_scratch_begin(arena_ptr); \
-             _as_once; _as_once                                                    = 0)
-
-/* USAGE:
-// Manual:
-ArenaScratch scratch = Arena_scratch_begin(&arena);
-char* tmp = ARENA_ALLOC_N(&arena, char, 256);
-Arena_scratch_end(scratch);
-
-// Automatic:
-ARENA_SCRATCH(&arena) {
-    char* tmp = ARENA_ALLOC_N(&arena, char, 256);
-} // auto cleanup
-*/
-
-
-// SCOPED ARENA
-//
-// ARENA_SCOPE(name, cap) { ... }
-// Creates a libc-backed Arena of `cap` bytes, exposes it inside the block as
-// `const wc_allocator* name`, and destroys it when the block exits (normal exit,
-// break, return or goto). Everything allocated from `name` dies with the
-// block: never let a container built on it escape. `break` leaves the scope.
-//
-//   ARENA_SCOPE(tmp, nKB(64)) {
-//       GenVec v = VEC_OF_IN(tmp, int, 16);
-//       ...                       // no destroy needed
-//   }
-#define ARENA_SCOPE(name, cap) ARENA_SCOPE_(name, (cap), WC_CAT(_asc_, __COUNTER__))
-#define ARENA_SCOPE_(name, cap, id)                                                                             \
-    for (int WC_CAT(id, _once) = 1; WC_CAT(id, _once); WC_CAT(id, _once) = 0)                                   \
-        for (Arena __attribute__((cleanup(Arena_destroy))) WC_CAT(id, _arena) = {0}; WC_CAT(id, _once);         \
-             WC_CAT(id, _once)                                                = 0)                              \
-            for (const wc_allocator* name =                                                                     \
-                     (Arena_create(&WC_CAT(id, _arena), WC_LIBC, (cap)), Arena_allocator(&WC_CAT(id, _arena))); \
-                 WC_CAT(id, _once); WC_CAT(id, _once) = 0)
-
-
-// USEFUL MACROS
-
-// Arena over an anonymous stack buffer of `nbytes` (lives until the enclosing block ends).
-#define ARENA_CREATE_BUF(arena_ptr, nbytes) Arena_create_buf((arena_ptr), (u8[nbytes]){0}, (nbytes))
-
-// typed allocation
-#define ARENA_ALLOC(arena, T) ((T*)Arena_alloc_aligned((arena), sizeof(T), alignof(T)))
-
-#define ARENA_ALLOC_N(arena, T, n) ((T*)Arena_alloc_aligned((arena), wc_mul((n), sizeof(T)), alignof(T)))
-
-// common for structs
-// NOLINTBEGIN(bugprone-macro-parentheses): T is a type; (T)* would parse as a cast
-#define ARENA_ALLOC_ZERO(arena, T)                                                                                  \
-    ({                                                                                                              \
-        T* _az = ARENA_ALLOC(arena, T); /* NOLINT(bugprone-macro-parentheses): T is a type: (T)* would be a cast */ \
-        _az ? (T*)memset(_az, 0, sizeof(T)) : (T*)NULL;                                                             \
-    })
-// NOLINTEND(bugprone-macro-parentheses)
-
-// NOLINTBEGIN(bugprone-macro-parentheses): T is a type; (T)* would parse as a cast
-#define ARENA_ALLOC_ZERO_N(arena, T, n)                                                                                \
-    ({                                                                                                                 \
-        u64 _azn = (u64)(n);                                                                                           \
-        T*  _az =                                                                                                      \
-            ARENA_ALLOC_N(arena, T, _azn); /* NOLINT(bugprone-macro-parentheses): T is a type: (T)* would be a cast */ \
-        _az ? (T*)memset(_az, 0, sizeof(T) * _azn) : (T*)NULL;                                                         \
-    })
-// NOLINTEND(bugprone-macro-parentheses)
-
-// Allocate and copy array into Arena
-// NOLINTBEGIN(bugprone-macro-parentheses): T is a type; (T)* would parse as a cast
-#define ARENA_PUSH_ARRAY(arena, T, src, count)                                                                         \
-    ({                                                                                                                 \
-        u64 _apc = (u64)(count);                                                                                       \
-        T*  _dst =                                                                                                     \
-            ARENA_ALLOC_N(arena, T, _apc); /* NOLINT(bugprone-macro-parentheses): T is a type: (T)* would be a cast */ \
-        if (_dst) {                                                                                                    \
-            memcpy(_dst, (src), sizeof(T) * _apc);                                                                     \
-        }                                                                                                              \
-        _dst;                                                                                                          \
-    })
-// NOLINTEND(bugprone-macro-parentheses)
 
 
 #endif // ARENA_H
@@ -847,13 +726,15 @@ ARENA_SCRATCH(&arena) {
 #line 1 "src/wc_allocator.c"
 
 #include <stddef.h>
+#include <stdint.h>
+#include <sys/mman.h>
+#include <unistd.h>
 
 
 
 /* wc_libc: the only allocator with vt == NULL */
 
 const wc_allocator wc_libc = {.vt = NULL, .ctx = NULL};
-
 
 /* wc_borrowed: non-owning allocator */
 
@@ -862,7 +743,7 @@ static void* wc_borrowed_alloc(void* ctx, size_t size, size_t align)
     (void)ctx;
     (void)size;
     (void)align;
-    return NULL;
+    return NULL; // can't allocate with a borrowed object's allocator
 }
 
 static void wc_borrowed_free(void* ctx, void* p, size_t size, size_t align)
@@ -880,6 +761,82 @@ static const wc_alloc_vtable wc_borrowed_vt = {
 };
 
 const wc_allocator wc_borrowed = {.vt = &wc_borrowed_vt, .ctx = NULL};
+
+
+/* wc_mmap: page-granular allocator backed by anonymous mmap
+ *
+ * Every allocation is its own mapping, so it costs one syscall and at least
+ * one page. Use it for big, long-lived regions (an Arena reservation, large
+ * ChainArena nodes), not for small blocks.
+ *
+ *   - failure returns NULL
+ *   - any power-of-two alignment is honoured, including above the page size
+ *   - fresh pages are zero-filled by the kernel and committed lazily
+ */
+
+static size_t wc_page_size(void)
+{
+    static size_t cached;
+    size_t        ps = cached;
+    if (ps == 0) {
+        long v = sysconf(_SC_PAGESIZE);
+        ps     = v > 0 ? (size_t)v : 4096;
+        cached = ps;
+    }
+    return ps;
+}
+
+static void* wc_mmap_alloc(void* ctx, size_t size, size_t align)
+{
+    (void)ctx;
+    const size_t page = wc_page_size();
+
+    if (size > SIZE_MAX - page) { // page rounding would overflow
+        return NULL;
+    }
+
+    if (align <= page) { // mmap already returns page-aligned addresses
+        void* p = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        return p == MAP_FAILED ? NULL : p;
+    }
+
+    // align > page size: over-map, then unmap the unaligned head and the unused tail
+    if (size > SIZE_MAX - page - align) {
+        return NULL;
+    }
+    const size_t len = (size + page - 1) & ~(page - 1); // what the caller keeps
+    const size_t big = len + align;
+    uint8_t*          raw = mmap(NULL, big, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (raw == MAP_FAILED) {
+        return NULL;
+    }
+
+    uint8_t*    aligned = (uint8_t*)(((uintptr_t)raw + align - 1) & ~((uintptr_t)align - 1));
+    size_t head    = (size_t)(aligned - raw);
+    size_t tail    = big - head - len;
+    if (head) {
+        munmap(raw, head);
+    }
+    if (tail) {
+        munmap(aligned + len, tail);
+    }
+    return aligned;
+}
+
+static void wc_mmap_free(void* ctx, void* p, size_t size, size_t align)
+{
+    (void)ctx;
+    (void)align;
+    munmap(p, size); // the kernel rounds size up to whole pages, same as at alloc
+}
+
+static const wc_alloc_vtable wc_mmap_vt = {
+    .alloc   = wc_mmap_alloc,
+    .realloc = NULL, // emulated: alloc + copy + free
+    .free    = wc_mmap_free,
+};
+
+const wc_allocator wc_mmap = {.vt = &wc_mmap_vt, .ctx = NULL};
 
 #endif /* WC_WC_ALLOCATOR_IMPL */
 
@@ -955,167 +912,90 @@ void wc_warn_report(const char* file, int line, const char* func, const char* fm
 
 
 
-
+#include <inttypes.h>
+#include <stdalign.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <string.h>
 
 
-// Region alignment requested from the alloc allocator.
-#define ARENA_BASE_ALIGN WC_MAX_ALIGN
 
-
-static const wc_alloc_vtable arena_vt;
-
-#define ARENA_CHECK_LIVE(a) WC_ASSERT((a)->self.ctx == (a), "Arena used after destroy, or copied/moved after create")
-
-
-// Lifecycle
-
-void Arena_create(Arena* arena, const wc_allocator* backing, u64 capacity)
+// Carve `size` bytes, aligned by ADDRESS to `align`, out of the arena. NULL if it doesn't fit.
+static void* arena_bump(Arena* a, u64 size, u64 align)
 {
-    if (capacity == 0) {
-        capacity = ARENA_DEFAULT_SIZE;
+    WC_ASSERT(a->off <= a->cap, "arena corrupted");
+
+    u64       room = a->cap - a->off;
+    uintptr_t cur  = (uintptr_t)a->base + (uintptr_t)a->off;
+    u64       pad  = (u64)((0 - cur) & (uintptr_t)(align - 1)); // bytes up to the next aligned address
+
+    if (pad > room || size > room - pad) {
+        return NULL; // arena is full
     }
 
-    u8* base = wc_alloc(backing, capacity, ARENA_BASE_ALIGN);
-    FATAL_IF(!base, "Arena base allocation of %llu bytes failed", (unsigned long long)capacity);
-
-    *arena = (Arena){
-        .backing = backing,
-        .base    = base,
-        .size    = capacity,
-        .idx     = 0,
-        .floor   = 0,
-        .self    = {.vt = &arena_vt, .ctx = arena},
-    };
-}
-
-void Arena_create_buf(Arena* arena, void* buf, u64 size)
-{
-    FATAL_IF(size == 0, "Arena_create_buf: size can't be 0");
-
-    *arena = (Arena){
-        .backing = WC_BORROWED, // destroy hands the buffer back to nobody
-        .base    = buf,
-        .size    = size,
-        .idx     = 0,
-        .floor   = 0,
-        .self    = {.vt = &arena_vt, .ctx = arena},
-    };
-}
-
-void Arena_destroy(Arena* arena)
-{
-    if (arena->self.ctx == NULL) {
-        return; // zeroed or already destroyed
-    }
-    ARENA_CHECK_LIVE(arena);
-    wc_free(arena->backing, arena->base, arena->size, ARENA_BASE_ALIGN);
-    memset(arena, 0, sizeof(*arena));
-}
-
-void Arena_reset(Arena* arena)
-{
-    ARENA_CHECK_LIVE(arena);
-    arena->idx   = 0;
-    arena->floor = 0;
+    u8* p = a->base + a->off + pad;
+    a->off += pad + size; // padding goes BEFORE the allocation
+    return p;
 }
 
 
-// Allocation
+// wc_allocator interface
 
-void* Arena_alloc(Arena* arena, u64 size)
-{
-    return Arena_alloc_aligned(arena, size, WC_MAX_ALIGN);
-}
-
-void* Arena_alloc_aligned(Arena* arena, u64 size, u64 align)
-{
-    ARENA_CHECK_LIVE(arena);
-    WC_ASSERT(size != 0, "can't have allocation of size = 0");
-    WC_ASSERT(align != 0 && (align & (align - 1)) == 0, "alignment must be a power of two");
-
-    // Align the ADDRESS, not the offset: the base itself may be unaligned.
-    uintptr_t base    = (uintptr_t)arena->base;
-    uintptr_t cur     = base + arena->idx;
-    uintptr_t aligned = (cur + (align - 1)) & ~(uintptr_t)(align - 1);
-    u64       off     = (u64)(aligned - base);
-
-    // Two-step check so nothing underflows (A1): the aligned start itself may be past the end.
-    WC_SET_RET(WC_ERR_FULL, off > arena->size || arena->size - off < size, NULL);
-
-    arena->idx = off + size;
-    return arena->base + off;
-}
-
-
-// Allocator backend
-
-// Is [p, p + size) the last block, at or above the floor?
-static inline bool arena_is_top(const Arena* arena, const u8* p, u64 size)
-{
-    return (p >= arena->base + arena->floor && p + size == arena->base + arena->idx) != 0;
-}
-
-static void* arena_vt_alloc(void* ctx, size_t size, size_t align)
+// Only alloc is provided. free is a no-op and realloc is emulated (alloc + copy) by wc_realloc.
+// Exhaustion returns NULL.
+static void* arena_alloc(void* ctx, size_t size, size_t align)
 {
     return Arena_alloc_aligned((Arena*)ctx, size, align);
 }
 
-static void* arena_vt_realloc(void* ctx, void* ptr, size_t old_size, size_t new_size, size_t align)
+static const wc_alloc_vtable arena_vtable = {.alloc = arena_alloc, .realloc = NULL, .free = NULL};
+
+
+void Arena_create(Arena* a, const wc_allocator* backing, u64 cap)
 {
-    Arena* arena = ctx;
-    u8*    p     = ptr;
-    ARENA_CHECK_LIVE(arena);
-
-    // Growing a block that predates the innermost scratch scope is a lifetime
-    // bug either way: in place, scratch_end would truncate it; copied, it would
-    // live in scratch memory and dangle at scope end. The floor (D10) keeps the
-    // arena's own invariant (nothing below the mark moves or resizes in place);
-    // this check makes the caller's bug loud in debug builds.
-    WC_ASSERT(new_size <= old_size || p >= arena->base + arena->floor,
-              "growing a block allocated before the current scratch scope (it would dangle at scope end)");
-
-    // p keeps its alignment when it stays in place: no re-alignment needed.
-    if (arena_is_top(arena, p, old_size)) {
-        u64 off = (u64)(p - arena->base);
-        WC_SET_RET(WC_ERR_FULL, arena->size - off < new_size, NULL); // nothing past the top can fit either
-        arena->idx = off + new_size;                                 // grow or shrink in place (A4)
-        return p;
+    if (cap < ARENA_MIN_SIZE) {
+        cap = ARENA_MIN_SIZE;
     }
 
-    if (new_size <= old_size) {
-        return p; // shrinking a block that is not on top: keep it, the tail is simply unused
-    }
+    u8* base = wc_alloc(backing, cap, WC_MAX_ALIGN);
+    FATAL_IF(!base, "arena backing alloc failed (cap %" PRIu64 ")", cap);
 
-    u8* q = Arena_alloc_aligned(arena, new_size, align);
-    if (!q) {
-        return NULL; // p stays valid
-    }
-    memcpy(q, p, old_size);
-    return q; // the old block is abandoned until reset/scratch end
+    // `self` has to be built here, in place, because its ctx is this arena's own address.
+    *a = (Arena){
+        .base  = base,
+        .alloc = backing, // remembered so Arena_destroy can give the region back
+        .off   = 0,
+        .cap   = cap,
+        .self  = {.vt = &arena_vtable, .ctx = a},
+    };
 }
 
-static void arena_vt_free(void* ctx, void* ptr, size_t size, size_t align)
+void Arena_destroy(Arena* a)
 {
-    (void)align;
-    Arena* arena = ctx;
-    u8*    p     = ptr;
-    ARENA_CHECK_LIVE(arena);
-
-    if (arena_is_top(arena, p, size)) {
-        arena->idx = (u64)(p - arena->base); // rewind; padding before p stays used
+    if (!a->self.ctx) {
+        return; // zeroed or already destroyed
     }
+    wc_free(a->alloc, a->base, a->cap, WC_MAX_ALIGN);
+    memset(a, 0, sizeof(Arena)); // also clears self.ctx, so a stale allocator is detectable
 }
 
-static const wc_alloc_vtable arena_vt = {
-    .alloc   = arena_vt_alloc,
-    .realloc = arena_vt_realloc,
-    .free    = arena_vt_free,
-};
+void* Arena_alloc(Arena* a, u64 size)
+{
+    FATAL_IF(!a->self.ctx, "Arena is in the zero state (moved-from or destroyed): re-create it first");
+    WC_ASSERT(size != 0, "can't allocate 0 bytes");
+    WC_ASSERT(a->self.ctx == a, "arena was moved or copied after Arena_create");
+    return arena_bump(a, size, WC_MAX_ALIGN);
+}
 
-#undef ARENA_BASE_ALIGN
-#undef ARENA_CHECK_LIVE
+void* Arena_alloc_aligned(Arena* a, u64 size, u64 align)
+{
+    FATAL_IF(!a->self.ctx, "Arena is in the zero state (moved-from or destroyed): re-create it first");
+    WC_ASSERT(size != 0, "can't allocate 0 bytes");
+    WC_ALLOC_ASSERT_ALIGN(align);
+    WC_ASSERT(a->self.ctx == a, "arena was moved or copied after Arena_create");
+    return arena_bump(a, size, align);
+}
+
 #endif /* WC_ARENA_IMPL */
 
 #endif /* WC_IMPLEMENTATION */

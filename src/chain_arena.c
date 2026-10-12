@@ -108,40 +108,38 @@ void* ChainArena_alloc_aligned(ChainArena* ca, u64 size, u64 align)
 
     ChainArenaNodeHDR* curr = ca->normal;
 
-    // request larger than remaining space in current tail node
-    if (need > curr->cap - curr->off) {
-        // Dedicated block, sized to fit. The current regular block is untouched, so its
-        // remaining space is still available to later small requests.
-        ChainArenaNodeHDR* n = new_node(ca, need);
+    // current node can satisfy the request
+    if (need <= curr->cap - curr->off) {
+        void* p = node_bump(curr, size, align);
+        if (p) {
+            return p;
+        }
+    }
+
+    // a new node can satisfy the request. whatever is left in the old block is abandoned
+    if (need <= curr->cap) {
+        ChainArenaNodeHDR* n = new_node(ca, curr->cap); // each normal node saves the cap supplied by the user
         if (!n) {
             return NULL;
         }
-        n->prev = ca->big;
-        ca->big = n;
-        return node_bump(n, size, align); // always fits: cap == size + slack
+
+        n->prev    = ca->normal;          // save the current latest normal node as the new node's prev
+        ca->normal = n;                   // update the latest node
+        return node_bump(n, size, align); // fits need <= node capacity
     }
 
-    // tail node can satify request
-    void* p = node_bump(curr, size, align);
-    if (p) {
-        return p;
-    }
-
-    // Current node is full. chain on a new regular block. Whatever
-    // is left in the old block is abandoned, which is the normal arena trade.
-    ChainArenaNodeHDR* n = new_node(ca, curr->cap); // each normal node saves the cap supplied by the user
+    // only a 'big' node can satisfy the request. it's sized to fit
+    //The current regular block is untouched, so its remaining space is still available to later small requests.
+    ChainArenaNodeHDR* n = new_node(ca, need);
     if (!n) {
         return NULL;
     }
-
-    n->prev    = ca->normal; // save the current latest normal node as the new node's prev
-    ca->normal = n;          // update the latest node
-
-    return node_bump(n, size, align); // fits need <= node_cap
+    n->prev = ca->big;
+    ca->big = n;
+    return node_bump(n, size, align); // always fits: cap == size + slack
 }
 
-
-void ChainArenaScratch_scratch_off(ChainArenaScratch scratch)
+void ChainArenaScratch_to_mark(ChainArenaScratch scratch)
 {
     // delete all newer nodes till (but not including) scratch.big. reset big.
     scratch.chain_arena->big = free_list(scratch.chain_arena, scratch.chain_arena->big, scratch.big);
@@ -150,3 +148,5 @@ void ChainArenaScratch_scratch_off(ChainArenaScratch scratch)
     // set the mark
     scratch.chain_arena->normal->off = scratch.mark;
 }
+
+

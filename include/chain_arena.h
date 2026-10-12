@@ -20,10 +20,10 @@
 
 
 // the header for each block. the allocation region comes right the aligned header
-typedef struct ChainArenaNode {
-    struct ChainArenaNode* prev; // the prev node in the chain. NULL for last node
-    u64                    cap;  // payload bytes
-    u64                    off;  // payload bytes used
+typedef struct ChainArenaNodeHDR {
+    struct ChainArenaNodeHDR* prev; // the prev node in the chain. NULL for last node
+    u64                       cap;  // payload bytes
+    u64                       off;  // payload bytes used
 } ChainArenaNodeHDR;
 
 typedef struct {
@@ -34,19 +34,19 @@ typedef struct {
     wc_allocator        self;  // what containers store; ctx == this ChainArena
 } ChainArena;
 
-// Initialises `ca` in place. Allocates nothing (the first block is taken on first use), so it
-// can't fail. `ca` must not be moved or copied afterwards.
+// Initialises `ca` in place, it must not be moved or copied afterwards.
 void ChainArena_create(ChainArena* ca, const wc_allocator* backing, u64 normal_cap) WC_NONULL(1, 2);
 
 // Gives every block back to the backing allocator and zeroes the arena. Safe on a zeroed
 // arena and safe to call twice.
 void ChainArena_destroy(ChainArena* ca) WC_NONULL(1);
 
-// Both return NULL only if the backing allocator can't supply a block.
-// ChainArena_alloc aligns to WC_MAX_ALIGN (like malloc). ChainArena_alloc_aligned aligns the
-// ADDRESS to `align` (a power of two), including alignments larger than a page.
+// ChainArena_alloc aligns to WC_MAX_ALIGN (like malloc)
+// return NULL only if the backing allocator can't supply a block.
 [[nodiscard]] void* ChainArena_alloc(ChainArena* ca, u64 size) WC_NONULL(1);
 
+// ChainArena_alloc_aligned aligns the ADDRESS to `align` (a power of two), including alignments larger than a page
+// return NULL only if the backing allocator can't supply a block.
 [[nodiscard]] void* ChainArena_alloc_aligned(ChainArena* ca, u64 size, u64 align) WC_NONULL(1);
 
 // The allocator to give to containers. Points into the arena, so it lives as long as the arena.
@@ -77,26 +77,7 @@ typedef struct {
     };
 }
 
-void ChainArenaScratch_scratch_off(ChainArenaScratch scratch);
-
-
-static inline void ChainArenaScratch_destroy(ChainArenaScratch scratch)
-{
-    ChainArenaScratch_scratch_off(scratch);
-    scratch.chain_arena = NULL;
-}
-
-// CArena_Scratch
-
-static inline void ChainArenaScratch_cleanup(ChainArenaScratch* cas)
-{
-    ChainArenaScratch_scratch_off(*cas);
-}
-#define CARENA_SCRATCH(a) CARENA_SCRATCH_((a), WC_CAT(_wsc_once_, __LINE__), WC_CAT(_wsc_, __LINE__))
-#define CARENA_SCRATCH_(a, once, s)                                                                                 \
-    for (int(once) = 1; once; (once) = 0)                                                                           \
-        for (ChainArenaScratch s __attribute__((cleanup(ChainArenaScratch_cleanup))) = ChainArenaScratch_create(a); \
-             once; (once)                                                            = 0)
+void ChainArenaScratch_to_mark(ChainArenaScratch scratch);
 
 
 

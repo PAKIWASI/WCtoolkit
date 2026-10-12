@@ -203,8 +203,8 @@ UTEST(macros, create_of_String_by_pointer)
     GenVec v = VEC_OF(String*, 4);
     EXPECT_EQ(v.data_size, sizeof(String*));
 
-    String* a = WC_BOX_IN(WC_LIBC, String, String_from_cstr, "a");
-    String* b = WC_BOX_IN(WC_LIBC, String, String_from_cstr, "b");
+    String* a = WC_BOX(WC_LIBC, String, String_from_cstr, "a");
+    String* b = WC_BOX(WC_LIBC, String, String_from_cstr, "b");
     // VEC_PUSH copies (via wc_str_ptr_ops' copy_fn, which deep-duplicates
     // the String) — that would leave `a`/`b` themselves un-freed and
     // unowned. VEC_PUSH_MOVE transfers ownership into the vector instead,

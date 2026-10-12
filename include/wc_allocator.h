@@ -8,8 +8,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-
 #define WC_MAX_ALIGN alignof(max_align_t)
+
+// TODO: maybe we shouldn't implicitly default to libc. if no valid allocator is provided, we should fail
 
 /* libc fallbacks */
 
@@ -19,8 +20,7 @@ static inline void* wc_libc_alloc(size_t n, size_t align)
         return malloc(n); // malloc promises it's result is aligned if for max_align_t (16 bytes)
     }
 
-    // if more alignment is needed, we need aligned alloc
-
+    // if more alignment is needed, we need aligned alloc (unix)
     size_t rounded = (n + align - 1) & ~(align - 1); // aligned_alloc: size % align == 0
     if (rounded < n) {
         return NULL; // overflow
@@ -41,7 +41,6 @@ static inline void* wc_libc_realloc(void* p, size_t old_n, size_t n, size_t alig
     }
 
     // libc realloc doesn't preserve alignment above max_align_t: alloc, copy, free
-
     void* q = wc_libc_alloc(n, align);
     if (!q) {
         return NULL; // p left untouched
@@ -56,7 +55,7 @@ static inline void* wc_libc_realloc(void* p, size_t old_n, size_t n, size_t alig
 /*
  * ALLOCATOR API
  *
- * No global allocator exists: every data structure receives its allocator at
+ * Every data structure receives its allocator at
  * construction, stores it, and uses it for every allocation.
  *
  * An allocator is a (vtable, ctx) pair. It is passed and stored as `const wc_allocator*`
@@ -201,8 +200,8 @@ static inline size_t wc_align_for_size(size_t elm_size)
 
 
 /* typed helpers (allocator first)
- * Free takes the POINTER, not a type: size and align come from *p, so a wrong
- * type can't be passed*/
+ * Free takes the POINTER, not a type: size and align come from *p, so a wrong type can't be passed
+*/
 
 #define WC_NEW(a, T)      ((T*)wc_alloc((a), sizeof(T), alignof(T)))
 #define WC_NEW_N(a, T, n) ((T*)wc_alloc((a), wc_mul((n), sizeof(T)), alignof(T)))

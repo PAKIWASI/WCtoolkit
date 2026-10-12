@@ -908,7 +908,7 @@ UTEST(gen_vector, boxed_children_free_with_their_own_allocator)
 
     GenVec outer = VEC_OF(GenVec*, 2); // outer on libc, children on the test allocator
     for (int i = 0; i < 5; i++) {
-        GenVec* child = WC_BOX_IN(al, GenVec, GenVec_create, 4, sizeof(int), NULL);
+        GenVec* child = WC_BOX(al, GenVec, GenVec_create, 4, sizeof(int), NULL);
         GenVec_push(child, &i);
         EXPECT_TRUE(wc_test_alloc_owns(&ta, child));
         VEC_PUSH_MOVE(&outer, child);
