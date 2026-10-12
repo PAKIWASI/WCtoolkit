@@ -57,7 +57,7 @@
 #define WC_OWNING_VALUE_CASES_                                                                                    \
     String* : 1, const String* : 1, GenVec* : 1, const GenVec* : 1, HashMap* : 1, const HashMap* : 1, Queue* : 1,  \
         const Queue* : 1, PriorityQueue* : 1, const PriorityQueue* : 1, BitVec* : 1, const BitVec* : 1,              \
-        Matrixf* : 1, const Matrixf* : 1, StringStore* : 1, const StringStore* : 1
+        Matrixf* : 1, const Matrixf* : 1 
 
 #define WC_IS_OWNING_VALUE(T) _Generic((T*)0, WC_OWNING_VALUE_CASES_, default: 0)
 

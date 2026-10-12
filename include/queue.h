@@ -49,11 +49,11 @@ void Queue_shrink_to_fit(Queue* q) WC_NONULL(1);
 Queue Queue_copy(const wc_allocator* a, const Queue* src) __attribute__((nonnull(1, 2), warn_unused_result));
 void  Queue_move(Queue* dest, Queue* src) WC_NONULL(1, 2);
 
-void Queue_push(Queue* q, const void* x) WC_NONULL(1, 2);      // deep copy of *x
-void Queue_push_move(Queue* q, void* x) WC_NONULL(1, 2);       // *x moved in and zeroed
-void Queue_pop(Queue* q, void* out) WC_NONULL(1);              // front, MOVED into out
-void Queue_pop_back(Queue* q, void* out) WC_NONULL(1);         // back, MOVED into out
-void Queue_peek(const Queue* q, void* peek) WC_NONULL(1, 2);   // deep COPY of the front
+void        Queue_push(Queue* q, const void* x) WC_NONULL(1, 2);    // deep copy of *x
+void        Queue_push_move(Queue* q, void* x) WC_NONULL(1, 2);     // *x moved in and zeroed
+void        Queue_pop(Queue* q, void* out) WC_NONULL(1);            // front, MOVED into out
+void        Queue_pop_back(Queue* q, void* out) WC_NONULL(1);       // back, MOVED into out
+void        Queue_peek(const Queue* q, void* peek) WC_NONULL(1, 2); // deep COPY of the front
 const void* Queue_peek_ptr(const Queue* q) WC_NONULL(1);
 
 // Swap the elements at LOGICAL positions i and j. Never allocates.

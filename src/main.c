@@ -8,6 +8,7 @@
 
 // TODO:
 // iterators?
+// msvc compatibility? or do we just use clang cl for compiling projects that use WCtoolkit
 
 static int run1(void)
 {

@@ -2,8 +2,8 @@
 #define HASHMAP_H
 
 #include "common.h"
-#include "wc_hash.h"
 #include "wc_allocator.h"
+#include "wc_hash.h"
 
 #include <string.h>
 
@@ -35,16 +35,19 @@
 
 
 typedef struct {
-    u8*           keys; // start of the single block
-    u8*           vals;
-    u8*           scratch; // STAGE key/val + SWAP key/val, for Robin Hood insertion
-    u8*           psls;
-    u64           size;
-    u64           capacity;
-    u32           key_size;
-    u32           val_size; // 0: a set
-    wc_hash_fn    hash_fn;  // NULL: wc_hash over the key bytes
-    wc_compare_fn cmp_fn;   // NULL: byte equality
+    u8* keys; // start of the single block
+    u8* vals;
+    u8* scratch; // STAGE key/val + SWAP key/val, for Robin Hood insertion
+    u8* psls;
+
+    u64 size;
+    u64 capacity;
+
+    u32 key_size;
+    u32 val_size; // 0: a set
+
+    wc_hash_fn    hash_fn; // NULL: wc_hash over the key bytes
+    wc_compare_fn cmp_fn;  // NULL: byte equality
 
     // Shared ops vtables for keys and values.
     // Pass NULL for POD types (int, float, flat structs).
@@ -66,16 +69,17 @@ _Static_assert(sizeof(HashMap) == 96, "HashMap must be 96 bytes");
 // hash_fn NULL: wc_hash over the key bytes. cmp_fn NULL: byte equality.
 // Both defaults are only correct for keys without pointers.
 // key_ops / val_ops: pass NULL for POD types. val_size 0 makes a set.
-HashMap HashMap_create(const wc_allocator* a, u32 key_size, u32 val_size, wc_hash_fn hash_fn, wc_compare_fn cmp_fn,
-                       const wc_container_ops* key_ops, const wc_container_ops* val_ops)
-    __attribute__((nonnull(1), warn_unused_result));
+WC_NODISCARD HashMap HashMap_create(const wc_allocator* a, u32 key_size, u32 val_size, wc_hash_fn hash_fn,
+                                    wc_compare_fn cmp_fn, const wc_container_ops* key_ops,
+                                    const wc_container_ops* val_ops) __attribute__((nonnull(1), warn_unused_result));
 
 // Destroy all elements and free internal buffers via map->alloc.
 // Safe on zeroed/moved-from maps. Leaves struct zeroed.
 void HashMap_destroy(HashMap* map) WC_NONULL(1);
 
 // Deep copy src into a new HashMap allocated from `a`.
-HashMap HashMap_copy(const wc_allocator* a, const HashMap* src) __attribute__((nonnull(1, 2), warn_unused_result));
+WC_NODISCARD HashMap HashMap_copy(const wc_allocator* a, const HashMap* src)
+    __attribute__((nonnull(1, 2), warn_unused_result));
 
 // Transfer ownership from src to dest. src is left zeroed.
 void HashMap_move(HashMap* dest, HashMap* src) WC_NONULL(1, 2);
@@ -102,7 +106,7 @@ bool HashMap_get(const HashMap* map, const void* key, void* val) WC_NONULL(1, 2,
 // Pointer to the stored value, or NULL if key is absent.
 const void* HashMap_get_ptr(const HashMap* map, const void* key) WC_NONULL(1, 2);
 
-WC_NONULL(1, 2) static inline void* HashMap_get_ptr_mut(HashMap* map, const void* key)
+WC_NODISCARD WC_NONULL(1, 2) static inline void* HashMap_get_ptr_mut(HashMap* map, const void* key)
 {
     return (void*)HashMap_get_ptr(map, key);
 }
@@ -113,14 +117,14 @@ WC_NONULL(1, 2) static inline void* HashMap_get_ptr_mut(HashMap* map, const void
 const void* HashMap_get_key_ptr(const HashMap* map, const void* key) WC_NONULL(1, 2);
 
 // Bucket iteration accessors
-WC_NONULL(1) static inline u64 HashMap_bucket_count(const HashMap* map)
+WC_NODISCARD WC_NONULL(1) static inline u64 HashMap_bucket_count(const HashMap* map)
 {
     return map->capacity;
 }
 
-bool        HashMap_bucket_occupied(const HashMap* map, u64 i) WC_NONULL(1);
-const void* HashMap_bucket_key_ptr(const HashMap* map, u64 i) WC_NONULL(1);
-void*       HashMap_bucket_val_ptr(HashMap* map, u64 i) WC_NONULL(1);
+bool                     HashMap_bucket_occupied(const HashMap* map, u64 i) WC_NONULL(1);
+WC_NODISCARD const void* HashMap_bucket_key_ptr(const HashMap* map, u64 i) WC_NONULL(1);
+WC_NODISCARD void*       HashMap_bucket_val_ptr(HashMap* map, u64 i) WC_NONULL(1);
 
 // Delete key. out != NULL: the value is MOVED into it (caller owns it, B7).
 // out == NULL: the value is deleted. The key is always deleted.
@@ -140,15 +144,15 @@ void HashMap_reserve(HashMap* map, u64 n) WC_NONULL(1);
 // Remove all elements, keep capacity.
 void HashMap_clear(HashMap* map) WC_NONULL(1);
 
-static inline WC_NONULL(1) u64 HashMap_size(const HashMap* map)
+WC_NODISCARD WC_NONULL(1) static inline u64 HashMap_size(const HashMap* map)
 {
     return map->size;
 }
-static inline WC_NONULL(1) u64 HashMap_capacity(const HashMap* map)
+WC_NODISCARD WC_NONULL(1) static inline u64 HashMap_capacity(const HashMap* map)
 {
     return map->capacity;
 }
-static inline WC_NONULL(1) bool HashMap_empty(const HashMap* map)
+WC_NONULL(1) static inline bool HashMap_empty(const HashMap* map)
 {
     return map->size == 0;
 }

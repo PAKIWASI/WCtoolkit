@@ -13,10 +13,9 @@
 
 // LOGGING/ERRORS
 
-#include <stdalign.h>
 #include <stdarg.h>
 #include <stdio.h>
-// #include <stdlib.h>
+
 
 // ANSI Color Codes
 #define WC_COLOR_RESET  "\033[0m"
@@ -130,8 +129,11 @@ __attribute__((cold, noinline, format(printf, 4, 5))) void wc_warn_report(const 
 #define WC_CAT(a, b)  WC_CAT_(a, b)
 
 
-#define WC_NONULL(...) __attribute__((nonnull(__VA_ARGS__)))
-#define WC_NODISCARD   __attribute__((warn_unused_result)) // TODO: use
+// common unix compiler attributes // TODO: use these throughout, also find msvc counterparts/fixes
+
+#define WC_NONULL(...)   __attribute__((nonnull(__VA_ARGS__)))
+#define WC_NODISCARD     __attribute__((warn_unused_result))
+#define WC_ALWAYS_INLINE __attribute__((always_inline))
 
 
 // TYPES
@@ -151,6 +153,7 @@ typedef int64_t i64;
 
 // we are using unsigned indices/sizes
 #define WC_NOT_FOUND ((u64) - 1)
+
 
 // GENERIC FUNCTIONS
 #include "wc_allocator.h"
@@ -184,6 +187,8 @@ typedef struct {
     wc_delete_fn del_fn;  // Cleanup function for owned resources (or NULL)
 } wc_container_ops;
 
+
+#include <stdalign.h>
 
 // Heap-box a value-returning constructor through allocator A:
 //   GenVec* v = WC_BOX(A, GenVec, GenVec_create, 8, sizeof(int), NULL);
