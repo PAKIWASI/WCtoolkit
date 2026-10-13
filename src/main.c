@@ -4,11 +4,15 @@
 #include "gen_vector.h"
 #include "wc_allocator.h"
 #include "wc_macros.h"
+
+#include <sqlite3.h>
 #include <stdio.h>
+
 
 // TODO:
 // iterators?
 // msvc compatibility? or do we just use clang cl for compiling projects that use WCtoolkit
+
 
 static int run1(void)
 {
@@ -38,10 +42,8 @@ static int run1(void)
     GenVec_print(&v, wc_print_int);
     putchar('\n');
 
-
     ChainArenaScratch cas = ChainArenaScratch_create(&ca);
 
-    // BUG: gdb output look kinda wrong?
     volatile u8* normal  = ChainArena_alloc(&ca, nKB(3)); // same node
     normal[nKB(2)]       = 69;
     volatile u8* normal2 = ChainArena_alloc(&ca, nKB(3)); // new node

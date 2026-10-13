@@ -77,7 +77,7 @@ extern const wc_allocator wc_mmap;
 
 static inline __attribute__((nonnull(1))) bool wc_is_libc(const wc_allocator* a)
 {
-    return a->vt == NULL;
+    return a == WC_LIBC;
 }
 
 // Same backend and same context: memory from one may be freed through the other
@@ -198,10 +198,9 @@ static inline size_t wc_align_for_size(size_t elm_size)
 
 // LOGGING/ERRORS
 
-#include <stdalign.h>
 #include <stdarg.h>
 #include <stdio.h>
-// #include <stdlib.h>
+
 
 // ANSI Color Codes
 #define WC_COLOR_RESET  "\033[0m"
@@ -315,8 +314,11 @@ __attribute__((cold, noinline, format(printf, 4, 5))) void wc_warn_report(const 
 #define WC_CAT(a, b)  WC_CAT_(a, b)
 
 
-#define WC_NONULL(...) __attribute__((nonnull(__VA_ARGS__)))
-#define WC_NODISCARD   __attribute__((warn_unused_result)) // TODO: use
+// common unix compiler attributes // TODO: use these throughout, also find msvc counterparts/fixes
+
+#define WC_NONULL(...)   __attribute__((nonnull(__VA_ARGS__)))
+#define WC_NODISCARD     __attribute__((warn_unused_result))
+#define WC_ALWAYS_INLINE __attribute__((always_inline))
 
 
 // TYPES
@@ -336,6 +338,7 @@ typedef int64_t i64;
 
 // we are using unsigned indices/sizes
 #define WC_NOT_FOUND ((u64) - 1)
+
 
 // GENERIC FUNCTIONS
 
@@ -369,6 +372,8 @@ typedef struct {
     wc_delete_fn del_fn;  // Cleanup function for owned resources (or NULL)
 } wc_container_ops;
 
+
+#include <stdalign.h>
 
 // Heap-box a value-returning constructor through allocator A:
 //   GenVec* v = WC_BOX(A, GenVec, GenVec_create, 8, sizeof(int), NULL);
@@ -730,12 +735,12 @@ WC_NODISCARD void* GenVec_get_ptr_mut(GenVec* vec, u64 i) WC_NONULL(1);
 // UNCHECKED variants: same as above but with the bounds WC_ASSERT elided, even in
 // Debug. Preconditions are NOT validated: caller must guarantee i < vec->size.
 // Use on hot paths where the check is provably redundant (macros, internal loops).
-WC_NODISCARD static inline WC_NONULL(1) const void* GenVec_get_ptr_unsafe(const GenVec* vec, u64 i)
+WC_NODISCARD WC_NONULL(1) static inline const void* GenVec_get_ptr_unsafe(const GenVec* vec, u64 i)
 {
     return (vec->data + (i * vec->data_size));
 }
 
-WC_NODISCARD static inline WC_NONULL(1) void* GenVec_get_ptr_mut_unsafe(GenVec* vec, u64 i)
+WC_NODISCARD WC_NONULL(1) static inline void* GenVec_get_ptr_mut_unsafe(GenVec* vec, u64 i)
 {
     return (vec->data + (i * vec->data_size));
 }
@@ -799,19 +804,19 @@ void GenVec_move(GenVec* dest, GenVec* src) WC_NONULL(1, 2);
 
 
 // Get number of elements in vector.
-WC_NODISCARD static inline WC_NONULL(1) u64 GenVec_size(const GenVec* vec)
+WC_NODISCARD WC_NONULL(1) static inline u64 GenVec_size(const GenVec* vec)
 {
     return vec->size;
 }
 
 // Get total capacity of vector.
-WC_NODISCARD static inline WC_NONULL(1) u64 GenVec_capacity(const GenVec* vec)
+WC_NODISCARD WC_NONULL(1) static inline u64 GenVec_capacity(const GenVec* vec)
 {
     return vec->capacity;
 }
 
 // Check if vector is empty
-WC_NODISCARD static inline WC_NONULL(1) bool GenVec_empty(const GenVec* vec)
+WC_NONULL(1) static inline bool GenVec_empty(const GenVec* vec)
 {
     return vec->size == 0;
 }
@@ -873,11 +878,11 @@ void Queue_shrink_to_fit(Queue* q) WC_NONULL(1);
 Queue Queue_copy(const wc_allocator* a, const Queue* src) __attribute__((nonnull(1, 2), warn_unused_result));
 void  Queue_move(Queue* dest, Queue* src) WC_NONULL(1, 2);
 
-void Queue_push(Queue* q, const void* x) WC_NONULL(1, 2);      // deep copy of *x
-void Queue_push_move(Queue* q, void* x) WC_NONULL(1, 2);       // *x moved in and zeroed
-void Queue_pop(Queue* q, void* out) WC_NONULL(1);              // front, MOVED into out
-void Queue_pop_back(Queue* q, void* out) WC_NONULL(1);         // back, MOVED into out
-void Queue_peek(const Queue* q, void* peek) WC_NONULL(1, 2);   // deep COPY of the front
+void        Queue_push(Queue* q, const void* x) WC_NONULL(1, 2);    // deep copy of *x
+void        Queue_push_move(Queue* q, void* x) WC_NONULL(1, 2);     // *x moved in and zeroed
+void        Queue_pop(Queue* q, void* out) WC_NONULL(1);            // front, MOVED into out
+void        Queue_pop_back(Queue* q, void* out) WC_NONULL(1);       // back, MOVED into out
+void        Queue_peek(const Queue* q, void* peek) WC_NONULL(1, 2); // deep COPY of the front
 const void* Queue_peek_ptr(const Queue* q) WC_NONULL(1);
 
 // Swap the elements at LOGICAL positions i and j. Never allocates.

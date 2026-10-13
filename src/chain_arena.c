@@ -62,7 +62,7 @@ static ChainArenaNodeHDR* free_list(ChainArena* ca, ChainArenaNodeHDR* start, co
 
 
 // wc_allocator interface: alloc only. free is a no-op and realloc is emulated (alloc + copy).
-static void* carena_alloc(void* ctx, size_t size, size_t align)
+static inline void* carena_alloc(void* ctx, size_t size, size_t align)
 {
     return ChainArena_alloc_aligned((ChainArena*)ctx, size, align);
 }
@@ -101,7 +101,6 @@ void* ChainArena_alloc_aligned(ChainArena* ca, u64 size, u64 align)
     WC_ASSERT(size != 0, "can't allocate 0 bytes");
     WC_ALLOC_ASSERT_ALIGN(align);
     WC_ASSERT(ca->self.ctx == ca, "chain arena was moved or copied after ChainArena_create");
-
 
     // Block memory is aligned to WC_MAX_ALIGN already. Only a bigger alignment needs room
     // to slide the pointer forward inside the payload.
@@ -156,3 +155,4 @@ void ChainArenaScratch_to_mark(ChainArenaScratch scratch)
     // set the mark
     scratch.chain_arena->normal->off = scratch.mark;
 }
+

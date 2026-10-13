@@ -77,7 +77,7 @@ extern const wc_allocator wc_mmap;
 
 static inline __attribute__((nonnull(1))) bool wc_is_libc(const wc_allocator* a)
 {
-    return a->vt == NULL;
+    return a == WC_LIBC;
 }
 
 // Same backend and same context: memory from one may be freed through the other
@@ -198,10 +198,9 @@ static inline size_t wc_align_for_size(size_t elm_size)
 
 // LOGGING/ERRORS
 
-#include <stdalign.h>
 #include <stdarg.h>
 #include <stdio.h>
-// #include <stdlib.h>
+
 
 // ANSI Color Codes
 #define WC_COLOR_RESET  "\033[0m"
@@ -315,8 +314,11 @@ __attribute__((cold, noinline, format(printf, 4, 5))) void wc_warn_report(const 
 #define WC_CAT(a, b)  WC_CAT_(a, b)
 
 
-#define WC_NONULL(...) __attribute__((nonnull(__VA_ARGS__)))
-#define WC_NODISCARD   __attribute__((warn_unused_result)) // TODO: use
+// common unix compiler attributes // TODO: use these throughout, also find msvc counterparts/fixes
+
+#define WC_NONULL(...)   __attribute__((nonnull(__VA_ARGS__)))
+#define WC_NODISCARD     __attribute__((warn_unused_result))
+#define WC_ALWAYS_INLINE __attribute__((always_inline))
 
 
 // TYPES
@@ -336,6 +338,7 @@ typedef int64_t i64;
 
 // we are using unsigned indices/sizes
 #define WC_NOT_FOUND ((u64) - 1)
+
 
 // GENERIC FUNCTIONS
 
@@ -369,6 +372,8 @@ typedef struct {
     wc_delete_fn del_fn;  // Cleanup function for owned resources (or NULL)
 } wc_container_ops;
 
+
+#include <stdalign.h>
 
 // Heap-box a value-returning constructor through allocator A:
 //   GenVec* v = WC_BOX(A, GenVec, GenVec_create, 8, sizeof(int), NULL);
@@ -611,7 +616,7 @@ typedef struct {
     // becomes invalidatd when arena is destroyed.
 } Arena;
 
-// Takes a `cap`-byte region (at least VARENA_MIN_SIZE) from `backing`. Aborts if backing fails.
+// Takes a `cap`-byte region (at least ARENA_MIN_SIZE) from `backing`. Aborts if backing fails.
 // `a` is initialised in place and must not be moved or copied afterwards.
 void Arena_create(Arena* a, const wc_allocator* backing, u64 cap) WC_NONULL(1, 2);
 
@@ -655,8 +660,7 @@ typedef struct {
 } ArenaScratch;
 
 
-WC_NODISCARD static inline WC_NONULL(1) // TODO: fix clang format for this
-    ArenaScratch ArenaScratch_create(Arena* a)
+WC_NODISCARD WC_NONULL(1) static inline ArenaScratch ArenaScratch_create(Arena* a)
 {
     return (ArenaScratch){
         .arena = a,

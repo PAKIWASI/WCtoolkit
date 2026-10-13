@@ -77,7 +77,7 @@ extern const wc_allocator wc_mmap;
 
 static inline __attribute__((nonnull(1))) bool wc_is_libc(const wc_allocator* a)
 {
-    return a->vt == NULL;
+    return a == WC_LIBC;
 }
 
 // Same backend and same context: memory from one may be freed through the other
@@ -198,10 +198,9 @@ static inline size_t wc_align_for_size(size_t elm_size)
 
 // LOGGING/ERRORS
 
-#include <stdalign.h>
 #include <stdarg.h>
 #include <stdio.h>
-// #include <stdlib.h>
+
 
 // ANSI Color Codes
 #define WC_COLOR_RESET  "\033[0m"
@@ -315,8 +314,11 @@ __attribute__((cold, noinline, format(printf, 4, 5))) void wc_warn_report(const 
 #define WC_CAT(a, b)  WC_CAT_(a, b)
 
 
-#define WC_NONULL(...) __attribute__((nonnull(__VA_ARGS__)))
-#define WC_NODISCARD   __attribute__((warn_unused_result)) // TODO: use
+// common unix compiler attributes // TODO: use these throughout, also find msvc counterparts/fixes
+
+#define WC_NONULL(...)   __attribute__((nonnull(__VA_ARGS__)))
+#define WC_NODISCARD     __attribute__((warn_unused_result))
+#define WC_ALWAYS_INLINE __attribute__((always_inline))
 
 
 // TYPES
@@ -336,6 +338,7 @@ typedef int64_t i64;
 
 // we are using unsigned indices/sizes
 #define WC_NOT_FOUND ((u64) - 1)
+
 
 // GENERIC FUNCTIONS
 
@@ -369,6 +372,8 @@ typedef struct {
     wc_delete_fn del_fn;  // Cleanup function for owned resources (or NULL)
 } wc_container_ops;
 
+
+#include <stdalign.h>
 
 // Heap-box a value-returning constructor through allocator A:
 //   GenVec* v = WC_BOX(A, GenVec, GenVec_create, 8, sizeof(int), NULL);
@@ -730,12 +735,12 @@ WC_NODISCARD void* GenVec_get_ptr_mut(GenVec* vec, u64 i) WC_NONULL(1);
 // UNCHECKED variants: same as above but with the bounds WC_ASSERT elided, even in
 // Debug. Preconditions are NOT validated: caller must guarantee i < vec->size.
 // Use on hot paths where the check is provably redundant (macros, internal loops).
-WC_NODISCARD static inline WC_NONULL(1) const void* GenVec_get_ptr_unsafe(const GenVec* vec, u64 i)
+WC_NODISCARD WC_NONULL(1) static inline const void* GenVec_get_ptr_unsafe(const GenVec* vec, u64 i)
 {
     return (vec->data + (i * vec->data_size));
 }
 
-WC_NODISCARD static inline WC_NONULL(1) void* GenVec_get_ptr_mut_unsafe(GenVec* vec, u64 i)
+WC_NODISCARD WC_NONULL(1) static inline void* GenVec_get_ptr_mut_unsafe(GenVec* vec, u64 i)
 {
     return (vec->data + (i * vec->data_size));
 }
@@ -799,19 +804,19 @@ void GenVec_move(GenVec* dest, GenVec* src) WC_NONULL(1, 2);
 
 
 // Get number of elements in vector.
-WC_NODISCARD static inline WC_NONULL(1) u64 GenVec_size(const GenVec* vec)
+WC_NODISCARD WC_NONULL(1) static inline u64 GenVec_size(const GenVec* vec)
 {
     return vec->size;
 }
 
 // Get total capacity of vector.
-WC_NODISCARD static inline WC_NONULL(1) u64 GenVec_capacity(const GenVec* vec)
+WC_NODISCARD WC_NONULL(1) static inline u64 GenVec_capacity(const GenVec* vec)
 {
     return vec->capacity;
 }
 
 // Check if vector is empty
-WC_NODISCARD static inline WC_NONULL(1) bool GenVec_empty(const GenVec* vec)
+WC_NONULL(1) static inline bool GenVec_empty(const GenVec* vec)
 {
     return vec->size == 0;
 }
@@ -1434,16 +1439,19 @@ static inline __attribute__((always_inline)) bool wc_equal_n(const void* a, cons
 
 
 typedef struct {
-    u8*           keys; // start of the single block
-    u8*           vals;
-    u8*           scratch; // STAGE key/val + SWAP key/val, for Robin Hood insertion
-    u8*           psls;
-    u64           size;
-    u64           capacity;
-    u32           key_size;
-    u32           val_size; // 0: a set
-    wc_hash_fn    hash_fn;  // NULL: wc_hash over the key bytes
-    wc_compare_fn cmp_fn;   // NULL: byte equality
+    u8* keys; // start of the single block
+    u8* vals;
+    u8* scratch; // STAGE key/val + SWAP key/val, for Robin Hood insertion
+    u8* psls;
+
+    u64 size;
+    u64 capacity;
+
+    u32 key_size;
+    u32 val_size; // 0: a set
+
+    wc_hash_fn    hash_fn; // NULL: wc_hash over the key bytes
+    wc_compare_fn cmp_fn;  // NULL: byte equality
 
     // Shared ops vtables for keys and values.
     // Pass NULL for POD types (int, float, flat structs).
@@ -1465,16 +1473,17 @@ _Static_assert(sizeof(HashMap) == 96, "HashMap must be 96 bytes");
 // hash_fn NULL: wc_hash over the key bytes. cmp_fn NULL: byte equality.
 // Both defaults are only correct for keys without pointers.
 // key_ops / val_ops: pass NULL for POD types. val_size 0 makes a set.
-HashMap HashMap_create(const wc_allocator* a, u32 key_size, u32 val_size, wc_hash_fn hash_fn, wc_compare_fn cmp_fn,
-                       const wc_container_ops* key_ops, const wc_container_ops* val_ops)
-    __attribute__((nonnull(1), warn_unused_result));
+WC_NODISCARD HashMap HashMap_create(const wc_allocator* a, u32 key_size, u32 val_size, wc_hash_fn hash_fn,
+                                    wc_compare_fn cmp_fn, const wc_container_ops* key_ops,
+                                    const wc_container_ops* val_ops) __attribute__((nonnull(1), warn_unused_result));
 
 // Destroy all elements and free internal buffers via map->alloc.
 // Safe on zeroed/moved-from maps. Leaves struct zeroed.
 void HashMap_destroy(HashMap* map) WC_NONULL(1);
 
 // Deep copy src into a new HashMap allocated from `a`.
-HashMap HashMap_copy(const wc_allocator* a, const HashMap* src) __attribute__((nonnull(1, 2), warn_unused_result));
+WC_NODISCARD HashMap HashMap_copy(const wc_allocator* a, const HashMap* src)
+    __attribute__((nonnull(1, 2), warn_unused_result));
 
 // Transfer ownership from src to dest. src is left zeroed.
 void HashMap_move(HashMap* dest, HashMap* src) WC_NONULL(1, 2);
@@ -1501,7 +1510,7 @@ bool HashMap_get(const HashMap* map, const void* key, void* val) WC_NONULL(1, 2,
 // Pointer to the stored value, or NULL if key is absent.
 const void* HashMap_get_ptr(const HashMap* map, const void* key) WC_NONULL(1, 2);
 
-WC_NONULL(1, 2) static inline void* HashMap_get_ptr_mut(HashMap* map, const void* key)
+WC_NODISCARD WC_NONULL(1, 2) static inline void* HashMap_get_ptr_mut(HashMap* map, const void* key)
 {
     return (void*)HashMap_get_ptr(map, key);
 }
@@ -1512,14 +1521,14 @@ WC_NONULL(1, 2) static inline void* HashMap_get_ptr_mut(HashMap* map, const void
 const void* HashMap_get_key_ptr(const HashMap* map, const void* key) WC_NONULL(1, 2);
 
 // Bucket iteration accessors
-WC_NONULL(1) static inline u64 HashMap_bucket_count(const HashMap* map)
+WC_NODISCARD WC_NONULL(1) static inline u64 HashMap_bucket_count(const HashMap* map)
 {
     return map->capacity;
 }
 
-bool        HashMap_bucket_occupied(const HashMap* map, u64 i) WC_NONULL(1);
-const void* HashMap_bucket_key_ptr(const HashMap* map, u64 i) WC_NONULL(1);
-void*       HashMap_bucket_val_ptr(HashMap* map, u64 i) WC_NONULL(1);
+bool                     HashMap_bucket_occupied(const HashMap* map, u64 i) WC_NONULL(1);
+WC_NODISCARD const void* HashMap_bucket_key_ptr(const HashMap* map, u64 i) WC_NONULL(1);
+WC_NODISCARD void*       HashMap_bucket_val_ptr(HashMap* map, u64 i) WC_NONULL(1);
 
 // Delete key. out != NULL: the value is MOVED into it (caller owns it, B7).
 // out == NULL: the value is deleted. The key is always deleted.
@@ -1539,15 +1548,15 @@ void HashMap_reserve(HashMap* map, u64 n) WC_NONULL(1);
 // Remove all elements, keep capacity.
 void HashMap_clear(HashMap* map) WC_NONULL(1);
 
-static inline WC_NONULL(1) u64 HashMap_size(const HashMap* map)
+WC_NODISCARD WC_NONULL(1) static inline u64 HashMap_size(const HashMap* map)
 {
     return map->size;
 }
-static inline WC_NONULL(1) u64 HashMap_capacity(const HashMap* map)
+WC_NODISCARD WC_NONULL(1) static inline u64 HashMap_capacity(const HashMap* map)
 {
     return map->capacity;
 }
-static inline WC_NONULL(1) bool HashMap_empty(const HashMap* map)
+WC_NONULL(1) static inline bool HashMap_empty(const HashMap* map)
 {
     return map->size == 0;
 }
@@ -1868,11 +1877,11 @@ void Queue_shrink_to_fit(Queue* q) WC_NONULL(1);
 Queue Queue_copy(const wc_allocator* a, const Queue* src) __attribute__((nonnull(1, 2), warn_unused_result));
 void  Queue_move(Queue* dest, Queue* src) WC_NONULL(1, 2);
 
-void Queue_push(Queue* q, const void* x) WC_NONULL(1, 2);      // deep copy of *x
-void Queue_push_move(Queue* q, void* x) WC_NONULL(1, 2);       // *x moved in and zeroed
-void Queue_pop(Queue* q, void* out) WC_NONULL(1);              // front, MOVED into out
-void Queue_pop_back(Queue* q, void* out) WC_NONULL(1);         // back, MOVED into out
-void Queue_peek(const Queue* q, void* peek) WC_NONULL(1, 2);   // deep COPY of the front
+void        Queue_push(Queue* q, const void* x) WC_NONULL(1, 2);    // deep copy of *x
+void        Queue_push_move(Queue* q, void* x) WC_NONULL(1, 2);     // *x moved in and zeroed
+void        Queue_pop(Queue* q, void* out) WC_NONULL(1);            // front, MOVED into out
+void        Queue_pop_back(Queue* q, void* out) WC_NONULL(1);       // back, MOVED into out
+void        Queue_peek(const Queue* q, void* peek) WC_NONULL(1, 2); // deep COPY of the front
 const void* Queue_peek_ptr(const Queue* q) WC_NONULL(1);
 
 // Swap the elements at LOGICAL positions i and j. Never allocates.
@@ -1992,8 +2001,8 @@ typedef struct {
         char* heap;
         char  stk[STR_SSO_SIZE];
     };
-    u64           size;
-    u64           capacity;
+    u64                 size;
+    u64                 capacity;
     const wc_allocator* alloc;
 } String;
 
@@ -2004,10 +2013,10 @@ _Static_assert(sizeof(String) == 48, "String must be 48 bytes");
 //  Construction / Destruction
 
 // Create an empty String using allocator `a`.
-String String_create(const wc_allocator* a) __attribute__((nonnull(1), warn_unused_result));
+WC_NODISCARD String String_create(const wc_allocator* a) WC_NONULL(1);
 
 // Create a String from a C string using allocator `a`.
-String String_from_cstr(const wc_allocator* a, const char* cstr) __attribute__((nonnull(1), warn_unused_result));
+WC_NODISCARD String String_from_cstr(const wc_allocator* a, const char* cstr) WC_NONULL(1);
 
 // Destroy the String's internal buffer
 // Safe on a zeroed/moved-from String.
@@ -2015,7 +2024,7 @@ void String_destroy(String* str) WC_NONULL(1);
 
 // Deep copy src → new String in allocator `a`.
 // dest is raw/uninitialized: never reads it before writing.
-String String_copy(const wc_allocator* a, const String* src) __attribute__((nonnull(1, 2), warn_unused_result));
+WC_NODISCARD String String_copy(const wc_allocator* a, const String* src) WC_NONULL(1, 2);
 
 // Transfer ownership: dest gets src's contents, src is zeroed.
 void String_move(String* dest, String* src) WC_NONULL(1, 2);
@@ -2025,7 +2034,7 @@ void String_move(String* dest, String* src) WC_NONULL(1, 2);
 // For lookups only: a String-keyed map or set hashes and compares it like an
 // owning String with the same bytes. Never store it in a container.
 // Any mutation is fatal (WC_BORROWED cannot allocate); destroy is a no-op.
-WC_NONULL(1) static inline String String_borrow(const char* p, u64 len)
+WC_NODISCARD WC_NONULL(1) static inline String String_borrow(const char* p, u64 len)
 {
     String s;
     memset(&s, 0, sizeof(s)); // stk[STR_SSO_SIZE - 1] == 0: heap mode
@@ -2053,12 +2062,12 @@ void String_shrink_to_fit(String* str) WC_NONULL(1);
 
 // Return a buffer (allocated from `a`) holding a NUL-terminated copy — caller
 // must free with wc_free(a, ptr, str->size + 1, 1).
-char* String_to_cstr(const wc_allocator* a, const String* str) __attribute__((nonnull(1, 2), warn_unused_result));
+WC_NODISCARD char* String_to_cstr(const wc_allocator* a, const String* str) WC_NONULL(1, 2);
 
 void String_to_cstr_buf(const String* str, char* buff, u64 n) WC_NONULL(1, 2);
 
 // Return a raw pointer into the internal buffer (no NUL terminator).
-char* String_data_ptr(const String* str) WC_NONULL(1);
+WC_NODISCARD char* String_data_ptr(const String* str) WC_NONULL(1);
 
 // Guarantee a '\0' sits one byte past the last real character, WITHOUT
 // touching str->size. Grows exactly like String_append_char would.
@@ -2094,14 +2103,14 @@ WC_NONULL(1) static inline void String_clear(String* str)
 
 //  Access
 
-WC_NONULL(1) static inline char String_char_at(const String* str, u64 i)
+WC_NODISCARD WC_NONULL(1) static inline char String_char_at(const String* str, u64 i)
 {
     WC_ASSERT(i < str->size, "index out of bounds");
     return ((str->stk[STR_SSO_SIZE - 1] != '\0') ? str->stk : str->heap)[i];
 }
 
 // UNCHECKED: no bounds check, even in Debug. Caller guarantees i < size.
-WC_NONULL(1) static inline char String_char_at_unsafe(const String* str, u64 i)
+WC_NODISCARD WC_NONULL(1) static inline char String_char_at_unsafe(const String* str, u64 i)
 {
     return ((str->stk[STR_SSO_SIZE - 1] != '\0') ? str->stk : str->heap)[i];
 }
@@ -2117,22 +2126,23 @@ WC_NONULL(1) static inline void String_set_char(String* str, u64 i, char c)
 
 // 0 == equal, <0 == str1 < str2, >0 == str1 > str2
 int String_compare(const String* s1, const String* s2) WC_NONULL(1, 2);
+
 WC_NONULL(1, 2) static inline bool String_equals(const String* s1, const String* s2)
 {
     return String_compare(s1, s2) == 0;
 }
+
 bool String_equals_cstr(const String* str, const char* cstr) WC_NONULL(1, 2);
 
 
 //  Search
 
 // Returns index, or WC_NOT_FOUND if not found.
-u64 String_find_char(const String* str, char c) WC_NONULL(1);
-u64 String_find_cstr(const String* str, const char* substr) WC_NONULL(1, 2);
+WC_NODISCARD u64 String_find_char(const String* str, char c) WC_NONULL(1);
+WC_NODISCARD u64 String_find_cstr(const String* str, const char* substr) WC_NONULL(1, 2);
 
 // Return a String (in allocator `a`) holding `length` chars starting at `start`.
-String String_substr(const wc_allocator* a, const String* str, u64 start, u64 length)
-    __attribute__((nonnull(1, 2), warn_unused_result));
+WC_NODISCARD String String_substr(const wc_allocator* a, const String* str, u64 start, u64 length) WC_NONULL(1, 2);
 
 
 //  I/O
@@ -2142,12 +2152,12 @@ void String_print(const String* str) WC_NONULL(1);
 
 //  Inline helpers
 
-WC_NONULL(1) static inline u64 String_len(const String* str)
+WC_NODISCARD WC_NONULL(1) static inline u64 String_len(const String* str)
 {
     return str->size;
 }
 
-WC_NONULL(1) static inline u64 String_capacity(const String* str)
+WC_NODISCARD WC_NONULL(1) static inline u64 String_capacity(const String* str)
 {
     return str->capacity;
 }
@@ -2165,7 +2175,7 @@ WC_NONULL(1) static inline bool String_is_sso(const String* str)
 // Read-only pointer into the buffer. Unlike String_data_ptr, this never
 // returns NULL for an empty String. Internally, it uses String_ensure_null_term(),
 // which places a '\0' right after the last valid char without touching the size of the string.
-WC_NONULL(1) static inline const char* String_cstr_view(String* str)
+WC_NODISCARD WC_NONULL(1) static inline const char* String_cstr_view(String* str)
 {
     String_ensure_null_term(str);
     return String_is_sso(str) ? str->stk : str->heap;
@@ -2487,7 +2497,7 @@ static inline u64 wc_hash_str_ptr(const void* key, u64 size)
 #define WC_OWNING_VALUE_CASES_                                                                                    \
     String* : 1, const String* : 1, GenVec* : 1, const GenVec* : 1, HashMap* : 1, const HashMap* : 1, Queue* : 1,  \
         const Queue* : 1, PriorityQueue* : 1, const PriorityQueue* : 1, BitVec* : 1, const BitVec* : 1,              \
-        Matrixf* : 1, const Matrixf* : 1, StringStore* : 1, const StringStore* : 1
+        Matrixf* : 1, const Matrixf* : 1 
 
 #define WC_IS_OWNING_VALUE(T) _Generic((T*)0, WC_OWNING_VALUE_CASES_, default: 0)
 
@@ -4167,7 +4177,7 @@ typedef enum {
     ROBINHOOD_EXIT, // stopped early: the Robin Hood invariant proves the key is absent
 } LOOKUP_RES;
 
-// Single block layout, every region aligned for what it holds:
+// Single block layout, every region aligned:
 //   [keys: cap * key_size][vals: cap * val_size][scratch][psls: cap bytes]
 // keys/vals/scratch start on MAP_ALIGN; psls are bytes and go last.
 //
@@ -4238,12 +4248,13 @@ static void map_alloc_block(HashMap* map, u64 cap)
 
 static void map_free_block(const HashMap* map, u8* block, u64 cap)
 {
+    // BUG: redundent calculation. maybe save map_layout?
     wc_free(map->alloc, block, map_layout_for(cap, map->key_size, map->val_size).total, MAP_ALIGN(map));
 }
 
 // Move one element into `dest` (memcpy). `src` is left zeroed.
 // size 0 (a set's value): nothing to move, and src may be NULL.
-static inline void map_move_into(u32 size, u8* dest, u8* src)
+static inline void map_move_into(u8* dest, u8* src, u32 size)
 {
     if (size == 0) {
         return;
@@ -4259,24 +4270,22 @@ static inline void map_copy_into(const HashMap* map, const wc_container_ops* ops
     if (size == 0) {
         return;
     }
-    wc_copy_fn cp = ops ? ops->copy_fn : NULL;
-    if (cp) {
-        cp(map->alloc, dest, src);
+    if (ops && ops->copy_fn) {
+        ops->copy_fn(map->alloc, dest, src);
     } else {
         memcpy(dest, src, size);
     }
 }
 
-// Delete one element in place (if it owns anything).
+// Delete one element in place (if it owns anything)
 static inline void map_delete_elm(const wc_container_ops* ops, u8* elm)
 {
-    wc_delete_fn del = ops ? ops->del_fn : NULL;
-    if (del) {
-        del(elm);
+    if (ops && ops->del_fn) {
+        ops->del_fn(elm);
     }
 }
 
-// Destroy an incoming duplicate the container will not keep, and zero it.
+// Destroy an incoming duplicate the container will not keep, and zero it
 static inline void map_consume_dup(const wc_container_ops* ops, u32 size, u8* elm)
 {
     if (size == 0) {
@@ -4289,8 +4298,7 @@ static inline void map_consume_dup(const wc_container_ops* ops, u32 size, u8* el
 
 // A stored PSL is a u8, and 0 means empty. If an insert would push a probe length
 // past PSL_LIMIT the hash function is degenerate (a healthy hash at load <= 0.75
-// stays under ~30). Die loudly instead of letting the u8 wrap to BUCKET_EMPTY and
-// corrupt the table.
+// stays under ~30). Die loudly instead of letting the u8 wrap to BUCKET_EMPTY and corrupt the table.
 #define PSL_LIMIT      250
 #define PSL_OVERFLOW() FATAL("HashMap: probe length overflow (degenerate hash function)")
 
@@ -4304,15 +4312,15 @@ static inline void map_consume_dup(const wc_container_ops* ops, u32 size, u8* el
 // Custom hash: multiplied by 2^64 / phi first (Fibonacci hashing). Custom hashes
 // often have weak top bits (identity on ints, shifted ids); the multiply folds
 // every input bit into the top bits, so any hash_fn spreads.
-static inline __attribute__((always_inline)) u64 map_home(const HashMap* map, const void* key, u32 ks)
+static inline WC_ALWAYS_INLINE u64 map_home(const HashMap* map, const void* key, u32 ks)
 {
     u64 h = map->hash_fn ? map->hash_fn(key, ks) * 0x9E3779B97F4A7C15ULL : wc_hash(key, ks);
-    return h >> (64 - __builtin_ctzll(map->capacity));
+    return h >> (64 - __builtin_ctzll(map->capacity)); // TODO: direct builtin usage
 }
 
 // The default (cmp_fn == NULL) is byte equality: 4 and 8 byte keys become one
 // integer compare.
-static inline __attribute__((always_inline)) bool map_key_eq(const HashMap* map, const u8* a, const u8* b, u32 ks)
+static inline WC_ALWAYS_INLINE bool map_key_eq(const HashMap* map, const u8* a, const u8* b, u32 ks)
 {
     return (map->cmp_fn ? map->cmp_fn(a, b, ks) == 0 : (int)wc_equal_n(a, b, ks)) != 0;
 }
@@ -4360,6 +4368,7 @@ void HashMap_destroy(HashMap* map)
 
     wc_delete_fn k_del = MAP_DEL(map->key_ops);
     wc_delete_fn v_del = MAP_DEL(map->val_ops);
+
     if (k_del || v_del) {
         for (u64 i = 0; i < map->capacity; i++) {
             if (*GET_PSL(map, i) == BUCKET_EMPTY) {
@@ -4395,11 +4404,9 @@ static inline void map_commit(HashMap* map, u8 psl, u64 slot)
     map_maybe_resize(map);
 }
 
-// TODO: do proper boolean returns!
-
 // Insert or update — COPY semantics (B8: both sides keep the value).
 // The map deep-copies key and val; the caller keeps its own.
-// Returns 1 if key existed (updated), 0 if new key inserted.
+// Returns true (found) if key existed (updated),  false (not found) if new key inserted.
 bool HashMap_put(HashMap* map, const void* key, const void* val)
 {
     FATAL_IF(map->capacity == 0, "HashMap mutation on zeroed/moved-from table");
@@ -4435,13 +4442,13 @@ bool HashMap_put_move(HashMap* map, void* key, void* val)
 
     if (res == FOUND) {
         map_delete_elm(map->val_ops, GET_VAL(map, slot));
-        map_move_into(map->val_size, GET_VAL(map, slot), val);
+        map_move_into(GET_VAL(map, slot), val, map->val_size);
         map_consume_dup(map->key_ops, map->key_size, key);
         return true;
     }
 
-    map_move_into(map->key_size, STAGE_KEY(map), key);
-    map_move_into(map->val_size, STAGE_VAL(map), val);
+    map_move_into(STAGE_KEY(map), key, map->key_size);
+    map_move_into(STAGE_VAL(map), val, map->val_size);
     map_commit(map, out_psl, slot);
     return false;
 }
@@ -4459,12 +4466,12 @@ bool HashMap_put_val_move(HashMap* map, const void* key, void* val)
 
     if (res == FOUND) {
         map_delete_elm(map->val_ops, GET_VAL(map, slot));
-        map_move_into(map->val_size, GET_VAL(map, slot), val);
+        map_move_into(GET_VAL(map, slot), val, map->val_size);
         return true;
     }
 
     map_copy_into(map, map->key_ops, map->key_size, STAGE_KEY(map), key);
-    map_move_into(map->val_size, STAGE_VAL(map), val);
+    map_move_into(STAGE_VAL(map), val, map->val_size);
     map_commit(map, out_psl, slot);
     return false;
 }
@@ -4487,7 +4494,7 @@ bool HashMap_put_key_move(HashMap* map, void* key, const void* val)
         return true;
     }
 
-    map_move_into(map->key_size, STAGE_KEY(map), key);
+    map_move_into(STAGE_KEY(map), key, map->key_size);
     map_copy_into(map, map->val_ops, map->val_size, STAGE_VAL(map), val);
     map_commit(map, out_psl, slot);
     return false;
@@ -4749,8 +4756,7 @@ static inline void map_maybe_resize(HashMap* map)
 // Find `key`. Returns the slot where it is (FOUND) or where it would go
 // (NOT_FOUND / ROBINHOOD_EXIT), and the probe length at that slot in out_psl.
 // ks is the key size, a constant for common sizes (see map_lookup).
-static inline __attribute__((always_inline)) u64 map_lookup_k(const HashMap* map, const u8* key, LOOKUP_RES* res,
-                                                              u8* out_psl, u32 ks)
+static inline WC_ALWAYS_INLINE u64 map_lookup_k(const HashMap* map, const u8* key, LOOKUP_RES* res, u8* out_psl, u32 ks)
 {
     u8 psl = 1; // stored PSL 1 = real probe distance 0 (home slot)
 
@@ -4796,8 +4802,7 @@ static u64 map_lookup(const HashMap* map, const u8* key, LOOKUP_RES* res, u8* ou
 // ks/vs are the key/val sizes. map_insert passes both as compile-time constants
 // for the common size pairs (WC_SPECIALIZE_2), so every copy below is a
 // fixed-size move and every slot address is a constant-stride multiply.
-static inline __attribute__((always_inline)) void map_insert_k(HashMap* map, u8* key, u8* val, u8 psl0, u64 idx, u32 ks,
-                                                               u32 vs)
+static inline WC_ALWAYS_INLINE void map_insert_k(HashMap* map, u8* key, u8* val, u8 psl0, u64 idx, u32 ks, u32 vs)
 {
 #define KEY_AT(i) (map->keys + ((u64)ks * (i)))
 #define VAL_AT(i) (map->vals + ((u64)vs * (i)))
@@ -4884,8 +4889,8 @@ static void map_insert(HashMap* map, u8* key, u8* val, u8 psl0, u64 idx)
 // Reinsert every element of the old block. Keys are already unique, so no
 // lookup and no compare: each element starts at its home bucket and Robin Hood
 // insertion does the rest. Raw bytes move, no copy/del (B5).
-static inline __attribute__((always_inline)) void map_rehash_k(HashMap* map, u8* old_keys, u8* old_vals,
-                                                               const u8* old_psls, u64 old_cap, u32 ks, u32 vs)
+static inline WC_ALWAYS_INLINE void map_rehash_k(HashMap* map, u8* old_keys, u8* old_vals, const u8* old_psls,
+                                                 u64 old_cap, u32 ks, u32 vs)
 {
     for (u64 i = 0; i < old_cap; i++) {
         if (old_psls[i] == BUCKET_EMPTY) {

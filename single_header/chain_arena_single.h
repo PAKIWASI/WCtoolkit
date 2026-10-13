@@ -77,7 +77,7 @@ extern const wc_allocator wc_mmap;
 
 static inline __attribute__((nonnull(1))) bool wc_is_libc(const wc_allocator* a)
 {
-    return a->vt == NULL;
+    return a == WC_LIBC;
 }
 
 // Same backend and same context: memory from one may be freed through the other
@@ -198,10 +198,9 @@ static inline size_t wc_align_for_size(size_t elm_size)
 
 // LOGGING/ERRORS
 
-#include <stdalign.h>
 #include <stdarg.h>
 #include <stdio.h>
-// #include <stdlib.h>
+
 
 // ANSI Color Codes
 #define WC_COLOR_RESET  "\033[0m"
@@ -315,8 +314,11 @@ __attribute__((cold, noinline, format(printf, 4, 5))) void wc_warn_report(const 
 #define WC_CAT(a, b)  WC_CAT_(a, b)
 
 
-#define WC_NONULL(...) __attribute__((nonnull(__VA_ARGS__)))
-#define WC_NODISCARD   __attribute__((warn_unused_result)) // TODO: use
+// common unix compiler attributes // TODO: use these throughout, also find msvc counterparts/fixes
+
+#define WC_NONULL(...)   __attribute__((nonnull(__VA_ARGS__)))
+#define WC_NODISCARD     __attribute__((warn_unused_result))
+#define WC_ALWAYS_INLINE __attribute__((always_inline))
 
 
 // TYPES
@@ -336,6 +338,7 @@ typedef int64_t i64;
 
 // we are using unsigned indices/sizes
 #define WC_NOT_FOUND ((u64) - 1)
+
 
 // GENERIC FUNCTIONS
 
@@ -369,6 +372,8 @@ typedef struct {
     wc_delete_fn del_fn;  // Cleanup function for owned resources (or NULL)
 } wc_container_ops;
 
+
+#include <stdalign.h>
 
 // Heap-box a value-returning constructor through allocator A:
 //   GenVec* v = WC_BOX(A, GenVec, GenVec_create, 8, sizeof(int), NULL);
@@ -641,7 +646,7 @@ WC_NODISCARD void* ChainArena_alloc_aligned(ChainArena* ca, u64 size, u64 align)
 // The allocator to give to containers. Points into the arena, so it lives as long as the arena.
 WC_NODISCARD static inline const wc_allocator* ChainArena_allocator(ChainArena* ca) WC_NONULL(1);
 
-static inline const wc_allocator* ChainArena_allocator(ChainArena* ca)
+WC_NODISCARD WC_NONULL(1) static inline const wc_allocator* ChainArena_allocator(ChainArena* ca)
 {
     // zeroed self has vt == NULL, which would silently read as WC_LIBC
     FATAL_IF(!ca->self.ctx, "ChainArena_allocator on zeroed/destroyed ChainArena");
@@ -656,7 +661,7 @@ typedef struct {
     u64                mark; // the offset of node n;
 } ChainArenaScratch;
 
-WC_NODISCARD static inline ChainArenaScratch ChainArenaScratch_create(ChainArena* ca)
+WC_NODISCARD WC_NONULL(1) static inline ChainArenaScratch ChainArenaScratch_create(ChainArena* ca)
 {
     return (ChainArenaScratch){
         .chain_arena = ca,
@@ -921,7 +926,8 @@ void wc_warn_report(const char* file, int line, const char* func, const char* fm
 #define PAYLOAD(n) ((u8*)(n) + HDR)
 // Total bytes of the backing allocation for a node: what wc_free needs to be told.
 #define NODE_BYTES(n) (HDR + (n)->cap)
-
+// At most, only 25% of a normal block is wasted. Any size bigger than BIG_THRESHOLD get's it's own allocation
+#define BIG_THRESHOLD(cap) ((cap) / 4)
 
 
 // Take one block from the backing allocator. NULL if it can't.
@@ -968,7 +974,7 @@ static ChainArenaNodeHDR* free_list(ChainArena* ca, ChainArenaNodeHDR* start, co
 
 
 // wc_allocator interface: alloc only. free is a no-op and realloc is emulated (alloc + copy).
-static void* carena_alloc(void* ctx, size_t size, size_t align)
+static inline void* carena_alloc(void* ctx, size_t size, size_t align)
 {
     return ChainArena_alloc_aligned((ChainArena*)ctx, size, align);
 }
@@ -1011,7 +1017,11 @@ void* ChainArena_alloc_aligned(ChainArena* ca, u64 size, u64 align)
     // Block memory is aligned to WC_MAX_ALIGN already. Only a bigger alignment needs room
     // to slide the pointer forward inside the payload.
     u64 slack = align > WC_MAX_ALIGN ? align : 0;
-    u64 need  = size + slack;
+    // huge sizes can overflow
+    if (slack > PTRDIFF_MAX - HDR || size > PTRDIFF_MAX - HDR - slack) {
+        return NULL;
+    }
+    u64 need = size + slack; // actual allocation size
 
     ChainArenaNodeHDR* curr = ca->normal;
 
@@ -1024,7 +1034,9 @@ void* ChainArena_alloc_aligned(ChainArena* ca, u64 size, u64 align)
     }
 
     // a new node can satisfy the request. whatever is left in the old block is abandoned
-    if (need <= curr->cap) {
+    // we only go for a new node if `need` is greater than 25% of a normal block's capacity
+    // so we only waste 25% of a block. any bigger allocation get's it's own `big` block
+    if (need <= BIG_THRESHOLD(curr->cap)) {
         ChainArenaNodeHDR* n = new_node(ca, curr->cap); // each normal node saves the cap supplied by the user
         if (!n) {
             return NULL;
@@ -1035,8 +1047,8 @@ void* ChainArena_alloc_aligned(ChainArena* ca, u64 size, u64 align)
         return node_bump(n, size, align); // fits need <= node capacity
     }
 
-    // only a 'big' node can satisfy the request. it's sized to fit
-    //The current regular block is untouched, so its remaining space is still available to later small requests.
+    // any allocation needing more than BIG_THRESHOLD get's it's own block. It's sized to fit
+    // The current regular block is untouched, so its remaining space is still available to later small requests.
     ChainArenaNodeHDR* n = new_node(ca, need);
     if (!n) {
         return NULL;
@@ -1059,6 +1071,7 @@ void ChainArenaScratch_to_mark(ChainArenaScratch scratch)
 #undef HDR
 #undef PAYLOAD
 #undef NODE_BYTES
+#undef BIG_THRESHOLD
 #endif /* WC_CHAIN_ARENA_IMPL */
 
 #endif /* WC_IMPLEMENTATION */

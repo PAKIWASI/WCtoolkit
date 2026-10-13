@@ -119,15 +119,14 @@ static inline void map_copy_into(const HashMap* map, const wc_container_ops* ops
     if (size == 0) {
         return;
     }
-    wc_copy_fn cp = ops ? ops->copy_fn : NULL;
-    if (cp) {
-        cp(map->alloc, dest, src);
+    if (ops && ops->copy_fn) {
+        ops->copy_fn(map->alloc, dest, src);
     } else {
         memcpy(dest, src, size);
     }
 }
 
-// Delete one element in place (if it owns anything).
+// Delete one element in place (if it owns anything)
 static inline void map_delete_elm(const wc_container_ops* ops, u8* elm)
 {
     if (ops && ops->del_fn) {
@@ -135,7 +134,7 @@ static inline void map_delete_elm(const wc_container_ops* ops, u8* elm)
     }
 }
 
-// Destroy an incoming duplicate the container will not keep, and zero it.
+// Destroy an incoming duplicate the container will not keep, and zero it
 static inline void map_consume_dup(const wc_container_ops* ops, u32 size, u8* elm)
 {
     if (size == 0) {
@@ -148,8 +147,7 @@ static inline void map_consume_dup(const wc_container_ops* ops, u32 size, u8* el
 
 // A stored PSL is a u8, and 0 means empty. If an insert would push a probe length
 // past PSL_LIMIT the hash function is degenerate (a healthy hash at load <= 0.75
-// stays under ~30). Die loudly instead of letting the u8 wrap to BUCKET_EMPTY and
-// corrupt the table.
+// stays under ~30). Die loudly instead of letting the u8 wrap to BUCKET_EMPTY and corrupt the table.
 #define PSL_LIMIT      250
 #define PSL_OVERFLOW() FATAL("HashMap: probe length overflow (degenerate hash function)")
 
@@ -773,4 +771,3 @@ static void map_resize(HashMap* map, u64 new_capacity)
 
     map_free_block(map, old_keys, old_cap);
 }
-
