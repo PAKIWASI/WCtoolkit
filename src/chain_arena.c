@@ -78,6 +78,7 @@ void ChainArena_create(ChainArena* ca, const wc_allocator* backing, u64 normal_c
     ca->self = (wc_allocator){.vt = &carena_vtable, .ctx = ca};
     // need to set allocator before calling this
     ca->normal = new_node(ca, normal_cap);
+    FATAL_IF(!ca->normal, "first node allocation failed (cap %lu)", normal_cap);
 }
 
 void ChainArena_destroy(ChainArena* ca)
@@ -155,4 +156,3 @@ void ChainArenaScratch_to_mark(ChainArenaScratch scratch)
     // set the mark
     scratch.chain_arena->normal->off = scratch.mark;
 }
-

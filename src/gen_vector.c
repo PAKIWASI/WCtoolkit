@@ -113,8 +113,7 @@ GenVec GenVec_create(const wc_allocator* alloc, u64 n, u32 data_size, const wc_c
 
 GenVec GenVec_create_val(const wc_allocator* alloc, u64 n, const void* val, u32 data_size, const wc_container_ops* ops)
 {
-    WC_ASSERT(n != 0, "cant init with val if n = 0");
-
+    FATAL_IF(n == 0, "cant init with val if n = 0");
     GenVec v = GenVec_create(alloc, n, data_size, ops);
 
     if (v.is_pod || !VEC_COPY_FN(&v)) {

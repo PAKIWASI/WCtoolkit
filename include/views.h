@@ -1,9 +1,11 @@
 #ifndef WC_VIEWS_H
 #define WC_VIEWS_H
 
+#include "chain_arena.h"
 #include "common.h"
-#include "wc_allocator.h"
 #include "wc_string.h"
+
+// TODO: expand views and build an immutable string store using chain arena
 
 
 // non-owning view into any memory that stores a string
@@ -12,6 +14,7 @@ typedef struct {
     u64         len;
 } StrView;
 
+
 StrView StrView_from_String(String* str) WC_NONULL(1);
 
 StrView StrView_from_String_ex(String* str, u64 off, u64 len) WC_NONULL(1);
@@ -19,19 +22,13 @@ StrView StrView_from_String_ex(String* str, u64 off, u64 len) WC_NONULL(1);
 // View over existing memory. No allocation; `cstr` must outlive the view.
 StrView StrView_from_cstr(const char* cstr, u64 clen) WC_NONULL(1);
 
-// Copy clen bytes of `cstr` into memory from `a` (plus a NUL terminator) and
-// view it. LIFETIME: the view borrows from `a`. With an arena it lives until
-// the arena is reset/destroyed; with any freeing allocator (libc, test
-// allocator) release it with StrView_free_copy using the same allocator.
-StrView StrView_copy_cstr(const wc_allocator* a, const char* cstr, u64 clen) WC_NONULL(1, 2);
-
-// Release a view returned by StrView_copy_cstr(a, ...). No-op on arenas.
-void StrView_free_copy(const wc_allocator* a, StrView sv) WC_NONULL(1);
-
 void StrView_print(StrView sv);
 
 
-// TODO: use chain arena for a string store
+// A stringstore is a chain arena that provides immutable string storage and operations on them,
+// filepath storage and operations etc. it gives out StrViews, optional String wrappers for read, find operations.
+//
+typedef ChainArena StringStore;
 
 
 

@@ -5,13 +5,14 @@
 #include "wc_allocator.h"
 #include "wc_macros.h"
 
-#include <sqlite3.h>
 #include <stdio.h>
 
 
 // TODO:
 // iterators?
 // msvc compatibility? or do we just use clang cl for compiling projects that use WCtoolkit
+// we should not use raw attributes but use the WC_MACRO equivilants
+// We should have a clear distinction between using WC_ASSERT vs FATAL_IF. what checks should survive to release build?
 
 
 static int run1(void)

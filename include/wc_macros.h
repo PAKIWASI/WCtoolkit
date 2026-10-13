@@ -7,7 +7,6 @@
 #include "common.h"
 #include "gen_vector.h"
 #include "hashmap.h"
-#include "matrix.h"
 #include "priority_queue.h"
 #include "queue.h"
 #include "stack.h"
@@ -55,9 +54,9 @@
  * works, including arrays and incomplete types, without needing a value.
  */
 #define WC_OWNING_VALUE_CASES_                                                                                    \
-    String* : 1, const String* : 1, GenVec* : 1, const GenVec* : 1, HashMap* : 1, const HashMap* : 1, Queue* : 1,  \
-        const Queue* : 1, PriorityQueue* : 1, const PriorityQueue* : 1, BitVec* : 1, const BitVec* : 1,              \
-        Matrixf* : 1, const Matrixf* : 1 
+    String* : 1, const String* : 1, GenVec* : 1, const GenVec* : 1, HashMap* : 1, const HashMap* : 1, Queue* : 1, \
+        const Queue* : 1, PriorityQueue* : 1, const PriorityQueue* : 1, BitVec* : 1, const BitVec* : 1
+
 
 #define WC_IS_OWNING_VALUE(T) _Generic((T*)0, WC_OWNING_VALUE_CASES_, default: 0)
 
@@ -163,8 +162,8 @@
  * CONTENT: hashing the raw String struct (pointer, capacity, allocator) makes
  * every lookup miss. NULL = wc_hash / byte equality over the key bytes (POD keys).
  * GenVec keys have no content hash: pass explicit functions to HashMap_create. */
-#define WC_HASH_FN(K)                               \
-    _Generic((K*)0,                                 \
+#define WC_HASH_FN(K)                            \
+    _Generic((K*)0,                              \
         String*: (wc_hash_fn)wc_hash_str,        \
         String * *: (wc_hash_fn)wc_hash_str_ptr, \
         default: (wc_hash_fn)NULL)
@@ -248,18 +247,18 @@ Usage:
 // VEC_PUSH_CSTR — build a String from a C string and move it into a String
 // vector, by value (wc_str_ops) or by pointer (wc_str_ptr_ops).
 // Uses the container's own allocator so strings follow their vector.
-#define VEC_PUSH_CSTR(vec, cstr)                                                        \
-    ({                                                                                  \
-        if ((vec)->data_size == sizeof(String)) {                                       \
-            /* by value: build on the vec's allocator, move the struct in */            \
-            String _wpc_s = String_from_cstr((vec)->alloc, (cstr));                     \
-            GenVec_push_move((vec), (void*)&_wpc_s); /* _wpc_s zeroed by move */        \
-        } else {                                                                        \
-            /* by pointer: box the String in the vec's allocator */                     \
-            WC_ASSERT_ELEM_SIZE((vec), String*);                                        \
+#define VEC_PUSH_CSTR(vec, cstr)                                                     \
+    ({                                                                               \
+        if ((vec)->data_size == sizeof(String)) {                                    \
+            /* by value: build on the vec's allocator, move the struct in */         \
+            String _wpc_s = String_from_cstr((vec)->alloc, (cstr));                  \
+            GenVec_push_move((vec), (void*)&_wpc_s); /* _wpc_s zeroed by move */     \
+        } else {                                                                     \
+            /* by pointer: box the String in the vec's allocator */                  \
+            WC_ASSERT_ELEM_SIZE((vec), String*);                                     \
             String* _wpc_p = WC_BOX((vec)->alloc, String, String_from_cstr, (cstr)); \
-            GenVec_push_move((vec), (void*)&_wpc_p); /* slot owns the pointer */        \
-        }                                                                               \
+            GenVec_push_move((vec), (void*)&_wpc_p); /* slot owns the pointer */     \
+        }                                                                            \
     })
 
 
@@ -602,15 +601,14 @@ Usage:
 // A new set of vec's elements (deep copies), on vec's allocator. Sized once up
 // front: no intermediate resizes.
 #define SET_FROM_VEC(vec, hash_fn, cmp_fn) SET_FROM_VEC_((vec), hash_fn, cmp_fn, __LINE__)
-#define SET_FROM_VEC_(vec, hash_fn, cmp_fn, L)                                                                     \
-    ({                                                                                                             \
-        HashMap WC_FE_(set, L) =                                                                                   \
-            HashMap_create((vec)->alloc, (vec)->data_size, 0, hash_fn, cmp_fn, (vec)->ops, NULL);                  \
-        HashMap_reserve(&WC_FE_(set, L), GenVec_size(vec));                                                        \
-        for (u64 WC_FE_(i, L) = 0, WC_FE_(n, L) = GenVec_size(vec); WC_FE_(i, L) < WC_FE_(n, L); WC_FE_(i, L)++) { \
-            HashMap_put(&WC_FE_(set, L), GenVec_get_ptr((vec), WC_FE_(i, L)), NULL);                               \
-        }                                                                                                          \
-        WC_FE_(set, L);                                                                                            \
+#define SET_FROM_VEC_(vec, hash_fn, cmp_fn, L)                                                                         \
+    ({                                                                                                                 \
+        HashMap WC_FE_(set, L) = HashMap_create((vec)->alloc, (vec)->data_size, 0, hash_fn, cmp_fn, (vec)->ops, NULL); \
+        HashMap_reserve(&WC_FE_(set, L), GenVec_size(vec));                                                            \
+        for (u64 WC_FE_(i, L) = 0, WC_FE_(n, L) = GenVec_size(vec); WC_FE_(i, L) < WC_FE_(n, L); WC_FE_(i, L)++) {     \
+            HashMap_put(&WC_FE_(set, L), GenVec_get_ptr((vec), WC_FE_(i, L)), NULL);                                   \
+        }                                                                                                              \
+        WC_FE_(set, L);                                                                                                \
     })
 
 // Plain-data value
@@ -639,18 +637,17 @@ Usage:
         HashMap_put_key_move((set), (void*)&(lval), NULL);                \
     })
 
-#define WC_ASSERT_STR_SET(set, what)                                                                       \
-    WC_ASSERT((set)->val_size == 0 && (set)->key_size == sizeof(String) && (set)->key_ops &&               \
-                  (set)->key_ops->copy_fn,                                                                 \
+#define WC_ASSERT_STR_SET(set, what)                                                                                  \
+    WC_ASSERT((set)->val_size == 0 && (set)->key_size == sizeof(String) && (set)->key_ops && (set)->key_ops->copy_fn, \
               what ": must be a set of String with wc_str_ops")
 
 // Insert a C string into a String set. Probes with a borrowed String first: an
 // existing string costs no allocation; a new one is copied once into the set's allocator.
-#define SET_INSERT_CSTR(set, cstr)                       \
-    ({                                                   \
-        WC_ASSERT_STR_SET((set), "SET_INSERT_CSTR");     \
-        String _s = WC_CSTR_PROBE(cstr);                 \
-        HashMap_put((set), (const void*)&_s, NULL);      \
+#define SET_INSERT_CSTR(set, cstr)                   \
+    ({                                               \
+        WC_ASSERT_STR_SET((set), "SET_INSERT_CSTR"); \
+        String _s = WC_CSTR_PROBE(cstr);             \
+        HashMap_put((set), (const void*)&_s, NULL);  \
     })
 
 // bool: is the C string in a String set? No allocation.

@@ -69,6 +69,7 @@ typedef struct {
 
 WC_NODISCARD WC_NONULL(1) static inline ChainArenaScratch ChainArenaScratch_create(ChainArena* ca)
 {
+    WC_ASSERT(ca->self.ctx == ca, "invalid chain arena (zeroed or moved)");
     return (ChainArenaScratch){
         .chain_arena = ca,
         .normal      = ca->normal,

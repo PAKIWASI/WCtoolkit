@@ -12,6 +12,7 @@
 #define WC_MAX_ALIGN alignof(max_align_t)
 
 // TODO: maybe we shouldn't implicitly default to libc. if no valid allocator is provided, we should fail
+// update docs
 
 /*
  * ALLOCATOR API
