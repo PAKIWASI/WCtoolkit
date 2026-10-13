@@ -37,6 +37,8 @@ _Static_assert(sizeof(String) == 48, "String must be 48 bytes");
 // Create an empty String using allocator `a`.
 WC_NODISCARD String String_create(const wc_allocator* a) WC_NONULL(1);
 
+WC_NODISCARD String String_with_cap(const wc_allocator* a, u64 cap) WC_NONULL(1);
+
 // Create a String from a C string using allocator `a`.
 WC_NODISCARD String String_from_cstr(const wc_allocator* a, const char* cstr) WC_NONULL(1);
 
@@ -82,7 +84,7 @@ void String_shrink_to_fit(String* str) WC_NONULL(1);
 
 //  Conversion
 
-// Return a buffer (allocated from `a`) holding a NUL-terminated copy — caller
+// Return a buffer (allocated from `a`) holding a NUL-terminated copy, caller
 // must free with wc_free(a, ptr, str->size + 1, 1).
 WC_NODISCARD char* String_to_cstr(const wc_allocator* a, const String* str) WC_NONULL(1, 2);
 
@@ -99,6 +101,8 @@ void String_ensure_null_term(String* str) WC_NONULL(1);
 //  Modification
 
 void String_append_char(String* str, char c) WC_NONULL(1);
+// TODO:
+void String_append_multi(String* str, const char* data, u64 len) WC_NONULL(1, 2);
 void String_append_cstr(String* str, const char* cstr) WC_NONULL(1, 2);
 void String_append_String(String* str, const String* other) WC_NONULL(1, 2);
 // Append other then destroy it (leaves other zeroed). When str is empty and
@@ -109,6 +113,8 @@ char String_pop_char(String* str) WC_NONULL(1);
 
 void String_insert_char(String* str, u64 i, char c) WC_NONULL(1);
 void String_insert_cstr(String* str, u64 i, const char* cstr) WC_NONULL(1, 3);
+// TODO:
+void String_insert_multi(String* str, u64 i, const char* data, u64 len) WC_NONULL(1, 3);
 void String_insert_String(String* str, u64 i, const String* other) WC_NONULL(1, 3);
 
 void String_remove_char(String* str, u64 i) WC_NONULL(1);

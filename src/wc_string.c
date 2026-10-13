@@ -15,7 +15,7 @@
 #define GET_STR(s)         (IS_SSO(s) ? (s)->stk : (s)->heap)
 
 // Grow if full.
-// D4: capacity == 0 means zeroed / moved-from; mutation is fatal.
+// capacity == 0 means zeroed / moved-from; mutation is fatal.
 #define MAYBE_GROW_STR(s)                                                             \
     ({                                                                                \
         WC_ASSERT((s)->capacity != 0, "String mutation on zeroed/moved-from String"); \
@@ -56,6 +56,14 @@ String String_create(const wc_allocator* a)
 {
     String s;
     str_init_sso(&s, a);
+    return s;
+}
+
+String String_with_cap(const wc_allocator* a, u64 cap)
+{
+    String s;
+    str_init_sso(&s, a);
+    ensure_capacity(&s, cap);
     return s;
 }
 
@@ -223,9 +231,22 @@ void String_append_char(String* s, char c)
     GET_STR_CHAR(s, s->size++) = c;
 }
 
+void String_append_multi(String* str, const char* data, u64 len)
+{
+    WC_ASSERT(str->capacity != 0, "zeroed/moved-from String");
+    if (len == 0) {
+        return;
+    }
+
+    ensure_capacity(str, len);
+    memcpy(GET_STR(str), data, len);
+    str->size += len;
+}
+
+// TODO: whenever we take a cstr, we should also take the length
 void String_append_cstr(String* s, const char* cstr)
 {
-    WC_ASSERT(s->capacity != 0, "String_append_cstr on zeroed/moved-from String");
+    WC_ASSERT(s->capacity != 0, "zeroed/moved-from String");
     u64 len = strlen(cstr);
     if (len == 0) {
         return;

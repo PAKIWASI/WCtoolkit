@@ -167,5 +167,9 @@ static inline size_t wc_align_for_size(size_t elm_size)
 #define WC_FREE(a, p)      (wc_free((a), (p), sizeof(*(p)), alignof(typeof(*(p)))))
 #define WC_FREE_N(a, p, n) (wc_free((a), (p), wc_mul((n), sizeof(*(p))), alignof(typeof(*(p)))))
 
+// BUG: shadowing?
+// #define wc_alloc(a, size) (wc_alloc(a, size, WC_MAX_ALIGN))
+// #define wc_realloc(a, p, old_n, new_n) (wc_realloc(a, p, old_n, new_n, WC_MAX_ALIGN))
+// #define wc_free(a, p, n) (wc_free(a, p, n, WC_MAX_ALIGN))
 
 #endif // WC_ALLOCATOR_H

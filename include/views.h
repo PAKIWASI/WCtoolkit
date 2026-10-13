@@ -3,33 +3,184 @@
 
 #include "chain_arena.h"
 #include "common.h"
+#include "hashmap.h"
+#include "wc_allocator.h"
+#include "wc_hash.h"
 #include "wc_string.h"
+#include <stdio.h>
+#include <string.h>
 
-// TODO: expand views and build an immutable string store using chain arena
+
+// TODO: expand views
 
 
 // non-owning view into any memory that stores a string
 typedef struct {
-    const char* ptr;
-    u64         len;
+    const char* data;
+    const u64   len;
 } StrView;
 
+// creation
 
-StrView StrView_from_String(String* str) WC_NONULL(1);
+// Create a non-owning StrView over an already existing string
+WC_NODISCARD WC_NONULL(1) static inline StrView StrView_over_String(const String* str)
+{
+    return (StrView){.data = String_data_ptr(str), .len = String_len(str)};
+}
 
-StrView StrView_from_String_ex(String* str, u64 off, u64 len) WC_NONULL(1);
+WC_NODISCARD WC_NONULL(1) static inline StrView StrView_over_String_ex(const String* str, u64 off, u64 len)
+{
+    WC_ASSERT(off + len <= String_len(str), "invalid range");
+    return (StrView){.data = String_data_ptr(str) + off, .len = len};
+}
 
-// View over existing memory. No allocation; `cstr` must outlive the view.
-StrView StrView_from_cstr(const char* cstr, u64 clen) WC_NONULL(1);
+WC_NODISCARD WC_NONULL(1) static inline StrView StrView_over_cstr(const char* cstr, u64 clen)
+{
+    return (StrView){.data = cstr, .len = clen};
+}
 
-void StrView_print(StrView sv);
+// conversion
 
+// Allocate a new String using `a` with content from `sv`.
+WC_NODISCARD String StrView_to_String(const wc_allocator* a, StrView sv) WC_NONULL(1); // one alloc
+// Allocate a cstr (null terminated) with content from `sv`. Caller must free using wc_free with the same allocator
+WC_NODISCARD char* StrView_to_cstr(const wc_allocator* a, StrView sv) WC_NONULL(1);
+// copy data from `sv` into `buf`. returns false if buf too small. NOT null terminated
+WC_NODISCARD bool StrView_to_buf(StrView sv, char* buf, u64 cap) WC_NONULL(2);
+
+// slicing
+
+// Get a sub-view over another view
+WC_NODISCARD static inline StrView StrView_slice(StrView sv, u64 start, u64 len)
+{
+    WC_ASSERT(sv.len >= start + len, "out of range");
+    return (StrView){.data = sv.data + start, .len = len};
+}
+// Get the first n chars from `sv`
+WC_NODISCARD static inline StrView StrView_prefix(StrView sv, u64 n)
+{
+    return StrView_slice(sv, 0, n);
+}
+// Get all the chars starting from index `start` till the end
+WC_NODISCARD static inline StrView StrView_suffix(StrView sv, u64 start)
+{
+    return StrView_slice(sv, start, sv.len - start);
+}
+
+// trim
+
+// trim all chars from `set` from left and right of `sv`. leave `set = NUL` to trim whitespaces
+WC_NODISCARD StrView StrView_trim(StrView sv, const char* set, u64 len);
+// trim all chars from `set` from the left of `sv`. leave `set = NUL` to trim whitespaces
+WC_NODISCARD StrView StrView_trim_left(StrView sv, const char* set, u64 len);
+// trim all chars from `set` from the right of `sv`. leave `set = NUL` to trim whitespaces
+WC_NODISCARD StrView StrView_trim_right(StrView sv, const char* set, u64 len);
+
+// search
+
+WC_NODISCARD u64 StrView_find(StrView sv, StrView needle); // WC_NOT_FOUND if absent
+WC_NODISCARD u64 StrView_find_char(StrView sv, char c);
+bool             StrView_starts_with(StrView sv, StrView pfx);
+bool             StrView_ends_with(StrView sv, StrView sfx);
+bool             StrView_contains(StrView sv, StrView n);
+
+// parse
+
+bool StrView_parge_u8(StrView sv, u8* out);
+bool StrView_parge_u16(StrView sv, u8* out);
+bool StrView_parge_u32(StrView sv, u8* out);
+bool StrView_parse_u64(StrView sv, u64* out);
+
+// consumption: take n bytes from strview and shorten it (can be from right or left)
+
+
+// output
+
+static inline void StrView_print(StrView sv)
+{
+    for (u64 i = 0; i < sv.len; i++) {
+        putchar(sv.data[i]);
+    }
+}
+
+// hashing / comparison
+
+WC_NODISCARD static inline u64 StrView_hash(StrView sv)
+{
+    return wc_hash(sv.data, sv.len);
+}
+
+WC_NODISCARD static inline int StrView_compare(StrView a, StrView b)
+{
+    u64 min = a.len < b.len ? a.len : b.len;
+    if (min) {
+        int c = memcmp(a.data, b.data, min);
+        if (c) {
+            return c;
+        }
+    }
+    return (a.len > b.len) - (a.len < b.len); // sign of len difference
+}
+
+static inline bool StrView_equals(StrView a, StrView b)
+{
+    return (a.len == b.len && (a.len == 0 || memcmp(a.data, b.data, a.len) == 0)) != 0;
+}
+
+// C-string convenience
+WC_NONULL(2) static inline bool StrView_equals_cstr(StrView sv, const char* cstr)
+{
+    return StrView_equals(sv, StrView_over_cstr(cstr, strlen(cstr)));
+}
+
+
+// TODO: do this
 
 // A stringstore is a chain arena that provides immutable string storage and operations on them,
 // filepath storage and operations etc. it gives out StrViews, optional String wrappers for read, find operations.
-//
-typedef ChainArena StringStore;
+// all strings in the store are null terminated
+typedef struct {
+    ChainArena store;
+    HashMap    interned; // StrView -> u8 (dummy value; or make it a set)
+    //probe the map, return the existing view if found, else alloc + insert. a deduped store must be append-only.
+    //This makes interning O(1) amortized and idempotent — StringStore_intern_cstr(&ss, "x") returns the same pointer every time.
+} StringStore;
+
+WC_NONULL(1) void StringStore_create(StringStore* ss, const wc_allocator* backing, u64 block_cap);
+WC_NONULL(1) void StringStore_destroy(StringStore* ss);
+
+// Copy bytes into the store; return a view. NUL-terminate too (1 extra byte),
+// so sv.ptr works as a C string, makes StringStore a drop-in for argv-style APIs.
+WC_NODISCARD WC_NONULL(1, 2) StrView StringStore_intern(StringStore* ss, const String* s);
+WC_NODISCARD WC_NONULL(1, 2) StrView StringStore_intern_cstr(StringStore* ss, const char* cstr);
+WC_NODISCARD WC_NONULL(1) StrView StringStore_intern_sv(StringStore* ss, StrView sv);
 
 
+
+
+// filepath storage/handling
+
+bool                 Path_is_absolute(StrView p); // starts with '/'
+WC_NODISCARD StrView Path_basename(StrView p);    // "/a/b/c.txt" -> "c.txt"
+WC_NODISCARD StrView Path_dirname(StrView p);     // "/a/b/c.txt" -> "/a/b"
+WC_NODISCARD StrView Path_extension(StrView p);   // "c.txt"      -> "txt"   (no dot)
+WC_NODISCARD StrView Path_stem(StrView p);        // "c.txt"      -> "c"
+bool                 Path_has_extension(StrView p, StrView ext);
+
+// Component iteration
+typedef struct {
+    StrView src;
+    u64     pos;
+} PathIter;
+
+WC_NODISCARD PathIter Path_components(StrView p);
+bool                  PathIter_next(PathIter* it, StrView* out);
+
+// Allocation-returning
+WC_NODISCARD String  Path_join(const wc_allocator* alloc, StrView a, StrView b);
+WC_NODISCARD StrView Path_join_sv(StringStore* ss, StrView a, StrView b);
+WC_NODISCARD StrView Path_normalize(StringStore* ss, StrView p); // collapses "." and ".."
+
+// TODO: path storage in stringstore
 
 #endif // WC_VIEWS_H

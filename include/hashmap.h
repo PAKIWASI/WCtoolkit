@@ -158,5 +158,54 @@ WC_NONULL(1) static inline bool HashMap_empty(const HashMap* map)
     return map->size == 0;
 }
 
+/* TODO:
+StrView keys + arena-backed storage (the scale play)
+
+Keys are 16 bytes instead of 48. No allocator pointer per entry. No SSO struct. Lookups never allocate.
+c
+
+// wrappers that fit wc_hash_fn / wc_compare_fn
+static u64 sv_hash_fn(const void* k, u64 size) {
+    (void)size; StrView v; memcpy(&v, k, sizeof v); return wc_hash(v.ptr, v.len);
+}
+static int sv_cmp_fn(const void* a, const void* b, u64 size) {
+    (void)size;
+    StrView va, vb; memcpy(&va, a, sizeof va); memcpy(&vb, b, sizeof vb);
+    return StrView_compare(va, vb);
+}
+
+Setup:
+c
+
+StringStore ss;   // see §5
+StringStore_create(&ss, WC_MMAP, nKB(64));
+
+HashMap m = HashMap_create(
+    WC_LIBC,
+    sizeof(StrView),   // key
+    sizeof(int),       // val
+    sv_hash_fn, sv_cmp_fn,
+    NULL, NULL         // keys/vals are POD — 16 raw bytes
+);
+
+// Insert: intern first, then put a view
+StrView key = StringStore_intern_cstr(&ss, "hello");
+int     v   = 42;
+HashMap_put(&m, &key, &v);
+
+// Lookup with a transient view — zero allocation
+StrView probe = StrView_from_cstr("hello", 5);
+const int* got = HashMap_get_ptr(&m, &probe);
+
+The one rule you must enforce: the store must outlive the map. If ss is destroyed or reset, every key becomes a dangling pointer and every subsequent hash/compare reads freed memory. That means:
+
+    StringStore is append-only if deduped by a HashMap (see §5).
+
+    Never call ChainArenaScratch_to_mark(&ss, ...) while a map references it.
+
+    A convenience macro (MAP_OF_STRVIEW(alloc)) that wires up sv_hash_fn/sv_cmp_fn/sizeof(StrView) would prevent a lot of copy-paste, mirroring your existing MAP_OF.
+
+Both patterns are valid. String_borrow is fine for occasional lookups; StrView + store is what you want when the map is large or the strings are parsed (JSON, config, token streams).
+*/
 
 #endif // HASHMAP_H
