@@ -22,7 +22,7 @@ typedef struct {
     // becomes invalidatd when arena is destroyed.
 } Arena;
 
-// Takes a `cap`-byte region (at least VARENA_MIN_SIZE) from `backing`. Aborts if backing fails.
+// Takes a `cap`-byte region (at least ARENA_MIN_SIZE) from `backing`. Aborts if backing fails.
 // `a` is initialised in place and must not be moved or copied afterwards.
 void Arena_create(Arena* a, const wc_allocator* backing, u64 cap) WC_NONULL(1, 2);
 

@@ -14,7 +14,8 @@
 #define PAYLOAD(n) ((u8*)(n) + HDR)
 // Total bytes of the backing allocation for a node: what wc_free needs to be told.
 #define NODE_BYTES(n) (HDR + (n)->cap)
-
+// At most, only 25% of a normal block is wasted. Any size bigger than BIG_THRESHOLD get's it's own allocation
+#define BIG_THRESHOLD(cap) ((cap) / 4)
 
 
 // Take one block from the backing allocator. NULL if it can't.
@@ -101,10 +102,15 @@ void* ChainArena_alloc_aligned(ChainArena* ca, u64 size, u64 align)
     WC_ALLOC_ASSERT_ALIGN(align);
     WC_ASSERT(ca->self.ctx == ca, "chain arena was moved or copied after ChainArena_create");
 
+
     // Block memory is aligned to WC_MAX_ALIGN already. Only a bigger alignment needs room
     // to slide the pointer forward inside the payload.
     u64 slack = align > WC_MAX_ALIGN ? align : 0;
-    u64 need  = size + slack;
+    // huge sizes can overflow
+    if (slack > PTRDIFF_MAX - HDR || size > PTRDIFF_MAX - HDR - slack) {
+        return NULL;
+    }
+    u64 need = size + slack; // actual allocation size
 
     ChainArenaNodeHDR* curr = ca->normal;
 
@@ -117,7 +123,9 @@ void* ChainArena_alloc_aligned(ChainArena* ca, u64 size, u64 align)
     }
 
     // a new node can satisfy the request. whatever is left in the old block is abandoned
-    if (need <= curr->cap) {
+    // we only go for a new node if `need` is greater than 25% of a normal block's capacity
+    // so we only waste 25% of a block. any bigger allocation get's it's own `big` block
+    if (need <= BIG_THRESHOLD(curr->cap)) {
         ChainArenaNodeHDR* n = new_node(ca, curr->cap); // each normal node saves the cap supplied by the user
         if (!n) {
             return NULL;
@@ -128,8 +136,8 @@ void* ChainArena_alloc_aligned(ChainArena* ca, u64 size, u64 align)
         return node_bump(n, size, align); // fits need <= node capacity
     }
 
-    // only a 'big' node can satisfy the request. it's sized to fit
-    //The current regular block is untouched, so its remaining space is still available to later small requests.
+    // any allocation needing more than BIG_THRESHOLD get's it's own block. It's sized to fit
+    // The current regular block is untouched, so its remaining space is still available to later small requests.
     ChainArenaNodeHDR* n = new_node(ca, need);
     if (!n) {
         return NULL;
@@ -148,5 +156,3 @@ void ChainArenaScratch_to_mark(ChainArenaScratch scratch)
     // set the mark
     scratch.chain_arena->normal->off = scratch.mark;
 }
-
-

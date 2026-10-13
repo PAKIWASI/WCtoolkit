@@ -65,7 +65,7 @@ extern const wc_allocator wc_mmap;
 
 static inline __attribute__((nonnull(1))) bool wc_is_libc(const wc_allocator* a)
 {
-    return a->vt == NULL;
+    return a == WC_LIBC;
 }
 
 // Same backend and same context: memory from one may be freed through the other
