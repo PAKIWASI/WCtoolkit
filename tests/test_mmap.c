@@ -1,7 +1,6 @@
 #include "arena.h"
 #include "chain_arena.h"
 #include "common.h"
-#include "test_support.h"
 #include "utest.h"
 #include "wc_allocator.h"
 
