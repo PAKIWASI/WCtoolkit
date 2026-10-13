@@ -16,17 +16,17 @@
 
 // Grow if full.
 // D4: capacity == 0 means zeroed / moved-from; mutation is fatal.
-#define MAYBE_GROW_STR(s)                                                            \
-    ({                                                                               \
+#define MAYBE_GROW_STR(s)                                                             \
+    ({                                                                                \
         WC_ASSERT((s)->capacity != 0, "String mutation on zeroed/moved-from String"); \
-        if (WC_UNLIKELY((s)->size >= (s)->capacity)) {                               \
-            if (IS_SSO(s)) {                                                         \
-                (s)->stk[STR_SSO_SIZE - 1] = '\0';                                   \
-                stk_to_heap(s);                                                      \
-            } else {                                                                 \
-                String_grow(s);                                                      \
-            }                                                                        \
-        }                                                                            \
+        if (WC_UNLIKELY((s)->size >= (s)->capacity)) {                                \
+            if (IS_SSO(s)) {                                                          \
+                (s)->stk[STR_SSO_SIZE - 1] = '\0';                                    \
+                stk_to_heap(s);                                                       \
+            } else {                                                                  \
+                String_grow(s);                                                       \
+            }                                                                         \
+        }                                                                             \
     })
 
 
@@ -532,8 +532,8 @@ static inline void ensure_capacity(String* s, u64 needed)
         new_cap = needed;
     }
 
-    // currently in SSO but SSO cap is not enough
     if (IS_SSO(s)) {
+        // currently in SSO but SSO cap is not enough
         s->stk[STR_SSO_SIZE - 1] = '\0'; // switch to heap mode
         char* new_data           = wc_alloc(s->alloc, new_cap, 1);
         FATAL_IF(!new_data, "ensure_capacity: allocation failed");
@@ -541,6 +541,7 @@ static inline void ensure_capacity(String* s, u64 needed)
         s->heap     = new_data;
         s->capacity = new_cap;
     } else {
+        // not in SSO and cap not enough: realloc
         char* new_data = wc_realloc(s->alloc, s->heap, s->capacity, new_cap, 1);
         FATAL_IF(!new_data, "ensure_capacity: realloc failed");
         s->heap     = new_data;

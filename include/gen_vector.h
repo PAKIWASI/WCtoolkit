@@ -83,7 +83,7 @@ WC_NODISCARD GenVec GenVec_create_val(const wc_allocator* alloc, u64 n, const vo
                                       const wc_container_ops* ops) WC_NONULL(1, 3);
 
 // Vector over caller-owned storage of n elements (size 0, capacity n).
-// Uses WC_BORROWED: it can never grow (growth is a FATAL) and destroy frees nothing.
+// Uses WC_BORROWED: it can never grow (growth is a FATAL) and destroy frees nothing
 WC_NODISCARD GenVec GenVec_create_buf(void* buf, u64 n, u32 data_size, const wc_container_ops* ops) WC_NONULL(1);
 
 // Delete every element, free the storage through the stored allocator and

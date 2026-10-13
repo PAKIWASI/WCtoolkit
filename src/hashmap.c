@@ -26,17 +26,19 @@ typedef enum {
     ROBINHOOD_EXIT, // stopped early: the Robin Hood invariant proves the key is absent
 } LOOKUP_RES;
 
-// Single block layout, every region aligned:
-//   [keys: cap * key_size][vals: cap * val_size][scratch][psls: cap bytes]
-// keys/vals/scratch start on MAP_ALIGN; psls are bytes and go last.
-//
-// scratch layout (KPAD/VPAD = key/val size rounded up to MAP_ALIGN):
-//   STAGE region: STAGE_KEY [0, KPAD), STAGE_VAL [KPAD, KPAD + VPAD)
-//     used by put to stage the incoming key/val
-//   SWAP region:  SWAP_KEY, SWAP_VAL, the same shape right after STAGE
-//     used by map_insert for Robin Hood evictions
-// The two regions must NOT overlap: map_insert is called with pointers INTO
-// the STAGE region, and it writes displaced residents into the SWAP region.
+/*
+* Single block layout, every region aligned:
+*   [keys: cap * key_size][vals: cap * val_size][scratch][psls: cap bytes]
+* keys/vals/scratch start on MAP_ALIGN; psls are bytes and go last.
+*
+* scratch layout (KPAD/VPAD = key/val size rounded up to MAP_ALIGN):
+*   STAGE region: STAGE_KEY [0, KPAD), STAGE_VAL [KPAD, KPAD + VPAD)
+*     used by put to stage the incoming key/val
+*   SWAP region:  SWAP_KEY, SWAP_VAL, the same shape right after STAGE
+*     used by map_insert for Robin Hood evictions
+* The two regions must NOT overlap: map_insert is called with pointers INTO
+* the STAGE region, and it writes displaced residents into the SWAP region.
+*/
 
 static inline u64 map_align_up(u64 x, u64 a)
 {
@@ -97,7 +99,7 @@ static void map_alloc_block(HashMap* map, u64 cap)
 
 static void map_free_block(const HashMap* map, u8* block, u64 cap)
 {
-    // BUG: redundent calculation. maybe save map_layout?
+    // BUG: redundent calculation
     wc_free(map->alloc, block, map_layout_for(cap, map->key_size, map->val_size).total, MAP_ALIGN(map));
 }
 
@@ -192,8 +194,8 @@ static void        map_resize(HashMap* map, u64 new_capacity);
 HashMap HashMap_create(const wc_allocator* a, u32 key_size, u32 val_size, wc_hash_fn hash_fn, wc_compare_fn cmp_fn,
                        const wc_container_ops* key_ops, const wc_container_ops* val_ops)
 {
-    WC_ASSERT(key_size != 0, "HashMap: key size can't be 0");
-    WC_ASSERT(!(val_size == 0 && val_ops != NULL), "HashMap: a set (val_size 0) can't have val_ops");
+    WC_ASSERT(key_size != 0, "key size can't be 0");
+    WC_ASSERT(!(val_size == 0 && val_ops != NULL), "a set (val_size 0) can't have val_ops");
 
     HashMap map = {
         .size     = 0,
@@ -241,7 +243,7 @@ void HashMap_move(HashMap* dest, HashMap* src)
     if (dest == src) {
         return;
     }
-    WC_ASSERT(dest->capacity == 0, "HashMap_move: dest must be zero-initialized (a live dest would leak)");
+    WC_ASSERT(dest->capacity == 0, "dest must be zero-initialized (a live dest would leak)");
     *dest = *src;
     memset(src, 0, sizeof(HashMap));
 }

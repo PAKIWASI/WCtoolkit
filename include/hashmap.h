@@ -78,8 +78,7 @@ WC_NODISCARD HashMap HashMap_create(const wc_allocator* a, u32 key_size, u32 val
 void HashMap_destroy(HashMap* map) WC_NONULL(1);
 
 // Deep copy src into a new HashMap allocated from `a`.
-WC_NODISCARD HashMap HashMap_copy(const wc_allocator* a, const HashMap* src)
-    __attribute__((nonnull(1, 2), warn_unused_result));
+WC_NODISCARD HashMap HashMap_copy(const wc_allocator* a, const HashMap* src) WC_NONULL(1, 2);
 
 // Transfer ownership from src to dest. src is left zeroed.
 void HashMap_move(HashMap* dest, HashMap* src) WC_NONULL(1, 2);
@@ -148,10 +147,12 @@ WC_NODISCARD WC_NONULL(1) static inline u64 HashMap_size(const HashMap* map)
 {
     return map->size;
 }
+
 WC_NODISCARD WC_NONULL(1) static inline u64 HashMap_capacity(const HashMap* map)
 {
     return map->capacity;
 }
+
 WC_NONULL(1) static inline bool HashMap_empty(const HashMap* map)
 {
     return map->size == 0;

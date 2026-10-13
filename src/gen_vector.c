@@ -25,12 +25,13 @@
 #define ZERO_GUARD(vec) \
     WC_ASSERT((vec)->data_size != 0, "GenVec is in the zero state (moved-from or destroyed): re-create it first")
 
-// D4: an input element must not live inside this vector's own storage. Growth
-// would free it before it is read. Checked over the whole capacity (Debug only).
+// an input element must not live inside this vector's own storage. Growth
+// would free it before it is read. Checked over the whole capacity (Debug only)
 #define NOT_ALIASED(vec, p)                                                         \
     WC_ASSERT(!((vec)->data && (const u8*)(p) >= (vec)->data &&                     \
                 (const u8*)(p) < (vec)->data + GET_SCALED((vec), (vec)->capacity)), \
               "input element points into this vector's own buffer (rule D4): copy it out first")
+
 
 // Copy one element INTO raw slot memory: copy_fn if any, else memcpy
 static inline void vec_copy_into(const GenVec* vec, u8* dest, const void* src)
@@ -181,7 +182,6 @@ void GenVec_reset(GenVec* vec)
     vec->capacity = 0;
 }
 
-
 void GenVec_reserve(GenVec* vec, u64 new_capacity)
 {
     if (new_capacity <= vec->capacity) {
@@ -196,7 +196,6 @@ void GenVec_reserve(GenVec* vec, u64 new_capacity)
     vec->data     = new_data;
     vec->capacity = new_capacity;
 }
-
 
 void GenVec_reserve_val(GenVec* vec, u64 new_capacity, const void* val)
 {
@@ -226,7 +225,6 @@ void GenVec_reserve_val(GenVec* vec, u64 new_capacity, const void* val)
     vec->size = new_capacity;
 }
 
-
 void GenVec_shrink_to_fit(GenVec* vec)
 {
     u64 min_cap  = vec->size > GENVEC_MIN_CAPACITY ? vec->size : GENVEC_MIN_CAPACITY;
@@ -243,7 +241,6 @@ void GenVec_shrink_to_fit(GenVec* vec)
     vec->data     = new_data;
     vec->capacity = min_cap;
 }
-
 
 void GenVec_push(GenVec* vec, const void* data)
 {
@@ -285,7 +282,6 @@ void GenVec_swap_pop(GenVec* vec, u64 i, void* out)
 void GenVec_swap(GenVec* vec, u64 i, u64 j)
 {
     WC_ASSERT(i < vec->size && j < vec->size, "index out of bounds");
-
     if (i == j) {
         return;
     }
@@ -305,7 +301,6 @@ void GenVec_swap(GenVec* vec, u64 i, u64 j)
     }
 }
 
-
 void GenVec_get(const GenVec* vec, u64 i, void* out)
 {
     WC_ASSERT(i < vec->size, "index out of bounds");
@@ -323,7 +318,6 @@ void* GenVec_get_ptr_mut(GenVec* vec, u64 i)
     WC_ASSERT(i < vec->size, "index out of bounds");
     return GET_PTR(vec, i);
 }
-
 
 void GenVec_replace(GenVec* vec, u64 i, const void* data)
 {
@@ -345,7 +339,6 @@ void GenVec_replace_move(GenVec* vec, u64 i, void* data)
     vec_move_into(vec, to_replace, data);
 }
 
-
 void GenVec_insert(GenVec* vec, u64 i, const void* data)
 {
     WC_ASSERT(i <= vec->size, "index out of bounds");
@@ -358,7 +351,6 @@ void GenVec_insert(GenVec* vec, u64 i, const void* data)
     vec_copy_into(vec, slot, data);
     vec->size++;
 }
-
 
 void GenVec_insert_move(GenVec* vec, u64 i, void* data)
 {
@@ -572,7 +564,7 @@ static void GenVec_grow_to(GenVec* vec, u64 needed)
     ZERO_GUARD(vec);
 
     u64 old_cap = vec->capacity;
-    u64 new_cap = old_cap == 0 ? GENVEC_MIN_CAPACITY : old_cap + (old_cap / 2); // 0 -> MIN, then 1.5x (F3)
+    u64 new_cap = old_cap == 0 ? GENVEC_MIN_CAPACITY : old_cap + (old_cap / 2); // 0 -> MIN, then 1.5x
     if (new_cap <= old_cap) {
         new_cap = old_cap + 1; // small capacities: 1.5x rounds down to no growth
     }
@@ -582,9 +574,7 @@ static void GenVec_grow_to(GenVec* vec, u64 needed)
 
     u8* new_data =
         wc_realloc(vec->alloc, vec->data, GET_SCALED(vec, old_cap), wc_mul(new_cap, vec->data_size), DATA_ALIGN(vec));
-    if (!new_data) {
-        FATAL("GenVec: growth to %llu elements failed (arena full, or borrowed buffer)", (unsigned long long)new_cap);
-    }
+    FATAL_IF(!new_data, "GenVec: growth to %lu elements failed (arena full, or borrowed buffer)", new_cap);
 
     vec->data     = new_data;
     vec->capacity = new_cap;
