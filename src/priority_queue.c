@@ -90,6 +90,7 @@ void PriorityQueue_pop(PriorityQueue* pq, void* popped)
 
 void PriorityQueue_remove(PriorityQueue* pq, u64 idx, void* out)
 {
+    WC_ASSERT(pq->v.data_size != 0, "PriorityQueue is in the zero state (moved-from or destroyed): re-create it first");
     WC_SET_RET(WC_ERR_EMPTY, pq->v.size == 0, );
     WC_ASSERT(idx < pq->v.size, "idx out of range");
 

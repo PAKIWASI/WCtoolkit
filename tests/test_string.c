@@ -229,7 +229,7 @@ UTEST(string, copy_independence)
 UTEST(string, move_nulls_src)
 {
     String src = String_from_cstr(WC_LIBC, "move me");
-    String dest;
+    String dest = {0};
     String_move(&dest, &src);
     EXPECT_EQ(src.capacity, 0u); // moved-from String is zeroed
     EXPECT_TRUE(String_equals_cstr(&dest, "move me"));

@@ -23,7 +23,7 @@
 
 // a zeroed vector (moved-from / destroyed) must never allocate
 #define ZERO_GUARD(vec) \
-    FATAL_IF((vec)->data_size == 0, "GenVec is in the zero state (moved-from or destroyed): re-create it first")
+    WC_ASSERT((vec)->data_size != 0, "GenVec is in the zero state (moved-from or destroyed): re-create it first")
 
 // D4: an input element must not live inside this vector's own storage. Growth
 // would free it before it is read. Checked over the whole capacity (Debug only).
@@ -97,7 +97,7 @@ static void GenVec_grow_to(GenVec* vec, u64 needed);
 
 GenVec GenVec_create(const wc_allocator* alloc, u64 n, u32 data_size, const wc_container_ops* ops)
 {
-    FATAL_IF(data_size == 0, "GenVec: data_size can't be 0");
+    WC_ASSERT(data_size != 0, "GenVec: data_size can't be 0");
 
     return (GenVec){
         .data      = ALLOC_OR_DIE(alloc, n, data_size),
@@ -139,7 +139,7 @@ GenVec GenVec_create_val(const wc_allocator* alloc, u64 n, const void* val, u32 
 
 GenVec GenVec_create_buf(void* buf, u64 n, u32 data_size, const wc_container_ops* ops)
 {
-    FATAL_IF(n == 0 || data_size == 0, "GenVec_create_buf: n/data_size can't be 0");
+    WC_ASSERT(n != 0 && data_size != 0, "GenVec_create_buf: n/data_size can't be 0");
 
     return (GenVec){
         .data      = buf,
@@ -436,6 +436,7 @@ void GenVec_remove(GenVec* vec, u64 i, void* out)
 
 void GenVec_remove_range(GenVec* vec, u64 start, u64 len)
 {
+    ZERO_GUARD(vec);
     if (len == 0) {
         return;
     }
@@ -558,6 +559,7 @@ void GenVec_move(GenVec* dest, GenVec* src)
     if (dest == src) {
         return;
     }
+    WC_ASSERT(dest->data_size == 0, "GenVec_move: dest must be zero-initialized (a live dest would leak)");
     memcpy(dest, src, sizeof(GenVec));
     memset(src, 0, sizeof(GenVec));
 }

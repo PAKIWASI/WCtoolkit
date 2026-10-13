@@ -8,11 +8,12 @@
  *
  * Three tiers:
  *
- *   FATAL_IF     Resource failures and dead state, in EVERY build: an
- *                allocator returned NULL, or a zeroed (moved-from/destroyed)
- *                container was mutated. Continuing would corrupt memory.
+ *   FATAL_IF     Resource failures, in EVERY build: an allocator returned
+ *                NULL (or an input too large to handle safely). Continuing
+ *                would corrupt memory even in a correct program.
  *
- *   WC_ASSERT    Programmer errors: null pointer, out of bounds, size 0.
+ *   WC_ASSERT    Programmer errors: null pointer, out of bounds, size 0,
+ *                use of a zeroed (moved-from/destroyed) container.
  *                Takes the INVARIANT (`i < size`). Crashes with a message in
  *                debug builds; compiled out under NDEBUG (condition not
  *                evaluated). Never use it for allocation failure.

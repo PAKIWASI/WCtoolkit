@@ -33,8 +33,9 @@
  *     FATAL(fmt, ...)                 abort with a message
  *
  *     FATAL_IF(cond, fmt, ...)        abort if cond is TRUE. Absolute failures
- *                                     only: allocation failed, mutation of a
- *                                     zeroed (moved-from/destroyed) container.
+ *                                     only: allocation failed, or a violation
+ *                                     that can't be treated as a caller bug
+ *                                     (HashMap_reserve range check).
  *
  *     WARN(fmt, ...)                  print a warning to stderr, continue
  *
@@ -57,7 +58,9 @@
  *
  * The rule: if continuing past the failure would corrupt memory even in a
  * correct program (an allocator returned NULL), use FATAL_IF. If the failure
- * means the CALLER has a bug, use WC_ASSERT
+ * means the CALLER has a bug, use WC_ASSERT. That includes use of a zeroed,
+ * moved-from or destroyed container: caught in Debug only, undefined behavior
+ * in Release.
  *
  * Branch prediction: failure paths are WC_UNLIKELY, and the reporters are
  * `cold, noinline` functions defined once in wc_errno.c. The compiler moves

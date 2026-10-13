@@ -67,3 +67,11 @@ cmake -B build-rel -DCMAKE_BUILD_TYPE=Release && cmake --build build-rel
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+## Destroyed and moved-from containers
+
+Using a destroyed or moved-from container (including passing a non-zeroed `dest`
+to a `*_move`) is a caller bug. It is caught only in Debug builds, via
+`WC_ASSERT`. In Release the behavior is undefined (silent corruption, e.g. `size`
+underflowing on `swap_pop`/`remove`). A `dest` passed to `*_move` must be
+zero-initialized.

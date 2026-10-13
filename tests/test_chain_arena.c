@@ -401,7 +401,8 @@ UTEST(chain_arena, scratch_ends_on_break)
 }
 
 
-// Zero state is dead (C3): aborts in every build, Release included.
+#ifndef NDEBUG // zero-state use is a WC_ASSERT: dies in Debug only
+// Zero state is dead (C3): aborts in Debug.
 static void alloc_on_zeroed_chain(void)
 {
     ChainArena z;
@@ -438,3 +439,4 @@ UTEST(chain_arena, zero_state_is_dead)
     EXPECT_DIES(allocator_of_zeroed_chain);
     EXPECT_DIES(alloc_after_chain_destroy);
 }
+#endif

@@ -790,7 +790,7 @@ UTEST(hashmap, move)
     int     k = 10, v = 999;
     HashMap_put(&src, &k, &v);
 
-    HashMap dest;
+    HashMap dest = {0};
     HashMap_move(&dest, &src);
 
     EXPECT_EQ(src.capacity, 0u);
@@ -804,6 +804,7 @@ UTEST(hashmap, move)
 }
 
 #if WC_HAS_FORK
+#ifndef NDEBUG // zero-state use is a WC_ASSERT: dies in Debug only
 static void die_mutating_zero_hashmap(void)
 {
     HashMap m;
@@ -816,6 +817,7 @@ UTEST(hashmap, zero_state_fatal)
 {
     EXPECT_DIES(die_mutating_zero_hashmap);
 }
+#endif
 #endif
 
 
@@ -1129,6 +1131,7 @@ UTEST(hash, avalanche_short_keys)
  * sets (val_size 0) and key access
  * ════════════════════════════════════════════════════════════════════════════ */
 
+#ifndef NDEBUG // WC_ASSERT: dies in Debug only
 static void die_set_with_val_ops(void)
 {
     HashMap s = HashMap_create(WC_LIBC, sizeof(int), 0, NULL, NULL, NULL, &wc_str_ops);
@@ -1139,6 +1142,7 @@ UTEST(hashmap, set_rejects_val_ops)
 {
     EXPECT_DIES(die_set_with_val_ops);
 }
+#endif
 
 UTEST(hashmap, set_takes_no_value_memory)
 {

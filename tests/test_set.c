@@ -739,7 +739,7 @@ UTEST(set, move)
     int     x   = 42;
     HashMap_put(&src, &x, NULL);
 
-    HashMap dest;
+    HashMap dest = {0};
     HashMap_move(&dest, &src);
 
     EXPECT_EQ(src.capacity, 0u);
@@ -750,7 +750,7 @@ UTEST(set, move)
     HashMap_destroy(&dest);
 }
 
-#if WC_HAS_FORK
+#if WC_HAS_FORK && !defined(NDEBUG) // WC_ASSERT: dies in Debug only
 static void die_mutating_zero_set(void)
 {
     HashMap s;

@@ -14,7 +14,7 @@
 #define DATA_ALIGN(q)  wc_align_for_size((q)->arr.data_size)
 
 #define ZERO_GUARD(q) \
-    FATAL_IF((q)->arr.data_size == 0, "Queue is in the zero state (moved-from or destroyed): re-create it first")
+    WC_ASSERT((q)->arr.data_size != 0, "Queue is in the zero state (moved-from or destroyed): re-create it first")
 
 
 static void queue_grow(Queue* q);
@@ -60,7 +60,7 @@ static inline void q_take_out(const Queue* q, u8* slot, void* out)
 
 Queue Queue_create(const wc_allocator* a, u64 n, u32 data_size, const wc_container_ops* ops)
 {
-    FATAL_IF(data_size == 0, "Queue: data_size can't be 0");
+    WC_ASSERT(data_size != 0, "Queue: data_size can't be 0");
 
     return (Queue){
         .arr  = GenVec_create(a, n, data_size, ops),
@@ -71,7 +71,7 @@ Queue Queue_create(const wc_allocator* a, u64 n, u32 data_size, const wc_contain
 
 Queue Queue_create_val(const wc_allocator* a, u64 n, const void* val, u32 data_size, const wc_container_ops* ops)
 {
-    FATAL_IF(n == 0 || data_size == 0, "Queue: n/data_size can't be 0");
+    WC_ASSERT(n != 0 && data_size != 0, "Queue: n/data_size can't be 0");
 
     Queue q = {
         .arr  = GenVec_create_val(a, n, val, data_size, ops),
@@ -236,6 +236,7 @@ void Queue_move(Queue* dest, Queue* src)
     if (dest == src) {
         return;
     }
+    WC_ASSERT(dest->arr.data_size == 0, "Queue_move: dest must be zero-initialized (a live dest would leak)");
     *dest = *src;
     memset(src, 0, sizeof(Queue));
 }

@@ -192,8 +192,8 @@ static void        map_resize(HashMap* map, u64 new_capacity);
 HashMap HashMap_create(const wc_allocator* a, u32 key_size, u32 val_size, wc_hash_fn hash_fn, wc_compare_fn cmp_fn,
                        const wc_container_ops* key_ops, const wc_container_ops* val_ops)
 {
-    FATAL_IF(key_size == 0, "HashMap: key size can't be 0");
-    FATAL_IF(val_size == 0 && val_ops != NULL, "HashMap: a set (val_size 0) can't have val_ops");
+    WC_ASSERT(key_size != 0, "HashMap: key size can't be 0");
+    WC_ASSERT(!(val_size == 0 && val_ops != NULL), "HashMap: a set (val_size 0) can't have val_ops");
 
     HashMap map = {
         .size     = 0,
@@ -241,6 +241,7 @@ void HashMap_move(HashMap* dest, HashMap* src)
     if (dest == src) {
         return;
     }
+    WC_ASSERT(dest->capacity == 0, "HashMap_move: dest must be zero-initialized (a live dest would leak)");
     *dest = *src;
     memset(src, 0, sizeof(HashMap));
 }
@@ -258,7 +259,7 @@ static inline void map_commit(HashMap* map, u8 psl, u64 slot)
 // Returns true (found) if key existed (updated),  false (not found) if new key inserted.
 bool HashMap_put(HashMap* map, const void* key, const void* val)
 {
-    FATAL_IF(map->capacity == 0, "HashMap mutation on zeroed/moved-from table");
+    WC_ASSERT(map->capacity != 0, "HashMap mutation on zeroed/moved-from table");
     WC_ASSERT(val || map->val_size == 0, "val is NULL on a map with values");
 
     LOOKUP_RES res;
@@ -282,7 +283,7 @@ bool HashMap_put(HashMap* map, const void* key, const void* val)
 // A duplicate key is destroyed (the map keeps its own, B10).
 bool HashMap_put_move(HashMap* map, void* key, void* val)
 {
-    FATAL_IF(map->capacity == 0, "HashMap mutation on zeroed/moved-from table");
+    WC_ASSERT(map->capacity != 0, "HashMap mutation on zeroed/moved-from table");
     WC_ASSERT(val || map->val_size == 0, "val is NULL on a map with values");
 
     LOOKUP_RES res;
@@ -306,7 +307,7 @@ bool HashMap_put_move(HashMap* map, void* key, void* val)
 // Mixed: key is COPIED, val is MOVED (*val zeroed).
 bool HashMap_put_val_move(HashMap* map, const void* key, void* val)
 {
-    FATAL_IF(map->capacity == 0, "HashMap mutation on zeroed/moved-from table");
+    WC_ASSERT(map->capacity != 0, "HashMap mutation on zeroed/moved-from table");
     WC_ASSERT(val || map->val_size == 0, "val is NULL on a map with values");
 
     LOOKUP_RES res;
@@ -329,7 +330,7 @@ bool HashMap_put_val_move(HashMap* map, const void* key, void* val)
 // Mixed: key is MOVED (*key zeroed, or destroyed if already present), val is COPIED.
 bool HashMap_put_key_move(HashMap* map, void* key, const void* val)
 {
-    FATAL_IF(map->capacity == 0, "HashMap mutation on zeroed/moved-from table");
+    WC_ASSERT(map->capacity != 0, "HashMap mutation on zeroed/moved-from table");
     WC_ASSERT(val || map->val_size == 0, "val is NULL on a map with values");
 
     LOOKUP_RES res;
@@ -429,7 +430,7 @@ void* HashMap_bucket_val_ptr(HashMap* map, u64 i)
 // position as long as they have PSL > 1 (i.e. they are not sitting at their home slot).
 bool HashMap_del(HashMap* map, const void* key, void* out)
 {
-    FATAL_IF(map->capacity == 0, "HashMap mutation on zeroed/moved-from table");
+    WC_ASSERT(map->capacity != 0, "HashMap mutation on zeroed/moved-from table");
 
     LOOKUP_RES res;
     u8         out_psl;
@@ -516,7 +517,7 @@ void HashMap_print(const HashMap* map, wc_print_fn key_print, wc_print_fn val_pr
 // Destroys all keys and values via their del_fn callbacks, then zeroes the arrays.
 void HashMap_clear(HashMap* map)
 {
-    FATAL_IF(map->capacity == 0, "HashMap_clear on zeroed/moved-from table");
+    WC_ASSERT(map->capacity != 0, "HashMap_clear on zeroed/moved-from table");
 
     wc_delete_fn k_del = MAP_DEL(map->key_ops);
     wc_delete_fn v_del = MAP_DEL(map->val_ops);
@@ -542,7 +543,7 @@ void HashMap_clear(HashMap* map)
 // Make room for n elements total without any further resize.
 void HashMap_reserve(HashMap* map, u64 n)
 {
-    FATAL_IF(map->capacity == 0, "HashMap_reserve on zeroed/moved-from table");
+    WC_ASSERT(map->capacity != 0, "HashMap_reserve on zeroed/moved-from table");
     FATAL_IF(n > ((u64)1 << 56), "HashMap_reserve: n too large");
 
     u64 need = map->capacity;

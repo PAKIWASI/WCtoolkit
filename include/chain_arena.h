@@ -55,7 +55,7 @@ WC_NODISCARD static inline const wc_allocator* ChainArena_allocator(ChainArena* 
 WC_NODISCARD WC_NONULL(1) static inline const wc_allocator* ChainArena_allocator(ChainArena* ca)
 {
     // zeroed self has vt == NULL, which would silently read as WC_LIBC
-    FATAL_IF(!ca->self.ctx, "ChainArena_allocator on zeroed/destroyed ChainArena");
+    WC_ASSERT(ca->self.ctx != NULL, "ChainArena_allocator on zeroed/destroyed ChainArena");
     return &ca->self;
 }
 

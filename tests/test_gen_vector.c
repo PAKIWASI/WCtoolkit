@@ -335,7 +335,7 @@ UTEST(gen_vector, move_zeroes_src)
     GenVec src = int_vec(4);
     push_ints(&src, 4);
 
-    GenVec dest;
+    GenVec dest = {0};
     GenVec_move(&dest, &src);
 
     EXPECT_TRUE((src.data) == NULL); // src is left zeroed
@@ -999,10 +999,11 @@ UTEST(gen_vector, arena_packs_small_elements)
 
 /* ── Zero state (D4) ─────────────────────────────────────────────────────── */
 
+#ifndef NDEBUG // zero-state use is a WC_ASSERT: dies in Debug only
 static void push_after_move(void)
 {
     GenVec a = GenVec_create(WC_LIBC, 4, sizeof(int), NULL);
-    GenVec b;
+    GenVec b = {0};
     GenVec_move(&b, &a);
     int x = 1;
     GenVec_push(&a, &x); // a is zeroed: must die, not allocate from libc
@@ -1036,6 +1037,8 @@ UTEST(gen_vector, zero_state_mutation_dies)
     EXPECT_DIES(reserve_on_zeroed);
     EXPECT_DIES(create_with_zero_data_size);
 }
+
+#endif
 
 UTEST(gen_vector, zero_state_reads_and_destroy_are_safe)
 {

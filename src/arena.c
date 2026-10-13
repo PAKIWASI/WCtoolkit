@@ -71,7 +71,7 @@ void Arena_destroy(Arena* a)
 
 void* Arena_alloc(Arena* a, u64 size)
 {
-    FATAL_IF(!a->self.ctx, "Arena is in the zero state (moved-from or destroyed): re-create it first");
+    WC_ASSERT(a->self.ctx != NULL, "Arena is in the zero state (moved-from or destroyed): re-create it first");
     WC_ASSERT(size != 0, "can't allocate 0 bytes");
     WC_ASSERT(a->self.ctx == a, "arena was moved or copied after Arena_create");
     return arena_bump(a, size, WC_MAX_ALIGN);
@@ -79,7 +79,7 @@ void* Arena_alloc(Arena* a, u64 size)
 
 void* Arena_alloc_aligned(Arena* a, u64 size, u64 align)
 {
-    FATAL_IF(!a->self.ctx, "Arena is in the zero state (moved-from or destroyed): re-create it first");
+    WC_ASSERT(a->self.ctx != NULL, "Arena is in the zero state (moved-from or destroyed): re-create it first");
     WC_ASSERT(size != 0, "can't allocate 0 bytes");
     WC_ALLOC_ASSERT_ALIGN(align);
     WC_ASSERT(a->self.ctx == a, "arena was moved or copied after Arena_create");

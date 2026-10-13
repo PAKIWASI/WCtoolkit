@@ -270,7 +270,7 @@ UTEST(checking_allocator, genvec_copy_move_reset_are_leak_free)
         GenVec b = GenVec_copy(al, &a);
         EXPECT_EQ(GenVec_size(&b), 50u);
 
-        GenVec c;
+        GenVec c = {0};
         GenVec_move(&c, &a); // a is zeroed
         EXPECT_TRUE((a.data) == NULL);
 

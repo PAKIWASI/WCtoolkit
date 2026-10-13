@@ -74,6 +74,7 @@ void PriorityQueue_pop(PriorityQueue* pq, void* popped) WC_NONULL(1);
 // Element at heap index idx (0 = top).
 static inline WC_NONULL(1) const void* PriorityQueue_get(const PriorityQueue* pq, u64 idx)
 {
+    WC_ASSERT(pq->v.data_size != 0, "PriorityQueue is in the zero state (moved-from or destroyed): re-create it first");
     WC_ASSERT(idx < pq->v.size, "idx out of range");
     return GenVec_get_ptr_unsafe(&pq->v, idx);
 }

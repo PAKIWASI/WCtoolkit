@@ -18,7 +18,7 @@
 // D4: capacity == 0 means zeroed / moved-from; mutation is fatal.
 #define MAYBE_GROW_STR(s)                                                            \
     ({                                                                               \
-        FATAL_IF((s)->capacity == 0, "String mutation on zeroed/moved-from String"); \
+        WC_ASSERT((s)->capacity != 0, "String mutation on zeroed/moved-from String"); \
         if (WC_UNLIKELY((s)->size >= (s)->capacity)) {                               \
             if (IS_SSO(s)) {                                                         \
                 (s)->stk[STR_SSO_SIZE - 1] = '\0';                                   \
@@ -104,6 +104,7 @@ String String_copy(const wc_allocator* a, const String* src)
 
 void String_move(String* dest, String* src)
 {
+    WC_ASSERT(dest->capacity == 0, "String_move: dest must be zero-initialized (a live dest would leak)");
     *dest = *src;
     memset(src, 0, sizeof(String));
 }
@@ -113,7 +114,7 @@ void String_move(String* dest, String* src)
 
 void String_reserve(String* s, u64 new_cap)
 {
-    FATAL_IF(s->capacity == 0, "String_reserve on zeroed/moved-from String");
+    WC_ASSERT(s->capacity != 0, "String_reserve on zeroed/moved-from String");
     if (new_cap <= s->capacity) {
         return;
     }
@@ -122,7 +123,7 @@ void String_reserve(String* s, u64 new_cap)
 
 void String_reserve_char(String* s, u64 new_cap, char c)
 {
-    FATAL_IF(s->capacity == 0, "String_reserve_char on zeroed/moved-from String");
+    WC_ASSERT(s->capacity != 0, "String_reserve_char on zeroed/moved-from String");
     if (new_cap <= s->capacity) {
         char* buf = GET_STR(s);
         for (u64 i = s->size; i < new_cap; i++) {
@@ -224,7 +225,7 @@ void String_append_char(String* s, char c)
 
 void String_append_cstr(String* s, const char* cstr)
 {
-    FATAL_IF(s->capacity == 0, "String_append_cstr on zeroed/moved-from String");
+    WC_ASSERT(s->capacity != 0, "String_append_cstr on zeroed/moved-from String");
     u64 len = strlen(cstr);
     if (len == 0) {
         return;
@@ -237,7 +238,7 @@ void String_append_cstr(String* s, const char* cstr)
 
 void String_append_String(String* s, const String* other)
 {
-    FATAL_IF(s->capacity == 0, "String_append_String on zeroed/moved-from String");
+    WC_ASSERT(s->capacity != 0, "String_append_String on zeroed/moved-from String");
     if (other->size == 0) {
         return;
     }
@@ -249,7 +250,7 @@ void String_append_String(String* s, const String* other)
 
 void String_append_String_move(String* s, String* other)
 {
-    FATAL_IF(s->capacity == 0, "String_append_String_move on zeroed/moved-from String");
+    WC_ASSERT(s->capacity != 0, "String_append_String_move on zeroed/moved-from String");
     if (s == other) {
         return;
     }
@@ -294,6 +295,7 @@ void String_insert_char(String* s, u64 i, char c)
 
 void String_insert_cstr(String* s, u64 i, const char* cstr)
 {
+    WC_ASSERT(s->capacity != 0, "String_insert_cstr on zeroed/moved-from String");
     WC_ASSERT(i <= s->size, "index out of bounds");
 
     u64 len = strlen(cstr);
@@ -314,6 +316,7 @@ void String_insert_cstr(String* s, u64 i, const char* cstr)
 
 void String_insert_String(String* s, u64 i, const String* other)
 {
+    WC_ASSERT(s->capacity != 0, "String_insert_String on zeroed/moved-from String");
     WC_ASSERT(i <= s->size, "index out of bounds");
 
     if (other->size == 0) {

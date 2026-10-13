@@ -130,7 +130,7 @@ UTEST(queue, copy_move)
     Queue_destroy(&dst);
 
     /* move */
-    Queue moved;
+    Queue moved = {0};
     Queue_move(&moved, &src);
     EXPECT_EQ(Queue_size(&moved), 4u);
     EXPECT_EQ(Queue_size(&src), 0u); /* zeroed */

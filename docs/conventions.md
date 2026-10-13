@@ -45,7 +45,7 @@ GenVec_destroy(&v);
 | Operation | Shape | Result's allocator | Source afterwards |
 |---|---|---|---|
 | Copy | `X dst = X_copy(alloc, &src)` | `alloc`, never inherited from `src` | Unchanged |
-| Move | `X_move(&dst, &src)` | `src`'s | Zeroed |
+| Move | `X_move(&dst, &src)` (`dst` must be zero-initialized) | `src`'s | Zeroed |
 
 - Copies are deep: nested elements are copied into the destination allocator.
 - Move is a `memcpy` followed by zeroing the source. `dst` must be raw or already destroyed, because move overwrites it without freeing.

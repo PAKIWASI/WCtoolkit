@@ -98,7 +98,7 @@ void* ChainArena_alloc(ChainArena* ca, u64 size)
 
 void* ChainArena_alloc_aligned(ChainArena* ca, u64 size, u64 align)
 {
-    FATAL_IF(!ca->self.ctx, "ChainArena is in the zero state (moved-from or destroyed): re-create it first");
+    WC_ASSERT(ca->self.ctx != NULL, "ChainArena is in the zero state (moved-from or destroyed): re-create it first");
     WC_ASSERT(size != 0, "can't allocate 0 bytes");
     WC_ALLOC_ASSERT_ALIGN(align);
     WC_ASSERT(ca->self.ctx == ca, "chain arena was moved or copied after ChainArena_create");

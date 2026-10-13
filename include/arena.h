@@ -45,7 +45,7 @@ WC_NONULL(1) static inline void Arena_clear(Arena* a)
 WC_NODISCARD WC_NONULL(1) static inline const wc_allocator* Arena_allocator(Arena* a)
 {
     // zeroed self has vt == NULL, which would silently read as WC_LIBC
-    FATAL_IF(!a->self.ctx, "Arena_allocator on zeroed/destroyed Arena");
+    WC_ASSERT(a->self.ctx != NULL, "Arena_allocator on zeroed/destroyed Arena");
     return &a->self;
 }
 
