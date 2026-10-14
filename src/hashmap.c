@@ -757,3 +757,5 @@ static void map_resize(HashMap* map, u64 new_capacity)
 
     map_free_block(map, old_keys, old_cap);
 }
+
+

@@ -75,6 +75,7 @@
 __attribute__((cold, noinline, noreturn, format(printf, 4, 5))) void
 wc_fatal_report(const char* file, int line, const char* func, const char* fmt, ...);
 
+// TODO:
 /* Fatal handler. Every FATAL / FATAL_IF formats its message and calls the
  * installed handler. The handler must not return: abort, exit, or longjmp out
  * (tests can verify that something FATALs). If it does return, the program

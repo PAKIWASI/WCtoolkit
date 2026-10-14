@@ -24,6 +24,7 @@
 #define WC_MAX_ALIGN alignof(max_align_t)
 
 // TODO: maybe we shouldn't implicitly default to libc. if no valid allocator is provided, we should fail
+// update docs
 
 /*
  * ALLOCATOR API
@@ -178,6 +179,10 @@ static inline size_t wc_align_for_size(size_t elm_size)
 #define WC_FREE(a, p)      (wc_free((a), (p), sizeof(*(p)), alignof(typeof(*(p)))))
 #define WC_FREE_N(a, p, n) (wc_free((a), (p), wc_mul((n), sizeof(*(p))), alignof(typeof(*(p)))))
 
+// BUG: shadowing?
+// #define wc_alloc(a, size) (wc_alloc(a, size, WC_MAX_ALIGN))
+// #define wc_realloc(a, p, old_n, new_n) (wc_realloc(a, p, old_n, new_n, WC_MAX_ALIGN))
+// #define wc_free(a, p, n) (wc_free(a, p, n, WC_MAX_ALIGN))
 
 #endif // WC_ALLOCATOR_H
 
@@ -200,6 +205,7 @@ static inline size_t wc_align_for_size(size_t elm_size)
 
 #include <stdarg.h>
 #include <stdio.h>
+#include <string.h>
 
 
 // ANSI Color Codes
@@ -218,8 +224,9 @@ static inline size_t wc_align_for_size(size_t elm_size)
  *     FATAL(fmt, ...)                 abort with a message
  *
  *     FATAL_IF(cond, fmt, ...)        abort if cond is TRUE. Absolute failures
- *                                     only: allocation failed, mutation of a
- *                                     zeroed (moved-from/destroyed) container.
+ *                                     only: allocation failed, or a violation
+ *                                     that can't be treated as a caller bug
+ *                                     (HashMap_reserve range check).
  *
  *     WARN(fmt, ...)                  print a warning to stderr, continue
  *
@@ -242,7 +249,9 @@ static inline size_t wc_align_for_size(size_t elm_size)
  *
  * The rule: if continuing past the failure would corrupt memory even in a
  * correct program (an allocator returned NULL), use FATAL_IF. If the failure
- * means the CALLER has a bug, use WC_ASSERT
+ * means the CALLER has a bug, use WC_ASSERT. That includes use of a zeroed,
+ * moved-from or destroyed container: caught in Debug only, undefined behavior
+ * in Release.
  *
  * Branch prediction: failure paths are WC_UNLIKELY, and the reporters are
  * `cold, noinline` functions defined once in wc_errno.c. The compiler moves
@@ -256,6 +265,7 @@ static inline size_t wc_align_for_size(size_t elm_size)
 __attribute__((cold, noinline, noreturn, format(printf, 4, 5))) void
 wc_fatal_report(const char* file, int line, const char* func, const char* fmt, ...);
 
+// TODO:
 /* Fatal handler. Every FATAL / FATAL_IF formats its message and calls the
  * installed handler. The handler must not return: abort, exit, or longjmp out
  * (tests can verify that something FATALs). If it does return, the program
@@ -338,6 +348,99 @@ typedef int64_t i64;
 
 // we are using unsigned indices/sizes
 #define WC_NOT_FOUND ((u64) - 1)
+
+
+// FIXED-SIZE COPY / COMPARE
+//
+// Containers store elements as raw bytes and learn the element size at runtime. These two helpers are
+// drop-ins for memcpy / (memcmp == 0): common element sizes take a fixed-size move or integer compare
+// instead of a call into libc, other sizes fall back to libc.
+
+// Drop-in for memcpy(dst, src, n), including the restrict contract: dst and src must not overlap.
+// If they may overlap, use memmove.
+//
+// n == 0 is a no-op on purpose. A set (HashMap with val_size 0) stores no values and may pass a NULL
+// src for its value copies. memcpy(dst, NULL, 0) is UB, and glibc declares memcpy nonnull, so the
+// compiler may assume src != NULL afterwards. The explicit 0 case avoids the call entirely.
+static inline WC_ALWAYS_INLINE void wc_copy_n(void* restrict dst, const void* restrict src, u64 n)
+{
+    switch (n) {
+    case 0:
+        break; // a set's value: src may be NULL, so no memcpy at all
+    case 1:
+        memcpy(dst, src, 1);
+        break;
+    case 2:
+        memcpy(dst, src, 2);
+        break;
+    case 4:
+        memcpy(dst, src, 4);
+        break;
+    case 8:
+        memcpy(dst, src, 8);
+        break;
+    case 16:
+        memcpy(dst, src, 16);
+        break;
+    case 24:
+        memcpy(dst, src, 24);
+        break;
+    case 32:
+        memcpy(dst, src, 32);
+        break;
+    case 48:
+        memcpy(dst, src, 48);
+        break;
+    case 64:
+        memcpy(dst, src, 64);
+        break;
+    default:
+        memcpy(dst, src, n);
+        break;
+    }
+}
+
+// Drop-in for (memcmp(a, b, n) == 0), returning true/false instead of the memcmp tri-state.
+//
+// 4 and 8 bytes compare as one integer (the common hash key: an int, a u64, a pointer), 16 bytes as two
+// 8-byte compares (a string view, a pair of u64). The memcpy into a local is the standard type-punning
+// idiom: it compiles to a plain load and does not violate strict aliasing. Other sizes use memcmp.
+//
+// n == 0 is true without touching either pointer, so both may be NULL.
+static inline WC_ALWAYS_INLINE bool wc_equal_n(const void* a, const void* b, u64 n)
+{
+    switch (n) {
+    case 0:
+        return true;
+    case 4: {
+        u32 x;
+        u32 y;
+        memcpy(&x, a, 4);
+        memcpy(&y, b, 4);
+        return x == y;
+    }
+    case 8: {
+        u64 x;
+        u64 y;
+        memcpy(&x, a, 8);
+        memcpy(&y, b, 8);
+        return x == y;
+    }
+    case 16: {
+        u64 x0;
+        u64 x1;
+        u64 y0;
+        u64 y1;
+        memcpy(&x0, a, 8);
+        memcpy(&x1, (const u8*)a + 8, 8);
+        memcpy(&y0, b, 8);
+        memcpy(&y1, (const u8*)b + 8, 8);
+        return (x0 == y0 && x1 == y1) != 0;
+    }
+    default:
+        return memcmp(a, b, n) == 0;
+    }
+}
 
 
 // GENERIC FUNCTIONS
@@ -472,11 +575,12 @@ static inline void wc_print_cstr(const void* elm)
  *
  * Three tiers:
  *
- *   FATAL_IF     Resource failures and dead state, in EVERY build: an
- *                allocator returned NULL, or a zeroed (moved-from/destroyed)
- *                container was mutated. Continuing would corrupt memory.
+ *   FATAL_IF     Resource failures, in EVERY build: an allocator returned
+ *                NULL (or an input too large to handle safely). Continuing
+ *                would corrupt memory even in a correct program.
  *
- *   WC_ASSERT    Programmer errors: null pointer, out of bounds, size 0.
+ *   WC_ASSERT    Programmer errors: null pointer, out of bounds, size 0,
+ *                use of a zeroed (moved-from/destroyed) container.
  *                Takes the INVARIANT (`i < size`). Crashes with a message in
  *                debug builds; compiled out under NDEBUG (condition not
  *                evaluated). Never use it for allocation failure.
@@ -677,7 +781,7 @@ WC_NODISCARD GenVec GenVec_create_val(const wc_allocator* alloc, u64 n, const vo
                                       const wc_container_ops* ops) WC_NONULL(1, 3);
 
 // Vector over caller-owned storage of n elements (size 0, capacity n).
-// Uses WC_BORROWED: it can never grow (growth is a FATAL) and destroy frees nothing.
+// Uses WC_BORROWED: it can never grow (growth is a FATAL) and destroy frees nothing
 WC_NODISCARD GenVec GenVec_create_buf(void* buf, u64 n, u32 data_size, const wc_container_ops* ops) WC_NONULL(1);
 
 // Delete every element, free the storage through the stored allocator and
@@ -906,8 +1010,8 @@ static inline __attribute__((always_inline)) u64 wc_rapid_read32(const u8* p)
 #define WC_RAPID_S7   0xaaaaaaaaaaaaaaaaULL
 #define WC_RAPID_SEED 0ULL
 
-// Hash `len` bytes. With a constant len (keys of a known size) every length
-// branch folds away: a 4 or 8 byte key costs two 128-bit multiplies.
+// Hash `len` bytes. Inlined so short keys stay cheap: `len <= 16` takes the short
+// path, where a 4 or 8 byte key costs two 128-bit multiplies.
 static inline __attribute__((always_inline)) u64 wc_hash(const void* key, u64 len)
 {
     const u8* p    = key;
@@ -1004,6 +1108,8 @@ _Static_assert(sizeof(String) == 48, "String must be 48 bytes");
 // Create an empty String using allocator `a`.
 WC_NODISCARD String String_create(const wc_allocator* a) WC_NONULL(1);
 
+WC_NODISCARD String String_with_cap(const wc_allocator* a, u64 cap) WC_NONULL(1);
+
 // Create a String from a C string using allocator `a`.
 WC_NODISCARD String String_from_cstr(const wc_allocator* a, const char* cstr) WC_NONULL(1);
 
@@ -1049,7 +1155,7 @@ void String_shrink_to_fit(String* str) WC_NONULL(1);
 
 //  Conversion
 
-// Return a buffer (allocated from `a`) holding a NUL-terminated copy — caller
+// Return a buffer (allocated from `a`) holding a NUL-terminated copy, caller
 // must free with wc_free(a, ptr, str->size + 1, 1).
 WC_NODISCARD char* String_to_cstr(const wc_allocator* a, const String* str) WC_NONULL(1, 2);
 
@@ -1066,6 +1172,8 @@ void String_ensure_null_term(String* str) WC_NONULL(1);
 //  Modification
 
 void String_append_char(String* str, char c) WC_NONULL(1);
+// TODO:
+void String_append_multi(String* str, const char* data, u64 len) WC_NONULL(1, 2);
 void String_append_cstr(String* str, const char* cstr) WC_NONULL(1, 2);
 void String_append_String(String* str, const String* other) WC_NONULL(1, 2);
 // Append other then destroy it (leaves other zeroed). When str is empty and
@@ -1076,6 +1184,8 @@ char String_pop_char(String* str) WC_NONULL(1);
 
 void String_insert_char(String* str, u64 i, char c) WC_NONULL(1);
 void String_insert_cstr(String* str, u64 i, const char* cstr) WC_NONULL(1, 3);
+// TODO:
+void String_insert_multi(String* str, u64 i, const char* data, u64 len) WC_NONULL(1, 3);
 void String_insert_String(String* str, u64 i, const String* other) WC_NONULL(1, 3);
 
 void String_remove_char(String* str, u64 i) WC_NONULL(1);
@@ -1642,14 +1752,15 @@ void wc_warn_report(const char* file, int line, const char* func, const char* fm
 
 // a zeroed vector (moved-from / destroyed) must never allocate
 #define ZERO_GUARD(vec) \
-    FATAL_IF((vec)->data_size == 0, "GenVec is in the zero state (moved-from or destroyed): re-create it first")
+    WC_ASSERT((vec)->data_size != 0, "GenVec is in the zero state (moved-from or destroyed): re-create it first")
 
-// D4: an input element must not live inside this vector's own storage. Growth
-// would free it before it is read. Checked over the whole capacity (Debug only).
+// an input element must not live inside this vector's own storage. Growth
+// would free it before it is read. Checked over the whole capacity (Debug only)
 #define NOT_ALIASED(vec, p)                                                         \
     WC_ASSERT(!((vec)->data && (const u8*)(p) >= (vec)->data &&                     \
                 (const u8*)(p) < (vec)->data + GET_SCALED((vec), (vec)->capacity)), \
               "input element points into this vector's own buffer (rule D4): copy it out first")
+
 
 // Copy one element INTO raw slot memory: copy_fn if any, else memcpy
 static inline void vec_copy_into(const GenVec* vec, u8* dest, const void* src)
@@ -1716,7 +1827,7 @@ static void GenVec_grow_to(GenVec* vec, u64 needed);
 
 GenVec GenVec_create(const wc_allocator* alloc, u64 n, u32 data_size, const wc_container_ops* ops)
 {
-    FATAL_IF(data_size == 0, "GenVec: data_size can't be 0");
+    WC_ASSERT(data_size != 0, "GenVec: data_size can't be 0");
 
     return (GenVec){
         .data      = ALLOC_OR_DIE(alloc, n, data_size),
@@ -1758,7 +1869,7 @@ GenVec GenVec_create_val(const wc_allocator* alloc, u64 n, const void* val, u32 
 
 GenVec GenVec_create_buf(void* buf, u64 n, u32 data_size, const wc_container_ops* ops)
 {
-    FATAL_IF(n == 0 || data_size == 0, "GenVec_create_buf: n/data_size can't be 0");
+    WC_ASSERT(n != 0 && data_size != 0, "GenVec_create_buf: n/data_size can't be 0");
 
     return (GenVec){
         .data      = buf,
@@ -1800,7 +1911,6 @@ void GenVec_reset(GenVec* vec)
     vec->capacity = 0;
 }
 
-
 void GenVec_reserve(GenVec* vec, u64 new_capacity)
 {
     if (new_capacity <= vec->capacity) {
@@ -1815,7 +1925,6 @@ void GenVec_reserve(GenVec* vec, u64 new_capacity)
     vec->data     = new_data;
     vec->capacity = new_capacity;
 }
-
 
 void GenVec_reserve_val(GenVec* vec, u64 new_capacity, const void* val)
 {
@@ -1845,7 +1954,6 @@ void GenVec_reserve_val(GenVec* vec, u64 new_capacity, const void* val)
     vec->size = new_capacity;
 }
 
-
 void GenVec_shrink_to_fit(GenVec* vec)
 {
     u64 min_cap  = vec->size > GENVEC_MIN_CAPACITY ? vec->size : GENVEC_MIN_CAPACITY;
@@ -1862,7 +1970,6 @@ void GenVec_shrink_to_fit(GenVec* vec)
     vec->data     = new_data;
     vec->capacity = min_cap;
 }
-
 
 void GenVec_push(GenVec* vec, const void* data)
 {
@@ -1904,7 +2011,6 @@ void GenVec_swap_pop(GenVec* vec, u64 i, void* out)
 void GenVec_swap(GenVec* vec, u64 i, u64 j)
 {
     WC_ASSERT(i < vec->size && j < vec->size, "index out of bounds");
-
     if (i == j) {
         return;
     }
@@ -1924,7 +2030,6 @@ void GenVec_swap(GenVec* vec, u64 i, u64 j)
     }
 }
 
-
 void GenVec_get(const GenVec* vec, u64 i, void* out)
 {
     WC_ASSERT(i < vec->size, "index out of bounds");
@@ -1942,7 +2047,6 @@ void* GenVec_get_ptr_mut(GenVec* vec, u64 i)
     WC_ASSERT(i < vec->size, "index out of bounds");
     return GET_PTR(vec, i);
 }
-
 
 void GenVec_replace(GenVec* vec, u64 i, const void* data)
 {
@@ -1964,7 +2068,6 @@ void GenVec_replace_move(GenVec* vec, u64 i, void* data)
     vec_move_into(vec, to_replace, data);
 }
 
-
 void GenVec_insert(GenVec* vec, u64 i, const void* data)
 {
     WC_ASSERT(i <= vec->size, "index out of bounds");
@@ -1977,7 +2080,6 @@ void GenVec_insert(GenVec* vec, u64 i, const void* data)
     vec_copy_into(vec, slot, data);
     vec->size++;
 }
-
 
 void GenVec_insert_move(GenVec* vec, u64 i, void* data)
 {
@@ -2055,6 +2157,7 @@ void GenVec_remove(GenVec* vec, u64 i, void* out)
 
 void GenVec_remove_range(GenVec* vec, u64 start, u64 len)
 {
+    ZERO_GUARD(vec);
     if (len == 0) {
         return;
     }
@@ -2177,6 +2280,7 @@ void GenVec_move(GenVec* dest, GenVec* src)
     if (dest == src) {
         return;
     }
+    WC_ASSERT(dest->data_size == 0, "GenVec_move: dest must be zero-initialized (a live dest would leak)");
     memcpy(dest, src, sizeof(GenVec));
     memset(src, 0, sizeof(GenVec));
 }
@@ -2189,7 +2293,7 @@ static void GenVec_grow_to(GenVec* vec, u64 needed)
     ZERO_GUARD(vec);
 
     u64 old_cap = vec->capacity;
-    u64 new_cap = old_cap == 0 ? GENVEC_MIN_CAPACITY : old_cap + (old_cap / 2); // 0 -> MIN, then 1.5x (F3)
+    u64 new_cap = old_cap == 0 ? GENVEC_MIN_CAPACITY : old_cap + (old_cap / 2); // 0 -> MIN, then 1.5x
     if (new_cap <= old_cap) {
         new_cap = old_cap + 1; // small capacities: 1.5x rounds down to no growth
     }
@@ -2199,9 +2303,7 @@ static void GenVec_grow_to(GenVec* vec, u64 needed)
 
     u8* new_data =
         wc_realloc(vec->alloc, vec->data, GET_SCALED(vec, old_cap), wc_mul(new_cap, vec->data_size), DATA_ALIGN(vec));
-    if (!new_data) {
-        FATAL("GenVec: growth to %llu elements failed (arena full, or borrowed buffer)", (unsigned long long)new_cap);
-    }
+    FATAL_IF(!new_data, "GenVec: growth to %lu elements failed (arena full, or borrowed buffer)", new_cap);
 
     vec->data     = new_data;
     vec->capacity = new_cap;
@@ -2239,18 +2341,18 @@ static void GenVec_grow_to(GenVec* vec, u64 needed)
 #define GET_STR(s)         (IS_SSO(s) ? (s)->stk : (s)->heap)
 
 // Grow if full.
-// D4: capacity == 0 means zeroed / moved-from; mutation is fatal.
-#define MAYBE_GROW_STR(s)                                                            \
-    ({                                                                               \
-        FATAL_IF((s)->capacity == 0, "String mutation on zeroed/moved-from String"); \
-        if (WC_UNLIKELY((s)->size >= (s)->capacity)) {                               \
-            if (IS_SSO(s)) {                                                         \
-                (s)->stk[STR_SSO_SIZE - 1] = '\0';                                   \
-                stk_to_heap(s);                                                      \
-            } else {                                                                 \
-                String_grow(s);                                                      \
-            }                                                                        \
-        }                                                                            \
+// capacity == 0 means zeroed / moved-from; mutation is fatal.
+#define MAYBE_GROW_STR(s)                                                             \
+    ({                                                                                \
+        WC_ASSERT((s)->capacity != 0, "String mutation on zeroed/moved-from String"); \
+        if (WC_UNLIKELY((s)->size >= (s)->capacity)) {                                \
+            if (IS_SSO(s)) {                                                          \
+                (s)->stk[STR_SSO_SIZE - 1] = '\0';                                    \
+                stk_to_heap(s);                                                       \
+            } else {                                                                  \
+                String_grow(s);                                                       \
+            }                                                                         \
+        }                                                                             \
     })
 
 
@@ -2280,6 +2382,14 @@ String String_create(const wc_allocator* a)
 {
     String s;
     str_init_sso(&s, a);
+    return s;
+}
+
+String String_with_cap(const wc_allocator* a, u64 cap)
+{
+    String s;
+    str_init_sso(&s, a);
+    ensure_capacity(&s, cap);
     return s;
 }
 
@@ -2328,6 +2438,7 @@ String String_copy(const wc_allocator* a, const String* src)
 
 void String_move(String* dest, String* src)
 {
+    WC_ASSERT(dest->capacity == 0, "String_move: dest must be zero-initialized (a live dest would leak)");
     *dest = *src;
     memset(src, 0, sizeof(String));
 }
@@ -2337,7 +2448,7 @@ void String_move(String* dest, String* src)
 
 void String_reserve(String* s, u64 new_cap)
 {
-    FATAL_IF(s->capacity == 0, "String_reserve on zeroed/moved-from String");
+    WC_ASSERT(s->capacity != 0, "String_reserve on zeroed/moved-from String");
     if (new_cap <= s->capacity) {
         return;
     }
@@ -2346,7 +2457,7 @@ void String_reserve(String* s, u64 new_cap)
 
 void String_reserve_char(String* s, u64 new_cap, char c)
 {
-    FATAL_IF(s->capacity == 0, "String_reserve_char on zeroed/moved-from String");
+    WC_ASSERT(s->capacity != 0, "String_reserve_char on zeroed/moved-from String");
     if (new_cap <= s->capacity) {
         char* buf = GET_STR(s);
         for (u64 i = s->size; i < new_cap; i++) {
@@ -2446,9 +2557,22 @@ void String_append_char(String* s, char c)
     GET_STR_CHAR(s, s->size++) = c;
 }
 
+void String_append_multi(String* str, const char* data, u64 len)
+{
+    WC_ASSERT(str->capacity != 0, "zeroed/moved-from String");
+    if (len == 0) {
+        return;
+    }
+
+    ensure_capacity(str, len);
+    memcpy(GET_STR(str), data, len);
+    str->size += len;
+}
+
+// TODO: whenever we take a cstr, we should also take the length
 void String_append_cstr(String* s, const char* cstr)
 {
-    FATAL_IF(s->capacity == 0, "String_append_cstr on zeroed/moved-from String");
+    WC_ASSERT(s->capacity != 0, "zeroed/moved-from String");
     u64 len = strlen(cstr);
     if (len == 0) {
         return;
@@ -2461,7 +2585,7 @@ void String_append_cstr(String* s, const char* cstr)
 
 void String_append_String(String* s, const String* other)
 {
-    FATAL_IF(s->capacity == 0, "String_append_String on zeroed/moved-from String");
+    WC_ASSERT(s->capacity != 0, "String_append_String on zeroed/moved-from String");
     if (other->size == 0) {
         return;
     }
@@ -2473,7 +2597,7 @@ void String_append_String(String* s, const String* other)
 
 void String_append_String_move(String* s, String* other)
 {
-    FATAL_IF(s->capacity == 0, "String_append_String_move on zeroed/moved-from String");
+    WC_ASSERT(s->capacity != 0, "String_append_String_move on zeroed/moved-from String");
     if (s == other) {
         return;
     }
@@ -2518,6 +2642,7 @@ void String_insert_char(String* s, u64 i, char c)
 
 void String_insert_cstr(String* s, u64 i, const char* cstr)
 {
+    WC_ASSERT(s->capacity != 0, "String_insert_cstr on zeroed/moved-from String");
     WC_ASSERT(i <= s->size, "index out of bounds");
 
     u64 len = strlen(cstr);
@@ -2538,6 +2663,7 @@ void String_insert_cstr(String* s, u64 i, const char* cstr)
 
 void String_insert_String(String* s, u64 i, const String* other)
 {
+    WC_ASSERT(s->capacity != 0, "String_insert_String on zeroed/moved-from String");
     WC_ASSERT(i <= s->size, "index out of bounds");
 
     if (other->size == 0) {
@@ -2753,8 +2879,8 @@ static inline void ensure_capacity(String* s, u64 needed)
         new_cap = needed;
     }
 
-    // currently in SSO but SSO cap is not enough
     if (IS_SSO(s)) {
+        // currently in SSO but SSO cap is not enough
         s->stk[STR_SSO_SIZE - 1] = '\0'; // switch to heap mode
         char* new_data           = wc_alloc(s->alloc, new_cap, 1);
         FATAL_IF(!new_data, "ensure_capacity: allocation failed");
@@ -2762,6 +2888,7 @@ static inline void ensure_capacity(String* s, u64 needed)
         s->heap     = new_data;
         s->capacity = new_cap;
     } else {
+        // not in SSO and cap not enough: realloc
         char* new_data = wc_realloc(s->alloc, s->heap, s->capacity, new_cap, 1);
         FATAL_IF(!new_data, "ensure_capacity: realloc failed");
         s->heap     = new_data;

@@ -24,6 +24,7 @@
 #define WC_MAX_ALIGN alignof(max_align_t)
 
 // TODO: maybe we shouldn't implicitly default to libc. if no valid allocator is provided, we should fail
+// update docs
 
 /*
  * ALLOCATOR API
@@ -178,6 +179,10 @@ static inline size_t wc_align_for_size(size_t elm_size)
 #define WC_FREE(a, p)      (wc_free((a), (p), sizeof(*(p)), alignof(typeof(*(p)))))
 #define WC_FREE_N(a, p, n) (wc_free((a), (p), wc_mul((n), sizeof(*(p))), alignof(typeof(*(p)))))
 
+// BUG: shadowing?
+// #define wc_alloc(a, size) (wc_alloc(a, size, WC_MAX_ALIGN))
+// #define wc_realloc(a, p, old_n, new_n) (wc_realloc(a, p, old_n, new_n, WC_MAX_ALIGN))
+// #define wc_free(a, p, n) (wc_free(a, p, n, WC_MAX_ALIGN))
 
 #endif // WC_ALLOCATOR_H
 
@@ -200,6 +205,7 @@ static inline size_t wc_align_for_size(size_t elm_size)
 
 #include <stdarg.h>
 #include <stdio.h>
+#include <string.h>
 
 
 // ANSI Color Codes
@@ -218,8 +224,9 @@ static inline size_t wc_align_for_size(size_t elm_size)
  *     FATAL(fmt, ...)                 abort with a message
  *
  *     FATAL_IF(cond, fmt, ...)        abort if cond is TRUE. Absolute failures
- *                                     only: allocation failed, mutation of a
- *                                     zeroed (moved-from/destroyed) container.
+ *                                     only: allocation failed, or a violation
+ *                                     that can't be treated as a caller bug
+ *                                     (HashMap_reserve range check).
  *
  *     WARN(fmt, ...)                  print a warning to stderr, continue
  *
@@ -242,7 +249,9 @@ static inline size_t wc_align_for_size(size_t elm_size)
  *
  * The rule: if continuing past the failure would corrupt memory even in a
  * correct program (an allocator returned NULL), use FATAL_IF. If the failure
- * means the CALLER has a bug, use WC_ASSERT
+ * means the CALLER has a bug, use WC_ASSERT. That includes use of a zeroed,
+ * moved-from or destroyed container: caught in Debug only, undefined behavior
+ * in Release.
  *
  * Branch prediction: failure paths are WC_UNLIKELY, and the reporters are
  * `cold, noinline` functions defined once in wc_errno.c. The compiler moves
@@ -256,6 +265,7 @@ static inline size_t wc_align_for_size(size_t elm_size)
 __attribute__((cold, noinline, noreturn, format(printf, 4, 5))) void
 wc_fatal_report(const char* file, int line, const char* func, const char* fmt, ...);
 
+// TODO:
 /* Fatal handler. Every FATAL / FATAL_IF formats its message and calls the
  * installed handler. The handler must not return: abort, exit, or longjmp out
  * (tests can verify that something FATALs). If it does return, the program
@@ -338,6 +348,99 @@ typedef int64_t i64;
 
 // we are using unsigned indices/sizes
 #define WC_NOT_FOUND ((u64) - 1)
+
+
+// FIXED-SIZE COPY / COMPARE
+//
+// Containers store elements as raw bytes and learn the element size at runtime. These two helpers are
+// drop-ins for memcpy / (memcmp == 0): common element sizes take a fixed-size move or integer compare
+// instead of a call into libc, other sizes fall back to libc.
+
+// Drop-in for memcpy(dst, src, n), including the restrict contract: dst and src must not overlap.
+// If they may overlap, use memmove.
+//
+// n == 0 is a no-op on purpose. A set (HashMap with val_size 0) stores no values and may pass a NULL
+// src for its value copies. memcpy(dst, NULL, 0) is UB, and glibc declares memcpy nonnull, so the
+// compiler may assume src != NULL afterwards. The explicit 0 case avoids the call entirely.
+static inline WC_ALWAYS_INLINE void wc_copy_n(void* restrict dst, const void* restrict src, u64 n)
+{
+    switch (n) {
+    case 0:
+        break; // a set's value: src may be NULL, so no memcpy at all
+    case 1:
+        memcpy(dst, src, 1);
+        break;
+    case 2:
+        memcpy(dst, src, 2);
+        break;
+    case 4:
+        memcpy(dst, src, 4);
+        break;
+    case 8:
+        memcpy(dst, src, 8);
+        break;
+    case 16:
+        memcpy(dst, src, 16);
+        break;
+    case 24:
+        memcpy(dst, src, 24);
+        break;
+    case 32:
+        memcpy(dst, src, 32);
+        break;
+    case 48:
+        memcpy(dst, src, 48);
+        break;
+    case 64:
+        memcpy(dst, src, 64);
+        break;
+    default:
+        memcpy(dst, src, n);
+        break;
+    }
+}
+
+// Drop-in for (memcmp(a, b, n) == 0), returning true/false instead of the memcmp tri-state.
+//
+// 4 and 8 bytes compare as one integer (the common hash key: an int, a u64, a pointer), 16 bytes as two
+// 8-byte compares (a string view, a pair of u64). The memcpy into a local is the standard type-punning
+// idiom: it compiles to a plain load and does not violate strict aliasing. Other sizes use memcmp.
+//
+// n == 0 is true without touching either pointer, so both may be NULL.
+static inline WC_ALWAYS_INLINE bool wc_equal_n(const void* a, const void* b, u64 n)
+{
+    switch (n) {
+    case 0:
+        return true;
+    case 4: {
+        u32 x;
+        u32 y;
+        memcpy(&x, a, 4);
+        memcpy(&y, b, 4);
+        return x == y;
+    }
+    case 8: {
+        u64 x;
+        u64 y;
+        memcpy(&x, a, 8);
+        memcpy(&y, b, 8);
+        return x == y;
+    }
+    case 16: {
+        u64 x0;
+        u64 x1;
+        u64 y0;
+        u64 y1;
+        memcpy(&x0, a, 8);
+        memcpy(&x1, (const u8*)a + 8, 8);
+        memcpy(&y0, b, 8);
+        memcpy(&y1, (const u8*)b + 8, 8);
+        return (x0 == y0 && x1 == y1) != 0;
+    }
+    default:
+        return memcmp(a, b, n) == 0;
+    }
+}
 
 
 // GENERIC FUNCTIONS
@@ -472,11 +575,12 @@ static inline void wc_print_cstr(const void* elm)
  *
  * Three tiers:
  *
- *   FATAL_IF     Resource failures and dead state, in EVERY build: an
- *                allocator returned NULL, or a zeroed (moved-from/destroyed)
- *                container was mutated. Continuing would corrupt memory.
+ *   FATAL_IF     Resource failures, in EVERY build: an allocator returned
+ *                NULL (or an input too large to handle safely). Continuing
+ *                would corrupt memory even in a correct program.
  *
- *   WC_ASSERT    Programmer errors: null pointer, out of bounds, size 0.
+ *   WC_ASSERT    Programmer errors: null pointer, out of bounds, size 0,
+ *                use of a zeroed (moved-from/destroyed) container.
  *                Takes the INVARIANT (`i < size`). Crashes with a message in
  *                debug builds; compiled out under NDEBUG (condition not
  *                evaluated). Never use it for allocation failure.
@@ -649,7 +753,7 @@ WC_NODISCARD static inline const wc_allocator* ChainArena_allocator(ChainArena* 
 WC_NODISCARD WC_NONULL(1) static inline const wc_allocator* ChainArena_allocator(ChainArena* ca)
 {
     // zeroed self has vt == NULL, which would silently read as WC_LIBC
-    FATAL_IF(!ca->self.ctx, "ChainArena_allocator on zeroed/destroyed ChainArena");
+    WC_ASSERT(ca->self.ctx != NULL, "ChainArena_allocator on zeroed/destroyed ChainArena");
     return &ca->self;
 }
 
@@ -663,6 +767,7 @@ typedef struct {
 
 WC_NODISCARD WC_NONULL(1) static inline ChainArenaScratch ChainArenaScratch_create(ChainArena* ca)
 {
+    WC_ASSERT(ca->self.ctx == ca, "invalid chain arena (zeroed or moved)");
     return (ChainArenaScratch){
         .chain_arena = ca,
         .normal      = ca->normal,
@@ -990,6 +1095,7 @@ void ChainArena_create(ChainArena* ca, const wc_allocator* backing, u64 normal_c
     ca->self = (wc_allocator){.vt = &carena_vtable, .ctx = ca};
     // need to set allocator before calling this
     ca->normal = new_node(ca, normal_cap);
+    FATAL_IF(!ca->normal, "first node allocation failed (cap %lu)", normal_cap);
 }
 
 void ChainArena_destroy(ChainArena* ca)
@@ -1009,7 +1115,7 @@ void* ChainArena_alloc(ChainArena* ca, u64 size)
 
 void* ChainArena_alloc_aligned(ChainArena* ca, u64 size, u64 align)
 {
-    FATAL_IF(!ca->self.ctx, "ChainArena is in the zero state (moved-from or destroyed): re-create it first");
+    WC_ASSERT(ca->self.ctx != NULL, "ChainArena is in the zero state (moved-from or destroyed): re-create it first");
     WC_ASSERT(size != 0, "can't allocate 0 bytes");
     WC_ALLOC_ASSERT_ALIGN(align);
     WC_ASSERT(ca->self.ctx == ca, "chain arena was moved or copied after ChainArena_create");
