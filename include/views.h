@@ -176,21 +176,21 @@ WC_NODISCARD WC_NONULL(1) StrView StringStore_intern_sv(StringStore* ss, StrView
 
 // filepath storage/handling
 
-bool                 Path_is_absolute(StrView p); // starts with '/'
-WC_NODISCARD StrView Path_basename(StrView p);    // "/a/b/c.txt" -> "c.txt"
-WC_NODISCARD StrView Path_dirname(StrView p);     // "/a/b/c.txt" -> "/a/b"
-WC_NODISCARD StrView Path_extension(StrView p);   // "c.txt"      -> "txt"   (no dot)
-WC_NODISCARD StrView Path_stem(StrView p);        // "c.txt"      -> "c"
-bool                 Path_has_extension(StrView p, StrView ext);
+bool                 WCpath_is_absolute(StrView p); // starts with '/'
+WC_NODISCARD StrView WCpath_basename(StrView p);    // "/a/b/c.txt" -> "c.txt"
+WC_NODISCARD StrView WCpath_dirname(StrView p);     // "/a/b/c.txt" -> "/a/b"
+WC_NODISCARD StrView WCpath_extension(StrView p);   // "c.txt"      -> "txt"   (no dot)
+WC_NODISCARD StrView WCpath_stem(StrView p);        // "c.txt"      -> "c"
+bool                 WCpath_has_extension(StrView p, StrView ext);
 
 // Component iteration
 typedef struct {
     StrView src;
     u64     pos;
-} PathIter;
+} WCPathIter;
 
-WC_NODISCARD PathIter Path_components(StrView p);
-bool                  PathIter_next(PathIter* it, StrView* out);
+WC_NODISCARD WCPathIter WCpath_components(StrView p);
+bool                    WCpathIter_next(WCPathIter* it, StrView* out);
 
 // Allocation-returning
 WC_NODISCARD String  Path_join(const wc_allocator* alloc, StrView a, StrView b);
