@@ -4,6 +4,7 @@
 #include "wc_string.h"
 
 #include <stdalign.h>
+#include <stdint.h>
 #include <string.h>
 
 
@@ -103,19 +104,27 @@ u64 StrView_find(StrView sv, StrView needle)
 
 u64 StrView_find_char(StrView sv, char c)
 {
-
+    if (sv.len == 0) {
+        return WC_NOT_FOUND;
+    }
     const char* p = memchr(sv.data, (unsigned char)c, sv.len);
     return p ? (u64)(p - sv.data) : WC_NOT_FOUND;
 }
 
 bool StrView_starts_with(StrView sv, StrView pfx)
 {
-    return memcmp(sv.data, pfx.data, pfx.len) == 0;
+    if (pfx.len > sv.len) {
+        return false;
+    }
+    return pfx.len == 0 || memcmp(sv.data, pfx.data, pfx.len) == 0;
 }
 
 bool StrView_ends_with(StrView sv, StrView sfx)
 {
-    return memcmp(sv.data + sv.len - sfx.len, sfx.data, sfx.len) == 0;
+    if (sfx.len > sv.len) {
+        return false;
+    }
+    return sfx.len == 0 || memcmp(sv.data + sv.len - sfx.len, sfx.data, sfx.len) == 0;
 }
 
 bool StrView_contains(StrView sv, StrView n)
@@ -124,8 +133,86 @@ bool StrView_contains(StrView sv, StrView n)
 }
 
 
+// parse
 
+// Shared decimal parser: whole view must be digits, value must be <= max
+static bool parse_uint_max(StrView sv, u64 max, u64* out)
+{
+    if (sv.len == 0) {
+        return false;
+    }
+    u64 v = 0;
+    for (u64 i = 0; i < sv.len; i++) {
+        unsigned d = (unsigned)((unsigned char)sv.data[i] - '0'); // wraps to >9 for non-digits
+        if (d > 9) {
+            return false;
+        }
+        if (v > (max - d) / 10) { // v * 10 + d would exceed max
+            return false;
+        }
+        v = v * 10 + d;
+    }
+    *out = v;
+    return true;
+}
 
+bool StrView_parse_u8(StrView sv, u8* out)
+{
+    u64 v;
+    if (!parse_uint_max(sv, UINT8_MAX, &v)) {
+        return false;
+    }
+    *out = (u8)v;
+    return true;
+}
+
+bool StrView_parse_u16(StrView sv, u16* out)
+{
+    u64 v;
+    if (!parse_uint_max(sv, UINT16_MAX, &v)) {
+        return false;
+    }
+    *out = (u16)v;
+    return true;
+}
+
+bool StrView_parse_u32(StrView sv, u32* out)
+{
+    u64 v;
+    if (!parse_uint_max(sv, UINT32_MAX, &v)) {
+        return false;
+    }
+    *out = (u32)v;
+    return true;
+}
+
+bool StrView_parse_u64(StrView sv, u64* out)
+{
+    return parse_uint_max(sv, UINT64_MAX, out);
+}
+
+// consumption
+
+StrView StrView_take_left(StrView* sv, u64 n)
+{
+    if (n > sv->len) {
+        return (StrView){.data = NULL, .len = 0}; // invalid
+    }
+    StrView head = {.data = sv->data, .len = n};
+    sv->data += n;
+    sv->len -= n;
+    return head;
+}
+
+StrView StrView_take_right(StrView* sv, u64 n)
+{
+    if (n > sv->len) {
+        return (StrView){.data = NULL, .len = 0}; // invalid
+    }
+    StrView tail = {.data = sv->data + (sv->len - n), .len = n};
+    sv->len -= n;
+    return tail;
+}
 
 
 void StringStore_create(StringStore* ss, const wc_allocator* backing, u64 block_cap)

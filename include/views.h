@@ -17,7 +17,7 @@
 // non-owning view into any memory that stores a string
 typedef struct {
     const char* data;
-    const u64   len;
+    u64         len;
 } StrView;
 
 // creation
@@ -53,7 +53,7 @@ WC_NODISCARD bool StrView_to_buf(StrView sv, char* buf, u64 cap) WC_NONULL(2);
 // Get a sub-view over another view
 WC_NODISCARD static inline StrView StrView_slice(StrView sv, u64 start, u64 len)
 {
-    WC_ASSERT(sv.len >= start + len, "out of range");
+    WC_ASSERT(start <= sv.len && len <= sv.len - start, "out of range"); // overflow-safe
     return (StrView){.data = sv.data + start, .len = len};
 }
 // Get the first n chars from `sv`
@@ -64,6 +64,7 @@ WC_NODISCARD static inline StrView StrView_prefix(StrView sv, u64 n)
 // Get all the chars starting from index `start` till the end
 WC_NODISCARD static inline StrView StrView_suffix(StrView sv, u64 start)
 {
+    WC_ASSERT(start <= sv.len, "out of range");
     return StrView_slice(sv, start, sv.len - start);
 }
 
@@ -86,12 +87,28 @@ bool             StrView_contains(StrView sv, StrView n);
 
 // parse
 
-bool StrView_parge_u8(StrView sv, u8* out);
-bool StrView_parge_u16(StrView sv, u8* out);
-bool StrView_parge_u32(StrView sv, u8* out);
-bool StrView_parse_u64(StrView sv, u64* out);
+// Parse an unsigned decimal integer from the WHOLE view: digits only, at least one, leading zeros allowed.
+// No sign, no whitespace, no base prefix. Returns false on empty input, any other character, or overflow
+// of the target type. `*out` is only written on success.
+WC_NODISCARD WC_NONULL(2) bool StrView_parse_u8(StrView sv, u8* out);
+WC_NODISCARD WC_NONULL(2) bool StrView_parse_u16(StrView sv, u16* out);
+WC_NODISCARD WC_NONULL(2) bool StrView_parse_u32(StrView sv, u32* out);
+WC_NODISCARD WC_NONULL(2) bool StrView_parse_u64(StrView sv, u64* out);
 
-// consumption: take n bytes from strview and shorten it (can be from right or left)
+// consumption: take n bytes from a view and shorten it (from the left or the right)
+
+// A StrView with `.data == NULL` is invalid. The take functions return one to signal failure.
+WC_NODISCARD static inline bool StrView_is_valid(StrView sv)
+{
+    return sv.data != NULL;
+}
+
+// Remove the first `n` bytes of `*sv` and return them. If `n > sv->len`, returns an invalid view
+// (`.data == NULL`) and leaves `*sv` untouched. Ignore the result to just skip bytes.
+WC_NODISCARD StrView StrView_take_left(StrView* sv, u64 n) WC_NONULL(1);
+// Remove the last `n` bytes of `*sv` and return them. If `n > sv->len`, returns an invalid view
+// (`.data == NULL`) and leaves `*sv` untouched. Ignore the result to just drop bytes.
+WC_NODISCARD StrView StrView_take_right(StrView* sv, u64 n) WC_NONULL(1);
 
 
 // output
@@ -154,7 +171,6 @@ WC_NONULL(1) void StringStore_destroy(StringStore* ss);
 WC_NODISCARD WC_NONULL(1, 2) StrView StringStore_intern(StringStore* ss, const String* s);
 WC_NODISCARD WC_NONULL(1, 2) StrView StringStore_intern_cstr(StringStore* ss, const char* cstr);
 WC_NODISCARD WC_NONULL(1) StrView StringStore_intern_sv(StringStore* ss, StrView sv);
-
 
 
 
