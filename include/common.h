@@ -15,6 +15,7 @@
 
 #include <stdarg.h>
 #include <stdio.h>
+#include <string.h>
 
 
 // ANSI Color Codes
@@ -156,6 +157,99 @@ typedef int64_t i64;
 
 // we are using unsigned indices/sizes
 #define WC_NOT_FOUND ((u64) - 1)
+
+
+// FIXED-SIZE COPY / COMPARE
+//
+// Containers store elements as raw bytes and learn the element size at runtime. These two helpers are
+// drop-ins for memcpy / (memcmp == 0): common element sizes take a fixed-size move or integer compare
+// instead of a call into libc, other sizes fall back to libc.
+
+// Drop-in for memcpy(dst, src, n), including the restrict contract: dst and src must not overlap.
+// If they may overlap, use memmove.
+//
+// n == 0 is a no-op on purpose. A set (HashMap with val_size 0) stores no values and may pass a NULL
+// src for its value copies. memcpy(dst, NULL, 0) is UB, and glibc declares memcpy nonnull, so the
+// compiler may assume src != NULL afterwards. The explicit 0 case avoids the call entirely.
+static inline WC_ALWAYS_INLINE void wc_copy_n(void* restrict dst, const void* restrict src, u64 n)
+{
+    switch (n) {
+    case 0:
+        break; // a set's value: src may be NULL, so no memcpy at all
+    case 1:
+        memcpy(dst, src, 1);
+        break;
+    case 2:
+        memcpy(dst, src, 2);
+        break;
+    case 4:
+        memcpy(dst, src, 4);
+        break;
+    case 8:
+        memcpy(dst, src, 8);
+        break;
+    case 16:
+        memcpy(dst, src, 16);
+        break;
+    case 24:
+        memcpy(dst, src, 24);
+        break;
+    case 32:
+        memcpy(dst, src, 32);
+        break;
+    case 48:
+        memcpy(dst, src, 48);
+        break;
+    case 64:
+        memcpy(dst, src, 64);
+        break;
+    default:
+        memcpy(dst, src, n);
+        break;
+    }
+}
+
+// Drop-in for (memcmp(a, b, n) == 0), returning true/false instead of the memcmp tri-state.
+//
+// 4 and 8 bytes compare as one integer (the common hash key: an int, a u64, a pointer), 16 bytes as two
+// 8-byte compares (a string view, a pair of u64). The memcpy into a local is the standard type-punning
+// idiom: it compiles to a plain load and does not violate strict aliasing. Other sizes use memcmp.
+//
+// n == 0 is true without touching either pointer, so both may be NULL.
+static inline WC_ALWAYS_INLINE bool wc_equal_n(const void* a, const void* b, u64 n)
+{
+    switch (n) {
+    case 0:
+        return true;
+    case 4: {
+        u32 x;
+        u32 y;
+        memcpy(&x, a, 4);
+        memcpy(&y, b, 4);
+        return x == y;
+    }
+    case 8: {
+        u64 x;
+        u64 y;
+        memcpy(&x, a, 8);
+        memcpy(&y, b, 8);
+        return x == y;
+    }
+    case 16: {
+        u64 x0;
+        u64 x1;
+        u64 y0;
+        u64 y1;
+        memcpy(&x0, a, 8);
+        memcpy(&x1, (const u8*)a + 8, 8);
+        memcpy(&y0, b, 8);
+        memcpy(&y1, (const u8*)b + 8, 8);
+        return (x0 == y0 && x1 == y1) != 0;
+    }
+    default:
+        return memcmp(a, b, n) == 0;
+    }
+}
 
 
 // GENERIC FUNCTIONS

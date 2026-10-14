@@ -77,8 +77,8 @@ static inline __attribute__((always_inline)) u64 wc_rapid_read32(const u8* p)
 #define WC_RAPID_S7   0xaaaaaaaaaaaaaaaaULL
 #define WC_RAPID_SEED 0ULL
 
-// Hash `len` bytes. With a constant len (keys of a known size) every length
-// branch folds away: a 4 or 8 byte key costs two 128-bit multiplies.
+// Hash `len` bytes. Inlined so short keys stay cheap: `len <= 16` takes the short
+// path, where a 4 or 8 byte key costs two 128-bit multiplies.
 static inline __attribute__((always_inline)) u64 wc_hash(const void* key, u64 len)
 {
     const u8* p    = key;

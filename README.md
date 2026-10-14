@@ -61,7 +61,6 @@ cmake -B build-rel -DCMAKE_BUILD_TYPE=Release && cmake --build build-rel
 | [Macros](docs/macros.md) | The type-checked macro layer |
 | [Diagnostics](docs/diagnostics.md) | `FATAL_IF`, `WC_ASSERT`, `WARN_IF`, `LOG`, `wc_errno`, Debug vs Release |
 | [Math](docs/math.md) | Matrices, `fast_math`, random numbers |
-| [Size specialisation](docs/specialization.md) | `wc_specialize.h`: runtime sizes to constants, how HashMap uses it, measurements |
 | [Testing](docs/testing.md) | Tests and benchmarks: layout, running, writing, death tests, checking allocator |
 
 ## License

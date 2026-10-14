@@ -5,8 +5,6 @@
 #include "wc_allocator.h"
 #include "wc_hash.h"
 
-#include <string.h>
-
 
 /* Generic Hashmap with Ownership Semantics
   - Robin Hood Hashing

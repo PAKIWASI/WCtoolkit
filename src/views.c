@@ -218,8 +218,3 @@ StrView StrView_take_right(StrView* sv, u64 n)
     return tail;
 }
 
-void StringStore_create(StringStore* ss, const wc_allocator* backing, u64 block_cap) {}
-
-
-
-

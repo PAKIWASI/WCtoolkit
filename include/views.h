@@ -158,19 +158,20 @@ WC_NONULL(2) static inline bool StrView_equals_cstr(StrView sv, const char* cstr
 // all strings in the store are null terminated
 typedef struct {
     ChainArena store;
-    HashMap    interned; // StrView -> u8 (dummy value; or make it a set)
-    //probe the map, return the existing view if found, else alloc + insert. a deduped store must be append-only.
-    //This makes interning O(1) amortized and idempotent — StringStore_intern_cstr(&ss, "x") returns the same pointer every time.
+    HashMap    interned;         // StrView -> {} (a set)
+    bool       interning_active; // optional
+    // probe the set, return the existing view if found, else alloc + insert. a deduped store must be append-only.
+    // This makes interning O(1) amortized and idempotent,StringStore_intern_cstr(&ss, "x") returns the same pointer every time.
 } StringStore;
 
-WC_NONULL(1) void StringStore_create(StringStore* ss, const wc_allocator* backing, u64 block_cap);
+WC_NONULL(1, 2) void StringStore_create(StringStore* ss, const wc_allocator* backing, u64 block_cap, bool intern);
 WC_NONULL(1) void StringStore_destroy(StringStore* ss);
 
 // Copy bytes into the store; return a view. NUL-terminate too (1 extra byte),
 // so sv.ptr works as a C string, makes StringStore a drop-in for argv-style APIs.
-WC_NODISCARD WC_NONULL(1, 2) StrView StringStore_intern(StringStore* ss, const String* s);
-WC_NODISCARD WC_NONULL(1, 2) StrView StringStore_intern_cstr(StringStore* ss, const char* cstr);
-WC_NODISCARD WC_NONULL(1) StrView StringStore_intern_sv(StringStore* ss, StrView sv);
+WC_NODISCARD WC_NONULL(1, 2) StrView StringStore_store(StringStore* ss, const String* s);
+WC_NODISCARD WC_NONULL(1, 2) StrView StringStore_store_cstr(StringStore* ss, const char* cstr);
+WC_NODISCARD WC_NONULL(1) StrView StringStore_store_sv(StringStore* ss, StrView sv);
 
 
 
@@ -198,5 +199,6 @@ WC_NODISCARD StrView Path_join_sv(StringStore* ss, StrView a, StrView b);
 WC_NODISCARD StrView Path_normalize(StringStore* ss, StrView p); // collapses "." and ".."
 
 // TODO: path storage in stringstore
+
 
 #endif // WC_VIEWS_H

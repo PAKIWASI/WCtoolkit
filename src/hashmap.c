@@ -2,7 +2,6 @@
 #include "common.h"
 #include "wc_allocator.h"
 #include "wc_hash.h"
-#include "wc_specialize.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -87,7 +86,7 @@ static void map_alloc_block(HashMap* map, u64 cap)
 {
     map_layout l = map_layout_for(cap, map->key_size, map->val_size);
     u8*        b = wc_alloc(map->alloc, l.total, MAP_ALIGN(map));
-    FATAL_IF(!b, "HashMap: table allocation of %llu bytes failed", (unsigned long long)l.total);
+    FATAL_IF(!b, "HashMap: table allocation of %lu bytes failed", l.total);
 
     map->keys     = b;
     map->vals     = b + l.vals;
@@ -156,9 +155,9 @@ static inline void map_consume_dup(const wc_container_ops* ops, u32 size, u8* el
 // Home bucket = top log2(capacity) bits of the hash. Top bits make a doubling
 // resize send bucket i to 2i or 2i+1, so rehash writes nearly in order.
 //
-// Default (hash_fn == NULL): wc_hash, called directly so it inlines; with a
-// constant `ks` its length branches fold away. Its top bits are already fully
-// mixed (tests/test_hashmap.c: hash.avalanche_short_keys), so it is used as is.
+// Default (hash_fn == NULL): wc_hash, called directly so it inlines. Its top bits
+// are already fully mixed (tests/test_hashmap.c: hash.avalanche_short_keys), so it
+// is used as is.
 //
 // Custom hash: multiplied by 2^64 / phi first (Fibonacci hashing). Custom hashes
 // often have weak top bits (identity on ints, shifted ids); the multiply folds
@@ -607,10 +606,10 @@ static inline void map_maybe_resize(HashMap* map)
 
 // Find `key`. Returns the slot where it is (FOUND) or where it would go
 // (NOT_FOUND / ROBINHOOD_EXIT), and the probe length at that slot in out_psl.
-// ks is the key size, a constant for common sizes (see map_lookup).
-static inline WC_ALWAYS_INLINE u64 map_lookup_k(const HashMap* map, const u8* key, LOOKUP_RES* res, u8* out_psl, u32 ks)
+static u64 map_lookup(const HashMap* map, const u8* key, LOOKUP_RES* res, u8* out_psl)
 {
-    u8 psl = 1; // stored PSL 1 = real probe distance 0 (home slot)
+    const u32 ks  = map->key_size;
+    u8        psl = 1; // stored PSL 1 = real probe distance 0 (home slot)
 
     for (u64 i = map_home(map, key, ks);; i = MAP_NEXT(map, i)) {
         u8 slot_psl = *GET_PSL(map, i);
@@ -637,11 +636,6 @@ static inline WC_ALWAYS_INLINE u64 map_lookup_k(const HashMap* map, const u8* ke
     }
 }
 
-static u64 map_lookup(const HashMap* map, const u8* key, LOOKUP_RES* res, u8* out_psl)
-{
-    WC_SPECIALIZE(map->key_size, KS, return map_lookup_k(map, key, res, out_psl, KS));
-}
-
 
 // Place key/val (already owned by the map) starting at bucket idx with probe
 // length psl. Only relocates raw bytes: never calls copy/del (B5).
@@ -650,12 +644,11 @@ static u64 map_lookup(const HashMap* map, const u8* key, LOOKUP_RES* res, u8* ou
 // nothing. An empty slot is filled straight from key/val. Only when a resident
 // must be displaced does the element in hand move into scratch: it alternates
 // between STAGE and SWAP, so it never aliases the slot being written.
-//
-// ks/vs are the key/val sizes. map_insert passes both as compile-time constants
-// for the common size pairs (WC_SPECIALIZE_2), so every copy below is a
-// fixed-size move and every slot address is a constant-stride multiply.
-static inline WC_ALWAYS_INLINE void map_insert_k(HashMap* map, u8* key, u8* val, u8 psl0, u64 idx, u32 ks, u32 vs)
+static void map_insert(HashMap* map, u8* key, u8* val, u8 psl0, u64 idx)
 {
+    const u32 ks = map->key_size;
+    const u32 vs = map->val_size;
+
 #define KEY_AT(i) (map->keys + ((u64)ks * (i)))
 #define VAL_AT(i) (map->vals + ((u64)vs * (i)))
 
@@ -732,27 +725,6 @@ static inline WC_ALWAYS_INLINE void map_insert_k(HashMap* map, u8* key, u8* val,
 #undef VAL_AT
 }
 
-static void map_insert(HashMap* map, u8* key, u8* val, u8 psl0, u64 idx)
-{
-    WC_SPECIALIZE_2(map->key_size, KS, map->val_size, VS, map_insert_k(map, key, val, psl0, idx, KS, VS));
-}
-
-
-// Reinsert every element of the old block. Keys are already unique, so no
-// lookup and no compare: each element starts at its home bucket and Robin Hood
-// insertion does the rest. Raw bytes move, no copy/del (B5).
-static inline WC_ALWAYS_INLINE void map_rehash_k(HashMap* map, u8* old_keys, u8* old_vals, const u8* old_psls,
-                                                 u64 old_cap, u32 ks, u32 vs)
-{
-    for (u64 i = 0; i < old_cap; i++) {
-        if (old_psls[i] == BUCKET_EMPTY) {
-            continue;
-        }
-        u8* key = old_keys + ((u64)ks * i);
-        u8* val = old_vals + ((u64)vs * i);
-        map_insert_k(map, key, val, 1, map_home(map, key, ks), ks, vs);
-    }
-}
 
 // Move everything into a new block of new_capacity (a power of two).
 static void map_resize(HashMap* map, u64 new_capacity)
@@ -769,8 +741,19 @@ static void map_resize(HashMap* map, u64 new_capacity)
     map_alloc_block(map, new_capacity);
     map->size = 0;
 
-    WC_SPECIALIZE_2(map->key_size, KS, map->val_size, VS,
-                    map_rehash_k(map, old_keys, old_vals, old_psls, old_cap, KS, VS));
+    // Reinsert every element of the old block. Keys are already unique, so no
+    // lookup and no compare: each element starts at its home bucket and Robin Hood
+    // insertion does the rest. Raw bytes move, no copy/del (B5).
+    const u32 ks = map->key_size;
+    const u32 vs = map->val_size;
+    for (u64 i = 0; i < old_cap; i++) {
+        if (old_psls[i] == BUCKET_EMPTY) {
+            continue;
+        }
+        u8* key = old_keys + ((u64)ks * i);
+        u8* val = old_vals + ((u64)vs * i);
+        map_insert(map, key, val, 1, map_home(map, key, ks));
+    }
 
     map_free_block(map, old_keys, old_cap);
 }
