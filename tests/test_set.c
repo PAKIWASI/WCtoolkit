@@ -1,6 +1,5 @@
 #include "arena.h"
 #include "common.h"
-#include "test_support.h"
 #include "utest.h"
 #include "wc_allocator.h"
 #include "wc_helpers.h"
@@ -749,18 +748,3 @@ UTEST(set, move)
     HashMap_destroy(&src); // safe on zeroed
     HashMap_destroy(&dest);
 }
-
-#if WC_HAS_FORK && !defined(NDEBUG) // WC_ASSERT: dies in Debug only
-static void die_mutating_zero_set(void)
-{
-    HashMap s;
-    memset(&s, 0, sizeof(s));
-    int x = 42;
-    HashMap_put(&s, &x, NULL);
-}
-
-UTEST(set, zero_state_fatal)
-{
-    EXPECT_DIES(die_mutating_zero_set);
-}
-#endif

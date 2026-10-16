@@ -52,6 +52,13 @@ WC_NODISCARD void* ChainArena_alloc_aligned(ChainArena* ca, u64 size, u64 align)
 // The allocator to give to containers. Points into the arena, so it lives as long as the arena.
 WC_NODISCARD static inline const wc_allocator* ChainArena_allocator(ChainArena* ca) WC_NONULL(1);
 
+// Payload bytes carved out of the newest normal node right now. Memory taken from
+// dedicated big nodes is not included, and a freed (no-op) request does not rewind it.
+WC_NODISCARD WC_NONULL(1) static inline u64 ChainArena_used(const ChainArena* ca)
+{
+    return ca->normal ? ca->normal->off : 0;
+}
+
 WC_NODISCARD WC_NONULL(1) static inline const wc_allocator* ChainArena_allocator(ChainArena* ca)
 {
     // zeroed self has vt == NULL, which would silently read as WC_LIBC

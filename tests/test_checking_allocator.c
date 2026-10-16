@@ -219,7 +219,7 @@ UTEST(checking_allocator, ta_over_arena_backing)
 
     u8* p = wc_alloc(a, 24, 16);
     EXPECT_TRUE((p) != NULL);
-    EXPECT_TRUE(p >= arena.base && p < arena.base + arena.size);
+    EXPECT_TRUE(p >= arena.base && p < arena.base + arena.cap);
     wc_free(a, p, 24, 16);
 
     EXPECT_EQ(ta.n_errors, 0u);

@@ -24,6 +24,12 @@ set(CMAKE_C_EXTENSIONS ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_COLOR_DIAGNOSTICS ON)
 
+if(WIN32)
+  # AddressSanitizer (clang-cl) cannot link against the debug CRT yet:
+  # force the release CRT everywhere on Windows.
+  set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
+endif()
+
 message(STATUS "C Compiler: ${CMAKE_C_COMPILER}")
 
 # Default to Debug if not specified
@@ -143,6 +149,31 @@ if(WC_VECTORIZE_REPORT AND CMAKE_C_COMPILER_ID STREQUAL "Clang")
 endif()
 
 
+# clang-cl/lld-link do not infer sanitizer runtimes from the object files at link
+# time the way MSVC's /INFERASANLIBS does: link them explicitly. Debug (the only
+# sanitizer config) gets ASan (dynamic engine) + UBSan; other configs link nothing.
+set(WC_WIN_SAN_LIBS "")
+if(WIN32 AND CMAKE_C_COMPILER_ID MATCHES "Clang" AND CMAKE_BUILD_TYPE STREQUAL "Debug")
+  execute_process(COMMAND ${CMAKE_C_COMPILER} --print-resource-dir
+      OUTPUT_VARIABLE WC_CLANG_LIB OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+  string(APPEND WC_CLANG_LIB "/lib/windows")
+  set(WC_WIN_SAN_LIBS
+      "$<LINK_LIBRARY:WHOLE_ARCHIVE,${WC_CLANG_LIB}/clang_rt.asan_dynamic-x86_64.lib>"
+      "$<LINK_LIBRARY:WHOLE_ARCHIVE,${WC_CLANG_LIB}/clang_rt.asan_dynamic_runtime_thunk-x86_64.lib>"
+      "${WC_CLANG_LIB}/clang_rt.ubsan_standalone-x86_64.lib"
+  )
+endif()
+
+# lld-link folds identical string literals (/OPT:ICF) by default. Every module
+# keeps its own ASan global metadata, so a folded literal ends up poisoned by the
+# losing modules' redzones: reads of the merged literal abort (seen with "" in the
+# utest failure messages). Turn ICF off for the sanitizer build.
+if(WIN32)
+  set(WC_MSC_LINKER_FLAGS "/OPT:NOREF,NOICF")
+else()
+  set(WC_MSC_LINKER_FLAGS "")
+endif()
+
 # Main executable
 add_executable(main
     src/main.c
@@ -150,26 +181,31 @@ add_executable(main
 )
 target_include_directories(main PRIVATE include)
 target_compile_options(main PRIVATE ${WC_WARN_FLAGS})
+target_link_options(main PRIVATE ${WC_MSC_LINKER_FLAGS})
+target_link_libraries(main ${WC_WIN_SAN_LIBS})
 
 
-# # Test executable
-# # Tests: one tests/test_*.c per component, all registered through utest.h.
-# # Debug build (default) runs them under ASan + UBSan.
-# file(GLOB TEST_SOURCES CONFIGURE_DEPENDS tests/test_*.c)
-# add_executable(tests
-#     tests/main.c
-#     tests/wc_test_allocator.c
-#     ${TEST_SOURCES}
-#     ${LIB_SOURCES}
-# )
-# target_include_directories(tests PRIVATE include tests)
-# target_compile_options(tests PRIVATE ${WC_WARN_FLAGS})
-# target_link_libraries(tests m)
-# # test_checking_allocator / test_wc_allocator hand stack buffers to allocators on
-# # purpose. Their #pragma covers compile time; with LTO, GCC re-checks at link time.
-# if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
-#   target_link_options(tests PRIVATE -Wno-free-nonheap-object)
-# endif()
+# Test executable
+# Tests: one tests/test_*.c per component, all registered through utest.h.
+# Debug build (default) runs them under ASan + UBSan.
+file(GLOB TEST_SOURCES CONFIGURE_DEPENDS tests/test_*.c)
+add_executable(tests
+    tests/main.c
+    tests/wc_test_allocator.c
+    ${TEST_SOURCES}
+    ${LIB_SOURCES}
+)
+target_include_directories(tests PRIVATE include tests)
+target_compile_options(tests PRIVATE ${WC_WARN_FLAGS})
+target_link_options(tests PRIVATE ${WC_MSC_LINKER_FLAGS})
+target_link_libraries(tests ${WC_WIN_SAN_LIBS})
+# test_checking_allocator / test_wc_allocator hand stack buffers to allocators on
+# purpose. Their #pragma covers compile time; with LTO, GCC re-checks at link time.
+# There is no libm on MSVC-style toolchains (clang-cl): libc's is implicit.
+if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
+  target_link_libraries(tests m)
+  target_link_options(tests PRIVATE -Wno-free-nonheap-object)
+endif()
 #
 #
 # # Benchmarks: one tests/bench_*.c per component, registered through ubench.h.

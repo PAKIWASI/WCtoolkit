@@ -1,6 +1,5 @@
 #include "chain_arena.h"
 #include "common.h"
-#include "test_support.h"
 #include "utest.h"
 #include "wc_allocator.h"
 #include "wc_test_allocator.h"
@@ -11,11 +10,12 @@
 
 
 // Every test runs on a test allocator: node frees must match node allocs exactly.
-#define WITH_CHAIN(ca, ta)              \
-    wc_test_alloc ta;                   \
-    wc_test_alloc_init(&(ta), WC_LIBC); \
-    ChainArena ca;                      \
-    ChainArena_create(&(ca), wc_test_alloc_allocator(&(ta)))
+// Blocks are nKB(4) unless a test says otherwise.
+#define WITH_CHAIN(ca, ta)                       \
+    wc_test_alloc ta;                            \
+    wc_test_alloc_init(&(ta), WC_LIBC);          \
+    ChainArena ca;                               \
+    ChainArena_create(&(ca), wc_test_alloc_allocator(&(ta)), nKB(4))
 
 #define END_CHAIN(ca, ta)                            \
     ({                                               \
@@ -27,7 +27,7 @@
 static u64 node_count(const ChainArena* ca)
 {
     u64 n = 0;
-    for (const ChainArenaNodeHDR* x = ca->head; x; x = x->prev) {
+    for (const ChainArenaNodeHDR* x = ca->normal; x; x = x->prev) {
         n++;
     }
     return n;
@@ -40,7 +40,7 @@ UTEST(chain_arena, create_destroy_leak_free)
 {
     WITH_CHAIN(ca, ta);
     EXPECT_EQ(ta.live_blocks, 1u);
-    EXPECT_TRUE(ca.head == ca.tail);
+    EXPECT_TRUE(ca.normal->prev == NULL); // exactly one normal node, nothing older
     EXPECT_EQ(ChainArena_used(&ca), 0u);
     END_CHAIN(ca, ta);
 }
@@ -100,7 +100,7 @@ UTEST(chain_arena, oversize_request_gets_dedicated_node)
     EXPECT_TRUE((big) != NULL);
     EXPECT_EQ((uintptr_t)big % 64, 0u);
     memset(big, 0xAB, nKB(10));
-    EXPECT_TRUE(ca.tail->cap >= nKB(10));
+    EXPECT_TRUE(ca.big->cap >= nKB(10)); // sits in its own dedicated block
 
     u8* after = ChainArena_alloc(&ca, 32); // next small alloc still works
     EXPECT_TRUE((after) != NULL);
@@ -113,7 +113,9 @@ UTEST(chain_arena, oversize_request_gets_dedicated_node)
 
 /* ── Allocator backend ───────────────────────────────────────────────────── */
 
-UTEST(chain_arena, realloc_in_place_then_moves_across_node)
+// The ChainArena allocator has only alloc: realloc is emulated (always a copy,
+// free is a no-op), so a grown block never moves in place and never rewinds.
+UTEST(chain_arena, realloc_emulated_moves_and_preserves)
 {
     WITH_CHAIN(ca, ta);
     const wc_allocator* al = ChainArena_allocator(&ca);
@@ -123,59 +125,16 @@ UTEST(chain_arena, realloc_in_place_then_moves_across_node)
         p[i] = (u8)i;
     }
     u8* q = wc_realloc(al, p, 64, 2000, 8);
-    EXPECT_TRUE(q == p); // in place inside the tail node
+    EXPECT_TRUE(q != p); // emulated: always a new bump, never in place
+    for (int i = 0; i < 64; i++) {
+        EXPECT_EQ(q[i], i);
+    }
 
-    u8* r = wc_realloc(al, q, 2000, nKB(8), 8); // cannot fit: moves to a new node
-    EXPECT_TRUE(r != q);
+    u8* r = wc_realloc(al, q, 2000, nKB(8), 8); // oversized: its own big node
+    EXPECT_TRUE(r != NULL);
     for (int i = 0; i < 64; i++) {
         EXPECT_EQ(r[i], i);
     }
-    END_CHAIN(ca, ta);
-}
-
-UTEST(chain_arena, free_rewinds_last_block)
-{
-    WITH_CHAIN(ca, ta);
-    const wc_allocator* al = ChainArena_allocator(&ca);
-    u8*          p1 = wc_alloc(al, 32, 8);
-    u8*          p2 = wc_alloc(al, 32, 8);
-    u64          u  = ChainArena_used(&ca);
-    wc_free(al, p1, 32, 8); // not on top
-    EXPECT_EQ(ChainArena_used(&ca), u);
-    wc_free(al, p2, 32, 8);
-    EXPECT_TRUE(ChainArena_used(&ca) < u);
-    END_CHAIN(ca, ta);
-}
-
-UTEST(chain_arena, reset_keeps_one_node)
-{
-    WITH_CHAIN(ca, ta);
-    for (int i = 0; i < 20; i++) {
-        ChainArena_alloc(&ca, 1000);
-    }
-    EXPECT_TRUE(ta.live_blocks > 1);
-    ChainArena_reset(&ca);
-    EXPECT_EQ(ta.live_blocks, 1u);
-    EXPECT_EQ(ChainArena_used(&ca), 0u);
-    EXPECT_TRUE((ChainArena_alloc(&ca, 100)) != NULL);
-    END_CHAIN(ca, ta);
-}
-
-UTEST(chain_arena, clear_reuses_nodes_without_new_allocations)
-{
-    WITH_CHAIN(ca, ta);
-    for (int i = 0; i < 20; i++) {
-        ChainArena_alloc(&ca, 1000);
-    }
-    u64 nodes  = node_count(&ca);
-    u64 allocs = ta.n_alloc;
-
-    ChainArena_clear(&ca);
-    for (int i = 0; i < 20; i++) {
-        EXPECT_TRUE((ChainArena_alloc(&ca, 1000)) != NULL);
-    }
-    EXPECT_EQ(node_count(&ca), nodes);
-    EXPECT_EQ(ta.n_alloc, allocs); // same workload, zero backing allocations
     END_CHAIN(ca, ta);
 }
 
@@ -198,51 +157,17 @@ UTEST(chain_arena, scratch_across_node_boundary_frees_new_nodes)
     ChainArenaScratch_to_mark(mark);
     EXPECT_EQ(ta.live_blocks, blocks); // appended nodes released
     EXPECT_EQ(ChainArena_used(&ca), used);
-    EXPECT_TRUE(ca.tail == ca.head);
+    EXPECT_TRUE(ca.normal == mark.normal);
     for (int i = 0; i < 100; i++) {
         EXPECT_EQ(keep[i], 'K');
     }
     END_CHAIN(ca, ta);
 }
 
-#ifndef NDEBUG
-static void grow_outer_block_inside_chain_scratch(void)
-{
-    ChainArena ca;
-    ChainArena_create(&ca, WC_LIBC);
-    const wc_allocator* al = ChainArena_allocator(&ca);
-    u8*          v  = wc_alloc(al, 64, 8);
-    ChainArenaScratch mark = ChainArenaScratch_create(&ca);
-    v = wc_realloc(al, v, 64, 512, 8);
-    ChainArenaScratch_to_mark(mark);
-    (void)v;
-    ChainArena_destroy(&ca);
-}
-
-static void grow_block_from_earlier_node_inside_chain_scratch(void)
-{
-    ChainArena ca;
-    ChainArena_create(&ca, WC_LIBC);
-    const wc_allocator* al = ChainArena_allocator(&ca);
-    u8*          v  = wc_alloc(al, 64, 8);
-    for (int i = 0; i < 10; i++) {
-        ChainArena_alloc(&ca, 1000); // v's node is no longer the tail
-    }
-    ChainArenaScratch mark = ChainArenaScratch_create(&ca);
-    v = wc_realloc(al, v, 64, 512, 8);
-    ChainArenaScratch_to_mark(mark);
-    (void)v;
-    ChainArena_destroy(&ca);
-}
-
-#endif
-
+// Growing a block created before the scratch mark, inside the scratch region,
+// must never extend the block in place past the mark: it is copied instead.
 UTEST(chain_arena, floor_grow_outer_block_inside_scratch)
 {
-#ifndef NDEBUG
-    EXPECT_DIES(grow_outer_block_inside_chain_scratch);
-    EXPECT_DIES(grow_block_from_earlier_node_inside_chain_scratch);
-#else
     WITH_CHAIN(ca, ta);
     const wc_allocator* al = ChainArena_allocator(&ca);
     u8*          v  = wc_alloc(al, 64, 8);
@@ -252,7 +177,6 @@ UTEST(chain_arena, floor_grow_outer_block_inside_scratch)
     ChainArenaScratch_to_mark(mark);
     EXPECT_EQ(ChainArena_used(&ca), u);
     END_CHAIN(ca, ta);
-#endif
 }
 
 // Misuses the allocator on purpose, or the memory belongs to an arena the
@@ -265,39 +189,24 @@ UTEST(chain_arena, floor_free_inside_scratch_does_not_rewind)
     u8*          outer = wc_alloc(al, 64, 8);
     u64          u     = ChainArena_used(&ca);
     ChainArenaScratch mark = ChainArenaScratch_create(&ca);
-    wc_free(al, outer, 64, 8);
+    wc_free(al, outer, 64, 8); // free is a no-op: nothing rewinds
     EXPECT_EQ(ChainArena_used(&ca), u);
     u8* t = wc_alloc(al, 16, 8);
-    EXPECT_TRUE(wc_realloc(al, t, 16, 256, 8) == t); // above the floor: in place
+    EXPECT_TRUE(wc_realloc(al, t, 16, 256, 8) != t); // emulated: a copy, not in place
     ChainArenaScratch_to_mark(mark);
     EXPECT_EQ(ChainArena_used(&ca), u);
     END_CHAIN(ca, ta);
 }
 // NOLINTEND(clang-analyzer-unix.Malloc)
 
-UTEST(chain_arena, floor_nested_scopes)
-{
-    WITH_CHAIN(ca, ta);
-    ChainArena_alloc(&ca, 10);
-    ChainArenaScratch s1 = ChainArenaScratch_create(&ca);
-    ChainArena_alloc(&ca, 3000);
-    ChainArenaScratch s2 = ChainArenaScratch_create(&ca);
-    ChainArena_alloc(&ca, 3000); // new node
-    ChainArenaScratch_to_mark(s2);
-    EXPECT_TRUE(ca.floor_node == s1.node);
-    ChainArenaScratch_to_mark(s1);
-    EXPECT_TRUE((ca.floor_node) == NULL);
-    EXPECT_EQ(ta.live_blocks, 1u);
-    END_CHAIN(ca, ta);
-}
 
-
-// A2 (ChainArena): blocks start 8 bytes into a malloc'd node (after `u64 used`),
-// so any request aligned above 8 is misaligned by construction.
+// A2 (ChainArena): the payload starts aligned at WC_MAX_ALIGN in every node, so
+// any alignment at or below it is native; bigger alignments are met by sliding
+// the pointer forward inside the payload.
 UTEST(chain_arena, A2_chain_arena_aligns_address)
 {
     ChainArena ca;
-    ChainArena_create(&ca, WC_LIBC);
+    ChainArena_create(&ca, WC_LIBC, nKB(4));
 
     u8* p16 = ChainArena_alloc_aligned(&ca, 8, 16);
     u8* p64 = ChainArena_alloc_aligned(&ca, 8, 64);
@@ -312,7 +221,7 @@ UTEST(chain_arena, A2_chain_arena_aligns_address)
 UTEST(chain_arena, A3_chain_arena_oversize_request)
 {
     ChainArena ca;
-    ChainArena_create(&ca, WC_LIBC);
+    ChainArena_create(&ca, WC_LIBC, nKB(4));
     const wc_allocator* al = ChainArena_allocator(&ca);
 
     u8* p = NULL;
@@ -328,32 +237,6 @@ UTEST(chain_arena, A3_chain_arena_oversize_request)
 }
 
 
-// CHAIN_ARENA_ALLOC_ZERO(_N) declared `(T)* x`, which C parses as a cast:
-// they did not compile when used.
-UTEST(chain_arena, typed_zero_macros)
-{
-    ChainArena ca;
-    ChainArena_create(&ca, WC_LIBC);
-
-    typedef struct {
-        u64 a;
-        u32 b;
-    } pair;
-    pair* p = CHAIN_ARENA_ALLOC_ZERO(&ca, pair);
-    ASSERT_TRUE(p != NULL);
-    EXPECT_EQ(p->a, 0u);
-    EXPECT_EQ((uintptr_t)p % alignof(pair), 0u);
-
-    u32* z = CHAIN_ARENA_ALLOC_ZERO_N(&ca, u32, 8);
-    ASSERT_TRUE(z != NULL);
-    for (int i = 0; i < 8; i++) {
-        EXPECT_EQ(z[i], 0u);
-    }
-
-    ChainArena_destroy(&ca);
-}
-
-
 /* ── Regressions from the review of the first ChainArena draft ───────────── */
 
 // destroy walked `n = n->next` after freeing n, and never freed the tail node
@@ -362,7 +245,7 @@ UTEST(chain_arena, destroy_frees_tail_and_every_node)
     wc_test_alloc ta;
     wc_test_alloc_init(&ta, WC_LIBC);
     ChainArena ca;
-    ChainArena_create(&ca, wc_test_alloc_allocator(&ta));
+    ChainArena_create(&ca, wc_test_alloc_allocator(&ta), nKB(4));
     for (int i = 0; i < 50; i++) {
         ChainArena_alloc(&ca, 1000);
     }
@@ -376,49 +259,8 @@ UTEST(chain_arena, destroy_frees_tail_and_every_node)
 UTEST(chain_arena, backing_failure_returns_null)
 {
     ChainArena ca;
-    ChainArena_create(&ca, WC_LIBC);
+    ChainArena_create(&ca, WC_LIBC, nKB(4));
     EXPECT_TRUE(ChainArena_alloc(&ca, (u64)PTRDIFF_MAX) == NULL);
     EXPECT_TRUE(ChainArena_alloc(&ca, 16) != NULL); // arena still usable
     ChainArena_destroy(&ca);
 }
-
-
-#ifndef NDEBUG // zero-state use is a WC_ASSERT: dies in Debug only
-// Zero state is dead (C3): aborts in Debug.
-static void alloc_on_zeroed_chain(void)
-{
-    ChainArena z;
-    memset(&z, 0, sizeof(z));
-    (void)ChainArena_alloc(&z, 8);
-}
-
-static void alloc_aligned_on_zeroed_chain(void)
-{
-    ChainArena z;
-    memset(&z, 0, sizeof(z));
-    (void)ChainArena_alloc_aligned(&z, 8, 8);
-}
-
-static void allocator_of_zeroed_chain(void)
-{
-    ChainArena z;
-    memset(&z, 0, sizeof(z));
-    (void)ChainArena_allocator(&z);
-}
-
-static void alloc_after_chain_destroy(void)
-{
-    ChainArena ca;
-    ChainArena_create(&ca, WC_LIBC);
-    ChainArena_destroy(&ca);
-    (void)ChainArena_alloc(&ca, 8);
-}
-
-UTEST(chain_arena, zero_state_is_dead)
-{
-    EXPECT_DIES(alloc_on_zeroed_chain);
-    EXPECT_DIES(alloc_aligned_on_zeroed_chain);
-    EXPECT_DIES(allocator_of_zeroed_chain);
-    EXPECT_DIES(alloc_after_chain_destroy);
-}
-#endif

@@ -1,3 +1,9 @@
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h> // before utest.h so its QueryPerformanceCounter stubs see _WINDOWS_
+#endif
+
 #include "arena.h"
 #include "chain_arena.h"
 #include "common.h"
@@ -6,13 +12,26 @@
 
 #include <stdint.h>
 #include <string.h>
+#ifndef _WIN32
 #include <unistd.h>
+#endif
+
+static u64 test_page_size(void)
+{
+#ifdef _WIN32
+    SYSTEM_INFO si;
+    GetSystemInfo(&si);
+    return si.dwPageSize;
+#else
+    return (u64)sysconf(_SC_PAGESIZE);
+#endif
+}
 
 UTEST(mmap, alloc_is_usable_zeroed_and_freed)
 {
     u8* p = wc_alloc(WC_MMAP, 10000, 8);
     ASSERT_TRUE(p != NULL);
-    EXPECT_EQ((uintptr_t)p % (uintptr_t)sysconf(_SC_PAGESIZE), 0u);
+    EXPECT_EQ((uintptr_t)p % test_page_size(), 0u);
     for (int i = 0; i < 10000; i++) {
         ASSERT_EQ(p[i], 0); // anonymous pages are zero-filled
     }
@@ -66,7 +85,7 @@ UTEST(mmap, arena_on_mmap_reserves_and_unmaps)
 UTEST(mmap, chain_arena_on_mmap_frees_every_node)
 {
     ChainArena ca;
-    ChainArena_create(&ca, WC_MMAP);
+    ChainArena_create(&ca, WC_MMAP, nKB(4));
     for (int i = 0; i < 200; i++) {
         u8* p = ChainArena_alloc(&ca, 1000);
         ASSERT_TRUE(p != NULL);

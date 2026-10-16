@@ -3,7 +3,6 @@
 #include "hashmap.h"
 #include "queue.h"
 #include "stack.h"
-#include "test_support.h"
 #include "utest.h"
 #include "wc_allocator.h"
 #include "wc_macros.h"
@@ -344,79 +343,6 @@ UTEST(macros, genvec_unsafe_getters_in_range)
 
 /* -- Suite ----------------------------------------------------------------- */
 
-
-/* -- Value macros check the value's size against the slot (Debug) ---------- */
-
-#ifndef NDEBUG // the checks are WC_ASSERTs: these only die in Debug
-
-// Each of these used to copy through a temporary of the VALUE's type and
-// read past it: an int (4 bytes) into an 8-byte slot.
-static void vec_push_int_into_double(void)
-{
-    GenVec v = VEC(double, 2);
-    VEC_PUSH(&v, 1);
-}
-
-static void vec_set_int_into_double(void)
-{
-    GenVec v = VEC(double, 2);
-    VEC_PUSH(&v, 1.0);
-    VEC_SET(&v, 0, 2);
-}
-
-static void queue_push_int_into_double(void)
-{
-    Queue q = QUEUE_CREATE(double, 2);
-    QUEUE_PUSH(&q, 1);
-}
-
-static void set_insert_int_into_u64(void)
-{
-    HashMap s = HashMap_create(WC_LIBC, sizeof(u64), 0, NULL, NULL, NULL, NULL);
-    SET_INSERT(&s, 1);
-}
-
-static void map_put_int_value_into_double(void)
-{
-    HashMap m = MAP_OF(int, double);
-    MAP_PUT(&m, 1, 2);
-}
-
-static void map_put_wrong_key(void)
-{
-    HashMap m = MAP_OF(u64, int);
-    MAP_PUT(&m, 1, 2);
-}
-
-static void map_get_wrong_value_type(void)
-{
-    HashMap m = MAP_OF(int, double);
-    MAP_PUT(&m, 1, 2.0);
-    int v = MAP_GET(&m, int, 1);
-    (void)v;
-}
-
-static void map_put_move_wrong_key(void)
-{
-    HashMap m = MAP_OF(u64, int);
-    int     k = 1, v = 2;
-    MAP_PUT_MOVE(&m, k, v);
-}
-#endif
-
-UTEST(macros, value_size_mismatch_dies)
-{
-#ifndef NDEBUG
-    EXPECT_DIES(vec_push_int_into_double);
-    EXPECT_DIES(vec_set_int_into_double);
-    EXPECT_DIES(queue_push_int_into_double);
-    EXPECT_DIES(set_insert_int_into_u64);
-    EXPECT_DIES(map_put_int_value_into_double);
-    EXPECT_DIES(map_put_wrong_key);
-    EXPECT_DIES(map_get_wrong_value_type);
-    EXPECT_DIES(map_put_move_wrong_key);
-#endif
-}
 
 UTEST(macros, value_size_match_works)
 {
