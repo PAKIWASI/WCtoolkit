@@ -158,10 +158,10 @@ WC_NONULL(2) static inline bool StrView_equals_cstr(StrView sv, const char* cstr
 // all strings in the store are null terminated
 typedef struct {
     ChainArena store;
-    HashMap    interned;         // StrView -> {} (a set)
+    HashMap*   interned;         // StrView -> {} (a set)
     bool       interning_active; // optional
-    // probe the set, return the existing view if found, else alloc + insert. a deduped store must be append-only.
-    // This makes interning O(1) amortized and idempotent,StringStore_intern_cstr(&ss, "x") returns the same pointer every time.
+    // probe the set, return the existing view if found, else alloc + insert. a deduped store must be append-only
+    // This makes interning O(1) amortized and idempotent,StringStore_intern_cstr(&ss, "x") returns the same pointer every time
 } StringStore;
 
 WC_NONULL(1, 2) void StringStore_create(StringStore* ss, const wc_allocator* backing, u64 block_cap, bool intern);
