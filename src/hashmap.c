@@ -1,6 +1,7 @@
 #include "hashmap.h"
 #include "common.h"
 #include "wc_allocator.h"
+#include "wc_comp.h"
 #include "wc_hash.h"
 
 #include <stdio.h>

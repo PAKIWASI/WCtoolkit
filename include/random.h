@@ -2,6 +2,7 @@
 #define RANDOM_H
 
 #include "common.h"
+#include "wc_comp.h"
 
 /*
     This Implimentation is Based on:

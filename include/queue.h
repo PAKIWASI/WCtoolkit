@@ -4,6 +4,7 @@
 #include "common.h"
 #include "gen_vector.h"
 #include "wc_allocator.h"
+#include "wc_comp.h"
 
 
 /* Circular queue over a GenVec buffer.
@@ -32,8 +33,7 @@ _Static_assert(sizeof(Queue) == 64, "Queue size mismatch");
 #endif
 
 
-Queue Queue_create(const wc_allocator* a, u64 n, u32 data_size, const wc_container_ops* ops)
-    wc_nonull(1) wc_nodiscard;
+Queue Queue_create(const wc_allocator* a, u64 n, u32 data_size, const wc_container_ops* ops) wc_nonull(1) wc_nodiscard;
 Queue Queue_create_val(const wc_allocator* a, u64 n, const void* val, u32 data_size, const wc_container_ops* ops)
     wc_nonull(1, 3) wc_nodiscard;
 

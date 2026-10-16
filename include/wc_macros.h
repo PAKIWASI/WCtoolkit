@@ -12,6 +12,7 @@
 #include "stack.h"
 #include "views.h"
 #include "wc_allocator.h"
+#include "wc_comp.h"
 #include "wc_helpers.h"
 #include "wc_string.h"
 

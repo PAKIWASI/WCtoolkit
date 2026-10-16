@@ -1,6 +1,7 @@
 #include "wc_string.h"
 #include "common.h"
 #include "wc_allocator.h"
+#include "wc_comp.h"
 
 #include <stdio.h>
 #include <string.h>

@@ -3,6 +3,7 @@
 
 #include "common.h"
 #include "wc_allocator.h"
+#include "wc_comp.h"
 
 /*          TLDR
  * GenVec is a value-based generic vector.

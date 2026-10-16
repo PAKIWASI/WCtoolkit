@@ -4,6 +4,7 @@
 #include "common.h"
 #include "gen_vector.h"
 #include "wc_allocator.h"
+#include "wc_comp.h"
 
 
 // BitVec embeds a GenVec<u8> directly (no heap shell).

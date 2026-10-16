@@ -4,13 +4,13 @@
 #include "common.h"
 #include "gen_vector.h"
 #include "wc_allocator.h"
+#include "wc_comp.h"
 
 
 // Stack is just a thin wrapper around GenVec
 typedef GenVec Stack;
 
-Stack Stack_create(const wc_allocator* a, u64 n, u32 data_size, const wc_container_ops* ops)
-    wc_nodiscard;
+Stack Stack_create(const wc_allocator* a, u64 n, u32 data_size, const wc_container_ops* ops) wc_nodiscard;
 Stack Stack_create_val(const wc_allocator* a, u64 n, const void* val, u32 data_size, const wc_container_ops* ops)
     wc_nonull(3) wc_nodiscard;
 

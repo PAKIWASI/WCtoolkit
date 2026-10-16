@@ -3,6 +3,7 @@
 
 #include "common.h"
 #include "wc_allocator.h"
+#include "wc_comp.h"
 
 
 /* ChainArena: an arena that never runs out.

@@ -2,6 +2,7 @@
 #include "common.h"
 #include "gen_vector.h"
 #include "wc_allocator.h"
+#include "wc_comp.h"
 #include "wc_errno.h"
 
 #include <stdio.h>

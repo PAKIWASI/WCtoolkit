@@ -4,6 +4,7 @@
 #include "common.h"
 #include "gen_vector.h"
 #include "wc_allocator.h"
+#include "wc_comp.h"
 
 
 /* Priority Queue

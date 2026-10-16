@@ -5,6 +5,7 @@
 #include "common.h"
 #include "hashmap.h"
 #include "wc_allocator.h"
+#include "wc_comp.h"
 #include "wc_hash.h"
 #include "wc_string.h"
 #include <stdio.h>

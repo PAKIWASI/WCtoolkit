@@ -2,6 +2,7 @@
 #define WC_HASH_H
 
 #include "common.h"
+#include "wc_comp.h"
 #include <string.h>
 
 
