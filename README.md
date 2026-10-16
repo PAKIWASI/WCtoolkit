@@ -13,10 +13,6 @@ int main(void)
     VEC_FOREACH(&names, String, s) { String_append_char(s, '!'); }
     GenVec_destroy(&names);                      // destroys the Strings, then the buffer
 
-    ARENA_SCOPE(tmp, nKB(4)) {                   // same code on an arena, no destroys
-        GenVec words = VEC_OF_IN(tmp, String, 8);
-        VEC_PUSH_CSTR(&words, "scratch");
-    }
     return 0;
 }
 ```

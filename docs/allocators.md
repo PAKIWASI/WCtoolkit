@@ -27,7 +27,6 @@ Three rules come with the pointer:
 | libc | `WC_LIBC` | Yes | Default. Long-lived data with independent lifetimes. |
 | `Arena` | `Arena_allocator(&arena)` | Last block only | Many allocations that die together, and you know the upper bound. |
 | `ChainArena` | `ChainArena_allocator(&ca)` | Last block only | Same, but the total size is unknown. Grows by adding nodes. |
-| `ARENA_SCOPE` | `ARENA_SCOPE(name, cap) { ... }` | When the block exits | Per-request or per-frame scratch work. |
 | borrowed | `WC_BORROWED` | Never | Wrapping memory you own: `GenVec_create_buf`, `matrix_create_buf`. |
 | test | `wc_test_alloc_allocator(&ta)` | Yes | Tests. Checks leaks, double frees and free sizes. |
 
@@ -104,7 +103,7 @@ The same model, but it never runs out: when a node fills, it allocates another f
 - Each node is `CHAIN_ARENA_NODE_SIZE` bytes (4 KB by default), header included.
 - A request larger than a node gets a dedicated node sized to fit.
 - `ChainArena_reset` frees every node except the first, which is emptied. `ChainArena_clear` empties every node but keeps them all for reuse.
-- `CHAIN_ARENA_SCRATCH(&ca) { ... }` works like `ARENA_SCRATCH`, and also frees nodes appended inside the block.
+- `ChainArenaScratch_create(&ca)` marks a position, `ChainArenaScratch_to_mark(scratch)` rolls back to it — and frees the nodes appended after the mark.
 
 ## Lifetimes
 
@@ -112,7 +111,6 @@ The same model, but it never runs out: when a node fills, it allocates another f
 |---|---|
 | libc | You call `X_destroy` |
 | `Arena` / `ChainArena` | The arena is reset or destroyed, whether or not you call `X_destroy` |
-| `ARENA_SCOPE` | The block exits |
 | borrowed | The buffer you passed goes out of scope |
 
 A container built on an arena must not outlive the arena. To keep a result, deep-copy it into a longer-lived allocator first. Copies never inherit the source's allocator, and nested elements follow the copy:
@@ -123,13 +121,15 @@ A container built on an arena must not outlive the arena. To keep a result, deep
 
 static GenVec build_names(void)
 {
-    GenVec result = {0};
-    ARENA_SCOPE(tmp, nKB(16)) {
-        GenVec names = VEC_OF_IN(tmp, String, 8);
-        VEC_PUSH_CSTR(&names, "kept");
-        result = GenVec_copy(WC_LIBC, &names);   // every String is copied into libc
-    }                                            // the arena and `names` die here
-    return result;
+    Arena tmp;
+    Arena_create(&tmp, WC_LIBC, nKB(16));
+
+    GenVec names  = VEC_OF_IN(Arena_allocator(&tmp), String, 8);
+    VEC_PUSH_CSTR(&names, "kept");
+    GenVec result = GenVec_copy(WC_LIBC, &names);   // every String is copied into libc
+
+    Arena_destroy(&tmp);                            // the arena and `names` die here
+    return result;                                  // the libc copy survives
 }
 
 int main(void)
@@ -140,11 +140,9 @@ int main(void)
 }
 ```
 
-## Scopes
+## Scratch (rollback)
 
-`ARENA_SCOPE(name, cap)` creates a libc-backed arena, exposes it inside the block as `const wc_allocator* name`, and destroys it when the block exits by any route. `break` leaves the scope. Scopes nest.
-
-`ARENA_SCRATCH(&arena)` rolls back everything allocated inside the block, and the arena survives:
+`ArenaScratch` and `ChainArenaScratch` mark a position in an arena and roll everything after that mark back. The arena survives the rollback; this is the per-request / per-frame discard pattern.
 
 ```c
 #include "arena.h"
@@ -153,12 +151,12 @@ int main(void)
 {
     Arena arena;
     Arena_create(&arena, WC_LIBC, nKB(4));
-    char* kept = ARENA_ALLOC_N(&arena, char, 64);
+    char* kept = ARENA_ALLOC_N(&arena, char, 64);       // survives the rollback
 
-    ARENA_SCRATCH(&arena) {
-        char* tmp = ARENA_ALLOC_N(&arena, char, 1024);   // rolled back on exit
-        (void)tmp;
-    }
+    ArenaScratch scratch = ArenaScratch_create(&arena);
+    char* tmp = ARENA_ALLOC_N(&arena, char, 1024);      // rolled back
+    (void)tmp;
+    ArenaScratch_to_mark(scratch);                      // `arena` is as it was at the mark
 
     (void)kept;                                         // still valid
     Arena_destroy(&arena);
@@ -166,9 +164,11 @@ int main(void)
 }
 ```
 
-**Never grow a block created before a scratch scope from inside that scope.** Grown in place, the rollback would cut it short. Copied instead, the new block would be scratch memory and would dangle after the scope. Debug builds stop with an error when this happens. Shrinking or freeing a pre-scope block is safe.
+On a `ChainArena` the marks are the same, plus a bonus: `ChainArenaScratch_to_mark` also frees the whole nodes appended after the mark, not just the bytes inside the current one.
 
-The manual form is `ArenaScratch s = Arena_scratch_begin(&arena); ... Arena_scratch_end(s);`. Scopes must end in the reverse order they started.
+**Never grow a block created before a scratch mark from inside the scratch region.** Grown in place, the rollback would cut it short. Copied instead, the new block would be scratch memory and would dangle after the rollback. Debug builds stop with an error when this happens. Shrinking or freeing a pre-mark block is safe.
+
+Nested scratches: roll them back in the reverse order they started.
 
 ## Pinned arenas
 
@@ -233,5 +233,3 @@ int main(void)
     return c.live == 0 ? 0 : 1;        // every byte came back
 }
 ```
-
-See [`examples/allocators.c`](../examples/allocators.c) for a stack-buffer arena, a scoped arena with nested containers, and an escape copy, end to end.

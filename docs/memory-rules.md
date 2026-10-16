@@ -19,7 +19,7 @@ Every rule the toolkit follows about allocation, copying, moving and lifetimes, 
 | A9 | Every element buffer is aligned for its element: `wc_align_for_size(elm_size)`. | All containers |
 | A10 | Typed helpers: `WC_NEW`, `WC_NEW_N` take a type; `WC_FREE`, `WC_FREE_N`, `WC_REALLOC_N` take the pointer and derive size and align from it. | `wc_allocator.h` |
 | A11 | `Arena` and `ChainArena` are pinned: never moved or copied after create. | Debug: `self.ctx == arena` on every call |
-| A12 | An arena reallocs and frees only its last block, in place. A block created before a scratch scope never grows inside it. | Arena floor, Debug assert |
+| A12 | An arena reallocs and frees only its last block, in place. A block created before a scratch mark never grows inside the scratch region. | Arena floor, Debug assert |
 | A13 | A container on an arena must not outlive the arena. To escape, deep-copy into a longer-lived allocator. | Documentation |
 | A14 | A copy never inherits the source's allocator. The destination allocator is always an explicit argument. | `X_copy(alloc, &src)` |
 | A15 | Nested elements follow their parent: `copy_fn` receives the destination container's allocator. | `wc_copy_fn` signature |

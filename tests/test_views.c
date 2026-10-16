@@ -20,321 +20,490 @@ static int sv_equals_cstr(StrView sv, const char* cstr)
     if (sv.len != clen) {
         return 0;
     }
-    return memcmp(sv.ptr, cstr, clen) == 0;
+    return (sv.len == 0 || memcmp(sv.data, cstr, clen) == 0) != 0;
 }
 
 
-// Small Strings share one node until it's full
+// Creation
 
-UTEST(views, small_Strings_share_node)
+// A view over a cstr borrows the memory, never copies
+
+UTEST(views, over_cstr_borrows)
 {
-    StringStore ss = StringStore_create(WC_LIBC);
+    const char* text = "borrowed";
+    StrView     sv   = StrView_over_cstr(text, 3);
 
-    StrView a = StringStore_cstr(&ss, "hello", 5);
-    StrView b = StringStore_cstr(&ss, "world", 5);
-
-    EXPECT_TRUE(sv_equals_cstr(a, "hello"));
-    EXPECT_TRUE(sv_equals_cstr(b, "world"));
-    EXPECT_EQ(ss.num, 1u); // both fit in the initial node
-    EXPECT_EQ(ss.tail_off, 10u);
-
-    StringStore_destroy(&ss);
+    EXPECT_EQ(sv.len, 3u);
+    EXPECT_TRUE(sv.data == text);
+    EXPECT_TRUE(sv_equals_cstr(sv, "bor"));
+    EXPECT_TRUE(StrView_equals_cstr(sv, "bor"));
 }
 
-
-// A String exactly filling a node must not spill into a new node
-
-UTEST(views, exact_fit_no_new_node)
-{
-    StringStore ss = StringStore_create(WC_LIBC);
-
-    char big[StringStore_NODE_SIZE];
-    memset(big, 'A', sizeof(big));
-
-    StrView v = StringStore_cstr(&ss, big, StringStore_NODE_SIZE);
-
-    EXPECT_EQ(v.len, (u64)(StringStore_NODE_SIZE));
-    EXPECT_TRUE(v.ptr[0] == 'A');
-    EXPECT_EQ(ss.num, 1u); // fits exactly, no extra node
-    EXPECT_EQ(ss.tail_off, (u64)(StringStore_NODE_SIZE));
-
-    // next String must go to a fresh node, not overflow the full one
-    StrView s = StringStore_cstr(&ss, "hi", 2);
-    EXPECT_TRUE(sv_equals_cstr(s, "hi"));
-    EXPECT_TRUE(s.ptr != v.ptr);
-    EXPECT_EQ(ss.num, 2u);
-
-    StringStore_destroy(&ss);
-}
-
-
-// One byte over the limit goes to a heap-owned overflow node
-// (pre-fix this silently overflowed the fixed-size node buffer — UB)
-
-UTEST(views, overflow_by_one_goes_to_heap)
-{
-    StringStore ss = StringStore_create(WC_LIBC);
-
-    char big[StringStore_NODE_SIZE + 1];
-    memset(big, 'B', sizeof(big));
-
-    StrView v = StringStore_cstr(&ss, big, StringStore_NODE_SIZE + 1);
-
-    EXPECT_EQ(v.len, (u64)(StringStore_NODE_SIZE + 1));
-    EXPECT_TRUE(v.ptr[0] == 'B');
-    EXPECT_TRUE(v.ptr[StringStore_NODE_SIZE] == 'B');
-    EXPECT_EQ(ss.num, 3u); // initial node + overflow node + fresh tail
-    // The overflow node is pushed at the head and owns a heap buffer,
-    // so its flag byte is 0 (heap active) and the view points into it.
-    EXPECT_TRUE(ss.head->buf[StringStore_NODE_SIZE] == 0);
-    EXPECT_TRUE(v.ptr == ss.head->heap);
-
-    StringStore_destroy(&ss); // must free the heap buffer too
-}
-
-
-// Way larger than a node
-
-UTEST(views, overflow_way_past_node)
-{
-    StringStore ss = StringStore_create(WC_LIBC);
-
-    u64   big_len = (StringStore_NODE_SIZE * 3) + 7;
-    char* big     = malloc(big_len);
-    EXPECT_TRUE((big) != NULL);
-    memset(big, 'C', big_len);
-
-    StrView v = StringStore_cstr(&ss, big, big_len);
-
-    EXPECT_EQ(v.len, big_len);
-    EXPECT_TRUE(v.ptr[0] == 'C');
-    EXPECT_TRUE(v.ptr[big_len - 1] == 'C');
-    EXPECT_EQ(ss.num, 3u);
-    EXPECT_EQ(ss.tail_off, 0u);
-
-    free(big);
-    StringStore_destroy(&ss);
-}
-
-
-// Many overflows: views must stay intact and must not alias each other
-
-UTEST(views, multiple_overflows_keep_content)
-{
-    StringStore ss = StringStore_create(WC_LIBC);
-
-    enum { OVER_N = 4, OVER_LEN = StringStore_NODE_SIZE + 5 };
-    char buf[OVER_LEN];
-    memset(buf, 'D', sizeof(buf));
-
-    StrView views[OVER_N];
-    for (int i = 0; i < OVER_N; i++) {
-        views[i] = StringStore_cstr(&ss, buf, OVER_LEN);
-    }
-
-    for (int i = 0; i < OVER_N; i++) {
-        EXPECT_EQ(views[i].len, (u64)(OVER_LEN));
-        EXPECT_TRUE(views[i].ptr[0] == 'D');
-        EXPECT_TRUE(views[i].ptr[OVER_LEN - 1] == 'D');
-    }
-    for (int i = 0; i < OVER_N; i++) {
-        for (int j = i + 1; j < OVER_N; j++) {
-            EXPECT_TRUE(views[i].ptr != views[j].ptr);
-        }
-    }
-
-    // each overflow adds its own node + a fresh tail
-    EXPECT_EQ(ss.num, (u64)(1 + (2 * OVER_N)));
-
-    StringStore_destroy(&ss);
-}
-
-
-// Small Strings after an overflow land in the fresh tail node
-
-UTEST(views, small_after_overflow_appends_to_tail)
-{
-    StringStore ss = StringStore_create(WC_LIBC);
-
-    char big[StringStore_NODE_SIZE + 3];
-    memset(big, 'E', sizeof(big));
-    (void)StringStore_cstr(&ss, big, sizeof(big));
-
-    StrView small = StringStore_cstr(&ss, "tail", 4);
-    EXPECT_TRUE(sv_equals_cstr(small, "tail"));
-    EXPECT_TRUE(small.ptr != ss.head->heap); // in a node buf, not the overflow heap buffer
-    EXPECT_EQ(ss.tail_off, 4u);
-
-    StringStore_destroy(&ss);
-}
-
-
-// Destroy must tolerate overflow nodes anywhere in the chain
-// (ASan catches double-free / mismatched-free if the union is mishandled)
-
-UTEST(views, destroy_mixed_chain)
-{
-    StringStore ss = StringStore_create(WC_LIBC);
-
-    (void)StringStore_cstr(&ss, "one", 3);
-
-    char big[StringStore_NODE_SIZE + 9];
-    memset(big, 'F', sizeof(big));
-    (void)StringStore_cstr(&ss, big, sizeof(big));
-
-    (void)StringStore_cstr(&ss, "two", 3);
-    (void)StringStore_cstr(&ss, big, sizeof(big));
-    (void)StringStore_cstr(&ss, "three", 5);
-
-    EXPECT_EQ(ss.num, 5u); // 1 + 2 per overflow
-
-    StringStore_destroy(&ss);
-}
-
-
-// StrView_from_String sanity (same header)
-
-UTEST(views, strview_from_String)
+UTEST(views, over_String)
 {
     String  s  = String_from_cstr(WC_LIBC, "viewme");
-    StrView sv = StrView_from_String(&s);
+    StrView sv = StrView_over_String(&s);
+
+    EXPECT_EQ(sv.len, String_len(&s));
+    EXPECT_TRUE(sv.data == String_data_ptr(&s));
     EXPECT_TRUE(sv_equals_cstr(sv, "viewme"));
-    EXPECT_EQ(sv.len, 6u);
+
+    String_destroy(&s);
+}
+
+// A window over the middle of a String; offset == len gives an empty view
+
+UTEST(views, over_String_ex_window)
+{
+    String s = String_from_cstr(WC_LIBC, "hello world");
+
+    StrView mid = StrView_over_String_ex(&s, 6, 5);
+    EXPECT_TRUE(sv_equals_cstr(mid, "world"));
+
+    StrView empty = StrView_over_String_ex(&s, String_len(&s), 0);
+    EXPECT_EQ(empty.len, 0u);
+
     String_destroy(&s);
 }
 
 
-// StrView_from_cstr never allocates; StrView_copy_cstr owns a terminated copy
+// Slicing
 
-UTEST(views, strview_from_cstr_borrows)
+UTEST(views, slice_prefix_suffix)
 {
-    const char* text = "borrowed";
-    StrView     sv   = StrView_from_cstr(text, 3);
-    EXPECT_TRUE(sv.ptr == text);
-    EXPECT_TRUE(sv_equals_cstr(sv, "bor"));
+    StrView sv = StrView_over_cstr("abcdef", 6);
+
+    StrView mid = StrView_slice(sv, 1, 3);
+    EXPECT_TRUE(sv_equals_cstr(mid, "bcd"));
+    EXPECT_TRUE(mid.data == sv.data + 1);
+
+    StrView pfx = StrView_prefix(sv, 2);
+    EXPECT_TRUE(sv_equals_cstr(pfx, "ab"));
+    EXPECT_TRUE(pfx.data == sv.data);
+
+    StrView sfx = StrView_suffix(sv, 3);
+    EXPECT_TRUE(sv_equals_cstr(sfx, "def"));
+    EXPECT_TRUE(sfx.data == sv.data + 3);
 }
 
-UTEST(views, strview_copy_cstr_terminates_and_frees)
+// Degenerate windows still work: whole view and empty view
+
+UTEST(views, slice_degenerate_bounds)
+{
+    StrView sv = StrView_over_cstr("abcdef", 6);
+
+    EXPECT_TRUE(sv_equals_cstr(StrView_slice(sv, 0, 6), "abcdef"));
+    EXPECT_TRUE(sv_equals_cstr(StrView_prefix(sv, 6), "abcdef"));
+    EXPECT_EQ(StrView_prefix(sv, 6).len, 6u);
+    EXPECT_EQ(StrView_prefix(sv, 0).len, 0u);
+    EXPECT_EQ(StrView_suffix(sv, 6).len, 0u);
+    EXPECT_EQ(StrView_slice(sv, 6, 0).len, 0u);
+}
+
+
+// Trim: whitespace is always active; `set` only adds extra trimmable chars
+
+UTEST(views, trim_default_whitespace)
+{
+    EXPECT_TRUE(sv_equals_cstr(StrView_trim(StrView_over_cstr(" \t hi \n ", 8), NULL, 0), "hi"));
+    EXPECT_TRUE(sv_equals_cstr(StrView_trim(StrView_over_cstr("  hi there  ", 12), NULL, 0), "hi there"));
+    EXPECT_TRUE(sv_equals_cstr(StrView_trim(StrView_over_cstr("   ", 3), NULL, 0), ""));
+    EXPECT_TRUE(sv_equals_cstr(StrView_trim(StrView_over_cstr("", 0), NULL, 0), ""));
+    EXPECT_TRUE(sv_equals_cstr(StrView_trim(StrView_over_cstr("no-trim", 7), NULL, 0), "no-trim"));
+    // all six ASCII whitespace chars: \t \n \v \f \r space
+    EXPECT_TRUE(sv_equals_cstr(StrView_trim(StrView_over_cstr("\t\n\v\f\r ", 6), NULL, 0), ""));
+}
+
+// Left and right trim half of the job each
+
+UTEST(views, trim_left_right_split)
+{
+    StrView sv = StrView_over_cstr("  ab  ", 6);
+
+    EXPECT_TRUE(sv_equals_cstr(StrView_trim_left(sv, NULL, 0), "ab  "));
+    EXPECT_TRUE(sv_equals_cstr(StrView_trim_right(sv, NULL, 0), "  ab"));
+}
+
+UTEST(views, trim_custom_set)
+{
+    StrView path = StrView_over_cstr("///about.html///", 16);
+
+    EXPECT_TRUE(sv_equals_cstr(StrView_trim(path, "/", 1), "about.html"));
+    EXPECT_TRUE(sv_equals_cstr(StrView_trim_left(path, "/", 1), "about.html///"));
+    EXPECT_TRUE(sv_equals_cstr(StrView_trim_right(path, "/", 1), "///about.html"));
+
+    // defaults still active together with the set
+    EXPECT_TRUE(sv_equals_cstr(StrView_trim(StrView_over_cstr(" \t/\tab/ \t", 9), "/", 1), "ab"));
+
+    // set non-null but len 0: only the defaults are active
+    EXPECT_TRUE(sv_equals_cstr(StrView_trim(StrView_over_cstr(" a ", 3), "x", 0), "a"));
+
+    // set chars that never match: only the always-active whitespace is trimmed
+    EXPECT_TRUE(sv_equals_cstr(StrView_trim(StrView_over_cstr("  keep  ", 8), "yz", 2), "keep"));
+}
+
+
+// Search
+
+UTEST(views, find)
+{
+    StrView sv = StrView_over_cstr("banana", 6);
+
+    EXPECT_EQ(StrView_find(sv, StrView_over_cstr("na", 2)), 2u);
+    EXPECT_EQ(StrView_find(sv, StrView_over_cstr("ban", 3)), 0u);
+    EXPECT_EQ(StrView_find(sv, StrView_over_cstr("banana", 6)), 0u);
+    EXPECT_EQ(StrView_find(sv, StrView_over_cstr("xyz", 3)), WC_NOT_FOUND);
+    EXPECT_EQ(StrView_find(sv, StrView_over_cstr("ana", 3)), 3u); // match exactly at the end
+    EXPECT_EQ(StrView_find(sv, StrView_over_cstr("banana_", 7)), WC_NOT_FOUND); // longer than the view
+    EXPECT_EQ(StrView_find(sv, StrView_over_cstr("", 0)), 0u); // empty needle matches at 0
+}
+
+UTEST(views, find_char)
+{
+    StrView sv = StrView_over_cstr("banana", 6);
+
+    EXPECT_EQ(StrView_find_char(sv, 'a'), 1u); // first occurrence
+    EXPECT_EQ(StrView_find_char(sv, 'n'), 2u);
+    EXPECT_EQ(StrView_find_char(sv, 'z'), WC_NOT_FOUND);
+    EXPECT_EQ(StrView_find_char(StrView_over_cstr("", 0), 'a'), WC_NOT_FOUND);
+}
+
+UTEST(views, starts_ends_contains)
+{
+    StrView sv = StrView_over_cstr("hello world", 11);
+
+    EXPECT_TRUE(StrView_starts_with(sv, StrView_over_cstr("hell", 4)));
+    EXPECT_TRUE(StrView_starts_with(sv, StrView_over_cstr("hello world", 11)));
+    EXPECT_TRUE(StrView_starts_with(sv, StrView_over_cstr("", 0)));
+    EXPECT_FALSE(StrView_starts_with(sv, StrView_over_cstr("hello world!", 12)));
+
+    EXPECT_TRUE(StrView_ends_with(sv, StrView_over_cstr("rld", 3)));
+    EXPECT_TRUE(StrView_ends_with(sv, StrView_over_cstr("hello world", 11)));
+    EXPECT_FALSE(StrView_ends_with(sv, StrView_over_cstr("x", 1)));
+
+    EXPECT_TRUE(StrView_contains(sv, StrView_over_cstr("lo wo", 5)));
+    EXPECT_TRUE(StrView_contains(sv, StrView_over_cstr("", 0)));
+    EXPECT_FALSE(StrView_contains(sv, StrView_over_cstr("xyz", 3)));
+}
+
+
+// Parse: whole view, digits only, target-type range
+
+UTEST(views, parse_u8_u16)
+{
+    u8 v8 = 0;
+    EXPECT_TRUE(StrView_parse_u8(StrView_over_cstr("255", 3), &v8));
+    EXPECT_EQ(v8, 255u);
+    EXPECT_TRUE(StrView_parse_u8(StrView_over_cstr("0", 1), &v8));
+    EXPECT_EQ(v8, 0u);
+    EXPECT_TRUE(StrView_parse_u8(StrView_over_cstr("007", 3), &v8)); // leading zeros allowed
+    EXPECT_EQ(v8, 7u);
+    EXPECT_FALSE(StrView_parse_u8(StrView_over_cstr("256", 3), &v8)); // overflow
+
+    u16 v16 = 0;
+    EXPECT_TRUE(StrView_parse_u16(StrView_over_cstr("65535", 5), &v16));
+    EXPECT_EQ(v16, 65535u);
+    EXPECT_FALSE(StrView_parse_u16(StrView_over_cstr("65536", 5), &v16));
+}
+
+UTEST(views, parse_u32_u64)
+{
+    u32 v32 = 0;
+    EXPECT_TRUE(StrView_parse_u32(StrView_over_cstr("4294967295", 10), &v32));
+    EXPECT_EQ(v32, 4294967295u);
+    EXPECT_FALSE(StrView_parse_u32(StrView_over_cstr("4294967296", 10), &v32));
+
+    u64 v64 = 0;
+    EXPECT_TRUE(StrView_parse_u64(StrView_over_cstr("18446744073709551615", 20), &v64));
+    EXPECT_EQ(v64, UINT64_MAX); // no wraparound at the top
+    EXPECT_FALSE(StrView_parse_u64(StrView_over_cstr("18446744073709551616", 20), &v64));
+}
+
+UTEST(views, parse_rejects_junk_keeps_out)
+{
+    u64 v = 0xABCDEF;
+
+    EXPECT_FALSE(StrView_parse_u64(StrView_over_cstr("", 0), &v)); // empty view
+    EXPECT_FALSE(StrView_parse_u64(StrView_over_cstr(" ", 1), &v));     // whitespace is not trimmed
+    EXPECT_FALSE(StrView_parse_u64(StrView_over_cstr(" 12", 3), &v));   // leading space
+    EXPECT_FALSE(StrView_parse_u64(StrView_over_cstr("12 ", 3), &v));   // trailing space
+    EXPECT_FALSE(StrView_parse_u64(StrView_over_cstr("+12", 3), &v));   // no sign
+    EXPECT_FALSE(StrView_parse_u64(StrView_over_cstr("-1", 2), &v));    // no sign
+    EXPECT_FALSE(StrView_parse_u64(StrView_over_cstr("12a", 3), &v));   // trailing junk
+    EXPECT_FALSE(StrView_parse_u64(StrView_over_cstr("a12", 3), &v));   // leading junk
+    EXPECT_FALSE(StrView_parse_u64(StrView_over_cstr("1.5", 3), &v));   // no float
+    EXPECT_FALSE(StrView_parse_u64(StrView_over_cstr("0x10", 4), &v));  // no base prefix
+    EXPECT_FALSE(StrView_parse_u64(StrView_over_cstr("1_2", 3), &v));   // separators
+    EXPECT_EQ(v, 0xABCDEFu); // *out untouched on every failure
+
+    // an invalid view (zero state) parses as false without dereferencing
+    StrView invalid = {0};
+    EXPECT_FALSE(StrView_parse_u64(invalid, &v));
+    EXPECT_EQ(v, 0xABCDEFu);
+}
+
+
+// Conversion
+
+UTEST(views, to_String_copies)
 {
     wc_test_alloc ta;
     wc_test_alloc_init(&ta, WC_LIBC);
     const wc_allocator* al = wc_test_alloc_allocator(&ta);
 
-    // clen shorter than the string: the old Arena path copied clen + 1 bytes
-    // and left cstr[clen] ('l') where the terminator should be
-    StrView sv = StrView_copy_cstr(al, "hello", 3);
-    EXPECT_TRUE(sv_equals_cstr(sv, "hel"));
-    EXPECT_TRUE(sv.ptr[3] == '\0');
-    EXPECT_EQ(ta.live_blocks, 1u);
+    StrView sv = StrView_over_cstr("owned copy", 10);
+    String  s  = StrView_to_String(al, sv);
+    EXPECT_TRUE(String_equals_cstr(&s, "owned copy"));
 
-    StrView_free_copy(al, sv);
+    String_destroy(&s);
+    EXPECT_EQ(wc_test_alloc_destroy(&ta), 0u);
+}
+
+UTEST(views, to_String_empty)
+{
+    StrView empty = StrView_over_cstr("", 0);
+    String  s     = StrView_to_String(WC_LIBC, empty);
+
+    EXPECT_EQ(String_len(&s), 0u);
+    EXPECT_TRUE(String_empty(&s));
+    String_destroy(&s);
+}
+
+UTEST(views, to_cstr_terminates_and_frees)
+{
+    wc_test_alloc ta;
+    wc_test_alloc_init(&ta, WC_LIBC);
+    const wc_allocator* al = wc_test_alloc_allocator(&ta);
+
+    StrView sv = StrView_over_cstr("cat eats", 5);
+    char*   c  = StrView_to_cstr(al, sv);
+
+    EXPECT_TRUE(wc_test_alloc_owns(&ta, c));
+    EXPECT_TRUE(memcmp(c, "cat e", 5) == 0);
+    EXPECT_TRUE(c[5] == '\0'); // terminated at the view's length, not the cstr's
+
+    wc_free(al, c, sv.len + 1, WC_MAX_ALIGN);
     EXPECT_EQ(ta.n_errors, 0u); // size/align matched the alloc
     EXPECT_EQ(wc_test_alloc_destroy(&ta), 0u);
 }
 
-UTEST(views, strview_copy_cstr_on_arena)
+UTEST(views, to_cstr_on_arena)
 {
     Arena arena;
     Arena_create(&arena, WC_LIBC, 256);
-    StrView sv = StrView_copy_cstr(Arena_allocator(&arena), "arena", 5);
-    EXPECT_TRUE((const u8*)sv.ptr >= arena.base && (const u8*)sv.ptr < arena.base + arena.size);
-    EXPECT_TRUE(sv_equals_cstr(sv, "arena"));
-    Arena_destroy(&arena); // view's lifetime ends here
+
+    StrView sv = StrView_over_cstr("arena", 5);
+    char*   c  = StrView_to_cstr(Arena_allocator(&arena), sv);
+
+    EXPECT_TRUE((u8*)c >= arena.base && (u8*)c < arena.base + arena.size);
+    EXPECT_TRUE(sv_equals_cstr(StrView_over_cstr(c, 5), "arena"));
+    EXPECT_TRUE(c[5] == '\0');
+
+    Arena_destroy(&arena); // the cstr's lifetime ends here
+}
+
+// to_buf: plain copy, no terminator; false when the buffer is too small
+
+UTEST(views, to_buf_exact_fit)
+{
+    StrView sv = StrView_over_cstr("12345", 5);
+
+    char buf[8];
+    memset(buf, 0xAA, sizeof(buf));
+
+    EXPECT_TRUE(StrView_to_buf(sv, buf, 5));
+    EXPECT_TRUE(memcmp(buf, "12345", 5) == 0);
+    EXPECT_TRUE((u8)buf[5] == 0xAA); // no terminator written
+    EXPECT_TRUE((u8)buf[7] == 0xAA); // untouched past the view
+}
+
+UTEST(views, to_buf_too_small)
+{
+    StrView sv = StrView_over_cstr("12345", 5);
+
+    char buf[4];
+    memset(buf, 0xAA, sizeof(buf));
+
+    EXPECT_FALSE(StrView_to_buf(sv, buf, 4));
+    EXPECT_TRUE((u8)buf[0] == 0xAA); // nothing was written
+    EXPECT_TRUE((u8)buf[3] == 0xAA);
+}
+
+// cap larger than the view: exactly sv.len bytes copied, the rest untouched
+
+UTEST(views, to_buf_larger_cap)
+{
+    StrView sv = StrView_over_cstr("12345", 5);
+
+    char buf[8];
+    memset(buf, 0xAA, sizeof(buf));
+
+    EXPECT_TRUE(StrView_to_buf(sv, buf, 8));
+    EXPECT_TRUE(memcmp(buf, "12345", 5) == 0);
+    EXPECT_TRUE((u8)buf[5] == 0xAA); // only sv.len bytes moved, no terminator
+    EXPECT_TRUE((u8)buf[7] == 0xAA);
 }
 
 
-// StringStore through the allocator
+// Consumption: take_left / take_right shorten the source view
 
-UTEST(views, StringStore_test_allocator_leak_free)
+UTEST(views, take_left)
 {
-    wc_test_alloc ta;
-    wc_test_alloc_init(&ta, WC_LIBC);
-    const wc_allocator* al = wc_test_alloc_allocator(&ta);
+    u8      buf[] = "abcd";
+    StrView sv    = StrView_over_cstr((char*)buf, 4);
 
-    StringStore ss = StringStore_create(al);
-    (void)StringStore_cstr(&ss, "small", 5);
-    char big[StringStore_NODE_SIZE + 40];
-    memset(big, 'G', sizeof(big));
-    StrView v = StringStore_cstr(&ss, big, sizeof(big)); // overflow: node + heap buffer
-    EXPECT_TRUE(wc_test_alloc_owns(&ta, v.ptr));
-    // 3 nodes (initial, overflow, fresh tail) + the overflow buffer
-    EXPECT_EQ(ta.live_blocks, 4u);
+    StrView head = StrView_take_left(&sv, 2);
+    EXPECT_TRUE(sv_equals_cstr(head, "ab"));
+    EXPECT_TRUE(sv_equals_cstr(sv, "cd")); // source moved forward
 
-    StringStore_destroy(&ss);
-    EXPECT_TRUE((ss.head) == NULL);
-    EXPECT_EQ(ta.n_errors, 0u); // heap_len recorded correctly for the free
-    EXPECT_EQ(wc_test_alloc_destroy(&ta), 0u);
+    StrView none = StrView_take_left(&sv, 0);
+    EXPECT_EQ(none.len, 0u);
+    EXPECT_EQ(sv.len, 2u); // unchanged
+
+    StrView all = StrView_take_left(&sv, 2);
+    EXPECT_TRUE(sv_equals_cstr(all, "cd"));
+    EXPECT_EQ(sv.len, 0u);
 }
 
-UTEST(views, StringStore_on_arena)
+UTEST(views, take_right)
 {
-    Arena arena;
-    Arena_create(&arena, WC_LIBC, nKB(8));
-    StringStore ss = StringStore_create(Arena_allocator(&arena));
-    StrView     a  = StringStore_cstr(&ss, "inside", 6);
-    EXPECT_TRUE((const u8*)a.ptr >= arena.base && (const u8*)a.ptr < arena.base + arena.size);
-    EXPECT_TRUE(sv_equals_cstr(a, "inside"));
-    StringStore_destroy(&ss);
-    Arena_destroy(&arena);
+    u8      buf[] = "abcd";
+    StrView sv    = StrView_over_cstr((char*)buf, 4);
+
+    StrView tail = StrView_take_right(&sv, 2);
+    EXPECT_TRUE(sv_equals_cstr(tail, "cd"));
+    EXPECT_TRUE(sv_equals_cstr(sv, "ab")); // source shrank
+
+    StrView none = StrView_take_right(&sv, 0);
+    EXPECT_EQ(none.len, 0u);
+    EXPECT_EQ(sv.len, 2u); // unchanged
 }
 
-UTEST(views, StringStore_destroy_zeroed_is_safe)
+// Asking for more than there is: invalid view back, source untouched
+
+UTEST(views, take_failure_keeps_source)
 {
-    StringStore z;
-    memset(&z, 0, sizeof(z));
-    StringStore_destroy(&z);
-    StringStore_destroy(&z);
-    EXPECT_TRUE((z.head) == NULL);
+    StrView sv = StrView_over_cstr("abcd", 4);
+
+    StrView bad_left = StrView_take_left(&sv, 5);
+    EXPECT_FALSE(StrView_is_valid(bad_left));
+    EXPECT_TRUE(sv_equals_cstr(sv, "abcd")); // still intact
+
+    StrView bad_right = StrView_take_right(&sv, 5);
+    EXPECT_FALSE(StrView_is_valid(bad_right));
+    EXPECT_TRUE(sv_equals_cstr(sv, "abcd"));
+
+    // after a failure the view still works
+    StrView ok = StrView_take_left(&sv, 1);
+    EXPECT_TRUE(sv_equals_cstr(ok, "a"));
 }
 
-static void cstr_after_destroy(void)
+// A small tokenizer loop over components separated by '/'
+
+UTEST(views, take_left_components)
 {
-    StringStore ss = StringStore_create(WC_LIBC);
-    StringStore_destroy(&ss);
-    (void)StringStore_cstr(&ss, "dead", 4);
+    StrView comps[8];
+    u64     n = 0;
+
+    StrView rest = StrView_over_cstr("usr/local/bin", 13);
+    while (rest.len > 0) {
+        u64 slash = StrView_find_char(rest, '/');
+        u64 adv   = slash == WC_NOT_FOUND ? rest.len : slash + 1;
+        comps[n++] = StrView_take_left(&rest, adv);
+    }
+
+    EXPECT_EQ(n, 3u);
+    EXPECT_TRUE(sv_equals_cstr(comps[0], "usr/"));
+    EXPECT_TRUE(sv_equals_cstr(comps[1], "local/"));
+    EXPECT_TRUE(sv_equals_cstr(comps[2], "bin"));
 }
 
-static void create_on_exhausted_arena(void)
+
+// Hashing / comparison
+
+UTEST(views, hash_and_equals)
 {
-    Arena arena;
-    Arena_create(&arena, WC_LIBC, 64); // smaller than one node
-    StringStore ss = StringStore_create(Arena_allocator(&arena));
-    (void)ss;
+    StrView a = StrView_over_cstr("hello", 5);
+    StrView b = StrView_over_cstr("hello", 5); // same content, different object
+    StrView c = StrView_over_cstr("hellp", 5);
+
+    EXPECT_EQ(StrView_hash(a), StrView_hash(b));
+    EXPECT_TRUE(StrView_equals(a, b));
+    EXPECT_TRUE(!StrView_equals(a, c));
+
+    StrView zero = StrView_over_cstr("", 0);
+    EXPECT_TRUE(StrView_equals(zero, zero));
+    EXPECT_TRUE(!StrView_equals(zero, a));
+
+    EXPECT_TRUE(StrView_equals_cstr(a, "hello"));
+    EXPECT_TRUE(!StrView_equals_cstr(a, "hell")); // cstr is longer than the view
+    EXPECT_TRUE(!StrView_equals_cstr(a, "hello world"));
 }
 
-UTEST(views, StringStore_zero_state_and_oom_die)
+// memcmp ordering on shared bytes, then length as the tiebreak
+
+UTEST(views, compare)
 {
-    EXPECT_DIES(cstr_after_destroy);
-    EXPECT_DIES(create_on_exhausted_arena);
+    StrView abc  = StrView_over_cstr("abc", 3);
+    StrView abd  = StrView_over_cstr("abd", 3);
+    StrView abcd = StrView_over_cstr("abcd", 4);
+
+    EXPECT_EQ(StrView_compare(abc, abc), 0);
+    EXPECT_TRUE(StrView_compare(abc, abd) < 0);
+    EXPECT_TRUE(StrView_compare(abd, abc) > 0);
+    EXPECT_TRUE(StrView_compare(abc, abcd) < 0); // prefix is the shorter one
+    EXPECT_TRUE(StrView_compare(abcd, abc) > 0);
+
+    StrView empty = StrView_over_cstr("", 0);
+    EXPECT_TRUE(StrView_compare(empty, abc) < 0);
+    EXPECT_TRUE(StrView_compare(abc, empty) > 0);
+    EXPECT_EQ(StrView_compare(empty, empty), 0);
 }
 
 
-// Suite
+// Debug-contract death tests: out-of-range windows abort (WC_ASSERT)
 
-
-UTEST(views, StringStore_append_joins_views)
+static void die_over_String_ex_past_end(void)
 {
-    StringStore ss    = StringStore_create(WC_LIBC);
-    StrView     path  = StringStore_cstr(&ss, "usr/", 4);
-    StrView     full  = StringStore_append_cstr(&ss, path, "lib", 3);
-    StrView     twice = StringStore_append(&ss, full, full); // both views point into the store
-
-    EXPECT_TRUE(sv_equals_cstr(full, "usr/lib"));
-    EXPECT_TRUE(sv_equals_cstr(twice, "usr/libusr/lib"));
-    EXPECT_TRUE(sv_equals_cstr(path, "usr/")); // earlier views are untouched
-    StringStore_destroy(&ss);
+    String  s  = String_from_cstr(WC_LIBC, "abc");
+    StrView sv = StrView_over_String_ex(&s, 2, 2); // 2 + 2 > 3
+    (void)sv;
+    String_destroy(&s);
 }
 
-UTEST(views, StringStore_append_overflow_node)
+static void die_slice_start_past_end(void)
 {
-    StringStore ss = StringStore_create(WC_LIBC);
-    char        big[StringStore_NODE_SIZE];
-    memset(big, 'z', sizeof(big));
-    StrView a = StringStore_cstr(&ss, big, sizeof(big));
-    StrView j = StringStore_append_cstr(&ss, a, "!", 1); // longer than a node: overflow path
+    StrView sv = StrView_over_cstr("abcdef", 6);
+    sv         = StrView_slice(sv, 7, 0); // start > len
+    (void)sv;
+}
 
-    EXPECT_EQ(j.len, (u64)StringStore_NODE_SIZE + 1);
-    EXPECT_EQ(j.ptr[0], 'z');
-    EXPECT_EQ(j.ptr[StringStore_NODE_SIZE], '!');
-    StringStore_destroy(&ss);
+static void die_slice_len_past_end(void)
+{
+    StrView sv = StrView_over_cstr("abcdef", 6);
+    sv         = StrView_slice(sv, 2, 5); // 2 + 5 > 6
+    (void)sv;
+}
+
+static void die_prefix_past_end(void)
+{
+    StrView sv = StrView_over_cstr("abcdef", 6);
+    sv         = StrView_prefix(sv, 7);
+    (void)sv;
+}
+
+static void die_suffix_start_past_end(void)
+{
+    StrView sv = StrView_over_cstr("abcdef", 6);
+    sv         = StrView_suffix(sv, 7);
+    (void)sv;
+}
+
+UTEST(views, range_assertions_die)
+{
+    EXPECT_DIES(die_over_String_ex_past_end);
+    EXPECT_DIES(die_slice_start_past_end);
+    EXPECT_DIES(die_slice_len_past_end);
+    EXPECT_DIES(die_prefix_past_end);
+    EXPECT_DIES(die_suffix_start_past_end);
 }

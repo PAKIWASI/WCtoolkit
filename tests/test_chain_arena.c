@@ -190,12 +190,12 @@ UTEST(chain_arena, scratch_across_node_boundary_frees_new_nodes)
     u64 blocks = ta.live_blocks;
     u64 used   = ChainArena_used(&ca);
 
-    CHAIN_ARENA_SCRATCH (&ca) {
-        for (int i = 0; i < 30; i++) {
-            ChainArena_alloc(&ca, 1000); // spans several nodes
-        }
-        EXPECT_TRUE(ta.live_blocks > blocks);
+    ChainArenaScratch mark = ChainArenaScratch_create(&ca);
+    for (int i = 0; i < 30; i++) {
+        ChainArena_alloc(&ca, 1000); // spans several nodes
     }
+    EXPECT_TRUE(ta.live_blocks > blocks);
+    ChainArenaScratch_to_mark(mark);
     EXPECT_EQ(ta.live_blocks, blocks); // appended nodes released
     EXPECT_EQ(ChainArena_used(&ca), used);
     EXPECT_TRUE(ca.tail == ca.head);
@@ -212,9 +212,9 @@ static void grow_outer_block_inside_chain_scratch(void)
     ChainArena_create(&ca, WC_LIBC);
     const wc_allocator* al = ChainArena_allocator(&ca);
     u8*          v  = wc_alloc(al, 64, 8);
-    CHAIN_ARENA_SCRATCH (&ca) {
-        v = wc_realloc(al, v, 64, 512, 8);
-    }
+    ChainArenaScratch mark = ChainArenaScratch_create(&ca);
+    v = wc_realloc(al, v, 64, 512, 8);
+    ChainArenaScratch_to_mark(mark);
     (void)v;
     ChainArena_destroy(&ca);
 }
@@ -228,9 +228,9 @@ static void grow_block_from_earlier_node_inside_chain_scratch(void)
     for (int i = 0; i < 10; i++) {
         ChainArena_alloc(&ca, 1000); // v's node is no longer the tail
     }
-    CHAIN_ARENA_SCRATCH (&ca) {
-        v = wc_realloc(al, v, 64, 512, 8);
-    }
+    ChainArenaScratch mark = ChainArenaScratch_create(&ca);
+    v = wc_realloc(al, v, 64, 512, 8);
+    ChainArenaScratch_to_mark(mark);
     (void)v;
     ChainArena_destroy(&ca);
 }
@@ -247,9 +247,9 @@ UTEST(chain_arena, floor_grow_outer_block_inside_scratch)
     const wc_allocator* al = ChainArena_allocator(&ca);
     u8*          v  = wc_alloc(al, 64, 8);
     u64          u  = ChainArena_used(&ca);
-    CHAIN_ARENA_SCRATCH (&ca) {
-        EXPECT_TRUE(wc_realloc(al, v, 64, 512, 8) != v); // never in place past the mark
-    }
+    ChainArenaScratch mark = ChainArenaScratch_create(&ca);
+    EXPECT_TRUE(wc_realloc(al, v, 64, 512, 8) != v); // never in place past the mark
+    ChainArenaScratch_to_mark(mark);
     EXPECT_EQ(ChainArena_used(&ca), u);
     END_CHAIN(ca, ta);
 #endif
@@ -264,12 +264,12 @@ UTEST(chain_arena, floor_free_inside_scratch_does_not_rewind)
     const wc_allocator* al    = ChainArena_allocator(&ca);
     u8*          outer = wc_alloc(al, 64, 8);
     u64          u     = ChainArena_used(&ca);
-    CHAIN_ARENA_SCRATCH (&ca) {
-        wc_free(al, outer, 64, 8);
-        EXPECT_EQ(ChainArena_used(&ca), u);
-        u8* t = wc_alloc(al, 16, 8);
-        EXPECT_TRUE(wc_realloc(al, t, 16, 256, 8) == t); // above the floor: in place
-    }
+    ChainArenaScratch mark = ChainArenaScratch_create(&ca);
+    wc_free(al, outer, 64, 8);
+    EXPECT_EQ(ChainArena_used(&ca), u);
+    u8* t = wc_alloc(al, 16, 8);
+    EXPECT_TRUE(wc_realloc(al, t, 16, 256, 8) == t); // above the floor: in place
+    ChainArenaScratch_to_mark(mark);
     EXPECT_EQ(ChainArena_used(&ca), u);
     END_CHAIN(ca, ta);
 }
@@ -279,13 +279,13 @@ UTEST(chain_arena, floor_nested_scopes)
 {
     WITH_CHAIN(ca, ta);
     ChainArena_alloc(&ca, 10);
-    ChainArenaScratch s1 = ChainArena_scratch_begin(&ca);
+    ChainArenaScratch s1 = ChainArenaScratch_create(&ca);
     ChainArena_alloc(&ca, 3000);
-    ChainArenaScratch s2 = ChainArena_scratch_begin(&ca);
+    ChainArenaScratch s2 = ChainArenaScratch_create(&ca);
     ChainArena_alloc(&ca, 3000); // new node
-    ChainArena_scratch_end(s2);
+    ChainArenaScratch_to_mark(s2);
     EXPECT_TRUE(ca.floor_node == s1.node);
-    ChainArena_scratch_end(s1);
+    ChainArenaScratch_to_mark(s1);
     EXPECT_TRUE((ca.floor_node) == NULL);
     EXPECT_EQ(ta.live_blocks, 1u);
     END_CHAIN(ca, ta);
@@ -380,24 +380,6 @@ UTEST(chain_arena, backing_failure_returns_null)
     EXPECT_TRUE(ChainArena_alloc(&ca, (u64)PTRDIFF_MAX) == NULL);
     EXPECT_TRUE(ChainArena_alloc(&ca, 16) != NULL); // arena still usable
     ChainArena_destroy(&ca);
-}
-
-UTEST(chain_arena, scratch_ends_on_break)
-{
-    wc_test_alloc ta;
-    wc_test_alloc_init(&ta, WC_LIBC);
-    ChainArena ca;
-    ChainArena_create(&ca, wc_test_alloc_allocator(&ta));
-    CHAIN_ARENA_SCRATCH (&ca) {
-        for (int i = 0; i < 30; i++) {
-            ChainArena_alloc(&ca, 1000);
-        }
-        break;
-    }
-    EXPECT_EQ(ta.live_blocks, 1u);
-    EXPECT_TRUE(ca.floor_node == NULL);
-    ChainArena_destroy(&ca);
-    EXPECT_EQ(wc_test_alloc_destroy(&ta), 0u);
 }
 
 

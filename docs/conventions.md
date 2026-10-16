@@ -64,7 +64,6 @@ A zeroed container's allocator pointer is `NULL`, so allocating through it would
 | `String`, `HashMap` (maps and sets) | `capacity == 0` |
 | `Arena`, `ChainArena` | `self.ctx == NULL` |
 | `Matrixf` | `m == 0` |
-| `StringStore` | `tail == NULL` |
 
 ## `void*` at the boundary, `u8*` inside
 

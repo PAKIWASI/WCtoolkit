@@ -160,15 +160,15 @@ typedef struct {
     ChainArena store;
     HashMap*   interned;         // StrView -> {} (a set)
     bool       interning_active; // optional
-    // probe the set, return the existing view if found, else alloc + insert. a deduped store must be append-only
-    // This makes interning O(1) amortized and idempotent,StringStore_intern_cstr(&ss, "x") returns the same pointer every time
+    // probe the interned set: return the existing view if found, else alloc + insert. A deduped store must be append-only
+    // This makes interning O(1) amortized and idempotent, repeated StringStore_store_cstr(&ss, "x") return the same view every time
 } StringStore;
 
 WC_NONULL(1, 2) void StringStore_create(StringStore* ss, const wc_allocator* backing, u64 block_cap, bool intern);
 WC_NONULL(1) void StringStore_destroy(StringStore* ss);
 
 // Copy bytes into the store; return a view. NUL-terminate too (1 extra byte),
-// so sv.ptr works as a C string, makes StringStore a drop-in for argv-style APIs.
+// so sv.data works as a C string, makes StringStore a drop-in for argv-style APIs.
 WC_NODISCARD WC_NONULL(1, 2) StrView StringStore_store(StringStore* ss, const String* s);
 WC_NODISCARD WC_NONULL(1, 2) StrView StringStore_store_cstr(StringStore* ss, const char* cstr);
 WC_NODISCARD WC_NONULL(1) StrView StringStore_store_sv(StringStore* ss, StrView sv);

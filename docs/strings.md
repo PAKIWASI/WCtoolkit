@@ -6,7 +6,7 @@
 |---|---|---|---|
 | [`String`](#string) | `wc_string.h` | Yes | Building and editing text |
 | [`StrView`](#strview) | `views.h` | No | Passing a slice of text around without copying |
-| [`StringStore`](#stringstore) | `views.h` | Yes | Many immutable strings that live and die together |
+| [`StringStore`](#stringstore) | `views.h` | Yes | Many immutable strings that live and die together (not implemented yet) |
 
 ## String
 
@@ -37,7 +37,7 @@ int main(void)
 
 | Group | Functions |
 |---|---|
-| Create | `String_create(a)`, `String_from_cstr(a, cstr)`, `String_from_String(a, &other)` |
+| Create | `String_create(a)`, `String_with_cap(a, cap)` (pre-reserved), `String_from_cstr(a, cstr)` |
 | Lifetime | `String_destroy`, `String_copy(a, &src)`, `String_move(&dst, &src)` |
 | Borrow | `String_borrow(ptr, len)`: a read-only `String` over existing bytes, no allocation. For lookups in `String`-keyed maps and sets. Never store it; any mutation is fatal. |
 | Capacity | `String_reserve(s, cap)`, `String_reserve_char(s, cap, c)` (grow and fill), `String_shrink_to_fit` (back to inline when it fits) |
@@ -80,64 +80,68 @@ Call `String_cstr_view` only after `String_ensure_null_term`: on a fresh empty s
 
 ## StrView
 
-A non-owning `{ const char* ptr; u64 len; }` slice. It never frees anything, and is only valid while the memory it points at is.
+A non-owning `{ const char* data; u64 len; }` slice. It never frees anything, and is only valid while the memory it points at is.
 
-| Function | Allocates | Notes |
-|---|---|---|
-| `StrView_from_String(&s)` | No | Invalid once `s` changes or is destroyed |
-| `StrView_from_String_ex(&s, off, len)` | No | Sub-range; `off + len` must be within `s` |
-| `StrView_from_cstr(cstr, len)` | No | `cstr` must outlive the view |
-| `StrView_copy_cstr(a, cstr, len)` | Yes | Copies `len` bytes plus a NUL from `a`. The view lives as long as that allocation. |
-| `StrView_free_copy(a, sv)` | | Frees a `StrView_copy_cstr` result. No-op on arenas. |
-| `StrView_print(sv)` | | |
+Range arguments (`off`, `start`, `len`, `n`) are `WC_ASSERT`s: checked in Debug, unchecked in Release.
+
+| Group | Functions |
+|---|---|
+| Create | `StrView_over_String(&s)`, `StrView_over_String_ex(&s, off, len)` (sub-range), `StrView_over_cstr(cstr, len)` — all borrow, no allocation |
+| Combine | `StrView_slice(sv, start, len)`, `StrView_prefix(sv, n)`, `StrView_suffix(sv, start)` |
+| Trim | `StrView_trim(sv, set, len)`, `StrView_trim_left`, `StrView_trim_right`. The six ASCII whitespace chars are always trimmable; `set` adds trimmable bytes on top. `set == NULL` or `len == 0` leaves only the defaults. |
+| Search | `StrView_find(sv, needle)`, `StrView_find_char(sv, c)` — index or `WC_NOT_FOUND`; `StrView_starts_with`, `StrView_ends_with`, `StrView_contains` |
+| Parse | `StrView_parse_u8/u16/u32/u64(sv, &out)`: the whole view must be plain decimal digits (no sign, no whitespace, no base prefix, leading zeros fine); overflow of the target type is an error. `*out` is written only on success. |
+| Consume | `StrView_take_left(&sv, n)`, `StrView_take_right(&sv, n)`: take `n` bytes from the front/back and shorten `sv`. Asking for more than there is returns an invalid view (`data == NULL`) and leaves `sv` alone; `StrView_is_valid(sv)` separates such an error value from a good view. |
+| Convert | `StrView_to_String(a, sv)` (one allocation), `StrView_to_cstr(a, sv)` (NUL-terminated; free with `wc_free(a, p, len + 1, WC_MAX_ALIGN)`), `StrView_to_buf(sv, buf, cap)` (plain copy, `false` when `cap < len`; not terminated) |
+| Compare | `StrView_compare` (like `memcmp` on shared bytes, then length as the tiebreak), `StrView_equals`, `StrView_equals_cstr`, `StrView_hash` |
+| Output | `StrView_print` |
 
 ```c
 #include "arena.h"
 #include "views.h"
+#include "wc_string.h"
+
+#include <stdio.h>
 
 int main(void)
 {
-    // On an arena, copied views need no individual free
-    ARENA_SCOPE(tmp, 1024) {
-        StrView a = StrView_copy_cstr(tmp, "interned", 8);
-        StrView_print(a);
+    String  s  = String_from_cstr(WC_LIBC, "  cat/eats.txt  ");
+    StrView sv = StrView_trim(StrView_over_String(&s), NULL, 0);        // "cat/eats.txt"
+
+    u64     slash = StrView_find_char(sv, '/');                         // 3
+    StrView file  = StrView_suffix(sv, slash + 1);                      // "eats.txt"
+
+    Arena arena;
+    Arena_create(&arena, WC_LIBC, nKB(1));
+    char* cstr = StrView_to_cstr(Arena_allocator(&arena), file);        // NUL-terminated copy
+    printf("%s\n", cstr);                                               // eats.txt
+    Arena_destroy(&arena); // cstr dies here, and with it every view of it
+
+    // take_left consumes: fields come out one by one, no copies
+    StrView csv = StrView_over_cstr("1,22,333", 8);
+    while (csv.len > 0) {
+        u64     stop  = StrView_find_char(csv, ',');
+        StrView field = StrView_take_left(&csv, stop == WC_NOT_FOUND ? csv.len : stop + 1);
+        StrView_print(field); // "1," then "22," then "333"
+        putchar(' ');
     }
 
-    // On libc, free each copy with the same allocator
-    StrView b = StrView_copy_cstr(WC_LIBC, "owned", 5);
-    StrView_free_copy(WC_LIBC, b);
+    String_destroy(&s);
     return 0;
 }
 ```
 
 ## StringStore
 
-An append-only store: you hand it bytes, it hands back a `StrView` that stays valid until the store is destroyed. All strings die together, like an arena dedicated to text.
+**Not implemented yet.** Declared in `views.h`, no code behind it — don't call it.
 
-- Strings are packed into 1 KB nodes (1015 usable bytes each). A new node is added when the current one can't fit the next string.
-- A string longer than a node gets its own overflow allocation.
-- Views are **not NUL-terminated**: use `ptr` and `len`.
-- Nodes and overflow buffers come from the store's allocator.
+The plan: append-only immutable string storage on a `ChainArena`. You hand it bytes, it hands back a `StrView` that stays valid until the store is destroyed, and every string in the store is NUL-terminated, so a returned view is directly usable as a C string. Planned on top:
 
-```c
-#include "views.h"
+- **Interning** (`intern = true` at creation): identical bytes always come back as the same view — dedup by content, O(1) amortized.
+- **Path storage**: build, join, and normalize paths over stored strings (the `WCpath_*` declarations in `views.h`).
 
-int main(void)
-{
-    StringStore ss = StringStore_create(WC_LIBC);
-    StrView     a  = StringStore_cstr(&ss, "alpha", 5);
-    StrView     b  = StringStore_cstr(&ss, "beta", 4);   // packed right after "alpha"
-    StrView_print(a);
-    StrView_print(b);
-    StringStore_destroy(&ss);                             // every view dies here
-    return 0;
-}
-```
-
-| Function | Notes |
+| Declared | Notes |
 |---|---|
-| `StringStore_create(a)` | Allocates the first node |
-| `StringStore_cstr(&ss, cstr, len)` | Copies `len` bytes in, returns a view |
-| `StringStore_destroy(&ss)` | Frees every node; safe on a zeroed store |
-
-`StringStore_append`, `StringStore_append_cstr`, `StringStore_path_join` and `StringStore_path_join_cstr` are declared in `views.h` but **not implemented yet**. Don't call them.
+| `StringStore_create(&ss, backing, block_cap, intern)` | |
+| `StringStore_destroy(&ss)` | |
+| `StringStore_store(&ss, &s)`, `StringStore_store_cstr(&ss, cstr)`, `StringStore_store_sv(&ss, sv)` | Copy the bytes in, return a view |

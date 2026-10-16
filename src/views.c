@@ -33,7 +33,7 @@ bool StrView_to_buf(StrView sv, char* buf, u64 cap)
         return false;
     }
 
-    memcpy(buf, sv.data, cap);
+    memcpy(buf, sv.data, sv.len);
     return true;
 }
 
@@ -96,7 +96,10 @@ StrView StrView_trim_right(StrView sv, const char* set, u64 len)
 
 u64 StrView_find(StrView sv, StrView needle)
 {
-    for (u64 i = 0; i < sv.len; i++) {
+    if (needle.len > sv.len) {
+        return WC_NOT_FOUND;
+    }
+    for (u64 i = 0; i + needle.len <= sv.len; i++) {
         if (memcmp(sv.data + i, needle.data, needle.len) == 0) {
             return i;
         }

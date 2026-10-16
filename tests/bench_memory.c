@@ -56,11 +56,11 @@ UBENCH(memory, chain_arena)
 
 UBENCH(memory, string_store)
 {
-    StringStore ss = StringStore_create(WC_LIBC);
+    StringStore ss;
+    StringStore_create(&ss, WC_LIBC, (u64)sizeof(WORD) * (u64)N, false);
     for (int i = 0; i < N; i++) {
-        (void)StringStore_cstr(&ss, WORD, sizeof(WORD) - 1);
+        (void)StringStore_store_cstr(&ss, WORD);
     }
-    UBENCH_DO_NOTHING(ss.head);
     StringStore_destroy(&ss);
 }
 

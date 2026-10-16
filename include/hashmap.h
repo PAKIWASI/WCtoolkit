@@ -164,7 +164,7 @@ c
 
 // wrappers that fit wc_hash_fn / wc_compare_fn
 static u64 sv_hash_fn(const void* k, u64 size) {
-    (void)size; StrView v; memcpy(&v, k, sizeof v); return wc_hash(v.ptr, v.len);
+    (void)size; StrView v; memcpy(&v, k, sizeof v); return wc_hash(v.data, v.len);
 }
 static int sv_cmp_fn(const void* a, const void* b, u64 size) {
     (void)size;
@@ -176,7 +176,7 @@ Setup:
 c
 
 StringStore ss;   // see §5
-StringStore_create(&ss, WC_MMAP, nKB(64));
+StringStore_create(&ss, WC_MMAP, nKB(64), true);
 
 HashMap m = HashMap_create(
     WC_LIBC,
@@ -186,20 +186,21 @@ HashMap m = HashMap_create(
     NULL, NULL         // keys/vals are POD — 16 raw bytes
 );
 
-// Insert: intern first, then put a view
-StrView key = StringStore_intern_cstr(&ss, "hello");
+// Insert: intern first, then put a view (with interning on, storing the same
+// bytes again returns the same view, so repeated keys cost nothing)
+StrView key = StringStore_store_cstr(&ss, "hello");
 int     v   = 42;
 HashMap_put(&m, &key, &v);
 
 // Lookup with a transient view — zero allocation
-StrView probe = StrView_from_cstr("hello", 5);
+StrView probe = StrView_over_cstr("hello", 5);
 const int* got = HashMap_get_ptr(&m, &probe);
 
 The one rule you must enforce: the store must outlive the map. If ss is destroyed or reset, every key becomes a dangling pointer and every subsequent hash/compare reads freed memory. That means:
 
     StringStore is append-only if deduped by a HashMap (see §5).
 
-    Never call ChainArenaScratch_to_mark(&ss, ...) while a map references it.
+    Never call ChainArenaScratch_to_mark(ChainArenaScratch_create(&ss)) while a map references it.
 
     A convenience macro (MAP_OF_STRVIEW(alloc)) that wires up sv_hash_fn/sv_cmp_fn/sizeof(StrView) would prevent a lot of copy-paste, mirroring your existing MAP_OF.
 

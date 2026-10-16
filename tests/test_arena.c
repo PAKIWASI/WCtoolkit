@@ -88,7 +88,7 @@ UTEST(arena, reset)
     Arena a;
     Arena_create(&a, WC_LIBC, 256);
     Arena_alloc(&a, 100);
-    ArenaScratch s = Arena_scratch_begin(&a);
+    ArenaScratch s = ArenaScratch_create(&a);
     (void)s;
     Arena_reset(&a);
     EXPECT_EQ(a.idx, 0u);
@@ -344,15 +344,15 @@ UTEST(arena, free_rewinds_only_last_block)
 
 /* ── Scratch ─────────────────────────────────────────────────────────────── */
 
-UTEST(arena, scratch_begin_end)
+UTEST(arena, scratch_create_to_mark)
 {
     Arena a;
     Arena_create(&a, WC_LIBC, nKB(4));
     u64          before = a.idx;
-    ArenaScratch sc     = Arena_scratch_begin(&a);
+    ArenaScratch sc     = ArenaScratch_create(&a);
     Arena_alloc(&a, 256);
     EXPECT_TRUE(a.idx > before);
-    Arena_scratch_end(sc);
+    ArenaScratch_to_mark(sc);
     EXPECT_EQ(a.idx, before);
     Arena_destroy(&a);
 }
@@ -363,10 +363,10 @@ UTEST(arena, scratch_macro)
     Arena_create(&a, WC_LIBC, nKB(4));
     u64 before = a.idx;
 
-    ARENA_SCRATCH (&a) {
-        Arena_alloc(&a, 512);
-        EXPECT_TRUE(a.idx > before);
-    }
+    ArenaScratch mark = ArenaScratch_create(&a);
+    Arena_alloc(&a, 512);
+    EXPECT_TRUE(a.idx > before);
+    ArenaScratch_to_mark(mark);
 
     EXPECT_EQ(a.idx, before);
     Arena_destroy(&a);
@@ -380,10 +380,10 @@ UTEST(arena, scratch_outer_alloc_survives)
     int* permanent = Arena_alloc(&a, sizeof(int));
     *permanent     = 77;
 
-    ARENA_SCRATCH (&a) {
-        int* tmp = Arena_alloc(&a, sizeof(int));
-        *tmp     = 999;
-    }
+    ArenaScratch mark = ArenaScratch_create(&a);
+    int* tmp = Arena_alloc(&a, sizeof(int));
+    *tmp     = 999;
+    ArenaScratch_to_mark(mark);
 
     EXPECT_EQ(*permanent, 77);
     Arena_destroy(&a);
@@ -402,9 +402,9 @@ static void grow_outer_block_inside_scratch(void)
     Arena_create(&a, WC_LIBC, nKB(4));
     const wc_allocator* al  = Arena_allocator(&a);
     u8*          vec = wc_alloc(al, 64, 8);
-    ARENA_SCRATCH (&a) {
-        vec = wc_realloc(al, vec, 64, 512, 8);
-    }
+    ArenaScratch mark = ArenaScratch_create(&a);
+    vec = wc_realloc(al, vec, 64, 512, 8);
+    ArenaScratch_to_mark(mark);
     (void)vec;
     Arena_destroy(&a);
 }
@@ -417,11 +417,11 @@ static void grow_inner_block_inside_scratch(void)
     Arena a;
     Arena_create(&a, WC_LIBC, nKB(4));
     const wc_allocator* al = Arena_allocator(&a);
-    ARENA_SCRATCH (&a) {
-        u8* vec = wc_alloc(al, 64, 8);
-        vec     = wc_realloc(al, vec, 64, 512, 8);
-        (void)vec;
-    }
+    ArenaScratch mark = ArenaScratch_create(&a);
+    u8* vec = wc_alloc(al, 64, 8);
+    vec     = wc_realloc(al, vec, 64, 512, 8);
+    (void)vec;
+    ArenaScratch_to_mark(mark);
     Arena_destroy(&a);
 }
 
@@ -437,10 +437,10 @@ UTEST(arena, floor_grow_outer_block_inside_scratch)
     u8*          keep = wc_alloc(al, 64, 8);
     memset(keep, 'K', 64);
     u64 mark = Arena_used(&a);
-    ARENA_SCRATCH (&a) {
-        u8* grown = wc_realloc(al, keep, 64, 512, 8);
-        EXPECT_TRUE(grown != keep); // copied, never extended past the mark
-    }
+    ArenaScratch inner = ArenaScratch_create(&a);
+    u8* grown = wc_realloc(al, keep, 64, 512, 8);
+    EXPECT_TRUE(grown != keep); // copied, never extended past the mark
+    ArenaScratch_to_mark(inner);
     EXPECT_EQ(Arena_used(&a), mark);
     for (int i = 0; i < 64; i++) {
         EXPECT_EQ(keep[i], 'K');
@@ -457,10 +457,10 @@ UTEST(arena, floor_shrink_outer_block_inside_scratch)
     const wc_allocator* al   = Arena_allocator(&a);
     u8*          keep = wc_alloc(al, 64, 8);
     u64          mark = Arena_used(&a);
-    ARENA_SCRATCH (&a) {
-        EXPECT_TRUE(wc_realloc(al, keep, 64, 16, 8) == keep);
-        EXPECT_EQ(Arena_used(&a), mark); // not rewound below the mark
-    }
+    ArenaScratch inner = ArenaScratch_create(&a);
+    EXPECT_TRUE(wc_realloc(al, keep, 64, 16, 8) == keep);
+    EXPECT_EQ(Arena_used(&a), mark); // not rewound below the mark
+    ArenaScratch_to_mark(inner);
     Arena_destroy(&a);
 }
 
@@ -474,14 +474,14 @@ UTEST(arena, floor_free_inside_scratch_does_not_rewind_below_mark)
     u8* outer = wc_alloc(al, 64, 8);
     u64 mark  = Arena_used(&a);
 
-    ARENA_SCRATCH (&a) {
-        wc_free(al, outer, 64, 8); // below the floor: no-op
-        EXPECT_EQ(Arena_used(&a), mark);
+    ArenaScratch inner = ArenaScratch_create(&a);
+    wc_free(al, outer, 64, 8); // below the floor: no-op
+    EXPECT_EQ(Arena_used(&a), mark);
 
-        u8* t = wc_alloc(al, 16, 8); // on top and above the floor: rewinds
-        wc_free(al, t, 16, 8);
-        EXPECT_EQ(Arena_used(&a), (u64)(t - a.base));
-    }
+    u8* t = wc_alloc(al, 16, 8); // on top and above the floor: rewinds
+    wc_free(al, t, 16, 8);
+    EXPECT_EQ(Arena_used(&a), (u64)(t - a.base));
+    ArenaScratch_to_mark(inner);
     EXPECT_EQ(Arena_used(&a), mark);
     Arena_destroy(&a);
 }
@@ -493,15 +493,15 @@ UTEST(arena, floor_nested_scopes)
     Arena_create(&a, WC_LIBC, nKB(4));
     Arena_alloc(&a, 10);
 
-    ArenaScratch s1 = Arena_scratch_begin(&a);
+    ArenaScratch s1 = ArenaScratch_create(&a);
     u64          f1 = a.floor;
     Arena_alloc(&a, 20);
-    ArenaScratch s2 = Arena_scratch_begin(&a);
+    ArenaScratch s2 = ArenaScratch_create(&a);
     EXPECT_TRUE(a.floor > f1);
     Arena_alloc(&a, 30);
-    Arena_scratch_end(s2);
+    ArenaScratch_to_mark(s2);
     EXPECT_EQ(a.floor, f1);
-    Arena_scratch_end(s1);
+    ArenaScratch_to_mark(s1);
     EXPECT_EQ(a.floor, 0u);
     EXPECT_EQ(a.idx, 10u);
 
@@ -520,73 +520,15 @@ UTEST(arena, floor_allows_in_place_above_mark)
     const wc_allocator* al = Arena_allocator(&a);
     Arena_alloc(&a, 40);
 
-    ARENA_SCRATCH (&a) {
-        u8* p = wc_alloc(al, 16, 8);
-        EXPECT_TRUE(wc_realloc(al, p, 16, 256, 8) == p);
-    }
+    ArenaScratch mark = ArenaScratch_create(&a);
+    u8* p = wc_alloc(al, 16, 8);
+    EXPECT_TRUE(wc_realloc(al, p, 16, 256, 8) == p);
+    ArenaScratch_to_mark(mark);
     Arena_destroy(&a);
 }
 
 
-// ARENA_SCOPE (plan 3.3) and typed helper macros
-
-UTEST(arena, scope_basic)
-{
-    int sum = 0;
-    ARENA_SCOPE (tmp, nKB(1)) {
-        EXPECT_TRUE((tmp->ctx) != NULL); // an Arena, not libc
-        GenVec v = VEC_OF_IN(tmp, int, 4);
-        for (int i = 0; i < 100; i++) {
-            VEC_PUSH(&v, i);
-        } // grows inside the arena
-        VEC_FOREACH (&v, int, x) {
-            sum += *x;
-        }
-        // no destroy: the arena goes away with the block (LSan would flag a leak)
-    }
-    EXPECT_EQ(sum, 4950);
-}
-
-// Misuses the allocator on purpose, or the memory belongs to an arena the
-// analyzer cannot see through (wc_alloc is inline and has a libc branch).
-// NOLINTBEGIN(clang-analyzer-unix.Malloc)
-UTEST(arena, scope_nested_and_break)
-{
-    int reached = 0;
-    ARENA_SCOPE (outer, 256) {
-        int* a = wc_alloc(outer, sizeof(int), alignof(int));
-        *a     = 1;
-        ARENA_SCOPE (inner, 256) {
-            EXPECT_TRUE(inner->ctx != outer->ctx); // distinct arenas, no name clash
-            int* b = wc_alloc(inner, sizeof(int), alignof(int));
-            *b     = 2;
-            reached += *a + *b;
-            break; // leaves only the inner scope, inner arena destroyed
-        }
-        reached += 10;
-    }
-    EXPECT_EQ(reached, 13);
-}
-// NOLINTEND(clang-analyzer-unix.Malloc)
-
-// Misuses the allocator on purpose, or the memory belongs to an arena the
-// analyzer cannot see through (wc_alloc is inline and has a libc branch).
-// NOLINTBEGIN(clang-analyzer-unix.Malloc)
-static int scope_early_return(void)
-{
-    ARENA_SCOPE (tmp, 128) {
-        char* p = wc_alloc(tmp, 16, 1);
-        p[0]    = 'x';
-        return p[0]; // cleanup still destroys the arena
-    }
-    return 0;
-}
-// NOLINTEND(clang-analyzer-unix.Malloc)
-
-UTEST(arena, scope_return)
-{
-    EXPECT_EQ(scope_early_return(), 'x');
-}
+// Typed helper macros
 
 UTEST(arena, typed_macros)
 {
@@ -699,20 +641,6 @@ UTEST(arena, destroy_uses_the_backing_it_was_created_with)
     Arena_destroy(&a);
     EXPECT_EQ(wc_test_alloc_destroy(&ta), 0u);
 }
-
-UTEST(arena, scratch_ends_on_break)
-{
-    Arena a;
-    Arena_create(&a, WC_LIBC, nKB(4));
-    ARENA_SCRATCH (&a) {
-        Arena_alloc(&a, 512);
-        break;
-    }
-    EXPECT_EQ(a.idx, 0u);
-    EXPECT_EQ(a.floor, 0u);
-    Arena_destroy(&a);
-}
-
 
 #ifndef NDEBUG // zero-state use is a WC_ASSERT: dies in Debug only
 // Zero state is dead (C3): aborts in Debug.

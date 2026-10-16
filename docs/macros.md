@@ -23,7 +23,7 @@ VEC_PUSH: owning element type, use the _MOVE or _COPY form
 VEC_AT: owning struct by value would alias the container, use the pointer form
 ```
 
-The check knows the toolkit's own types (`String`, `GenVec`, `HashMap`, `Queue`, `PriorityQueue`, `BitVec`, `Matrixf`, `StringStore`) and pointers to `String` and `GenVec`. Your own owning types aren't known to it: use the `_MOVE` / `_COPY` forms for them by hand.
+The check knows the toolkit's own types (`String`, `GenVec`, `HashMap`, `Queue`, `PriorityQueue`, `BitVec`) and pointers to `String` and `GenVec`. Your own owning types aren't known to it: use the `_MOVE` / `_COPY` forms for them by hand.
 
 Read macros accept pointer elements (`VEC_AT(&v, String*, i)` returns the `String*`): a returned pointer is a visible borrow. Popping works for every type: `VEC_POP` / `QUEUE_POP` **move** the element out, so the value you get is yours.
 

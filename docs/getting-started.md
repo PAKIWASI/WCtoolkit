@@ -90,11 +90,12 @@ int main(void)
     printf("ada = %d\n", MAP_GET_CSTR(&ages, int, "ada"));   // lookup builds no String
     HashMap_destroy(&ages);
 
-    // The same kind of work on an arena that frees itself
-    ARENA_SCOPE(tmp, nKB(4)) {
-        GenVec words = VEC_OF_IN(tmp, String, 4);
-        VEC_PUSH_CSTR(&words, "no destroy needed");
-    }
+    // The same kind of work on an arena: one destroy, no per-container destroy
+    Arena tmp;
+    Arena_create(&tmp, WC_LIBC, nKB(4));
+    GenVec words = VEC_OF_IN(Arena_allocator(&tmp), String, 4);
+    VEC_PUSH_CSTR(&words, "no destroy needed");
+    Arena_destroy(&tmp);   // frees `words` and its Strings too
     return 0;
 }
 ```
