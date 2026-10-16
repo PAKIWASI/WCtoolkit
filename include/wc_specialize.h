@@ -35,7 +35,7 @@
  *      single fixed-size move, and the size switch runs once per call instead
  *      of once per element.
  *
- *      static inline __attribute__((always_inline))
+ *      static wc_always_inline
  *      void fill_k(u8* dst, const u8* src, u64 n, u32 size)
  *      {
  *          for (u64 i = 0; i < n; i++) {
@@ -118,7 +118,7 @@
  * declares memcpy nonnull, so the compiler may assume src != NULL afterwards).
  * The explicit 0 case avoids the call entirely.
  */
-static inline __attribute__((always_inline)) void wc_copy_n(void* restrict dst, const void* restrict src, u64 n)
+static wc_always_inline void wc_copy_n(void* restrict dst, const void* restrict src, u64 n)
 {
     switch (n) {
     case 0:
@@ -177,7 +177,7 @@ static inline __attribute__((always_inline)) void wc_copy_n(void* restrict dst, 
  *
  * n == 0 is true without touching either pointer, so both may be NULL.
  */
-static inline __attribute__((always_inline)) bool wc_equal_n(const void* a, const void* b, u64 n)
+static wc_always_inline bool wc_equal_n(const void* a, const void* b, u64 n)
 {
     switch (n) {
     case 0:

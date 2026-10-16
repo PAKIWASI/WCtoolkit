@@ -18,8 +18,8 @@
 #include <string.h>
 
 
-/* C11 + GNU extensions used here:
- *   typeof  (__typeof__)  — GNU ext, available with Clang/GCC + -std=c11
+/* C11 + GNU extensions used here (all through wrappers from common.h):
+ *   wc_typeof — GNU __typeof__, available with Clang/GCC + -std=c11
  *   ({ })   statement expressions — GNU ext, Clang/GCC only
  *
  * MEMORY RULES FOR THIS LAYER (see docs/memory-rules.md, group E)
@@ -39,8 +39,6 @@
  *       element out, so the returned value is yours (B7).
  *   E4  Typed macros check sizeof(T) against the slot in Debug.
  */
-
-#define typeof __typeof__
 
 
 /* WC_IS_OWNING_VALUE(T) — 1 for the toolkit's own types that own memory,
@@ -216,11 +214,11 @@ Usage:
  * mismatch) goes through GenVec_push unchanged. */
 #define VEC_PUSH(vec, val)                                                                                      \
     ({                                                                                                          \
-        WC_REQUIRE_POD(typeof(val), "VEC_PUSH");                                                                \
-        typeof(val) wvp_tmp = (val);                                                                            \
-        WC_ASSERT_ELEM_SIZE(vec, typeof(wvp_tmp));                                                              \
-        if (WC_LIKELY((vec)->is_pod && (vec)->size < (vec)->capacity && (vec)->data_size == sizeof(wvp_tmp))) { \
-            __builtin_memcpy((vec)->data + ((vec)->size * sizeof(wvp_tmp)), &wvp_tmp, sizeof(wvp_tmp));         \
+        WC_REQUIRE_POD(wc_typeof(val), "VEC_PUSH");                                                                \
+        wc_typeof(val) wvp_tmp = (val);                                                                            \
+        WC_ASSERT_ELEM_SIZE(vec, wc_typeof(wvp_tmp));                                                              \
+        if (wc_likely((vec)->is_pod && (vec)->size < (vec)->capacity && (vec)->data_size == sizeof(wvp_tmp))) { \
+            memcpy((vec)->data + ((vec)->size * sizeof(wvp_tmp)), &wvp_tmp, sizeof(wvp_tmp));         \
             (vec)->size++;                                                                                      \
         } else {                                                                                                \
             GenVec_push(vec, &wvp_tmp);                                                                         \
@@ -233,14 +231,14 @@ Usage:
 //   String* p = ...;      VEC_PUSH_MOVE(&v, p);        // by-pointer vec, p == NULL after
 #define VEC_PUSH_MOVE(vec, lval)                  \
     ({                                            \
-        WC_ASSERT_ELEM_SIZE((vec), typeof(lval)); \
+        WC_ASSERT_ELEM_SIZE((vec), wc_typeof(lval)); \
         GenVec_push_move((vec), (void*)&(lval));  \
     })
 
 // VEC_PUSH_COPY — deep-copy an LVALUE element in; you keep lval (B8).
 #define VEC_PUSH_COPY(vec, lval)                  \
     ({                                            \
-        WC_ASSERT_ELEM_SIZE((vec), typeof(lval)); \
+        WC_ASSERT_ELEM_SIZE((vec), wc_typeof(lval)); \
         GenVec_push((vec), (const void*)&(lval)); \
     })
 
@@ -306,23 +304,23 @@ Usage:
 // Replace element i with a plain-data value (E2).
 #define VEC_SET(vec, i, val)                               \
     ({                                                     \
-        WC_REQUIRE_POD(typeof(val), "VEC_SET");            \
-        typeof(val) wvs_tmp = (val);                       \
-        WC_ASSERT_ELEM_SIZE((vec), typeof(wvs_tmp));       \
+        WC_REQUIRE_POD(wc_typeof(val), "VEC_SET");            \
+        wc_typeof(val) wvs_tmp = (val);                       \
+        WC_ASSERT_ELEM_SIZE((vec), wc_typeof(wvs_tmp));       \
         GenVec_replace((vec), (i), (const void*)&wvs_tmp); \
     })
 
 // Replace element i by moving an lvalue in (old element deleted, lval zeroed).
 #define VEC_SET_MOVE(vec, i, lval)                       \
     ({                                                   \
-        WC_ASSERT_ELEM_SIZE((vec), typeof(lval));        \
+        WC_ASSERT_ELEM_SIZE((vec), wc_typeof(lval));        \
         GenVec_replace_move((vec), (i), (void*)&(lval)); \
     })
 
 // Replace element i with a deep copy of an lvalue (old element deleted, you keep lval).
 #define VEC_SET_COPY(vec, i, lval)                        \
     ({                                                    \
-        WC_ASSERT_ELEM_SIZE((vec), typeof(lval));         \
+        WC_ASSERT_ELEM_SIZE((vec), wc_typeof(lval));         \
         GenVec_replace((vec), (i), (const void*)&(lval)); \
     })
 
@@ -335,9 +333,9 @@ Usage:
     ({                                                                                      \
         WC_ASSERT_ELEM_SIZE(vec, T);                                                        \
         T wvpop;                                                                            \
-        if (WC_LIKELY((vec)->is_pod && (vec)->size > 0 && (vec)->data_size == sizeof(T))) { \
+        if (wc_likely((vec)->is_pod && (vec)->size > 0 && (vec)->data_size == sizeof(T))) { \
             (vec)->size--;                                                                  \
-            __builtin_memcpy(&wvpop, (vec)->data + ((vec)->size * sizeof(T)), sizeof(T));   \
+            memcpy(&wvpop, (vec)->data + ((vec)->size * sizeof(T)), sizeof(T));   \
         } else {                                                                            \
             memset(&wvpop, 0, sizeof(T));                                                   \
             GenVec_pop(vec, (void*)&wvpop);                                                 \
@@ -472,13 +470,13 @@ Usage:
 
 // Put (COPY semantics): plain-data key and value (E2)
 
-// TODO: isn't this a copy in here? typeof(key) _mk = (key);
+// TODO: isn't this a copy in here? wc_typeof(key) _mk = (key);
 #define MAP_PUT(map, key, val)                                         \
     ({                                                                 \
-        WC_REQUIRE_POD(typeof(key), "MAP_PUT key");                    \
-        WC_REQUIRE_POD(typeof(val), "MAP_PUT value");                  \
-        typeof(key) _mk = (key);                                       \
-        typeof(val) _mv = (val);                                       \
+        WC_REQUIRE_POD(wc_typeof(key), "MAP_PUT key");                    \
+        WC_REQUIRE_POD(wc_typeof(val), "MAP_PUT value");                  \
+        wc_typeof(key) _mk = (key);                                       \
+        wc_typeof(val) _mv = (val);                                       \
         WC_ASSERT_SIZE(sizeof(_mk), (map)->key_size, "MAP_PUT key");   \
         WC_ASSERT_SIZE(sizeof(_mv), (map)->val_size, "MAP_PUT value"); \
         HashMap_put((map), (const void*)&_mk, (const void*)&_mv);      \
@@ -505,8 +503,8 @@ Usage:
 // key moved, plain-data value copied
 #define MAP_PUT_KEY_MOVE(map, klval, val)                                       \
     ({                                                                          \
-        WC_REQUIRE_POD(typeof(val), "MAP_PUT_KEY_MOVE value");                  \
-        typeof(val) _mv = (val);                                                \
+        WC_REQUIRE_POD(wc_typeof(val), "MAP_PUT_KEY_MOVE value");                  \
+        wc_typeof(val) _mv = (val);                                                \
         WC_ASSERT_SIZE(sizeof(klval), (map)->key_size, "MAP_PUT_KEY_MOVE key"); \
         WC_ASSERT_SIZE(sizeof(_mv), (map)->val_size, "MAP_PUT_KEY_MOVE value"); \
         HashMap_put_key_move((map), (void*)&(klval), (const void*)&_mv);        \
@@ -515,8 +513,8 @@ Usage:
 // plain-data key copied, value moved
 #define MAP_PUT_VAL_MOVE(map, key, vlval)                                         \
     ({                                                                            \
-        WC_REQUIRE_POD(typeof(key), "MAP_PUT_VAL_MOVE key");                      \
-        typeof(key) _mk = (key);                                                  \
+        WC_REQUIRE_POD(wc_typeof(key), "MAP_PUT_VAL_MOVE key");                      \
+        wc_typeof(key) _mk = (key);                                                  \
         WC_ASSERT_SIZE(sizeof(_mk), (map)->key_size, "MAP_PUT_VAL_MOVE key");     \
         WC_ASSERT_SIZE(sizeof(vlval), (map)->val_size, "MAP_PUT_VAL_MOVE value"); \
         HashMap_put_val_move((map), (const void*)&_mk, (void*)&(vlval));          \
@@ -529,8 +527,8 @@ Usage:
 // NOLINTBEGIN(bugprone-macro-parentheses): V is a type; (V)* would parse as a cast
 #define MAP_GET_PTR(map, V, key)                                              \
     ({                                                                        \
-        WC_REQUIRE_POD(typeof(key), "MAP_GET_PTR key");                       \
-        typeof(key) _mk = (key);                                              \
+        WC_REQUIRE_POD(wc_typeof(key), "MAP_GET_PTR key");                       \
+        wc_typeof(key) _mk = (key);                                              \
         WC_ASSERT_SIZE(sizeof(_mk), (map)->key_size, "MAP_GET_PTR key");      \
         WC_ASSERT_SIZE(sizeof(V), (map)->val_size, "MAP_GET_PTR value type"); \
         (const V*)HashMap_get_ptr((map), (const void*)&_mk);                  \
@@ -614,9 +612,9 @@ Usage:
 // Plain-data value
 #define SET_INSERT(set, elm)                                          \
     ({                                                                \
-        WC_REQUIRE_POD(typeof(elm), "SET_INSERT");                    \
+        WC_REQUIRE_POD(wc_typeof(elm), "SET_INSERT");                    \
         WC_ASSERT_IS_SET((set), "SET_INSERT");                        \
-        typeof(elm) _temp = (elm);                                    \
+        wc_typeof(elm) _temp = (elm);                                    \
         WC_ASSERT_SIZE(sizeof(_temp), (set)->key_size, "SET_INSERT"); \
         HashMap_put((set), (const void*)&(_temp), NULL);              \
     })
@@ -700,21 +698,21 @@ Usage:
 // Plain-data value (E2).
 #define QUEUE_PUSH(q, val)                               \
     ({                                                   \
-        WC_REQUIRE_POD(typeof(val), "QUEUE_PUSH");       \
-        typeof(val) _qp_tmp = (val);                     \
-        WC_ASSERT_ELEM_SIZE(&(q)->arr, typeof(_qp_tmp)); \
+        WC_REQUIRE_POD(wc_typeof(val), "QUEUE_PUSH");       \
+        wc_typeof(val) _qp_tmp = (val);                     \
+        WC_ASSERT_ELEM_SIZE(&(q)->arr, wc_typeof(_qp_tmp)); \
         Queue_push((q), (const void*)&_qp_tmp);          \
     })
 
 #define QUEUE_PUSH_MOVE(q, lval)                      \
     ({                                                \
-        WC_ASSERT_ELEM_SIZE(&(q)->arr, typeof(lval)); \
+        WC_ASSERT_ELEM_SIZE(&(q)->arr, wc_typeof(lval)); \
         Queue_push_move((q), (void*)&(lval));         \
     })
 
 #define QUEUE_PUSH_COPY(q, lval)                      \
     ({                                                \
-        WC_ASSERT_ELEM_SIZE(&(q)->arr, typeof(lval)); \
+        WC_ASSERT_ELEM_SIZE(&(q)->arr, wc_typeof(lval)); \
         Queue_push((q), (const void*)&(lval));        \
     })
 

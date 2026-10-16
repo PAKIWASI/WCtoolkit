@@ -19,7 +19,7 @@
 #define MAYBE_GROW_STR(s)                                                             \
     ({                                                                                \
         WC_ASSERT((s)->capacity != 0, "String mutation on zeroed/moved-from String"); \
-        if (WC_UNLIKELY((s)->size >= (s)->capacity)) {                                \
+        if (wc_unlikely((s)->size >= (s)->capacity)) {                                \
             if (IS_SSO(s)) {                                                          \
                 (s)->stk[STR_SSO_SIZE - 1] = '\0';                                    \
                 stk_to_heap(s);                                                       \

@@ -924,13 +924,6 @@ UTEST(hashmap, long_probe_chains_stay_correct)
     HashMap_destroy(&m);
 }
 
-static u64 constant_hash(const void* key, u64 len)
-{
-    (void)key;
-    (void)len;
-    return 0;
-}
-
 
 /* ════════════════════════════════════════════════════════════════════════════
  * bucket distribution on structured keys (regression: top-bit indexing once made

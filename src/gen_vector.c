@@ -16,7 +16,7 @@
 
 // Growth is amortized: rare by construction, so the hint is known-correct.
 #define MAYBE_GROW(vec) \
-    ((void)(WC_UNLIKELY((vec)->size >= (vec)->capacity) && (GenVec_grow_to((vec), (vec)->size + 1), 0)))
+    ((void)(wc_unlikely((vec)->size >= (vec)->capacity) && (GenVec_grow_to((vec), (vec)->size + 1), 0)))
 
 // smallest safe alignment for this element size
 #define DATA_ALIGN(vec) wc_align_for_size((vec)->data_size)
