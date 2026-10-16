@@ -36,30 +36,30 @@ _Static_assert(sizeof(String) == 48, "String must be 48 bytes");
 //  Construction / Destruction
 
 // Create an empty String using allocator `a`.
-wc_nodiscard String String_create(const wc_allocator* a) wc_nonull(1);
+wc_nodiscard wc_nonull(1) String String_create(const wc_allocator* a);
 
-wc_nodiscard String String_with_cap(const wc_allocator* a, u64 cap) wc_nonull(1);
+wc_nodiscard wc_nonull(1) String String_with_cap(const wc_allocator* a, u64 cap);
 
 // Create a String from a C string using allocator `a`.
-wc_nodiscard String String_from_cstr(const wc_allocator* a, const char* cstr) wc_nonull(1);
+wc_nodiscard wc_nonull(1) String String_from_cstr(const wc_allocator* a, const char* cstr);
 
 // Destroy the String's internal buffer
 // Safe on a zeroed/moved-from String.
-void String_destroy(String* str) wc_nonull(1);
+wc_nonull(1) void String_destroy(String* str);
 
 // Deep copy src → new String in allocator `a`.
 // dest is raw/uninitialized: never reads it before writing.
-wc_nodiscard String String_copy(const wc_allocator* a, const String* src) wc_nonull(1, 2);
+wc_nodiscard wc_nonull(1, 2) String String_copy(const wc_allocator* a, const String* src);
 
 // Transfer ownership: dest gets src's contents, src is zeroed.
-void String_move(String* dest, String* src) wc_nonull(1, 2);
+wc_nonull(1, 2) void String_move(String* dest, String* src);
 
 // TODO: just use a StrView for this? can we for hashmap lookup?
 // Non-owning, READ-ONLY String over `len` existing bytes: no allocation.
 // For lookups only: a String-keyed map or set hashes and compares it like an
 // owning String with the same bytes. Never store it in a container.
 // Any mutation is fatal (WC_BORROWED cannot allocate); destroy is a no-op.
-wc_nodiscard wc_nonull(1) static inline String String_borrow(const char* p, u64 len)
+wc_nodiscard wc_nonull(1) static wc_always_inline String String_borrow(const char* p, u64 len)
 {
     String s;
     memset(&s, 0, sizeof(s)); // stk[STR_SSO_SIZE - 1] == 0: heap mode
@@ -74,57 +74,57 @@ wc_nodiscard wc_nonull(1) static inline String String_borrow(const char* p, u64 
 //  Capacity
 
 // Ensure capacity >= new_cap (never shrinks).
-void String_reserve(String* str, u64 new_cap) wc_nonull(1);
+wc_nonull(1) void String_reserve(String* str, u64 new_cap);
 
 // Reserve capacity and fill new slots with c.
-void String_reserve_char(String* str, u64 new_cap, char c) wc_nonull(1);
+wc_nonull(1) void String_reserve_char(String* str, u64 new_cap, char c);
 
 // Shrink allocation to exactly fit current size.
-void String_shrink_to_fit(String* str) wc_nonull(1);
+wc_nonull(1) void String_shrink_to_fit(String* str);
 
 
 //  Conversion
 
 // Return a buffer (allocated from `a`) holding a NUL-terminated copy, caller
 // must free with wc_free(a, ptr, str->size + 1, 1).
-wc_nodiscard char* String_to_cstr(const wc_allocator* a, const String* str) wc_nonull(1, 2);
+wc_nodiscard wc_nonull(1, 2) char* String_to_cstr(const wc_allocator* a, const String* str);
 
-void String_to_cstr_buf(const String* str, char* buff, u64 n) wc_nonull(1, 2);
+wc_nonull(1, 2) void String_to_cstr_buf(const String* str, char* buff, u64 n);
 
 // Return a raw pointer into the internal buffer (no NUL terminator).
-wc_nodiscard char* String_data_ptr(const String* str) wc_nonull(1);
+wc_nodiscard wc_nonull(1) char* String_data_ptr(const String* str);
 
 // Guarantee a '\0' sits one byte past the last real character, WITHOUT
 // touching str->size. Grows exactly like String_append_char would.
-void String_ensure_null_term(String* str) wc_nonull(1);
+wc_nonull(1) void String_ensure_null_term(String* str);
 
 
 //  Modification
 
-void String_append_char(String* str, char c) wc_nonull(1);
+wc_nonull(1) void String_append_char(String* str, char c);
 // TODO:
-void String_append_multi(String* str, const char* data, u64 len) wc_nonull(1, 2);
-void String_append_cstr(String* str, const char* cstr) wc_nonull(1, 2);
-void String_append_String(String* str, const String* other) wc_nonull(1, 2);
+wc_nonull(1, 2) void String_append_multi(String* str, const char* data, u64 len);
+wc_nonull(1, 2) void String_append_cstr(String* str, const char* cstr);
+wc_nonull(1, 2) void String_append_String(String* str, const String* other);
 // Append other then destroy it (leaves other zeroed). When str is empty and
 // both share an allocator, str takes over other's buffer: no copy.
-void String_append_String_move(String* str, String* other) wc_nonull(1, 2);
+wc_nonull(1, 2) void String_append_String_move(String* str, String* other);
 
-char String_pop_char(String* str) wc_nonull(1);
+wc_nodiscard wc_nonull(1) char String_pop_char(String* str);
 
-void String_insert_char(String* str, u64 i, char c) wc_nonull(1);
-void String_insert_cstr(String* str, u64 i, const char* cstr) wc_nonull(1, 3);
+wc_nonull(1) void String_insert_char(String* str, u64 i, char c);
+wc_nonull(1, 3) void String_insert_cstr(String* str, u64 i, const char* cstr);
 // TODO:
-void String_insert_multi(String* str, u64 i, const char* data, u64 len) wc_nonull(1, 3);
-void String_insert_String(String* str, u64 i, const String* other) wc_nonull(1, 3);
+wc_nonull(1, 3) void String_insert_multi(String* str, u64 i, const char* data, u64 len);
+wc_nonull(1, 3) void String_insert_String(String* str, u64 i, const String* other);
 
-void String_remove_char(String* str, u64 i) wc_nonull(1);
+wc_nonull(1) void String_remove_char(String* str, u64 i);
 
 // Remove chars in range [start, start + len)
-void String_remove_range(String* str, u64 start, u64 len) wc_nonull(1);
+wc_nonull(1) void String_remove_range(String* str, u64 start, u64 len);
 
 // Remove all chars (keep allocation).
-wc_nonull(1) static inline void String_clear(String* str)
+wc_nonull(1) static wc_always_inline void String_clear(String* str)
 {
     str->size = 0;
 }
@@ -132,19 +132,19 @@ wc_nonull(1) static inline void String_clear(String* str)
 
 //  Access
 
-wc_nodiscard wc_nonull(1) static inline char String_char_at(const String* str, u64 i)
+wc_nodiscard wc_nonull(1) static wc_always_inline char String_char_at(const String* str, u64 i)
 {
     WC_ASSERT(i < str->size, "index out of bounds");
     return ((str->stk[STR_SSO_SIZE - 1] != '\0') ? str->stk : str->heap)[i];
 }
 
 // UNCHECKED: no bounds check, even in Debug. Caller guarantees i < size.
-wc_nodiscard wc_nonull(1) static inline char String_char_at_unsafe(const String* str, u64 i)
+wc_nodiscard wc_nonull(1) static wc_always_inline char String_char_at_unsafe(const String* str, u64 i)
 {
     return ((str->stk[STR_SSO_SIZE - 1] != '\0') ? str->stk : str->heap)[i];
 }
 
-wc_nonull(1) static inline void String_set_char(String* str, u64 i, char c)
+wc_nonull(1) static wc_always_inline void String_set_char(String* str, u64 i, char c)
 {
     WC_ASSERT(i < str->size, "index out of bounds");
     ((str->stk[STR_SSO_SIZE - 1] != '\0') ? str->stk : str->heap)[i] = c;
@@ -154,49 +154,49 @@ wc_nonull(1) static inline void String_set_char(String* str, u64 i, char c)
 //  Comparison
 
 // 0 == equal, <0 == str1 < str2, >0 == str1 > str2
-int String_compare(const String* s1, const String* s2) wc_nonull(1, 2);
+wc_nodiscard wc_nonull(1, 2) int String_compare(const String* s1, const String* s2);
 
-wc_nonull(1, 2) static inline bool String_equals(const String* s1, const String* s2)
+wc_nodiscard wc_nonull(1, 2) static wc_always_inline bool String_equals(const String* s1, const String* s2)
 {
     return String_compare(s1, s2) == 0;
 }
 
-bool String_equals_cstr(const String* str, const char* cstr) wc_nonull(1, 2);
+wc_nodiscard wc_nonull(1, 2) bool String_equals_cstr(const String* str, const char* cstr);
 
 
 //  Search
 
 // Returns index, or WC_NOT_FOUND if not found.
-wc_nodiscard u64 String_find_char(const String* str, char c) wc_nonull(1);
-wc_nodiscard u64 String_find_cstr(const String* str, const char* substr) wc_nonull(1, 2);
+wc_nodiscard wc_nonull(1) u64 String_find_char(const String* str, char c);
+wc_nodiscard wc_nonull(1, 2) u64 String_find_cstr(const String* str, const char* substr);
 
 // Return a String (in allocator `a`) holding `length` chars starting at `start`.
-wc_nodiscard String String_substr(const wc_allocator* a, const String* str, u64 start, u64 length) wc_nonull(1, 2);
+wc_nodiscard wc_nonull(1, 2) String String_substr(const wc_allocator* a, const String* str, u64 start, u64 length);
 
 
 //  I/O
 
-void String_print(const String* str) wc_nonull(1);
+wc_nonull(1) void String_print(const String* str);
 
 
 //  Inline helpers
 
-wc_nodiscard wc_nonull(1) static inline u64 String_len(const String* str)
+wc_nodiscard wc_nonull(1) static wc_always_inline u64 String_len(const String* str)
 {
     return str->size;
 }
 
-wc_nodiscard wc_nonull(1) static inline u64 String_capacity(const String* str)
+wc_nodiscard wc_nonull(1) static wc_always_inline u64 String_capacity(const String* str)
 {
     return str->capacity;
 }
 
-wc_nonull(1) static inline bool String_empty(const String* str)
+wc_nodiscard wc_nonull(1) static wc_always_inline bool String_empty(const String* str)
 {
     return str->size == 0;
 }
 
-wc_nonull(1) static inline bool String_is_sso(const String* str)
+wc_nodiscard wc_nonull(1) static wc_always_inline bool String_is_sso(const String* str)
 {
     return str->stk[STR_SSO_SIZE - 1] != '\0';
 }
@@ -204,7 +204,7 @@ wc_nonull(1) static inline bool String_is_sso(const String* str)
 // Read-only pointer into the buffer. Unlike String_data_ptr, this never
 // returns NULL for an empty String. Internally, it uses String_ensure_null_term(),
 // which places a '\0' right after the last valid char without touching the size of the string.
-wc_nodiscard wc_nonull(1) static inline const char* String_cstr_view(String* str)
+wc_nodiscard wc_nonull(1) static wc_always_inline const char* String_cstr_view(String* str)
 {
     String_ensure_null_term(str);
     return String_is_sso(str) ? str->stk : str->heap;

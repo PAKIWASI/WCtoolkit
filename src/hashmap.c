@@ -41,13 +41,13 @@ typedef enum {
 */
 
 // align `x` up to a multiple of `a`
-static inline u64 map_align_up(u64 x, u64 a)
+static wc_always_inline u64 map_align_up(u64 x, u64 a)
 {
     return (x + (a - 1)) & ~(a - 1);
 }
 
 // get the max alignment for an entry consisting of key,val of size key_size,val_size
-static inline u64 map_align(u32 key_size, u32 val_size)
+static wc_always_inline u64 map_align(u32 key_size, u32 val_size)
 {
     u64 ka = wc_align_for_size(key_size); // safe alignment for key_size
     u64 va = wc_align_for_size(val_size); // safe alignment for va_szie
@@ -68,7 +68,7 @@ static inline u64 map_align(u32 key_size, u32 val_size)
 #define SWAP_VAL(map)  ((map)->scratch + KPAD(map) + VPAD(map) + KPAD(map))
 
 // total size for scratch area: 2 * (KPAD + VPAD)
-static inline u64 map_scratch_size(u32 key_size, u32 val_size)
+static wc_always_inline u64 map_scratch_size(u32 key_size, u32 val_size)
 {
     u64 al = map_align(key_size, val_size); // get max align for key/val size
     return 2 * (map_align_up(key_size, al) + map_align_up(val_size, al));
@@ -78,7 +78,7 @@ typedef struct {
     u64 vals, scratch, psls, total; // byte offsets from the block start, and its size
 } map_layout;
 
-static inline map_layout map_layout_for(u64 cap, u32 key_size, u32 val_size)
+static wc_always_inline map_layout map_layout_for(u64 cap, u32 key_size, u32 val_size)
 {
     u64        al = map_align(key_size, val_size); // get max align for key/val size
     map_layout l  = {0};
@@ -112,7 +112,7 @@ static void map_free_block(const HashMap* map, u8* block, u64 cap)
 
 // Move one element into `dest` (memcpy). `src` is left zeroed.
 // size 0 (a set's value): nothing to move, and src may be NULL.
-static inline void map_move_into(u8* dest, u8* src, u32 size)
+static wc_always_inline void map_move_into(u8* dest, u8* src, u32 size)
 {
     if (size == 0) {
         return;
@@ -123,7 +123,7 @@ static inline void map_move_into(u8* dest, u8* src, u32 size)
 
 // Copy one element into raw `dest`: copy_fn if any, else memcpy.
 // size 0 (a set's value): nothing to copy, and src may be NULL.
-static inline void map_copy_into(const HashMap* map, const wc_container_ops* ops, u32 size, u8* dest, const void* src)
+static wc_always_inline void map_copy_into(const HashMap* map, const wc_container_ops* ops, u32 size, u8* dest, const void* src)
 {
     if (size == 0) {
         return;
@@ -136,7 +136,7 @@ static inline void map_copy_into(const HashMap* map, const wc_container_ops* ops
 }
 
 // Delete one element in place (if it owns anything)
-static inline void map_delete_elm(const wc_container_ops* ops, u8* elm)
+static wc_always_inline void map_delete_elm(const wc_container_ops* ops, u8* elm)
 {
     if (ops && ops->del_fn) {
         ops->del_fn(elm);
@@ -144,7 +144,7 @@ static inline void map_delete_elm(const wc_container_ops* ops, u8* elm)
 }
 
 // Destroy an incoming duplicate the container will not keep, and zero it
-static inline void map_consume_dup(const wc_container_ops* ops, u32 size, u8* elm)
+static wc_always_inline void map_consume_dup(const wc_container_ops* ops, u32 size, u8* elm)
 {
     if (size == 0) {
         return;
@@ -188,10 +188,10 @@ static wc_always_inline bool map_key_eq(const HashMap* map, const u8* a, const u
 ====================PRIVATE DECLARATIONS====================
 */
 
-static u64         map_lookup(const HashMap* map, const u8* key, LOOKUP_RES* res, u8* out_psl);
-static void        map_insert(HashMap* map, u8* key, u8* val, u8 psl, u64 idx);
-static inline void map_maybe_resize(HashMap* map);
-static void        map_resize(HashMap* map, u64 new_capacity);
+static u64                   map_lookup(const HashMap* map, const u8* key, LOOKUP_RES* res, u8* out_psl);
+static void                  map_insert(HashMap* map, u8* key, u8* val, u8 psl, u64 idx);
+static wc_always_inline void map_maybe_resize(HashMap* map);
+static void                  map_resize(HashMap* map, u64 new_capacity);
 
 
 /*
@@ -257,7 +257,7 @@ void HashMap_move(HashMap* dest, HashMap* src)
 
 
 // Insert the staged key/val (already owned by the map) at the lookup result.
-static inline void map_commit(HashMap* map, u8 psl, u64 slot)
+static wc_always_inline void map_commit(HashMap* map, u8 psl, u64 slot)
 {
     map_insert(map, STAGE_KEY(map), STAGE_VAL(map), psl, slot);
     map_maybe_resize(map);
@@ -606,10 +606,10 @@ HashMap HashMap_copy(const wc_allocator* a, const HashMap* src)
 ====================PRIVATE FUNCTIONS====================
 */
 
-static inline void map_maybe_resize(HashMap* map)
+static wc_always_inline void map_maybe_resize(HashMap* map)
 {
     // integer multiply avoids float. equivalent to load > 0.75
-    if (map->size * 4 >= map->capacity * 3) {
+    if (wc_unlikely(map->size * 4 >= map->capacity * 3)) {
         map_resize(map, map->capacity * 2);
     }
 }

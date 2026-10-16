@@ -28,7 +28,7 @@ void BitVec_set(BitVec* bvec, u64 i)
     u64 byte_index = i / 8;
     u64 bit_index  = i % 8;
 
-    while (byte_index >= bvec->arr.size) {
+    while (wc_unlikely(byte_index >= bvec->arr.size)) {
         u8 zero = 0;
         GenVec_push(&bvec->arr, &zero);
     }
@@ -88,7 +88,7 @@ void BitVec_pop(BitVec* bvec)
     WC_SET_RET(WC_ERR_EMPTY, bvec->size == 0, );
 
     bvec->size--;
-    if (bvec->size % 8 == 0) {
+    if (wc_unlikely(bvec->size % 8 == 0)) {
         GenVec_pop(&bvec->arr, NULL);
     }
 }

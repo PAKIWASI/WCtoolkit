@@ -35,7 +35,7 @@
 
 
 // Copy one element INTO raw slot memory: copy_fn if any, else memcpy
-static inline void vec_copy_into(const GenVec* vec, u8* dest, const void* src)
+static wc_always_inline void vec_copy_into(const GenVec* vec, u8* dest, const void* src)
 {
     wc_copy_fn copy = vec->is_pod ? NULL : VEC_COPY_FN(vec);
     if (copy) {
@@ -46,14 +46,14 @@ static inline void vec_copy_into(const GenVec* vec, u8* dest, const void* src)
 }
 
 // Move one element (always memcpy). The source is left zeroed.
-static inline void vec_move_into(const GenVec* vec, u8* dest, void* src)
+static wc_always_inline void vec_move_into(const GenVec* vec, u8* dest, void* src)
 {
     memcpy(dest, src, vec->data_size);
     memset(src, 0, vec->data_size);
 }
 
 // Delete `n` elements starting at `p`.
-static inline void vec_delete_range(const GenVec* vec, u8* p, u64 n)
+static wc_always_inline void vec_delete_range(const GenVec* vec, u8* p, u64 n)
 {
     wc_delete_fn del = vec->is_pod ? NULL : VEC_DEL_FN(vec);
     if (del) {
@@ -65,7 +65,7 @@ static inline void vec_delete_range(const GenVec* vec, u8* p, u64 n)
 
 // Take element at `slot` out: moved into `out`, or deleted when out == NULL (B7).
 // The slot itself is left as garbage: callers drop it from the live range.
-static inline void vec_take_out(const GenVec* vec, u8* slot, void* out)
+static wc_always_inline void vec_take_out(const GenVec* vec, u8* slot, void* out)
 {
     if (out) {
         memcpy(out, slot, vec->data_size);

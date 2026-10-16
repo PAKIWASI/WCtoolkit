@@ -66,13 +66,13 @@ extern const wc_allocator wc_mmap;
 #define WC_MMAP (&wc_mmap)
 
 
-static inline wc_nonull(1) bool wc_is_libc(const wc_allocator* a)
+wc_nodiscard wc_nonull(1) static wc_always_inline bool wc_is_libc(const wc_allocator* a)
 {
     return a == WC_LIBC;
 }
 
 // Same backend and same context: memory from one may be freed through the other
-static inline wc_nonull(1, 2) int wc_same(const wc_allocator* a, const wc_allocator* b)
+wc_nodiscard wc_nonull(1, 2) static wc_always_inline int wc_same(const wc_allocator* a, const wc_allocator* b)
 {
     return a == b || (a->vt == b->vt && a->ctx == b->ctx);
 }
@@ -80,17 +80,17 @@ static inline wc_nonull(1, 2) int wc_same(const wc_allocator* a, const wc_alloca
 #define WC_ALLOC_ASSERT_ALIGN(align) \
     assert((align) != 0 && ((align) & ((align) - 1)) == 0 && "align must be a power of two >= 1")
 
-static inline wc_nonull(1) void* wc_alloc(const wc_allocator* a, size_t n, size_t align)
+wc_nodiscard wc_nonull(1) static wc_always_inline void* wc_alloc(const wc_allocator* a, size_t n, size_t align)
 {
     WC_ALLOC_ASSERT_ALIGN(align);
-    if (n == 0 || n > (size_t)PTRDIFF_MAX) { // any valid allocation will be less than PTRDIFF_MAX
+    if (wc_unlikely(n == 0 || n > (size_t)PTRDIFF_MAX)) { // any valid allocation will be less than PTRDIFF_MAX
         return NULL;
     }
     assert(a->vt && a->vt->alloc && "wc_alloc: no allocator"); // an allocator really only needs the alloc function
     return a->vt->alloc(a->ctx, n, align);
 }
 
-static inline wc_nonull(1) void wc_free(const wc_allocator* a, void* p, size_t n, size_t align)
+wc_nonull(1) static wc_always_inline void wc_free(const wc_allocator* a, void* p, size_t n, size_t align)
 {
     WC_ALLOC_ASSERT_ALIGN(align);
     if (!p) {
@@ -102,18 +102,18 @@ static inline wc_nonull(1) void wc_free(const wc_allocator* a, void* p, size_t n
     }
 }
 
-static inline wc_nonull(1) void* wc_realloc(const wc_allocator* a, void* p, size_t old_n, size_t n,
-                                                           size_t align)
+wc_nodiscard wc_nonull(1) static wc_always_inline void* wc_realloc(const wc_allocator* a, void* p, size_t old_n, size_t n,
+                                                                   size_t align)
 {
     WC_ALLOC_ASSERT_ALIGN(align);
-    if (!p) {
+    if (wc_unlikely(!p)) {
         return wc_alloc(a, n, align);
     }
-    if (n == 0) {
+    if (wc_unlikely(n == 0)) {
         wc_free(a, p, old_n, align);
         return NULL;
     }
-    if (n > (size_t)PTRDIFF_MAX) {
+    if (wc_unlikely(n > (size_t)PTRDIFF_MAX)) {
         return NULL; // overflowed size: fail, p stays valid
     }
     assert(a->vt && "wc_alloc: no allocator");
@@ -139,7 +139,7 @@ the object couldn't be represented. So any valid allocation size is <= PTRDIFF_M
 // count * size, saturating to SIZE_MAX on overflow. SIZE_MAX can never be
 // satisfied, so an overflowing request fails in the backend instead of wrapping
 // to a small size. (Returning 0 would be wrong: realloc to 0 means free.)
-static inline size_t wc_mul(size_t count, size_t size)
+wc_nodiscard static wc_always_inline size_t wc_mul(size_t count, size_t size)
 {
     size_t r;
     return wc_mul_overflow(count, size, &r) ? SIZE_MAX : r;
@@ -148,7 +148,7 @@ static inline size_t wc_mul(size_t count, size_t size)
 // Smallest safe alignment for elements of `elm_size` bytes: the
 // largest power of two dividing elm_size, capped at WC_MAX_ALIGN. Valid because
 // sizeof(T) is always a multiple of alignof(T).
-static inline size_t wc_align_for_size(size_t elm_size)
+wc_nodiscard static wc_always_inline size_t wc_align_for_size(size_t elm_size)
 {
     if (elm_size == 0) {
         return 1;

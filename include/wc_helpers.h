@@ -37,8 +37,9 @@
 
 #include "common.h"
 #include "gen_vector.h"
-#include "wc_hash.h"
 #include "wc_allocator.h"
+#include "wc_comp.h"
+#include "wc_hash.h"
 #include "wc_string.h"
 #include <stdalign.h>
 #include <stdio.h>
@@ -53,17 +54,17 @@
  * str_del   — delegates to String_destroy() (frees heap buf via str->alloc, NOT the slot)
 */
 
-static inline void str_copy(const wc_allocator* dst, void* dest, const void* src)
+wc_nonull(1, 2, 3) static wc_always_inline void str_copy(const wc_allocator* dst, void* dest, const void* src)
 {
     *(String*)dest = String_copy(dst, (const String*)src);
 }
 
-static inline void str_del(void* elm)
+wc_nonull(1) static wc_always_inline void str_del(void* elm)
 {
     String_destroy((String*)elm); // free data buffer via str->alloc, NOT the slot
 }
 
-static inline void str_print(const void* elm)
+wc_nonull(1) static inline void str_print(const void* elm)
 {
     String_print((const String*)elm);
 }
@@ -76,13 +77,13 @@ static inline void str_print(const void* elm)
  * str_del_ptr  — destroy pointee via its own allocator, then free shell
 */
 
-static inline void str_copy_ptr(const wc_allocator* dst, void* dest, const void* src)
+wc_nonull(1, 2, 3) static wc_always_inline void str_copy_ptr(const wc_allocator* dst, void* dest, const void* src)
 {
     // Box a deep copy: shell and contents both from dst
     *(String**)dest = (String*)WC_BOX(dst, String, String_copy, *(const String* const*)src);
 }
 
-static inline void str_del_ptr(void* elm)
+wc_nonull(1) static wc_always_inline void str_del_ptr(void* elm)
 {
     String* s = *(String**)elm;
     if (!s) {
@@ -94,18 +95,18 @@ static inline void str_del_ptr(void* elm)
     wc_free(a, s, sizeof(String), alignof(String)); // free the shell
 }
 
-static inline void str_print_ptr(const void* elm)
+wc_nonull(1) static inline void str_print_ptr(const void* elm)
 {
     String_print(*(const String**)elm);
 }
 
-static inline int str_cmp(const void* a, const void* b, u64 size)
+wc_nodiscard wc_nonull(1, 2) static wc_always_inline int str_cmp(const void* a, const void* b, u64 size)
 {
     (void)size;
     return String_compare((const String*)a, (const String*)b);
 }
 
-static inline int str_cmp_ptr(const void* a, const void* b, u64 size)
+wc_nodiscard wc_nonull(1, 2) static wc_always_inline int str_cmp_ptr(const void* a, const void* b, u64 size)
 {
     (void)size;
     return String_compare(*(const String**)a, *(const String**)b);
@@ -116,17 +117,17 @@ static inline int str_cmp_ptr(const void* a, const void* b, u64 size)
  * 3.  GENVEC BY VALUE  (vec of vecs)
 */ 
 
-static inline void vec_copy(const wc_allocator* dst, void* dest, const void* src)
+wc_nonull(1, 2, 3) static wc_always_inline void vec_copy(const wc_allocator* dst, void* dest, const void* src)
 {
     *(GenVec*)dest = GenVec_copy(dst, (const GenVec*)src); // inner vec follows the outer container
 }
 
-static inline void vec_del(void* elm)
+wc_nonull(1) static wc_always_inline void vec_del(void* elm)
 {
     GenVec_destroy((GenVec*)elm); // frees data with the inner vec's own allocator, NOT the slot
 }
 
-static inline void vec_print_int(const void* elm)
+wc_nonull(1) static inline void vec_print_int(const void* elm)
 {
     const GenVec* v = (const GenVec*)elm;
     printf("[");
@@ -144,13 +145,13 @@ static inline void vec_print_int(const void* elm)
  * 4.  GENVEC BY POINTER  (slot holds GenVec*)
 */
 
-static inline void vec_copy_ptr(const wc_allocator* dst, void* dest, const void* src)
+wc_nonull(1, 2, 3) static wc_always_inline void vec_copy_ptr(const wc_allocator* dst, void* dest, const void* src)
 {
     // shell and contents both from dst: the shell allocator equals the child's (D6)
     *(GenVec**)dest = WC_BOX(dst, GenVec, GenVec_copy, *(const GenVec* const*)src);
 }
 
-static inline void vec_del_ptr(void* elm)
+wc_nonull(1) static wc_always_inline void vec_del_ptr(void* elm)
 {
     GenVec* v = *(GenVec**)elm;
     if (!v) {
@@ -161,7 +162,7 @@ static inline void vec_del_ptr(void* elm)
     wc_free(a, v, sizeof(GenVec), alignof(GenVec));
 }
 
-static inline void vec_print_int_ptr(const void* elm)
+wc_nonull(1) static inline void vec_print_int_ptr(const void* elm)
 {
     vec_print_int(*(const GenVec**)elm);
 }
@@ -191,14 +192,14 @@ static const wc_container_ops wc_vec_ptr_ops = {.copy_fn = vec_copy_ptr, .del_fn
 
 // String keys: hash the characters, not the struct (which holds a pointer).
 // Pair with str_cmp / str_cmp_ptr from wc_helpers.h. MAP_OF picks both for you.
-static inline u64 wc_hash_str(const void* key, u64 size)
+wc_nodiscard wc_nonull(1) static wc_always_inline u64 wc_hash_str(const void* key, u64 size)
 {
     (void)size;
     const String* str = key;
     return wc_hash(String_data_ptr(str), String_len(str));
 }
 
-static inline u64 wc_hash_str_ptr(const void* key, u64 size)
+wc_nodiscard wc_nonull(1) static wc_always_inline u64 wc_hash_str_ptr(const void* key, u64 size)
 {
     (void)size;
     const String* str = *(String* const*)key;

@@ -1,6 +1,8 @@
 #ifndef WC_ERRNO_H
 #define WC_ERRNO_H
 
+#include "wc_comp.h"
+
 #include <stdio.h>
 
 
@@ -63,7 +65,7 @@ typedef enum {
     WC_ERR_INVALID_OP, // call to a function with preconditions not met
 } wc_err;
 
-static inline const char* wc_strerror(wc_err e)
+wc_nodiscard static inline const char* wc_strerror(wc_err e)
 {
     switch (e) {
     case WC_OK:

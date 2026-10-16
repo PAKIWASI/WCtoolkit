@@ -130,7 +130,7 @@ UTEST(stack, copy_move)
     Stack_destroy(&dst);
 
     /* move */
-    Stack moved;
+    Stack moved = {0};
     Stack_move(&moved, &src);
     EXPECT_EQ(Stack_size(&moved), 4u);
     EXPECT_EQ(Stack_size(&src), 0u); /* zeroed */
