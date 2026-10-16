@@ -176,6 +176,7 @@ WC_NODISCARD WC_NONULL(1) StrView StringStore_store_sv(StringStore* ss, StrView 
 
 
 // filepath storage/handling
+// store paths normally as strings in the stringstore (or wherever) and use these operations to work on them
 
 bool                 WCpath_is_absolute(StrView p); // starts with '/'
 WC_NODISCARD StrView WCpath_basename(StrView p);    // "/a/b/c.txt" -> "c.txt"
@@ -198,7 +199,6 @@ WC_NODISCARD String  Path_join(const wc_allocator* alloc, StrView a, StrView b);
 WC_NODISCARD StrView Path_join_sv(StringStore* ss, StrView a, StrView b);
 WC_NODISCARD StrView Path_normalize(StringStore* ss, StrView p); // collapses "." and ".."
 
-// TODO: path storage in stringstore
 
 
 #endif // WC_VIEWS_H

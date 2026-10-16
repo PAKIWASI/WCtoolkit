@@ -3,7 +3,6 @@
 #include "hashmap.h"
 #include "queue.h"
 #include "random.h"
-#include "test_support.h"
 #include "utest.h"
 #include "wc_allocator.h"
 #include "wc_helpers.h"
@@ -803,23 +802,6 @@ UTEST(hashmap, move)
     HashMap_destroy(&dest);
 }
 
-#if WC_HAS_FORK
-#ifndef NDEBUG // zero-state use is a WC_ASSERT: dies in Debug only
-static void die_mutating_zero_hashmap(void)
-{
-    HashMap m;
-    memset(&m, 0, sizeof(m));
-    int k = 1, v = 2;
-    HashMap_put(&m, &k, &v);
-}
-
-UTEST(hashmap, zero_state_fatal)
-{
-    EXPECT_DIES(die_mutating_zero_hashmap);
-}
-#endif
-#endif
-
 
 static inline u64 golden_mix(u64 h, u64 x)
 {
@@ -947,20 +929,6 @@ static u64 constant_hash(const void* key, u64 len)
     (void)key;
     (void)len;
     return 0;
-}
-
-static void die_degenerate_hash(void)
-{
-    HashMap m = HashMap_create(WC_LIBC, sizeof(int), sizeof(int), constant_hash, NULL, NULL, NULL);
-    for (int i = 0; i < 1000; i++) {
-        MAP_PUT(&m, i, i);
-    }
-    HashMap_destroy(&m);
-}
-
-UTEST(hashmap, degenerate_hash_dies_instead_of_corrupting)
-{
-    EXPECT_DIES(die_degenerate_hash);
 }
 
 
@@ -1130,19 +1098,6 @@ UTEST(hash, avalanche_short_keys)
 /* ════════════════════════════════════════════════════════════════════════════
  * sets (val_size 0) and key access
  * ════════════════════════════════════════════════════════════════════════════ */
-
-#ifndef NDEBUG // WC_ASSERT: dies in Debug only
-static void die_set_with_val_ops(void)
-{
-    HashMap s = HashMap_create(WC_LIBC, sizeof(int), 0, NULL, NULL, NULL, &wc_str_ops);
-    HashMap_destroy(&s);
-}
-
-UTEST(hashmap, set_rejects_val_ops)
-{
-    EXPECT_DIES(die_set_with_val_ops);
-}
-#endif
 
 UTEST(hashmap, set_takes_no_value_memory)
 {

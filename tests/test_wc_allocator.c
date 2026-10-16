@@ -18,7 +18,8 @@
 UTEST(allocator, libc_is_the_only_null_vtable)
 {
     EXPECT_TRUE(wc_is_libc(WC_LIBC));
-    EXPECT_TRUE(WC_LIBC->vt == NULL);
+    EXPECT_TRUE(WC_LIBC->vt != NULL); // libc is a normal allocator: full vtable
+    EXPECT_TRUE(WC_LIBC->vt->alloc && WC_LIBC->vt->realloc && WC_LIBC->vt->free);
     EXPECT_FALSE(wc_is_libc(WC_BORROWED));
 }
 

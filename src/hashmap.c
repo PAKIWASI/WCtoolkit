@@ -39,30 +39,37 @@ typedef enum {
 * the STAGE region, and it writes displaced residents into the SWAP region.
 */
 
+// align `x` up to a multiple of `a`
 static inline u64 map_align_up(u64 x, u64 a)
 {
     return (x + (a - 1)) & ~(a - 1);
 }
 
+// get the max alignment for an entry consisting of key,val of size key_size,val_size
 static inline u64 map_align(u32 key_size, u32 val_size)
 {
-    u64 ka = wc_align_for_size(key_size);
-    u64 va = wc_align_for_size(val_size);
-    return ka > va ? ka : va;
+    u64 ka = wc_align_for_size(key_size); // safe alignment for key_size
+    u64 va = wc_align_for_size(val_size); // safe alignment for va_szie
+    return ka > va ? ka : va;             // take the larger one
 }
 
+// find the max align for `map` and it's key/val sizes
 #define MAP_ALIGN(map) map_align((map)->key_size, (map)->val_size)
-#define KPAD(map)      map_align_up((map)->key_size, MAP_ALIGN(map))
-#define VPAD(map)      map_align_up((map)->val_size, MAP_ALIGN(map))
+// padded key. align the key upto the max alignment of the map
+// if key and val have different sizes than map_align returns the larger alignment
+// so only the key or the val will need padding, not both
+#define KPAD(map) map_align_up((map)->key_size, MAP_ALIGN(map))
+#define VPAD(map) map_align_up((map)->val_size, MAP_ALIGN(map))
 
 #define STAGE_KEY(map) ((map)->scratch)
 #define STAGE_VAL(map) ((map)->scratch + KPAD(map))
 #define SWAP_KEY(map)  ((map)->scratch + KPAD(map) + VPAD(map))
 #define SWAP_VAL(map)  ((map)->scratch + KPAD(map) + VPAD(map) + KPAD(map))
 
+// total size for scratch area: 2 * (KPAD + VPAD)
 static inline u64 map_scratch_size(u32 key_size, u32 val_size)
 {
-    u64 al = map_align(key_size, val_size);
+    u64 al = map_align(key_size, val_size); // get max align for key/val size
     return 2 * (map_align_up(key_size, al) + map_align_up(val_size, al));
 }
 
@@ -72,12 +79,12 @@ typedef struct {
 
 static inline map_layout map_layout_for(u64 cap, u32 key_size, u32 val_size)
 {
-    u64        al = map_align(key_size, val_size);
-    map_layout l;
-    l.vals    = map_align_up(cap * key_size, al);
-    l.scratch = map_align_up(l.vals + (cap * val_size), al);
-    l.psls    = l.scratch + map_scratch_size(key_size, val_size);
-    l.total   = l.psls + cap;
+    u64        al = map_align(key_size, val_size); // get max align for key/val size
+    map_layout l  = {0};
+    l.vals        = map_align_up(cap * key_size, al); // align the region up till the max align
+    l.scratch     = map_align_up(l.vals + (cap * val_size), al); // offset  keys
+    l.psls        = l.scratch + map_scratch_size(key_size, val_size); // offset key/val and scratch, align
+    l.total       = l.psls + cap; // the TOTAL size in bytes to allocate
     return l;
 }
 
@@ -85,7 +92,7 @@ static inline map_layout map_layout_for(u64 cap, u32 key_size, u32 val_size)
 static void map_alloc_block(HashMap* map, u64 cap)
 {
     map_layout l = map_layout_for(cap, map->key_size, map->val_size);
-    u8*        b = wc_alloc(map->alloc, l.total, MAP_ALIGN(map));
+    u8*        b = wc_alloc(map->alloc, l.total, MAP_ALIGN(map)); // align the base ptr to the max align too
     FATAL_IF(!b, "HashMap: table allocation of %lu bytes failed", l.total);
 
     map->keys     = b;
@@ -273,6 +280,8 @@ bool HashMap_put(HashMap* map, const void* key, const void* val)
         return true;
     }
 
+    // BUG: unnecisarry copy?
+    
     map_copy_into(map, map->key_ops, map->key_size, STAGE_KEY(map), key);
     map_copy_into(map, map->val_ops, map->val_size, STAGE_VAL(map), val);
     map_commit(map, out_psl, slot);
@@ -598,7 +607,7 @@ HashMap HashMap_copy(const wc_allocator* a, const HashMap* src)
 
 static inline void map_maybe_resize(HashMap* map)
 {
-    // integer multiply avoids float — equivalent to load > 0.75
+    // integer multiply avoids float. equivalent to load > 0.75
     if (map->size * 4 >= map->capacity * 3) {
         map_resize(map, map->capacity * 2);
     }
@@ -757,5 +766,3 @@ static void map_resize(HashMap* map, u64 new_capacity)
 
     map_free_block(map, old_keys, old_cap);
 }
-
-

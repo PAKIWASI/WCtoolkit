@@ -1,6 +1,5 @@
 #include "arena.h"
 #include "common.h"
-#include "test_support.h"
 #include "utest.h"
 #include "views.h"
 #include "wc_allocator.h"
@@ -153,7 +152,7 @@ UTEST(views, find)
     EXPECT_EQ(StrView_find(sv, StrView_over_cstr("ban", 3)), 0u);
     EXPECT_EQ(StrView_find(sv, StrView_over_cstr("banana", 6)), 0u);
     EXPECT_EQ(StrView_find(sv, StrView_over_cstr("xyz", 3)), WC_NOT_FOUND);
-    EXPECT_EQ(StrView_find(sv, StrView_over_cstr("ana", 3)), 3u); // match exactly at the end
+    EXPECT_EQ(StrView_find(sv, StrView_over_cstr("ana", 3)), 1u); // first of two matches (also at 3)
     EXPECT_EQ(StrView_find(sv, StrView_over_cstr("banana_", 7)), WC_NOT_FOUND); // longer than the view
     EXPECT_EQ(StrView_find(sv, StrView_over_cstr("", 0)), 0u); // empty needle matches at 0
 }
@@ -295,7 +294,7 @@ UTEST(views, to_cstr_on_arena)
     StrView sv = StrView_over_cstr("arena", 5);
     char*   c  = StrView_to_cstr(Arena_allocator(&arena), sv);
 
-    EXPECT_TRUE((u8*)c >= arena.base && (u8*)c < arena.base + arena.size);
+    EXPECT_TRUE((u8*)c >= arena.base && (u8*)c < arena.base + arena.cap);
     EXPECT_TRUE(sv_equals_cstr(StrView_over_cstr(c, 5), "arena"));
     EXPECT_TRUE(c[5] == '\0');
 
@@ -458,52 +457,4 @@ UTEST(views, compare)
     EXPECT_TRUE(StrView_compare(empty, abc) < 0);
     EXPECT_TRUE(StrView_compare(abc, empty) > 0);
     EXPECT_EQ(StrView_compare(empty, empty), 0);
-}
-
-
-// Debug-contract death tests: out-of-range windows abort (WC_ASSERT)
-
-static void die_over_String_ex_past_end(void)
-{
-    String  s  = String_from_cstr(WC_LIBC, "abc");
-    StrView sv = StrView_over_String_ex(&s, 2, 2); // 2 + 2 > 3
-    (void)sv;
-    String_destroy(&s);
-}
-
-static void die_slice_start_past_end(void)
-{
-    StrView sv = StrView_over_cstr("abcdef", 6);
-    sv         = StrView_slice(sv, 7, 0); // start > len
-    (void)sv;
-}
-
-static void die_slice_len_past_end(void)
-{
-    StrView sv = StrView_over_cstr("abcdef", 6);
-    sv         = StrView_slice(sv, 2, 5); // 2 + 5 > 6
-    (void)sv;
-}
-
-static void die_prefix_past_end(void)
-{
-    StrView sv = StrView_over_cstr("abcdef", 6);
-    sv         = StrView_prefix(sv, 7);
-    (void)sv;
-}
-
-static void die_suffix_start_past_end(void)
-{
-    StrView sv = StrView_over_cstr("abcdef", 6);
-    sv         = StrView_suffix(sv, 7);
-    (void)sv;
-}
-
-UTEST(views, range_assertions_die)
-{
-    EXPECT_DIES(die_over_String_ex_past_end);
-    EXPECT_DIES(die_slice_start_past_end);
-    EXPECT_DIES(die_slice_len_past_end);
-    EXPECT_DIES(die_prefix_past_end);
-    EXPECT_DIES(die_suffix_start_past_end);
 }

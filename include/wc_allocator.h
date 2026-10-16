@@ -151,8 +151,9 @@ static inline size_t wc_align_for_size(size_t elm_size)
     if (elm_size == 0) {
         return 1;
     }
+    // do elm & - elm. isolate LSB of elm_size. that bit is largest pow of 2 that divides elm_size
     size_t lowbit = elm_size & (~elm_size + 1);
-    return lowbit < WC_MAX_ALIGN ? lowbit : WC_MAX_ALIGN;
+    return lowbit < WC_MAX_ALIGN ? lowbit : WC_MAX_ALIGN; // clamp to max align
 }
 
 
@@ -162,14 +163,10 @@ static inline size_t wc_align_for_size(size_t elm_size)
 
 #define WC_NEW(a, T)      ((T*)wc_alloc((a), sizeof(T), alignof(T)))
 #define WC_NEW_N(a, T, n) ((T*)wc_alloc((a), wc_mul((n), sizeof(T)), alignof(T)))
-#define WC_REALLOC_N(a, p, old_n, n) \
-    ((typeof(p))wc_realloc((a), (p), wc_mul((old_n), sizeof(*(p))), wc_mul((n), sizeof(*(p))), alignof(typeof(*(p)))))
-#define WC_FREE(a, p)      (wc_free((a), (p), sizeof(*(p)), alignof(typeof(*(p)))))
-#define WC_FREE_N(a, p, n) (wc_free((a), (p), wc_mul((n), sizeof(*(p))), alignof(typeof(*(p)))))
-
-// BUG: shadowing?
-// #define wc_alloc(a, size) (wc_alloc(a, size, WC_MAX_ALIGN))
-// #define wc_realloc(a, p, old_n, new_n) (wc_realloc(a, p, old_n, new_n, WC_MAX_ALIGN))
-// #define wc_free(a, p, n) (wc_free(a, p, n, WC_MAX_ALIGN))
+#define WC_REALLOC_N(a, p, old_n, n)                                                               \
+    ((__typeof__(p))wc_realloc((a), (p), wc_mul((old_n), sizeof(*(p))), wc_mul((n), sizeof(*(p))), \
+                               alignof(__typeof__(*(p)))))
+#define WC_FREE(a, p)      (wc_free((a), (p), sizeof(*(p)), alignof(__typeof__(*(p)))))
+#define WC_FREE_N(a, p, n) (wc_free((a), (p), wc_mul((n), sizeof(*(p))), alignof(__typeof__(*(p)))))
 
 #endif // WC_ALLOCATOR_H
