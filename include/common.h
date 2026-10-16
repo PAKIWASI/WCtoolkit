@@ -63,16 +63,19 @@
  * moved-from or destroyed container: caught in Debug only, undefined behavior
  * in Release.
  *
- * Branch prediction: failure paths are WC_UNLIKELY, and the reporters are
+ * Branch prediction: failure paths are wc_unlikely, and the reporters are
  * `cold, noinline` functions defined once in wc_errno.c. The compiler moves
  * every failure branch (argument setup + call) out of the hot path into
  * .text.unlikely, so a check costs one compare and one not-taken branch.
 */
 
-#define WC_LIKELY(x)   __builtin_expect(!!(x), 1)
-#define WC_UNLIKELY(x) __builtin_expect(!!(x), 0)
+/* ── Compiler extensions (wc_nonull, wc_typeof, wc_likely, ...) ────────────
+ * One wrapper block for all non-standard constructs, kept in its own tiny
+ * header so the allocator layer can stay kit-independent.
+ */
+#include "wc_comp.h"
 
-__attribute__((cold, noinline, noreturn, format(printf, 4, 5))) void
+wc_cold wc_noinline wc_noreturn wc_format(printf, 4, 5) void
 wc_fatal_report(const char* file, int line, const char* func, const char* fmt, ...);
 
 // TODO:
@@ -84,23 +87,23 @@ wc_fatal_report(const char* file, int line, const char* func, const char* fmt, .
 typedef void (*wc_fatal_fn)(const char* file, int line, const char* func, const char* msg);
 wc_fatal_fn wc_set_fatal_handler(wc_fatal_fn fn);
 
-__attribute__((cold, noinline, format(printf, 4, 5))) void wc_warn_report(const char* file, int line, const char* func,
-                                                                          const char* fmt, ...);
+wc_cold wc_noinline wc_format(printf, 4, 5) void wc_warn_report(const char* file, int line, const char* func,
+                                                                const char* fmt, ...);
 
 
 /* SURVIVES EVERY BUILD */
 
 #define FATAL(fmt, ...) wc_fatal_report(__FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__)
 
-#define FATAL_IF(cond, fmt, ...) ((void)(WC_UNLIKELY(cond) && (FATAL("(%s): " fmt, #cond, ##__VA_ARGS__), 0)))
+#define FATAL_IF(cond, fmt, ...) ((void)(wc_unlikely(cond) && (FATAL("(%s): " fmt, #cond, ##__VA_ARGS__), 0)))
 
 #define WARN(fmt, ...) wc_warn_report(__FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__)
 
-#define WARN_IF(cond, fmt, ...) ((void)(WC_UNLIKELY(cond) && (WARN("(%s): " fmt, #cond, ##__VA_ARGS__), 0)))
+#define WARN_IF(cond, fmt, ...) ((void)(wc_unlikely(cond) && (WARN("(%s): " fmt, #cond, ##__VA_ARGS__), 0)))
 
 #define WARN_IF_RET(cond, ret, fmt, ...)              \
     ({                                                \
-        if (WC_UNLIKELY(cond)) {                      \
+        if (wc_unlikely(cond)) {                      \
             WARN("(%s): " fmt, #cond, ##__VA_ARGS__); \
             return ret;                               \
         }                                             \
@@ -123,7 +126,7 @@ __attribute__((cold, noinline, format(printf, 4, 5))) void wc_warn_report(const 
 #define WC_ASSERT(cond, fmt, ...) ((void)sizeof(!(cond)))
 #else
 #define WC_ASSERT(cond, fmt, ...) \
-    ((void)(WC_LIKELY(cond) || (FATAL("assertion (%s) failed: " fmt, #cond, ##__VA_ARGS__), 0)))
+    ((void)(wc_likely(cond) || (FATAL("assertion (%s) failed: " fmt, #cond, ##__VA_ARGS__), 0)))
 #endif
 
 
@@ -132,13 +135,6 @@ __attribute__((cold, noinline, format(printf, 4, 5))) void wc_warn_report(const 
 // 42 first and then pastes, giving `x42`. Used for __COUNTER__/__LINE__ names.
 #define WC_CAT_(a, b) a##b
 #define WC_CAT(a, b)  WC_CAT_(a, b)
-
-
-// common unix compiler attributes // TODO: use these throughout, also find msvc counterparts/fixes
-
-#define WC_NONULL(...)   __attribute__((nonnull(__VA_ARGS__)))
-#define WC_NODISCARD     __attribute__((warn_unused_result))
-#define WC_ALWAYS_INLINE __attribute__((always_inline))
 
 
 // TYPES
@@ -172,7 +168,7 @@ typedef int64_t i64;
 // n == 0 is a no-op on purpose. A set (HashMap with val_size 0) stores no values and may pass a NULL
 // src for its value copies. memcpy(dst, NULL, 0) is UB, and glibc declares memcpy nonnull, so the
 // compiler may assume src != NULL afterwards. The explicit 0 case avoids the call entirely.
-static inline WC_ALWAYS_INLINE void wc_copy_n(void* restrict dst, const void* restrict src, u64 n)
+static wc_always_inline void wc_copy_n(void* restrict dst, const void* restrict src, u64 n)
 {
     switch (n) {
     case 0:
@@ -217,7 +213,7 @@ static inline WC_ALWAYS_INLINE void wc_copy_n(void* restrict dst, const void* re
 // idiom: it compiles to a plain load and does not violate strict aliasing. Other sizes use memcmp.
 //
 // n == 0 is true without touching either pointer, so both may be NULL.
-static inline WC_ALWAYS_INLINE bool wc_equal_n(const void* a, const void* b, u64 n)
+static wc_always_inline bool wc_equal_n(const void* a, const void* b, u64 n)
 {
     switch (n) {
     case 0:

@@ -113,13 +113,13 @@ Inside the library, `WC_SET_RET(code, cond, ret)` sets `wc_errno` and returns, a
 
 ## Branch prediction and code layout
 
-- Failure paths are wrapped in `WC_UNLIKELY(...)` and success paths in `WC_LIKELY(...)`. Both are `__builtin_expect` and are available to your code too.
+- Failure paths are wrapped in `wc_unlikely(...)` and success paths in `wc_likely(...)`. Both are `__builtin_expect` and are available to your code too.
 - `FATAL` and `WARN` report through `wc_fatal_report` / `wc_warn_report`. These are `cold, noinline` functions defined once in `wc_errno.c`.
 - As a result, the compiler moves every failure branch out of the hot code into `.text.unlikely`. A check costs one comparison and one not-taken branch.
 - `LOG_IF` has no hint: a log condition has no predictable direction.
 - Growth branches (`size >= capacity`) are marked unlikely, which is correct by construction because growth is amortized.
 
-Don't add `WC_LIKELY` / `WC_UNLIKELY` to branches that depend on your data, such as hash probing or sorting. A wrong hint costs more than no hint. Use profile-guided optimization (`-fprofile-generate`, then `-fprofile-use`) for those.
+Don't add `wc_likely` / `wc_unlikely` to branches that depend on your data, such as hash probing or sorting. A wrong hint costs more than no hint. Use profile-guided optimization (`-fprofile-generate`, then `-fprofile-use`) for those.
 
 ## Testing that something aborts
 

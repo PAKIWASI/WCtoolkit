@@ -126,7 +126,7 @@ void Queue_push(Queue* q, const void* x)
 {
     WC_ASSERT(!(q->arr.data && (const u8*)x >= q->arr.data && (const u8*)x < q->arr.data + (CAP(q) * DS(q))),
               "input element points into this queue's own buffer: copy it out first");
-    if (WC_UNLIKELY(q->size == CAP(q))) {
+    if (wc_unlikely(q->size == CAP(q))) {
         queue_grow(q);
     }
 
@@ -138,7 +138,7 @@ void Queue_push_move(Queue* q, void* x)
 {
     WC_ASSERT(!(q->arr.data && (const u8*)x >= q->arr.data && (const u8*)x < q->arr.data + (CAP(q) * DS(q))),
               "input element points into this queue's own buffer: copy it out first");
-    if (WC_UNLIKELY(q->size == CAP(q))) {
+    if (wc_unlikely(q->size == CAP(q))) {
         queue_grow(q);
     }
 

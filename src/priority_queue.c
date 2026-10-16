@@ -25,7 +25,7 @@ static void pq_build_heap(PriorityQueue* pq);
 // Keep capacity > size so HOLE(pq) is always a valid slot.
 static inline void pq_ensure_hole(PriorityQueue* pq)
 {
-    if (WC_UNLIKELY(pq->v.size + 1 >= pq->v.capacity)) {
+    if (wc_unlikely(pq->v.size + 1 >= pq->v.capacity)) {
         u64 cap = pq->v.capacity < GENVEC_MIN_CAPACITY ? GENVEC_MIN_CAPACITY : pq->v.capacity + (pq->v.capacity / 2);
         if (cap < pq->v.size + 2) {
             cap = pq->v.size + 2;

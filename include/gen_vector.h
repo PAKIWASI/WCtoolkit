@@ -75,35 +75,35 @@ _Static_assert(sizeof(GenVec) == 48, "GenVec layout drifted from expected 48 byt
 
 // Vector with capacity n, storage from `alloc`.
 // ops: pointer to a shared wc_container_ops vtable, or NULL for POD types.
-WC_NODISCARD GenVec GenVec_create(const wc_allocator* alloc, u64 n, u32 data_size, const wc_container_ops* ops)
-    WC_NONULL(1);
+wc_nodiscard GenVec GenVec_create(const wc_allocator* alloc, u64 n, u32 data_size, const wc_container_ops* ops)
+    wc_nonull(1);
 
 // Vector of size n with every element a copy of val.
-WC_NODISCARD GenVec GenVec_create_val(const wc_allocator* alloc, u64 n, const void* val, u32 data_size,
-                                      const wc_container_ops* ops) WC_NONULL(1, 3);
+wc_nodiscard GenVec GenVec_create_val(const wc_allocator* alloc, u64 n, const void* val, u32 data_size,
+                                      const wc_container_ops* ops) wc_nonull(1, 3);
 
 // Vector over caller-owned storage of n elements (size 0, capacity n).
 // Uses WC_BORROWED: it can never grow (growth is a FATAL) and destroy frees nothing
-WC_NODISCARD GenVec GenVec_create_buf(void* buf, u64 n, u32 data_size, const wc_container_ops* ops) WC_NONULL(1);
+wc_nodiscard GenVec GenVec_create_buf(void* buf, u64 n, u32 data_size, const wc_container_ops* ops) wc_nonull(1);
 
 // Delete every element, free the storage through the stored allocator and
 // zero the struct. Never frees the struct itself. Safe on a zeroed vector.
-void GenVec_destroy(GenVec* vec) WC_NONULL(1);
+void GenVec_destroy(GenVec* vec) wc_nonull(1);
 
 // Remove all elements (calls del_fn on each), keep capacity.
-void GenVec_clear(GenVec* vec) WC_NONULL(1);
+void GenVec_clear(GenVec* vec) wc_nonull(1);
 
 // Remove all elements and free the storage; capacity 0, allocator kept.
-void GenVec_reset(GenVec* vec) WC_NONULL(1);
+void GenVec_reset(GenVec* vec) wc_nonull(1);
 
 // Ensure vector has at least new_capacity space (never shrinks).
-void GenVec_reserve(GenVec* vec, u64 new_capacity) WC_NONULL(1);
+void GenVec_reserve(GenVec* vec, u64 new_capacity) wc_nonull(1);
 
 // Grow to new_capacity and fill new slots with val.
-void GenVec_reserve_val(GenVec* vec, u64 new_capacity, const void* val) WC_NONULL(1, 3);
+void GenVec_reserve_val(GenVec* vec, u64 new_capacity, const void* val) wc_nonull(1, 3);
 
 // Shrink vector to its size (reallocates).
-void GenVec_shrink_to_fit(GenVec* vec) WC_NONULL(1);
+void GenVec_shrink_to_fit(GenVec* vec) wc_nonull(1);
 
 
 
@@ -111,118 +111,118 @@ void GenVec_shrink_to_fit(GenVec* vec) WC_NONULL(1);
 // ===========================
 
 // Append element to end (makes deep copy if copy_fn provided).
-void GenVec_push(GenVec* vec, const void* data) WC_NONULL(1, 2);
+void GenVec_push(GenVec* vec, const void* data) wc_nonull(1, 2);
 
 // Append element to end, transfer ownership: *data is moved in and zeroed.
-void GenVec_push_move(GenVec* vec, void* data) WC_NONULL(1, 2);
+void GenVec_push_move(GenVec* vec, void* data) wc_nonull(1, 2);
 
 // Remove the last element. popped != NULL: the element is MOVED into it and the
 // caller owns it. popped == NULL: the element is deleted.
-void GenVec_pop(GenVec* vec, void* popped) WC_NONULL(1);
+void GenVec_pop(GenVec* vec, void* popped) wc_nonull(1);
 
 // O(1) removal from the middle when order doesn't matter: element i is moved
 // into out (or deleted if out == NULL), the last element takes its place.
-void GenVec_swap_pop(GenVec* vec, u64 i, void* out) WC_NONULL(1);
+void GenVec_swap_pop(GenVec* vec, u64 i, void* out) wc_nonull(1);
 
 // Swap elements i and j in place. Never allocates.
-void GenVec_swap(GenVec* vec, u64 i, u64 j) WC_NONULL(1);
+void GenVec_swap(GenVec* vec, u64 i, u64 j) wc_nonull(1);
 
 // Deep COPY of element i into out (the vector keeps its own).
-void GenVec_get(const GenVec* vec, u64 i, void* out) WC_NONULL(1, 3);
+void GenVec_get(const GenVec* vec, u64 i, void* out) wc_nonull(1, 3);
 
 // Get pointer to element at index i.
 // Note: Pointer invalidated by push/insert/remove operations.
-WC_NODISCARD const void* GenVec_get_ptr(const GenVec* vec, u64 i) WC_NONULL(1);
+wc_nodiscard const void* GenVec_get_ptr(const GenVec* vec, u64 i) wc_nonull(1);
 
 // Get MUTABLE pointer to element at index i.
 // Note: Pointer invalidated by push/insert/remove operations.
-WC_NODISCARD void* GenVec_get_ptr_mut(GenVec* vec, u64 i) WC_NONULL(1);
+wc_nodiscard void* GenVec_get_ptr_mut(GenVec* vec, u64 i) wc_nonull(1);
 
 // UNCHECKED variants: same as above but with the bounds WC_ASSERT elided, even in
 // Debug. Preconditions are NOT validated: caller must guarantee i < vec->size.
 // Use on hot paths where the check is provably redundant (macros, internal loops).
-WC_NODISCARD WC_NONULL(1) static inline const void* GenVec_get_ptr_unsafe(const GenVec* vec, u64 i)
+wc_nodiscard wc_nonull(1) static inline const void* GenVec_get_ptr_unsafe(const GenVec* vec, u64 i)
 {
     return (vec->data + (i * vec->data_size));
 }
 
-WC_NODISCARD WC_NONULL(1) static inline void* GenVec_get_ptr_mut_unsafe(GenVec* vec, u64 i)
+wc_nodiscard wc_nonull(1) static inline void* GenVec_get_ptr_mut_unsafe(GenVec* vec, u64 i)
 {
     return (vec->data + (i * vec->data_size));
 }
 
 // Replace element at index i with data (cleans up old element).
-void GenVec_replace(GenVec* vec, u64 i, const void* data) WC_NONULL(1, 3);
+void GenVec_replace(GenVec* vec, u64 i, const void* data) wc_nonull(1, 3);
 
 // Replace element at index i, transfer ownership (cleans up old element, zeroes *data).
-void GenVec_replace_move(GenVec* vec, u64 i, void* data) WC_NONULL(1, 3);
+void GenVec_replace_move(GenVec* vec, u64 i, void* data) wc_nonull(1, 3);
 
 // Insert element at index i, shifting elements right.
-void GenVec_insert(GenVec* vec, u64 i, const void* data) WC_NONULL(1, 3);
+void GenVec_insert(GenVec* vec, u64 i, const void* data) wc_nonull(1, 3);
 
 // Insert element at index i with ownership transfer (zeroes *data), shifting elements right.
-void GenVec_insert_move(GenVec* vec, u64 i, void* data) WC_NONULL(1, 3);
+void GenVec_insert_move(GenVec* vec, u64 i, void* data) wc_nonull(1, 3);
 
 // Insert num_data elements from data array into vec at index i.
-void GenVec_insert_multi(GenVec* vec, u64 i, const void* data, u64 num_data) WC_NONULL(1, 3);
+void GenVec_insert_multi(GenVec* vec, u64 i, const void* data, u64 num_data) wc_nonull(1, 3);
 
 // Insert (move) num_data contiguous elements from data at index i; the source range is zeroed.
-void GenVec_insert_multi_move(GenVec* vec, u64 i, void* data, u64 num_data) WC_NONULL(1, 3);
+void GenVec_insert_multi_move(GenVec* vec, u64 i, void* data, u64 num_data) wc_nonull(1, 3);
 
 // Remove element at index i, shift elements left. out != NULL: the element is
 // MOVED into it. out == NULL: the element is deleted.
-void GenVec_remove(GenVec* vec, u64 i, void* out) WC_NONULL(1);
+void GenVec_remove(GenVec* vec, u64 i, void* out) wc_nonull(1);
 
 // Remove elements in range [start, start + len)
-void GenVec_remove_range(GenVec* vec, u64 start, u64 len) WC_NONULL(1);
+void GenVec_remove_range(GenVec* vec, u64 start, u64 len) wc_nonull(1);
 
 // Get pointer to first element.
-WC_NODISCARD const void* GenVec_front(const GenVec* vec) WC_NONULL(1);
+wc_nodiscard const void* GenVec_front(const GenVec* vec) wc_nonull(1);
 
 // Get pointer to last element.
-WC_NODISCARD const void* GenVec_back(const GenVec* vec) WC_NONULL(1);
+wc_nodiscard const void* GenVec_back(const GenVec* vec) wc_nonull(1);
 
 // Search
 // ===========================
 
 // if cmp_fn = NULL, then use memcmp
-WC_NODISCARD u64 GenVec_find(const GenVec* vec, void* elm, wc_compare_fn cmp_fn) WC_NONULL(1, 2);
+wc_nodiscard u64 GenVec_find(const GenVec* vec, void* elm, wc_compare_fn cmp_fn) wc_nonull(1, 2);
 
 // New vector (storage from `alloc`) holding deep copies of [start, start + len).
-WC_NODISCARD GenVec GenVec_subarr(const GenVec* vec, const wc_allocator* alloc, u64 start, u64 len) WC_NONULL(1, 2);
+wc_nodiscard GenVec GenVec_subarr(const GenVec* vec, const wc_allocator* alloc, u64 start, u64 len) wc_nonull(1, 2);
 
 
 // Utility
 // ===========================
 
 // Print all elements using provided print function.
-void GenVec_print(const GenVec* vec, wc_print_fn fn) WC_NONULL(1, 2);
+void GenVec_print(const GenVec* vec, wc_print_fn fn) wc_nonull(1, 2);
 
 // Deep copy of src whose storage (and every element's owned resources, via
 // copy_fn) comes from `alloc`. Never inherits src's allocator (A14).
 // Capacity is max(size, GENVEC_MIN_CAPACITY), or 0 for an empty src: a copy
 // does not carry the source's slack (F5).
-WC_NODISCARD GenVec GenVec_copy(const wc_allocator* alloc, const GenVec* src) WC_NONULL(1, 2);
+wc_nodiscard GenVec GenVec_copy(const wc_allocator* alloc, const GenVec* src) wc_nonull(1, 2);
 
 // Transfer everything from src to dest; src is left zeroed.
 // dest must be uninitialised or destroyed (its old contents are overwritten, not freed).
-void GenVec_move(GenVec* dest, GenVec* src) WC_NONULL(1, 2);
+void GenVec_move(GenVec* dest, GenVec* src) wc_nonull(1, 2);
 
 
 // Get number of elements in vector.
-WC_NODISCARD WC_NONULL(1) static inline u64 GenVec_size(const GenVec* vec)
+wc_nodiscard wc_nonull(1) static inline u64 GenVec_size(const GenVec* vec)
 {
     return vec->size;
 }
 
 // Get total capacity of vector.
-WC_NODISCARD WC_NONULL(1) static inline u64 GenVec_capacity(const GenVec* vec)
+wc_nodiscard wc_nonull(1) static inline u64 GenVec_capacity(const GenVec* vec)
 {
     return vec->capacity;
 }
 
 // Check if vector is empty
-WC_NONULL(1) static inline bool GenVec_empty(const GenVec* vec)
+wc_nonull(1) static inline bool GenVec_empty(const GenVec* vec)
 {
     return vec->size == 0;
 }

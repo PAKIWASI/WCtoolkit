@@ -16,7 +16,7 @@ static char wc_ta_tombstone_;
 
 // Error reporting
 
-__attribute__((format(printf, 2, 3))) static void ta_error(wc_test_alloc* ta, const char* fmt, ...)
+wc_format(printf, 2, 3) static void ta_error(wc_test_alloc* ta, const char* fmt, ...)
 {
     va_list args;
     va_start(args, fmt);

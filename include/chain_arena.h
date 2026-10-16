@@ -35,31 +35,31 @@ typedef struct {
 } ChainArena;
 
 // Initialises `ca` in place, it must not be moved or copied afterwards.
-void ChainArena_create(ChainArena* ca, const wc_allocator* backing, u64 normal_cap) WC_NONULL(1, 2);
+void ChainArena_create(ChainArena* ca, const wc_allocator* backing, u64 normal_cap) wc_nonull(1, 2);
 
 // Gives every block back to the backing allocator and zeroes the arena. Safe on a zeroed
 // arena and safe to call twice.
-void ChainArena_destroy(ChainArena* ca) WC_NONULL(1);
+void ChainArena_destroy(ChainArena* ca) wc_nonull(1);
 
 // ChainArena_alloc aligns to WC_MAX_ALIGN (like malloc)
 // return NULL only if the backing allocator can't supply a block.
-WC_NODISCARD void* ChainArena_alloc(ChainArena* ca, u64 size) WC_NONULL(1);
+wc_nodiscard void* ChainArena_alloc(ChainArena* ca, u64 size) wc_nonull(1);
 
 // ChainArena_alloc_aligned aligns the ADDRESS to `align` (a power of two), including alignments larger than a page
 // return NULL only if the backing allocator can't supply a block.
-WC_NODISCARD void* ChainArena_alloc_aligned(ChainArena* ca, u64 size, u64 align) WC_NONULL(1);
+wc_nodiscard void* ChainArena_alloc_aligned(ChainArena* ca, u64 size, u64 align) wc_nonull(1);
 
 // The allocator to give to containers. Points into the arena, so it lives as long as the arena.
-WC_NODISCARD static inline const wc_allocator* ChainArena_allocator(ChainArena* ca) WC_NONULL(1);
+wc_nodiscard static inline const wc_allocator* ChainArena_allocator(ChainArena* ca) wc_nonull(1);
 
 // Payload bytes carved out of the newest normal node right now. Memory taken from
 // dedicated big nodes is not included, and a freed (no-op) request does not rewind it.
-WC_NODISCARD WC_NONULL(1) static inline u64 ChainArena_used(const ChainArena* ca)
+wc_nodiscard wc_nonull(1) static inline u64 ChainArena_used(const ChainArena* ca)
 {
     return ca->normal ? ca->normal->off : 0;
 }
 
-WC_NODISCARD WC_NONULL(1) static inline const wc_allocator* ChainArena_allocator(ChainArena* ca)
+wc_nodiscard wc_nonull(1) static inline const wc_allocator* ChainArena_allocator(ChainArena* ca)
 {
     // zeroed self has vt == NULL, which would silently read as WC_LIBC
     WC_ASSERT(ca->self.ctx != NULL, "ChainArena_allocator on zeroed/destroyed ChainArena");
@@ -74,7 +74,7 @@ typedef struct {
     u64                mark; // the offset of node n;
 } ChainArenaScratch;
 
-WC_NODISCARD WC_NONULL(1) static inline ChainArenaScratch ChainArenaScratch_create(ChainArena* ca)
+wc_nodiscard wc_nonull(1) static inline ChainArenaScratch ChainArenaScratch_create(ChainArena* ca)
 {
     WC_ASSERT(ca->self.ctx == ca, "invalid chain arena (zeroed or moved)");
     return (ChainArenaScratch){

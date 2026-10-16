@@ -169,15 +169,15 @@ static inline void map_consume_dup(const wc_container_ops* ops, u32 size, u8* el
 // Custom hash: multiplied by 2^64 / phi first (Fibonacci hashing). Custom hashes
 // often have weak top bits (identity on ints, shifted ids); the multiply folds
 // every input bit into the top bits, so any hash_fn spreads.
-static inline WC_ALWAYS_INLINE u64 map_home(const HashMap* map, const void* key, u32 ks)
+static wc_always_inline u64 map_home(const HashMap* map, const void* key, u32 ks)
 {
     u64 h = map->hash_fn ? map->hash_fn(key, ks) * 0x9E3779B97F4A7C15ULL : wc_hash(key, ks);
-    return h >> (64 - __builtin_ctzll(map->capacity)); // TODO: direct builtin usage
+    return h >> (64 - wc_ctz(map->capacity));
 }
 
 // The default (cmp_fn == NULL) is byte equality: 4 and 8 byte keys become one
 // integer compare.
-static inline WC_ALWAYS_INLINE bool map_key_eq(const HashMap* map, const u8* a, const u8* b, u32 ks)
+static wc_always_inline bool map_key_eq(const HashMap* map, const u8* a, const u8* b, u32 ks)
 {
     return (map->cmp_fn ? map->cmp_fn(a, b, ks) == 0 : (int)wc_equal_n(a, b, ks)) != 0;
 }

@@ -43,36 +43,36 @@ _Static_assert(sizeof(PriorityQueue) == 56, "PriorityQueue size mismatch");
 
 // Creation: returns by value; the allocator goes into pq->v.alloc
 PriorityQueue PriorityQueue_create(const wc_allocator* a, u64 n, u32 data_size, const wc_container_ops* ops,
-                                   wc_compare_fn cmp_fn) __attribute__((nonnull(1, 5), warn_unused_result));
+                                   wc_compare_fn cmp_fn) wc_nonull(1, 5) wc_nodiscard;
 
-void PriorityQueue_destroy(PriorityQueue* pq) WC_NONULL(1);
+void PriorityQueue_destroy(PriorityQueue* pq) wc_nonull(1);
 
 // Heap from a deep COPY of vec (storage and elements from `a`). vec is unchanged.
 PriorityQueue PriorityQueue_from_vec(const wc_allocator* a, const GenVec* vec, wc_compare_fn cmp_fn)
-    __attribute__((nonnull(1, 2, 3), warn_unused_result));
+    wc_nonull(1, 2, 3) wc_nodiscard;
 
 // Heap that TAKES OVER vec's buffer: no copy, vec is left zeroed. The heap keeps
 // vec's allocator. At most one realloc (for the sift slot) if vec is full.
 PriorityQueue PriorityQueue_from_vec_move(GenVec* vec, wc_compare_fn cmp_fn)
-    __attribute__((nonnull(1, 2), warn_unused_result));
+    wc_nonull(1, 2) wc_nodiscard;
 
 
 // operations
 
 // Highest priority element, without removing it. NULL (WC_ERR_EMPTY) if empty.
-const void* PriorityQueue_peek(const PriorityQueue* pq) WC_NONULL(1);
+const void* PriorityQueue_peek(const PriorityQueue* pq) wc_nonull(1);
 
 // Push a deep COPY of *data.
-void PriorityQueue_push(PriorityQueue* pq, const void* data) WC_NONULL(1, 2);
+void PriorityQueue_push(PriorityQueue* pq, const void* data) wc_nonull(1, 2);
 
 // Push *data by MOVE: *data is zeroed.
-void PriorityQueue_push_move(PriorityQueue* pq, void* data) WC_NONULL(1, 2);
+void PriorityQueue_push_move(PriorityQueue* pq, void* data) wc_nonull(1, 2);
 
 // Remove the highest priority element: MOVED into popped, or deleted if NULL.
-void PriorityQueue_pop(PriorityQueue* pq, void* popped) WC_NONULL(1);
+void PriorityQueue_pop(PriorityQueue* pq, void* popped) wc_nonull(1);
 
 // Element at heap index idx (0 = top).
-static inline WC_NONULL(1) const void* PriorityQueue_get(const PriorityQueue* pq, u64 idx)
+static inline wc_nonull(1) const void* PriorityQueue_get(const PriorityQueue* pq, u64 idx)
 {
     WC_ASSERT(pq->v.data_size != 0, "PriorityQueue is in the zero state (moved-from or destroyed): re-create it first");
     WC_ASSERT(idx < pq->v.size, "idx out of range");
@@ -80,19 +80,19 @@ static inline WC_NONULL(1) const void* PriorityQueue_get(const PriorityQueue* pq
 }
 
 // Remove the element at heap index idx: MOVED into out, or deleted if NULL.
-void PriorityQueue_remove(PriorityQueue* pq, u64 idx, void* out) WC_NONULL(1);
+void PriorityQueue_remove(PriorityQueue* pq, u64 idx, void* out) wc_nonull(1);
 
-static inline WC_NONULL(1) u64 PriorityQueue_size(const PriorityQueue* pq)
+static inline wc_nonull(1) u64 PriorityQueue_size(const PriorityQueue* pq)
 {
     return pq->v.size;
 }
 
-static inline WC_NONULL(1) bool PriorityQueue_empty(const PriorityQueue* pq)
+static inline wc_nonull(1) bool PriorityQueue_empty(const PriorityQueue* pq)
 {
     return pq->v.size == 0;
 }
 
-void PriorityQueue_print(const PriorityQueue* pq, wc_print_fn print_fn) WC_NONULL(1, 2);
+void PriorityQueue_print(const PriorityQueue* pq, wc_print_fn print_fn) wc_nonull(1, 2);
 
 
 #endif // PRIORITY_QUEUE_H

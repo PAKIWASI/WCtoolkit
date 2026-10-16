@@ -9,6 +9,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "wc_comp.h" // wc_nonull, wc_nodiscard, wc_mul_overflow, ...
+
 #define WC_MAX_ALIGN alignof(max_align_t)
 
 // TODO: maybe we shouldn't implicitly default to libc. if no valid allocator is provided, we should fail
@@ -64,13 +66,13 @@ extern const wc_allocator wc_mmap;
 #define WC_MMAP (&wc_mmap)
 
 
-static inline __attribute__((nonnull(1))) bool wc_is_libc(const wc_allocator* a)
+static inline wc_nonull(1) bool wc_is_libc(const wc_allocator* a)
 {
     return a == WC_LIBC;
 }
 
 // Same backend and same context: memory from one may be freed through the other
-static inline __attribute__((nonnull(1, 2))) int wc_same(const wc_allocator* a, const wc_allocator* b)
+static inline wc_nonull(1, 2) int wc_same(const wc_allocator* a, const wc_allocator* b)
 {
     return a == b || (a->vt == b->vt && a->ctx == b->ctx);
 }
@@ -78,7 +80,7 @@ static inline __attribute__((nonnull(1, 2))) int wc_same(const wc_allocator* a, 
 #define WC_ALLOC_ASSERT_ALIGN(align) \
     assert((align) != 0 && ((align) & ((align) - 1)) == 0 && "align must be a power of two >= 1")
 
-static inline __attribute__((nonnull(1))) void* wc_alloc(const wc_allocator* a, size_t n, size_t align)
+static inline wc_nonull(1) void* wc_alloc(const wc_allocator* a, size_t n, size_t align)
 {
     WC_ALLOC_ASSERT_ALIGN(align);
     if (n == 0 || n > (size_t)PTRDIFF_MAX) { // any valid allocation will be less than PTRDIFF_MAX
@@ -88,7 +90,7 @@ static inline __attribute__((nonnull(1))) void* wc_alloc(const wc_allocator* a, 
     return a->vt->alloc(a->ctx, n, align);
 }
 
-static inline __attribute__((nonnull(1))) void wc_free(const wc_allocator* a, void* p, size_t n, size_t align)
+static inline wc_nonull(1) void wc_free(const wc_allocator* a, void* p, size_t n, size_t align)
 {
     WC_ALLOC_ASSERT_ALIGN(align);
     if (!p) {
@@ -100,7 +102,7 @@ static inline __attribute__((nonnull(1))) void wc_free(const wc_allocator* a, vo
     }
 }
 
-static inline __attribute__((nonnull(1))) void* wc_realloc(const wc_allocator* a, void* p, size_t old_n, size_t n,
+static inline wc_nonull(1) void* wc_realloc(const wc_allocator* a, void* p, size_t old_n, size_t n,
                                                            size_t align)
 {
     WC_ALLOC_ASSERT_ALIGN(align);
@@ -140,7 +142,7 @@ the object couldn't be represented. So any valid allocation size is <= PTRDIFF_M
 static inline size_t wc_mul(size_t count, size_t size)
 {
     size_t r;
-    return (int)__builtin_mul_overflow(count, size, &r) ? SIZE_MAX : r;
+    return wc_mul_overflow(count, size, &r) ? SIZE_MAX : r;
 }
 
 // Smallest safe alignment for elements of `elm_size` bytes: the
@@ -163,10 +165,14 @@ static inline size_t wc_align_for_size(size_t elm_size)
 
 #define WC_NEW(a, T)      ((T*)wc_alloc((a), sizeof(T), alignof(T)))
 #define WC_NEW_N(a, T, n) ((T*)wc_alloc((a), wc_mul((n), sizeof(T)), alignof(T)))
-#define WC_REALLOC_N(a, p, old_n, n)                                                               \
-    ((__typeof__(p))wc_realloc((a), (p), wc_mul((old_n), sizeof(*(p))), wc_mul((n), sizeof(*(p))), \
-                               alignof(__typeof__(*(p)))))
-#define WC_FREE(a, p)      (wc_free((a), (p), sizeof(*(p)), alignof(__typeof__(*(p)))))
-#define WC_FREE_N(a, p, n) (wc_free((a), (p), wc_mul((n), sizeof(*(p))), alignof(__typeof__(*(p)))))
+#define WC_REALLOC_N(a, p, old_n, n) \
+    ((wc_typeof(p))wc_realloc((a), (p), wc_mul((old_n), sizeof(*(p))), wc_mul((n), sizeof(*(p))), alignof(wc_typeof(*(p)))))
+#define WC_FREE(a, p)      (wc_free((a), (p), sizeof(*(p)), alignof(wc_typeof(*(p)))))
+#define WC_FREE_N(a, p, n) (wc_free((a), (p), wc_mul((n), sizeof(*(p))), alignof(wc_typeof(*(p)))))
+
+// BUG: shadowing?
+// #define wc_alloc(a, size) (wc_alloc(a, size, WC_MAX_ALIGN))
+// #define wc_realloc(a, p, old_n, new_n) (wc_realloc(a, p, old_n, new_n, WC_MAX_ALIGN))
+// #define wc_free(a, p, n) (wc_free(a, p, n, WC_MAX_ALIGN))
 
 #endif // WC_ALLOCATOR_H

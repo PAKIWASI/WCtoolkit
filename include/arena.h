@@ -24,35 +24,35 @@ typedef struct {
 
 // Takes a `cap`-byte region (at least ARENA_MIN_SIZE) from `backing`. Aborts if backing fails.
 // `a` is initialised in place and must not be moved or copied afterwards.
-void Arena_create(Arena* a, const wc_allocator* backing, u64 cap) WC_NONULL(1, 2);
+void Arena_create(Arena* a, const wc_allocator* backing, u64 cap) wc_nonull(1, 2);
 
 // Gives the region back to the backing allocator and zeroes the arena. Safe on a zeroed
 // arena and safe to call twice.
-void Arena_destroy(Arena* a) WC_NONULL(1);
+void Arena_destroy(Arena* a) wc_nonull(1);
 
 // Both return NULL when the arena can't fit the request. Arena_alloc aligns to WC_MAX_ALIGN
 // (like malloc). Arena_alloc_aligned aligns the ADDRESS to `align` (a power of two).
-WC_NODISCARD void* Arena_alloc(Arena* a, u64 size) WC_NONULL(1);
+wc_nodiscard void* Arena_alloc(Arena* a, u64 size) wc_nonull(1);
 
-WC_NODISCARD void* Arena_alloc_aligned(Arena* a, u64 size, u64 align) WC_NONULL(1);
+wc_nodiscard void* Arena_alloc_aligned(Arena* a, u64 size, u64 align) wc_nonull(1);
 
-WC_NONULL(1) static inline void Arena_clear(Arena* a)
+wc_nonull(1) static inline void Arena_clear(Arena* a)
 {
     a->off = 0;
 }
 
-WC_NODISCARD WC_NONULL(1) static inline u64 Arena_used(Arena* a)
+wc_nodiscard wc_nonull(1) static inline u64 Arena_used(Arena* a)
 {
     return a->off;
 }
 
-WC_NODISCARD WC_NONULL(1) static inline u64 Arena_remaining(Arena* a)
+wc_nodiscard wc_nonull(1) static inline u64 Arena_remaining(Arena* a)
 {
     return a->cap - a->off;
 }
 
 // The allocator to give to containers. Points into the arena, so it lives as long as the arena
-WC_NODISCARD WC_NONULL(1) static inline const wc_allocator* Arena_allocator(Arena* a)
+wc_nodiscard wc_nonull(1) static inline const wc_allocator* Arena_allocator(Arena* a)
 {
     // zeroed self has vt == NULL, which would silently read as WC_LIBC
     WC_ASSERT(a->self.ctx != NULL, "Arena_allocator on zeroed/destroyed Arena");
@@ -76,7 +76,7 @@ typedef struct {
 } ArenaScratch;
 
 
-WC_NODISCARD WC_NONULL(1) static inline ArenaScratch ArenaScratch_create(Arena* a)
+wc_nodiscard wc_nonull(1) static inline ArenaScratch ArenaScratch_create(Arena* a)
 {
     return (ArenaScratch){
         .arena = a,

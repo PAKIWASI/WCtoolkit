@@ -107,7 +107,7 @@ static inline void wc_perror(const char* prefix)
  */
 #define WC_SET_RET(err_code, cond, ret) \
     ({                                  \
-        if (WC_UNLIKELY(cond)) {        \
+        if (wc_unlikely(cond)) {        \
             wc_errno = (err_code);      \
             return ret;                 \
         }                               \
@@ -120,7 +120,7 @@ static inline void wc_perror(const char* prefix)
  */
 #define WC_PROPAGATE_RET(ret)                 \
     ({                                        \
-        if (WC_UNLIKELY(wc_errno != WC_OK)) { \
+        if (wc_unlikely(wc_errno != WC_OK)) { \
             return ret;                       \
         }                                     \
     })
