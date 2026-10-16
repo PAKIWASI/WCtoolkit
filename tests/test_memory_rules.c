@@ -8,7 +8,6 @@
 #include "common.h"
 #include "gen_vector.h"
 #include "hashmap.h"
-#include "matrix.h"
 #include "priority_queue.h"
 #include "queue.h"
 #include "random.h"

@@ -41,6 +41,16 @@ WC_NONULL(1) static inline void Arena_clear(Arena* a)
     a->off = 0;
 }
 
+WC_NODISCARD WC_NONULL(1) static inline u64 Arena_used(Arena* a)
+{
+    return a->off;
+}
+
+WC_NODISCARD WC_NONULL(1) static inline u64 Arena_remaining(Arena* a)
+{
+    return a->cap - a->off;
+}
+
 // The allocator to give to containers. Points into the arena, so it lives as long as the arena
 WC_NODISCARD WC_NONULL(1) static inline const wc_allocator* Arena_allocator(Arena* a)
 {

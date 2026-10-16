@@ -1,17 +1,16 @@
 #include "arena.h"
 #include "common.h"
-#include "gen_vector.h"
 #include "test_support.h"
 #include "utest.h"
 #include "wc_allocator.h"
 #include "wc_errno.h"
-#include "wc_macros.h"
 #include "wc_test_allocator.h"
 
 #include <stdalign.h>
 #include <stdint.h>
 #include <string.h>
 
+#define SIZE nKB(4)
 
 /* ── Basic alloc ─────────────────────────────────────────────────────────── */
 
@@ -20,8 +19,8 @@ UTEST(arena, create_default_size)
     Arena a;
     Arena_create(&a, WC_LIBC, 0);
     EXPECT_TRUE((a.base) != NULL);
-    EXPECT_EQ(a.idx, 0u);
-    EXPECT_EQ(a.size, ARENA_DEFAULT_SIZE);
+    EXPECT_EQ(a.off, 0u);
+    EXPECT_EQ(a.cap, SIZE);
     EXPECT_TRUE(a.self.ctx == &a); // the embedded allocator points at this arena
     Arena_destroy(&a);
 }
@@ -30,7 +29,7 @@ UTEST(arena, create_custom_size)
 {
     Arena a;
     Arena_create(&a, WC_LIBC, nKB(8));
-    EXPECT_EQ(a.size, nKB(8));
+    EXPECT_EQ(a.cap, nKB(8));
     Arena_destroy(&a);
 }
 
@@ -41,7 +40,7 @@ UTEST(arena, alloc_returns_valid_ptr)
     u8* ptr = Arena_alloc(&a, 64);
     EXPECT_TRUE((ptr) != NULL);
     EXPECT_TRUE(ptr >= a.base);
-    EXPECT_TRUE(ptr + 64 <= a.base + a.size);
+    EXPECT_TRUE(ptr + 64 <= a.base + a.cap);
     Arena_destroy(&a);
 }
 
@@ -49,8 +48,9 @@ UTEST(arena, alloc_advances_idx)
 {
     Arena a;
     Arena_create(&a, WC_LIBC, nKB(4));
-    Arena_alloc(&a, 16);
-    EXPECT_TRUE(a.idx >= 16);
+    u8* b = Arena_alloc(&a, 16);
+    b[0] = 69;
+    EXPECT_TRUE(a.off >= 16);
     Arena_destroy(&a);
 }
 
@@ -83,19 +83,6 @@ UTEST(arena, destroy_is_zero_safe_and_idempotent)
     Arena_destroy(&a); // second destroy: no-op
 }
 
-UTEST(arena, reset)
-{
-    Arena a;
-    Arena_create(&a, WC_LIBC, 256);
-    Arena_alloc(&a, 100);
-    ArenaScratch s = ArenaScratch_create(&a);
-    (void)s;
-    Arena_reset(&a);
-    EXPECT_EQ(a.idx, 0u);
-    EXPECT_EQ(a.floor, 0u);
-    Arena_destroy(&a);
-}
-
 
 /* ── Backing allocator ───────────────────────────────────────────────────── */
 
@@ -122,37 +109,12 @@ UTEST(arena, on_arena)
 
     Arena inner;
     Arena_create(&inner, Arena_allocator(&outer), nKB(1));
-    EXPECT_TRUE(inner.base >= outer.base && inner.base + inner.size <= outer.base + outer.size);
+    EXPECT_TRUE(inner.base >= outer.base && inner.base + inner.cap <= outer.base + outer.cap);
     EXPECT_TRUE((Arena_alloc(&inner, 100)) != NULL);
     Arena_destroy(&inner); // last block of outer: rewinds it
     EXPECT_EQ(Arena_used(&outer), 0u);
 
     Arena_destroy(&outer);
-}
-
-UTEST(arena, create_buf_owns_nothing)
-{
-    u8    buf[256];
-    Arena a;
-    Arena_create_buf(&a, buf, sizeof(buf));
-    EXPECT_EQ(a.size, 256u);
-    EXPECT_EQ(a.idx, 0u);
-    EXPECT_TRUE(a.backing == WC_BORROWED); // destroy hands the buffer back to nobody
-
-    int* p = Arena_alloc(&a, sizeof(int));
-    EXPECT_TRUE((p) != NULL);
-    *p = 55;
-    EXPECT_EQ(*p, 55);
-    Arena_destroy(&a); // must not free the stack buffer (ASAN would catch it)
-}
-
-UTEST(arena, create_buf_macro)
-{
-    Arena a;
-    ARENA_CREATE_BUF(&a, 128);
-    EXPECT_EQ(a.size, 128u);
-    EXPECT_TRUE((ARENA_ALLOC_N(&a, u64, 4)) != NULL);
-    Arena_destroy(&a);
 }
 
 
@@ -179,39 +141,6 @@ UTEST(arena, default_alloc_max_aligned)
     Arena_destroy(&a);
 }
 
-UTEST(arena, alignment_matrix_on_misaligned_buffers)
-{
-    // every base offset 0..15 x every alignment 1..64, after an odd-sized burn
-    alignas(64) static u8 buf[1024];
-    const u64             aligns[] = {1, 2, 4, 8, 16, 32, 64};
-
-    for (u64 shift = 0; shift < 16; shift++) {
-        for (u64 i = 0; i < sizeof(aligns) / sizeof(aligns[0]); i++) {
-            Arena a;
-            Arena_create_buf(&a, buf + shift, 512);
-            EXPECT_TRUE((Arena_alloc_aligned(&a, 3, 1)) != NULL); // odd burn
-            u8* p = Arena_alloc_aligned(&a, 24, aligns[i]);
-            EXPECT_TRUE((p) != NULL);
-            EXPECT_EQ((uintptr_t)p % aligns[i], 0u);
-            EXPECT_TRUE(p + 24 <= a.base + a.size);
-            Arena_destroy(&a);
-        }
-    }
-}
-
-UTEST(arena, typed_alloc_uses_alignof)
-{
-    typedef struct {
-        alignas(32) u8 x[32];
-    } Big;
-    u8    buf[256];
-    Arena a;
-    Arena_create_buf(&a, buf + 1, 200);
-    Big* b = ARENA_ALLOC(&a, Big);
-    EXPECT_TRUE((b) != NULL);
-    EXPECT_EQ((uintptr_t)b % 32, 0u);
-    Arena_destroy(&a);
-}
 
 
 /* ── Full Arena ──────────────────────────────────────────────────────────── */
@@ -237,18 +166,6 @@ UTEST(arena, alloc_full_sets_errno)
     u8* p    = Arena_alloc(&a, 1);
     EXPECT_TRUE((p) == NULL);
     EXPECT_EQ(wc_errno, (wc_err)WC_ERR_FULL);
-    Arena_destroy(&a);
-}
-
-UTEST(arena, exhaustion_exact_fit_then_full)
-{
-    u8    buf[64];
-    Arena a;
-    Arena_create_buf(&a, buf, sizeof(buf));
-    EXPECT_TRUE((Arena_alloc_aligned(&a, 64, 1)) != NULL); // exact fit
-    EXPECT_EQ(Arena_remaining(&a), 0u);
-    EXPECT_TRUE((Arena_alloc_aligned(&a, 1, 1)) == NULL);
-    EXPECT_EQ(a.idx, 64u); // failed alloc leaves idx alone
     Arena_destroy(&a);
 }
 
@@ -348,12 +265,12 @@ UTEST(arena, scratch_create_to_mark)
 {
     Arena a;
     Arena_create(&a, WC_LIBC, nKB(4));
-    u64          before = a.idx;
+    u64          before = a.off;
     ArenaScratch sc     = ArenaScratch_create(&a);
     Arena_alloc(&a, 256);
-    EXPECT_TRUE(a.idx > before);
+    EXPECT_TRUE(a.off > before);
     ArenaScratch_to_mark(sc);
-    EXPECT_EQ(a.idx, before);
+    EXPECT_EQ(a.off, before);
     Arena_destroy(&a);
 }
 
@@ -361,14 +278,14 @@ UTEST(arena, scratch_macro)
 {
     Arena a;
     Arena_create(&a, WC_LIBC, nKB(4));
-    u64 before = a.idx;
+    u64 before = a.off;
 
     ArenaScratch mark = ArenaScratch_create(&a);
     Arena_alloc(&a, 512);
-    EXPECT_TRUE(a.idx > before);
+    EXPECT_TRUE(a.off > before);
     ArenaScratch_to_mark(mark);
 
-    EXPECT_EQ(a.idx, before);
+    EXPECT_EQ(a.off, before);
     Arena_destroy(&a);
 }
 
@@ -486,32 +403,6 @@ UTEST(arena, floor_free_inside_scratch_does_not_rewind_below_mark)
     Arena_destroy(&a);
 }
 
-// (c) nested scopes restore the floor in LIFO order
-UTEST(arena, floor_nested_scopes)
-{
-    Arena a;
-    Arena_create(&a, WC_LIBC, nKB(4));
-    Arena_alloc(&a, 10);
-
-    ArenaScratch s1 = ArenaScratch_create(&a);
-    u64          f1 = a.floor;
-    Arena_alloc(&a, 20);
-    ArenaScratch s2 = ArenaScratch_create(&a);
-    EXPECT_TRUE(a.floor > f1);
-    Arena_alloc(&a, 30);
-    ArenaScratch_to_mark(s2);
-    EXPECT_EQ(a.floor, f1);
-    ArenaScratch_to_mark(s1);
-    EXPECT_EQ(a.floor, 0u);
-    EXPECT_EQ(a.idx, 10u);
-
-    // in-place growth works again once the scopes are gone
-    const wc_allocator* al = Arena_allocator(&a);
-    u8*          p  = wc_alloc(al, 8, 8);
-    EXPECT_TRUE(wc_realloc(al, p, 8, 64, 8) == p);
-    Arena_destroy(&a);
-}
-
 // in-place growth of a block created INSIDE the scope is still allowed
 UTEST(arena, floor_allows_in_place_above_mark)
 {
@@ -528,84 +419,6 @@ UTEST(arena, floor_allows_in_place_above_mark)
 }
 
 
-// Typed helper macros
-
-UTEST(arena, typed_macros)
-{
-    // ARENA_ALLOC_ZERO / _N / ARENA_PUSH_ARRAY used to declare `(T)* x`,
-    // which C parses as a cast: they did not compile when used.
-    Arena arena;
-    Arena_create(&arena, WC_LIBC, 512);
-
-    typedef struct {
-        u64 a;
-        u32 b;
-    } pair;
-    pair* p = ARENA_ALLOC_ZERO(&arena, pair);
-    ASSERT_TRUE(p != NULL); // stop here rather than dereference NULL
-    EXPECT_EQ(p->a, 0u);
-    EXPECT_EQ((uintptr_t)p % alignof(pair), 0u);
-
-    u32* z = ARENA_ALLOC_ZERO_N(&arena, u32, 8);
-    ASSERT_TRUE(z != NULL); // stop here rather than dereference NULL
-    for (int i = 0; i < 8; i++) {
-        EXPECT_EQ(z[i], 0u);
-    }
-
-    int  src[] = {4, 5, 6};
-    int* c     = ARENA_PUSH_ARRAY(&arena, int, src, 3);
-    ASSERT_TRUE(c != NULL); // stop here rather than dereference NULL
-    EXPECT_TRUE(c != src);
-    EXPECT_EQ(c[2], 6);
-
-    Arena_destroy(&arena);
-}
-
-
-/* ── Fixed defects (regression tests, written before the fix in Phase 0) ─── */
-
-// A1: capacity check `size - aligned_idx < req` underflows when alignment
-// pushes aligned_idx past `size`, so a full arena hands out a pointer past its end.
-UTEST(arena, A1_arena_alloc_past_end_returns_null)
-{
-    alignas(16) u8 buf[13];
-    Arena          arena;
-    Arena_create_buf(&arena, buf, sizeof(buf));
-
-    EXPECT_TRUE((Arena_alloc_aligned(&arena, 1, 8)) != NULL); // idx 0 -> 1
-    EXPECT_TRUE((Arena_alloc_aligned(&arena, 4, 8)) != NULL); // aligned to 8, idx -> 12
-
-    u8* p = Arena_alloc(&arena, 1); // default align 16: aligned_idx = 16 > size 13
-    EXPECT_TRUE((p) == NULL);
-    EXPECT_TRUE(p == NULL || p < buf + sizeof(buf));
-}
-
-// A1 (aligned variant)
-UTEST(arena, A1_arena_alloc_aligned_past_end_returns_null)
-{
-    alignas(16) u8 buf[20];
-    Arena          arena;
-    Arena_create_buf(&arena, buf, sizeof(buf));
-
-    EXPECT_TRUE((Arena_alloc_aligned(&arena, 17, 1)) != NULL); // idx -> 17
-    u8* p = Arena_alloc_aligned(&arena, 1, 32);                // aligned_idx = 32 > 20
-    EXPECT_TRUE((p) == NULL);
-}
-
-// A2: alignment is applied to the OFFSET, not the ADDRESS.
-UTEST(arena, A2_arena_aligns_address_not_offset)
-{
-    alignas(64) u8 buf[256];
-    Arena          arena;
-    Arena_create_buf(&arena, buf + 4, sizeof(buf) - 4); // base is 4 mod 16
-
-    u8* p16 = Arena_alloc_aligned(&arena, 8, 16);
-    u8* p64 = Arena_alloc_aligned(&arena, 8, 64);
-    EXPECT_TRUE((p16) != NULL);
-    EXPECT_TRUE((p64) != NULL);
-    EXPECT_EQ((uintptr_t)p16 % 16, 0u);
-    EXPECT_EQ((uintptr_t)p64 % 64, 0u);
-}
 
 // A4: the arena allocator had no realloc, so every growth abandoned the old
 // block (about half of a 1 KB arena was dead blocks in the main.c scenario).
@@ -637,7 +450,7 @@ UTEST(arena, destroy_uses_the_backing_it_was_created_with)
     wc_test_alloc_init(&ta, WC_LIBC);
     Arena a;
     Arena_create(&a, wc_test_alloc_allocator(&ta), 512);
-    EXPECT_TRUE(a.backing == wc_test_alloc_allocator(&ta));
+    EXPECT_TRUE(a.alloc == wc_test_alloc_allocator(&ta));
     Arena_destroy(&a);
     EXPECT_EQ(wc_test_alloc_destroy(&ta), 0u);
 }

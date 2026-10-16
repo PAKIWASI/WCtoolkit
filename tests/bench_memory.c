@@ -14,6 +14,7 @@
 // And String building inline (SSO) vs on the heap.
 
 static const char WORD[] = "key_00042";
+#define NORMAL_CAP nKB(4)
 
 // ubench.h registers each benchmark with realloc() inside the UBENCH macro
 // NOLINTBEGIN(bugprone-suspicious-realloc-usage)
@@ -45,7 +46,7 @@ UBENCH(memory, arena)
 UBENCH(memory, chain_arena)
 {
     ChainArena c;
-    ChainArena_create(&c, WC_LIBC);
+    ChainArena_create(&c, WC_LIBC, NORMAL_CAP);
     for (int i = 0; i < N; i++) {
         char* p = ChainArena_alloc(&c, sizeof(WORD));
         memcpy(p, WORD, sizeof(WORD));
