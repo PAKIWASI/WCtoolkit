@@ -80,7 +80,7 @@ wc_nodiscard StrView StrView_trim_right(StrView sv, const char* set, u64 len);
 
 // search
 
-wc_nodiscard u64  StrView_find(StrView sv, StrView needle); // WC_NOT_FOUND if absent
+wc_nodiscard u64  StrView_find(StrView sv, StrView needle);  // WC_NOT_FOUND if absent
 wc_nodiscard u64  StrView_findr(StrView sv, StrView needle); // WC_NOT_FOUND if absent
 wc_nodiscard u64  StrView_find_char(StrView sv, char c);
 wc_nodiscard u64  StrView_findr_char(StrView sv, char c);
@@ -151,14 +151,6 @@ static inline int wc_strview_cmp(const void* a, const void* b, u64 size)
     return StrView_compare(*(StrView*)a, *(StrView*)b);
 }
 
-// can use wc_hash directly
-// static inline u64 wc_strview_hash(const void* elm, u64 len)
-// {
-//     return wc_hash(elm, len);
-// }
-
-
-// TODO: do this
 
 // A stringstore is a chain arena that provides immutable string storage and operations on them,
 // filepath storage and operations etc. it gives out StrViews, optional String wrappers for read, find operations.
@@ -208,7 +200,7 @@ wc_nodiscard            wc_nonull(1, 2) bool WCpathIter_next(WCPathIter* it, Str
 // Path joining (Allocation-returning)
 
 // Join paths `a` and `b` and return a String allocated using `alloc`
-wc_nodiscard wc_nonull(1) String WCPath_join(const wc_allocator* alloc, StrView a, StrView b);
+wc_nodiscard wc_nonull(1) String WCPath_join_str(const wc_allocator* alloc, StrView a, StrView b);
 // Join paths `a` and `b` and return a StrView stored in `ss`
 wc_nodiscard wc_nonull(1) StrView WCPath_join_sv(StringStore* ss, StrView a, StrView b);
 

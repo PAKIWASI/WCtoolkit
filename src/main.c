@@ -15,7 +15,7 @@
 int main(void)
 {
     StringStore ss;
-    StringStore_create(&ss, WC_MMAP, nKB(4), false);
+    StringStore_create(&ss, WC_LIBC, nKB(4), false);
 
     const char* c1 = "/a/b/c.txt";
     u64 len1 = strlen(c1);
@@ -28,7 +28,6 @@ int main(void)
     StrView_print(WCpath_extension(p1)); putchar('\n');
     StrView_print(WCpath_stem(p1)); putchar('\n');
 
-
-    StringStore_destroy(&ss);
+    // StringStore_destroy(&ss); // BUG: hangs when commented out when alloc is WC_LIBC
     return 0;
 }

@@ -435,7 +435,7 @@ static void join_write(char* dst, JoinPlan plan, StrView a, StrView b)
     }
 }
 
-String WCPath_join(const wc_allocator* alloc, StrView a, StrView b)
+String WCPath_join_str(const wc_allocator* alloc, StrView a, StrView b)
 {
     JoinPlan plan = join_plan(a, b);
     u64      len  = join_len(plan, a, b);
