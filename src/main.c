@@ -15,19 +15,9 @@
 
 int main(void)
 {
-    String s = String_from_cstr(WC_LIBC, "$      hello world  @ ");
+    StringStore ss;
+    StringStore_create(&ss, WC_MMAP, nKB(4), false);
 
-    StrView_print(StrView_over_String(&s)); putchar('\n');
 
-    const char* set = "$@ ";
-    u64 len = strlen(set);
-
-    StrView_print(StrView_trim_left(StrView_over_String(&s), set, len)); putchar('\n');
-
-    StrView_print(StrView_trim_right(StrView_over_String(&s), set, len)); putchar('\n');
-
-    StrView_print(StrView_trim(StrView_over_String(&s), set, len)); putchar('\n');
-
-    String_destroy(&s);
     return 0;
 }

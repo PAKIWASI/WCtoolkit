@@ -80,8 +80,10 @@ wc_nodiscard StrView StrView_trim_right(StrView sv, const char* set, u64 len);
 
 // search
 
-wc_nodiscard u64 StrView_find(StrView sv, StrView needle); // WC_NOT_FOUND if absent
-wc_nodiscard u64 StrView_find_char(StrView sv, char c);
+wc_nodiscard u64  StrView_find(StrView sv, StrView needle); // WC_NOT_FOUND if absent
+wc_nodiscard u64  StrView_findr(StrView sv, StrView needle); // WC_NOT_FOUND if absent
+wc_nodiscard u64  StrView_find_char(StrView sv, char c);
+wc_nodiscard u64  StrView_findr_char(StrView sv, char c);
 wc_nodiscard bool StrView_starts_with(StrView sv, StrView pfx);
 wc_nodiscard bool StrView_ends_with(StrView sv, StrView sfx);
 wc_nodiscard bool StrView_contains(StrView sv, StrView n);
@@ -138,9 +140,9 @@ wc_nodiscard static wc_always_inline bool StrView_equals(StrView a, StrView b)
 }
 
 // C-string convenience
-wc_nodiscard wc_nonull(2) static wc_always_inline bool StrView_equals_cstr(StrView sv, const char* cstr)
+wc_nodiscard wc_nonull(2) static wc_always_inline bool StrView_equals_cstr(StrView sv, const char* cstr, u64 clen)
 {
-    return StrView_equals(sv, StrView_over_cstr(cstr, strlen(cstr)));
+    return StrView_equals(sv, StrView_over_cstr(cstr, clen));
 }
 
 static inline int wc_strview_cmp(const void* a, const void* b, u64 size)
@@ -149,17 +151,18 @@ static inline int wc_strview_cmp(const void* a, const void* b, u64 size)
     return StrView_compare(*(StrView*)a, *(StrView*)b);
 }
 
-static inline u64 wc_strview_hash(const void* elm, u64 size)
-{
-
-}
+// can use wc_hash directly
+// static inline u64 wc_strview_hash(const void* elm, u64 len)
+// {
+//     return wc_hash(elm, len);
+// }
 
 
 // TODO: do this
 
 // A stringstore is a chain arena that provides immutable string storage and operations on them,
 // filepath storage and operations etc. it gives out StrViews, optional String wrappers for read, find operations.
-// NOTE: All ORIGINAL StrViews from the store are NUL-terminated. However, if you trim/consume from the end, then that's not gonna hold
+// NOTE: All ORIGINAL StrViews from the store are NUL-terminated. However, that's not gonna hold for subviews obtained via trim/consume
 typedef struct {
     ChainArena store;
     HashMap    interned;         // StrView -> {} (a set)
@@ -174,20 +177,24 @@ wc_nonull(1) void StringStore_destroy(StringStore* ss);
 // Copy bytes into the store; return a view. NUL-terminate too (1 extra byte),
 // so sv.data works as a C string, makes StringStore a drop-in for argv-style APIs.
 wc_nodiscard wc_nonull(1, 2) StrView StringStore_str(StringStore* ss, const String* s);
-wc_nodiscard wc_nonull(1, 2) StrView StringStore_cstr(StringStore* ss, const char* cstr);
+wc_nodiscard wc_nonull(1, 2) StrView StringStore_cstr(StringStore* ss, const char* cstr, u64 clen);
 wc_nodiscard wc_nonull(1) StrView StringStore_sv(StringStore* ss, StrView sv);
 
-
-
-// filepath storage/handling
+// TODO: extensive testing needed
+// filepath storage/handling (currently linux only)
 // store paths normally as strings in the stringstore (or wherever) and use these operations to work on them
+// We assume actual filepaths are passed to these functions, we are not asserting filepath validity. Check WCpath_valid to assert path validity.
 
-wc_nodiscard bool     WCpath_is_absolute(StrView p); // starts with '/'
-wc_nodiscard StrView  WCpath_basename(StrView p);    // "/a/b/c.txt" -> "c.txt"
-wc_nodiscard StrView  WCpath_dirname(StrView p);     // "/a/b/c.txt" -> "/a/b"
-wc_nodiscard StrView  WCpath_extension(StrView p);   // "c.txt"      -> "txt"   (no dot)
-wc_nodiscard StrView  WCpath_stem(StrView p);        // "c.txt"      -> "c"
-wc_nodiscard bool     WCpath_has_extension(StrView p, StrView ext);
+// A path is valid if it is a non-NULL, non-empty view with no embedded NUL and no "//".
+// This is the contract the other WCpath_* functions assume. "/", "a/b/" and "../x" are valid.
+wc_nodiscard bool WCpath_valid(StrView p);
+
+wc_nodiscard bool    WCpath_is_absolute(StrView p); // starts with '/'
+wc_nodiscard StrView WCpath_basename(StrView p);    // "/a/b/c.txt" -> "c.txt"
+wc_nodiscard StrView WCpath_dirname(StrView p);     // "/a/b/c.txt" -> "/a/b"
+wc_nodiscard StrView WCpath_extension(StrView p);   // "c.txt"      -> "txt"   (no dot)
+wc_nodiscard StrView WCpath_stem(StrView p);        // "c.txt"      -> "c"
+wc_nodiscard bool    WCpath_has_extension(StrView p, StrView ext);
 
 // Component iteration
 typedef struct {
@@ -196,12 +203,15 @@ typedef struct {
 } WCPathIter;
 
 wc_nodiscard WCPathIter WCpath_components(StrView p);
-wc_nodiscard wc_nonull(1, 2) bool WCpathIter_next(WCPathIter* it, StrView* out);
+wc_nodiscard            wc_nonull(1, 2) bool WCpathIter_next(WCPathIter* it, StrView* out);
 
-// Allocation-returning
-wc_nodiscard wc_nonull(1) String  Path_join(const wc_allocator* alloc, StrView a, StrView b);
-wc_nodiscard wc_nonull(1) StrView Path_join_sv(StringStore* ss, StrView a, StrView b);
-wc_nodiscard wc_nonull(1) StrView Path_normalize(StringStore* ss, StrView p); // collapses "." and ".."
+// Path joining (Allocation-returning)
+
+// Join paths `a` and `b` and return a String allocated using `alloc`
+wc_nodiscard wc_nonull(1) String WCPath_join(const wc_allocator* alloc, StrView a, StrView b);
+// Join paths `a` and `b` and return a StrView stored in `ss`
+wc_nodiscard wc_nonull(1) StrView WCPath_join_sv(StringStore* ss, StrView a, StrView b);
+wc_nodiscard wc_nonull(1) StrView WCPath_normalize(StringStore* ss, StrView p); // collapses "." and ".."
 
 
 

@@ -45,7 +45,7 @@ typedef u64 (*wc_hash_fn)(const void* key, u64 size);
  */
 
 // 64 x 64 -> 128 bit multiply. *a gets the low half, *b the high half.
-static wc_always_inline void wc_rapid_mum(unsigned long long* a, unsigned long long* b)
+static wc_always_inline void wc_rapid_mum(unsigned long long* a, unsigned long long* b) // TODO: is type right?
 {
     wc_mum64(a, b);
 }
