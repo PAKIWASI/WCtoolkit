@@ -19,45 +19,99 @@
  * Every non-standard construct the kit relies on (attributes, typeof, inline
  * hints, overflow/expect builtins) is wrapped here.
  *
+ * Attribute placement standard:
+ *   [attributes] [storage / linkage] [inlining] [return_type] func_name(params);
+ * All wc_* attributes are placed in PREFIX position (before return type)
+ * for full compatibility with GCC, Clang, clang-cl, and MSVC.
  */
 
 #if defined(__clang__) || defined(__GNUC__)
-    #define wc_likely(x)       __builtin_expect(!!(x), 1)
-    #define wc_unlikely(x)     __builtin_expect(!!(x), 0)
-    #define wc_nonull(...)     __attribute__((nonnull(__VA_ARGS__)))
-    #define wc_nodiscard       __attribute__((warn_unused_result))
-    #define wc_always_inline   inline __attribute__((always_inline))
-    #define wc_cold            __attribute__((cold))
-    #define wc_noinline        __attribute__((noinline))
-    #define wc_noreturn        __attribute__((noreturn))
-    #define wc_format(k, n, v) __attribute__((format(k, n, v)))
-    #define wc_typeof(expr)    __typeof__(expr)
-    #define wc_mul_overflow(a, b, res) (__builtin_mul_overflow((a), (b), (res)))
-    /* u64 trailing zeros (x must be nonzero). */
-    #define wc_ctz(x)          __builtin_ctzll(x)
+#define wc_likely(x)               __builtin_expect(!!(x), 1)
+#define wc_unlikely(x)             __builtin_expect(!!(x), 0)
+#define wc_nonull(...)             __attribute__((nonnull(__VA_ARGS__)))
+#define wc_nodiscard               __attribute__((warn_unused_result))
+#define wc_always_inline           inline __attribute__((always_inline))
+#define wc_cold                    __attribute__((cold))
+#define wc_noinline                __attribute__((noinline))
+#define wc_noreturn                __attribute__((noreturn))
+#define wc_format(k, n, v)         __attribute__((format(k, n, v)))
+#define wc_typeof(expr)            __typeof__(expr)
+#define wc_mul_overflow(a, b, res) (__builtin_mul_overflow((a), (b), (res)))
+/* u64 trailing zeros (x must be nonzero). */
+#define wc_ctz(x) __builtin_ctzll(x)
+/* u64 leading zeros (x must be nonzero). */
+#define wc_clz(x) __builtin_clzll(x)
+/* u64 population count (number of 1 bits). */
+#define wc_popcount(x)   __builtin_popcountll(x)
+#define wc_unreachable() __builtin_unreachable()
+
+static wc_always_inline void wc_mum64(unsigned long long* a, unsigned long long* b)
+{
+    __uint128_t r = (__uint128_t)*a * *b;
+    *a            = (unsigned long long)r;
+    *b            = (unsigned long long)(r >> 64);
+}
 #else
-    #define wc_likely(x)       (!!(x))
-    #define wc_unlikely(x)     (x)
-    #define wc_nonull(...)
-    #define wc_nodiscard
-    #define wc_always_inline   inline
-    #define wc_cold
-    #define wc_noinline
-    #define wc_noreturn
-    #define wc_format(k, n, v)
-    #define wc_typeof(expr)    __typeof__(expr)
-    /* res = a * b, evaluates to nonzero on overflow (division check). */
-    #define wc_mul_overflow(a, b, res)                                              \
-        ((res) = (unsigned long long)(a) * (unsigned long long)(b),                 \
-         (unsigned long long)(a) != 0ull &&                                         \
-             (res) / (unsigned long long)(a) != (unsigned long long)(b))
-    /* u64 trailing zeros (x must be nonzero). */
-    static inline unsigned wc_ctz(unsigned long long x)
-    {
-        unsigned long i;
-        _BitScanForward64(&i, x);
-        return (unsigned)i;
-    }
+#include <intrin.h>
+#include <sal.h>
+#define wc_likely(x)   (!!(x))
+#define wc_unlikely(x) (x)
+#define wc_nonull(...)
+#define wc_nodiscard     _Check_return_
+#define wc_always_inline __forceinline
+#define wc_cold
+#define wc_noinline __declspec(noinline)
+#define wc_noreturn __declspec(noreturn)
+#define wc_format(k, n, v)
+#define wc_typeof(expr)  __typeof__(expr)
+#define wc_unreachable() __assume(0)
+
+#define wc_mul_overflow(a, b, res)                              \
+    ((res) = (unsigned long long)(a) * (unsigned long long)(b), \
+     (unsigned long long)(a) != 0ull && (res) / (unsigned long long)(a) != (unsigned long long)(b))
+
+static inline unsigned wc_ctz(unsigned long long x)
+{
+    unsigned long i;
+    _BitScanForward64(&i, x);
+    return (unsigned)i;
+}
+
+static inline unsigned wc_clz(unsigned long long x)
+{
+    unsigned long i;
+    _BitScanReverse64(&i, x);
+    return (unsigned)(63 - i);
+}
+
+static inline unsigned wc_popcount(unsigned long long x)
+{
+    return (unsigned)__popcnt64(x);
+}
+
+static inline void wc_mum64(unsigned long long* a, unsigned long long* b)
+{
+#if defined(_M_X64) || defined(_M_AMD64)
+    unsigned __int64 hi;
+    *a = _umul128(*a, *b, &hi);
+    *b = hi;
+#else
+    unsigned long long u1 = (unsigned long)(*a);
+    unsigned long long v1 = (unsigned long)(*b);
+    unsigned long long t  = u1 * v1;
+    unsigned long long w3 = t & 0xFFFFFFFFull;
+    unsigned long long k  = t >> 32;
+    *a                    = (*a >> 32);
+    t                     = (*a) * v1 + k;
+    unsigned long long k1 = t & 0xFFFFFFFFull;
+    unsigned long long w1 = t >> 32;
+    *b                    = (*b >> 32);
+    t                     = u1 * (*b) + k1;
+    k                     = t >> 32;
+    *a                    = (t << 32) + w3;
+    *b                    = (*a) * (*b) + w1 + k;
+#endif
+}
 #endif
 
 #endif // WC_COMP_H
@@ -129,13 +183,13 @@ extern const wc_allocator wc_mmap;
 #define WC_MMAP (&wc_mmap)
 
 
-static inline wc_nonull(1) bool wc_is_libc(const wc_allocator* a)
+wc_nodiscard wc_nonull(1) static wc_always_inline bool wc_is_libc(const wc_allocator* a)
 {
     return a == WC_LIBC;
 }
 
 // Same backend and same context: memory from one may be freed through the other
-static inline wc_nonull(1, 2) int wc_same(const wc_allocator* a, const wc_allocator* b)
+wc_nodiscard wc_nonull(1, 2) static wc_always_inline int wc_same(const wc_allocator* a, const wc_allocator* b)
 {
     return a == b || (a->vt == b->vt && a->ctx == b->ctx);
 }
@@ -143,17 +197,17 @@ static inline wc_nonull(1, 2) int wc_same(const wc_allocator* a, const wc_alloca
 #define WC_ALLOC_ASSERT_ALIGN(align) \
     assert((align) != 0 && ((align) & ((align) - 1)) == 0 && "align must be a power of two >= 1")
 
-static inline wc_nonull(1) void* wc_alloc(const wc_allocator* a, size_t n, size_t align)
+wc_nodiscard wc_nonull(1) static wc_always_inline void* wc_alloc(const wc_allocator* a, size_t n, size_t align)
 {
     WC_ALLOC_ASSERT_ALIGN(align);
-    if (n == 0 || n > (size_t)PTRDIFF_MAX) { // any valid allocation will be less than PTRDIFF_MAX
+    if (wc_unlikely(n == 0 || n > (size_t)PTRDIFF_MAX)) { // any valid allocation will be less than PTRDIFF_MAX
         return NULL;
     }
     assert(a->vt && a->vt->alloc && "wc_alloc: no allocator"); // an allocator really only needs the alloc function
     return a->vt->alloc(a->ctx, n, align);
 }
 
-static inline wc_nonull(1) void wc_free(const wc_allocator* a, void* p, size_t n, size_t align)
+wc_nonull(1) static wc_always_inline void wc_free(const wc_allocator* a, void* p, size_t n, size_t align)
 {
     WC_ALLOC_ASSERT_ALIGN(align);
     if (!p) {
@@ -165,17 +219,18 @@ static inline wc_nonull(1) void wc_free(const wc_allocator* a, void* p, size_t n
     }
 }
 
-static inline wc_nonull(1) void* wc_realloc(const wc_allocator* a, void* p, size_t old_n, size_t n, size_t align)
+wc_nodiscard wc_nonull(1) static wc_always_inline void* wc_realloc(const wc_allocator* a, void* p, size_t old_n, size_t n,
+                                                                   size_t align)
 {
     WC_ALLOC_ASSERT_ALIGN(align);
-    if (!p) {
+    if (wc_unlikely(!p)) {
         return wc_alloc(a, n, align);
     }
-    if (n == 0) {
+    if (wc_unlikely(n == 0)) {
         wc_free(a, p, old_n, align);
         return NULL;
     }
-    if (n > (size_t)PTRDIFF_MAX) {
+    if (wc_unlikely(n > (size_t)PTRDIFF_MAX)) {
         return NULL; // overflowed size: fail, p stays valid
     }
     assert(a->vt && "wc_alloc: no allocator");
@@ -201,7 +256,7 @@ the object couldn't be represented. So any valid allocation size is <= PTRDIFF_M
 // count * size, saturating to SIZE_MAX on overflow. SIZE_MAX can never be
 // satisfied, so an overflowing request fails in the backend instead of wrapping
 // to a small size. (Returning 0 would be wrong: realloc to 0 means free.)
-static inline size_t wc_mul(size_t count, size_t size)
+wc_nodiscard static wc_always_inline size_t wc_mul(size_t count, size_t size)
 {
     size_t r;
     return wc_mul_overflow(count, size, &r) ? SIZE_MAX : r;
@@ -210,7 +265,7 @@ static inline size_t wc_mul(size_t count, size_t size)
 // Smallest safe alignment for elements of `elm_size` bytes: the
 // largest power of two dividing elm_size, capped at WC_MAX_ALIGN. Valid because
 // sizeof(T) is always a multiple of alignof(T).
-static inline size_t wc_align_for_size(size_t elm_size)
+wc_nodiscard static wc_always_inline size_t wc_align_for_size(size_t elm_size)
 {
     if (elm_size == 0) {
         return 1;
@@ -613,6 +668,8 @@ static inline void wc_print_cstr(const void* elm)
 #ifndef WC_ERRNO_H
 #define WC_ERRNO_H
 
+
+
 #include <stdio.h>
 
 
@@ -675,7 +732,7 @@ typedef enum {
     WC_ERR_INVALID_OP, // call to a function with preconditions not met
 } wc_err;
 
-static inline const char* wc_strerror(wc_err e)
+wc_nodiscard static inline const char* wc_strerror(wc_err e)
 {
     switch (e) {
     case WC_OK:
@@ -788,28 +845,26 @@ typedef u64 (*wc_hash_fn)(const void* key, u64 size);
  */
 
 // 64 x 64 -> 128 bit multiply. *a gets the low half, *b the high half.
-static wc_always_inline void wc_rapid_mum(u64* a, u64* b)
+static wc_always_inline void wc_rapid_mum(unsigned long long* a, unsigned long long* b) // TODO: is type right?
 {
-    __uint128_t r = (__uint128_t)*a * *b;
-    *a            = (u64)r;
-    *b            = (u64)(r >> 64);
+    wc_mum64(a, b);
 }
 
 // Multiply, then fold the 128-bit product to 64 bits.
-static wc_always_inline u64 wc_rapid_mix(u64 a, u64 b)
+wc_nodiscard static wc_always_inline u64 wc_rapid_mix(unsigned long long a, unsigned long long b)
 {
     wc_rapid_mum(&a, &b);
     return a ^ b;
 }
 
-static wc_always_inline u64 wc_rapid_read64(const u8* p)
+wc_nodiscard static wc_always_inline u64 wc_rapid_read64(const u8* p)
 {
     u64 v;
     memcpy(&v, p, 8);
     return v;
 }
 
-static wc_always_inline u64 wc_rapid_read32(const u8* p)
+wc_nodiscard static wc_always_inline u64 wc_rapid_read32(const u8* p)
 {
     u32 v;
     memcpy(&v, p, 4);
@@ -824,13 +879,13 @@ static wc_always_inline u64 wc_rapid_read32(const u8* p)
 
 // Hash `len` bytes. Inlined so short keys stay cheap: `len <= 16` takes the short
 // path, where a 4 or 8 byte key costs two 128-bit multiplies.
-static wc_always_inline u64 wc_hash(const void* key, u64 len)
+wc_nodiscard static wc_always_inline u64 wc_hash(const void* key, u64 len)
 {
-    const u8* p    = key;
-    u64       seed = WC_RAPID_SEED ^ wc_rapid_mix(WC_RAPID_SEED ^ WC_RAPID_S2, WC_RAPID_S1);
-    u64       a    = 0;
-    u64       b    = 0;
-    u64       i    = len;
+    const u8*          p    = key;
+    u64                seed = WC_RAPID_SEED ^ wc_rapid_mix(WC_RAPID_SEED ^ WC_RAPID_S2, WC_RAPID_S1);
+    unsigned long long a    = 0;
+    unsigned long long b    = 0;
+    u64                i    = len;
 
     if (wc_likely(len <= 16)) {
         if (len >= 4) {
@@ -921,30 +976,30 @@ _Static_assert(sizeof(String) == 48, "String must be 48 bytes");
 //  Construction / Destruction
 
 // Create an empty String using allocator `a`.
-wc_nodiscard String String_create(const wc_allocator* a) wc_nonull(1);
+wc_nodiscard wc_nonull(1) String String_create(const wc_allocator* a);
 
-wc_nodiscard String String_with_cap(const wc_allocator* a, u64 cap) wc_nonull(1);
+wc_nodiscard wc_nonull(1) String String_with_cap(const wc_allocator* a, u64 cap);
 
 // Create a String from a C string using allocator `a`.
-wc_nodiscard String String_from_cstr(const wc_allocator* a, const char* cstr) wc_nonull(1);
+wc_nodiscard wc_nonull(1) String String_from_cstr(const wc_allocator* a, const char* cstr);
 
 // Destroy the String's internal buffer
 // Safe on a zeroed/moved-from String.
-void String_destroy(String* str) wc_nonull(1);
+wc_nonull(1) void String_destroy(String* str);
 
 // Deep copy src → new String in allocator `a`.
 // dest is raw/uninitialized: never reads it before writing.
-wc_nodiscard String String_copy(const wc_allocator* a, const String* src) wc_nonull(1, 2);
+wc_nodiscard wc_nonull(1, 2) String String_copy(const wc_allocator* a, const String* src);
 
 // Transfer ownership: dest gets src's contents, src is zeroed.
-void String_move(String* dest, String* src) wc_nonull(1, 2);
+wc_nonull(1, 2) void String_move(String* dest, String* src);
 
 // TODO: just use a StrView for this? can we for hashmap lookup?
 // Non-owning, READ-ONLY String over `len` existing bytes: no allocation.
 // For lookups only: a String-keyed map or set hashes and compares it like an
 // owning String with the same bytes. Never store it in a container.
 // Any mutation is fatal (WC_BORROWED cannot allocate); destroy is a no-op.
-wc_nodiscard wc_nonull(1) static inline String String_borrow(const char* p, u64 len)
+wc_nodiscard wc_nonull(1) static wc_always_inline String String_borrow(const char* p, u64 len)
 {
     String s;
     memset(&s, 0, sizeof(s)); // stk[STR_SSO_SIZE - 1] == 0: heap mode
@@ -959,57 +1014,57 @@ wc_nodiscard wc_nonull(1) static inline String String_borrow(const char* p, u64 
 //  Capacity
 
 // Ensure capacity >= new_cap (never shrinks).
-void String_reserve(String* str, u64 new_cap) wc_nonull(1);
+wc_nonull(1) void String_reserve(String* str, u64 new_cap);
 
 // Reserve capacity and fill new slots with c.
-void String_reserve_char(String* str, u64 new_cap, char c) wc_nonull(1);
+wc_nonull(1) void String_reserve_char(String* str, u64 new_cap, char c);
 
 // Shrink allocation to exactly fit current size.
-void String_shrink_to_fit(String* str) wc_nonull(1);
+wc_nonull(1) void String_shrink_to_fit(String* str);
 
 
 //  Conversion
 
 // Return a buffer (allocated from `a`) holding a NUL-terminated copy, caller
 // must free with wc_free(a, ptr, str->size + 1, 1).
-wc_nodiscard char* String_to_cstr(const wc_allocator* a, const String* str) wc_nonull(1, 2);
+wc_nodiscard wc_nonull(1, 2) char* String_to_cstr(const wc_allocator* a, const String* str);
 
-void String_to_cstr_buf(const String* str, char* buff, u64 n) wc_nonull(1, 2);
+wc_nonull(1, 2) void String_to_cstr_buf(const String* str, char* buff, u64 n);
 
 // Return a raw pointer into the internal buffer (no NUL terminator).
-wc_nodiscard char* String_data_ptr(const String* str) wc_nonull(1);
+wc_nodiscard wc_nonull(1) char* String_data_ptr(const String* str);
 
 // Guarantee a '\0' sits one byte past the last real character, WITHOUT
 // touching str->size. Grows exactly like String_append_char would.
-void String_ensure_null_term(String* str) wc_nonull(1);
+wc_nonull(1) void String_ensure_null_term(String* str);
 
 
 //  Modification
 
-void String_append_char(String* str, char c) wc_nonull(1);
+wc_nonull(1) void String_append_char(String* str, char c);
 // TODO:
-void String_append_multi(String* str, const char* data, u64 len) wc_nonull(1, 2);
-void String_append_cstr(String* str, const char* cstr) wc_nonull(1, 2);
-void String_append_String(String* str, const String* other) wc_nonull(1, 2);
+wc_nonull(1, 2) void String_append_multi(String* str, const char* data, u64 len);
+wc_nonull(1, 2) void String_append_cstr(String* str, const char* cstr);
+wc_nonull(1, 2) void String_append_String(String* str, const String* other);
 // Append other then destroy it (leaves other zeroed). When str is empty and
 // both share an allocator, str takes over other's buffer: no copy.
-void String_append_String_move(String* str, String* other) wc_nonull(1, 2);
+wc_nonull(1, 2) void String_append_String_move(String* str, String* other);
 
-char String_pop_char(String* str) wc_nonull(1);
+wc_nodiscard wc_nonull(1) char String_pop_char(String* str);
 
-void String_insert_char(String* str, u64 i, char c) wc_nonull(1);
-void String_insert_cstr(String* str, u64 i, const char* cstr) wc_nonull(1, 3);
+wc_nonull(1) void String_insert_char(String* str, u64 i, char c);
+wc_nonull(1, 3) void String_insert_cstr(String* str, u64 i, const char* cstr);
 // TODO:
-void String_insert_multi(String* str, u64 i, const char* data, u64 len) wc_nonull(1, 3);
-void String_insert_String(String* str, u64 i, const String* other) wc_nonull(1, 3);
+wc_nonull(1, 3) void String_insert_multi(String* str, u64 i, const char* data, u64 len);
+wc_nonull(1, 3) void String_insert_String(String* str, u64 i, const String* other);
 
-void String_remove_char(String* str, u64 i) wc_nonull(1);
+wc_nonull(1) void String_remove_char(String* str, u64 i);
 
 // Remove chars in range [start, start + len)
-void String_remove_range(String* str, u64 start, u64 len) wc_nonull(1);
+wc_nonull(1) void String_remove_range(String* str, u64 start, u64 len);
 
 // Remove all chars (keep allocation).
-wc_nonull(1) static inline void String_clear(String* str)
+wc_nonull(1) static wc_always_inline void String_clear(String* str)
 {
     str->size = 0;
 }
@@ -1017,19 +1072,19 @@ wc_nonull(1) static inline void String_clear(String* str)
 
 //  Access
 
-wc_nodiscard wc_nonull(1) static inline char String_char_at(const String* str, u64 i)
+wc_nodiscard wc_nonull(1) static wc_always_inline char String_char_at(const String* str, u64 i)
 {
     WC_ASSERT(i < str->size, "index out of bounds");
     return ((str->stk[STR_SSO_SIZE - 1] != '\0') ? str->stk : str->heap)[i];
 }
 
 // UNCHECKED: no bounds check, even in Debug. Caller guarantees i < size.
-wc_nodiscard wc_nonull(1) static inline char String_char_at_unsafe(const String* str, u64 i)
+wc_nodiscard wc_nonull(1) static wc_always_inline char String_char_at_unsafe(const String* str, u64 i)
 {
     return ((str->stk[STR_SSO_SIZE - 1] != '\0') ? str->stk : str->heap)[i];
 }
 
-wc_nonull(1) static inline void String_set_char(String* str, u64 i, char c)
+wc_nonull(1) static wc_always_inline void String_set_char(String* str, u64 i, char c)
 {
     WC_ASSERT(i < str->size, "index out of bounds");
     ((str->stk[STR_SSO_SIZE - 1] != '\0') ? str->stk : str->heap)[i] = c;
@@ -1039,49 +1094,49 @@ wc_nonull(1) static inline void String_set_char(String* str, u64 i, char c)
 //  Comparison
 
 // 0 == equal, <0 == str1 < str2, >0 == str1 > str2
-int String_compare(const String* s1, const String* s2) wc_nonull(1, 2);
+wc_nodiscard wc_nonull(1, 2) int String_compare(const String* s1, const String* s2);
 
-wc_nonull(1, 2) static inline bool String_equals(const String* s1, const String* s2)
+wc_nodiscard wc_nonull(1, 2) static wc_always_inline bool String_equals(const String* s1, const String* s2)
 {
     return String_compare(s1, s2) == 0;
 }
 
-bool String_equals_cstr(const String* str, const char* cstr) wc_nonull(1, 2);
+wc_nodiscard wc_nonull(1, 2) bool String_equals_cstr(const String* str, const char* cstr);
 
 
 //  Search
 
 // Returns index, or WC_NOT_FOUND if not found.
-wc_nodiscard u64 String_find_char(const String* str, char c) wc_nonull(1);
-wc_nodiscard u64 String_find_cstr(const String* str, const char* substr) wc_nonull(1, 2);
+wc_nodiscard wc_nonull(1) u64 String_find_char(const String* str, char c);
+wc_nodiscard wc_nonull(1, 2) u64 String_find_cstr(const String* str, const char* substr);
 
 // Return a String (in allocator `a`) holding `length` chars starting at `start`.
-wc_nodiscard String String_substr(const wc_allocator* a, const String* str, u64 start, u64 length) wc_nonull(1, 2);
+wc_nodiscard wc_nonull(1, 2) String String_substr(const wc_allocator* a, const String* str, u64 start, u64 length);
 
 
 //  I/O
 
-void String_print(const String* str) wc_nonull(1);
+wc_nonull(1) void String_print(const String* str);
 
 
 //  Inline helpers
 
-wc_nodiscard wc_nonull(1) static inline u64 String_len(const String* str)
+wc_nodiscard wc_nonull(1) static wc_always_inline u64 String_len(const String* str)
 {
     return str->size;
 }
 
-wc_nodiscard wc_nonull(1) static inline u64 String_capacity(const String* str)
+wc_nodiscard wc_nonull(1) static wc_always_inline u64 String_capacity(const String* str)
 {
     return str->capacity;
 }
 
-wc_nonull(1) static inline bool String_empty(const String* str)
+wc_nodiscard wc_nonull(1) static wc_always_inline bool String_empty(const String* str)
 {
     return str->size == 0;
 }
 
-wc_nonull(1) static inline bool String_is_sso(const String* str)
+wc_nodiscard wc_nonull(1) static wc_always_inline bool String_is_sso(const String* str)
 {
     return str->stk[STR_SSO_SIZE - 1] != '\0';
 }
@@ -1089,7 +1144,7 @@ wc_nonull(1) static inline bool String_is_sso(const String* str)
 // Read-only pointer into the buffer. Unlike String_data_ptr, this never
 // returns NULL for an empty String. Internally, it uses String_ensure_null_term(),
 // which places a '\0' right after the last valid char without touching the size of the string.
-wc_nodiscard wc_nonull(1) static inline const char* String_cstr_view(String* str)
+wc_nodiscard wc_nonull(1) static wc_always_inline const char* String_cstr_view(String* str)
 {
     String_ensure_null_term(str);
     return String_is_sso(str) ? str->stk : str->heap;

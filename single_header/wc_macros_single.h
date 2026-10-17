@@ -19,45 +19,99 @@
  * Every non-standard construct the kit relies on (attributes, typeof, inline
  * hints, overflow/expect builtins) is wrapped here.
  *
+ * Attribute placement standard:
+ *   [attributes] [storage / linkage] [inlining] [return_type] func_name(params);
+ * All wc_* attributes are placed in PREFIX position (before return type)
+ * for full compatibility with GCC, Clang, clang-cl, and MSVC.
  */
 
 #if defined(__clang__) || defined(__GNUC__)
-    #define wc_likely(x)       __builtin_expect(!!(x), 1)
-    #define wc_unlikely(x)     __builtin_expect(!!(x), 0)
-    #define wc_nonull(...)     __attribute__((nonnull(__VA_ARGS__)))
-    #define wc_nodiscard       __attribute__((warn_unused_result))
-    #define wc_always_inline   inline __attribute__((always_inline))
-    #define wc_cold            __attribute__((cold))
-    #define wc_noinline        __attribute__((noinline))
-    #define wc_noreturn        __attribute__((noreturn))
-    #define wc_format(k, n, v) __attribute__((format(k, n, v)))
-    #define wc_typeof(expr)    __typeof__(expr)
-    #define wc_mul_overflow(a, b, res) (__builtin_mul_overflow((a), (b), (res)))
-    /* u64 trailing zeros (x must be nonzero). */
-    #define wc_ctz(x)          __builtin_ctzll(x)
+#define wc_likely(x)               __builtin_expect(!!(x), 1)
+#define wc_unlikely(x)             __builtin_expect(!!(x), 0)
+#define wc_nonull(...)             __attribute__((nonnull(__VA_ARGS__)))
+#define wc_nodiscard               __attribute__((warn_unused_result))
+#define wc_always_inline           inline __attribute__((always_inline))
+#define wc_cold                    __attribute__((cold))
+#define wc_noinline                __attribute__((noinline))
+#define wc_noreturn                __attribute__((noreturn))
+#define wc_format(k, n, v)         __attribute__((format(k, n, v)))
+#define wc_typeof(expr)            __typeof__(expr)
+#define wc_mul_overflow(a, b, res) (__builtin_mul_overflow((a), (b), (res)))
+/* u64 trailing zeros (x must be nonzero). */
+#define wc_ctz(x) __builtin_ctzll(x)
+/* u64 leading zeros (x must be nonzero). */
+#define wc_clz(x) __builtin_clzll(x)
+/* u64 population count (number of 1 bits). */
+#define wc_popcount(x)   __builtin_popcountll(x)
+#define wc_unreachable() __builtin_unreachable()
+
+static wc_always_inline void wc_mum64(unsigned long long* a, unsigned long long* b)
+{
+    __uint128_t r = (__uint128_t)*a * *b;
+    *a            = (unsigned long long)r;
+    *b            = (unsigned long long)(r >> 64);
+}
 #else
-    #define wc_likely(x)       (!!(x))
-    #define wc_unlikely(x)     (x)
-    #define wc_nonull(...)
-    #define wc_nodiscard
-    #define wc_always_inline   inline
-    #define wc_cold
-    #define wc_noinline
-    #define wc_noreturn
-    #define wc_format(k, n, v)
-    #define wc_typeof(expr)    __typeof__(expr)
-    /* res = a * b, evaluates to nonzero on overflow (division check). */
-    #define wc_mul_overflow(a, b, res)                                              \
-        ((res) = (unsigned long long)(a) * (unsigned long long)(b),                 \
-         (unsigned long long)(a) != 0ull &&                                         \
-             (res) / (unsigned long long)(a) != (unsigned long long)(b))
-    /* u64 trailing zeros (x must be nonzero). */
-    static inline unsigned wc_ctz(unsigned long long x)
-    {
-        unsigned long i;
-        _BitScanForward64(&i, x);
-        return (unsigned)i;
-    }
+#include <intrin.h>
+#include <sal.h>
+#define wc_likely(x)   (!!(x))
+#define wc_unlikely(x) (x)
+#define wc_nonull(...)
+#define wc_nodiscard     _Check_return_
+#define wc_always_inline __forceinline
+#define wc_cold
+#define wc_noinline __declspec(noinline)
+#define wc_noreturn __declspec(noreturn)
+#define wc_format(k, n, v)
+#define wc_typeof(expr)  __typeof__(expr)
+#define wc_unreachable() __assume(0)
+
+#define wc_mul_overflow(a, b, res)                              \
+    ((res) = (unsigned long long)(a) * (unsigned long long)(b), \
+     (unsigned long long)(a) != 0ull && (res) / (unsigned long long)(a) != (unsigned long long)(b))
+
+static inline unsigned wc_ctz(unsigned long long x)
+{
+    unsigned long i;
+    _BitScanForward64(&i, x);
+    return (unsigned)i;
+}
+
+static inline unsigned wc_clz(unsigned long long x)
+{
+    unsigned long i;
+    _BitScanReverse64(&i, x);
+    return (unsigned)(63 - i);
+}
+
+static inline unsigned wc_popcount(unsigned long long x)
+{
+    return (unsigned)__popcnt64(x);
+}
+
+static inline void wc_mum64(unsigned long long* a, unsigned long long* b)
+{
+#if defined(_M_X64) || defined(_M_AMD64)
+    unsigned __int64 hi;
+    *a = _umul128(*a, *b, &hi);
+    *b = hi;
+#else
+    unsigned long long u1 = (unsigned long)(*a);
+    unsigned long long v1 = (unsigned long)(*b);
+    unsigned long long t  = u1 * v1;
+    unsigned long long w3 = t & 0xFFFFFFFFull;
+    unsigned long long k  = t >> 32;
+    *a                    = (*a >> 32);
+    t                     = (*a) * v1 + k;
+    unsigned long long k1 = t & 0xFFFFFFFFull;
+    unsigned long long w1 = t >> 32;
+    *b                    = (*b >> 32);
+    t                     = u1 * (*b) + k1;
+    k                     = t >> 32;
+    *a                    = (t << 32) + w3;
+    *b                    = (*a) * (*b) + w1 + k;
+#endif
+}
 #endif
 
 #endif // WC_COMP_H
@@ -129,13 +183,13 @@ extern const wc_allocator wc_mmap;
 #define WC_MMAP (&wc_mmap)
 
 
-static inline wc_nonull(1) bool wc_is_libc(const wc_allocator* a)
+wc_nodiscard wc_nonull(1) static wc_always_inline bool wc_is_libc(const wc_allocator* a)
 {
     return a == WC_LIBC;
 }
 
 // Same backend and same context: memory from one may be freed through the other
-static inline wc_nonull(1, 2) int wc_same(const wc_allocator* a, const wc_allocator* b)
+wc_nodiscard wc_nonull(1, 2) static wc_always_inline int wc_same(const wc_allocator* a, const wc_allocator* b)
 {
     return a == b || (a->vt == b->vt && a->ctx == b->ctx);
 }
@@ -143,17 +197,17 @@ static inline wc_nonull(1, 2) int wc_same(const wc_allocator* a, const wc_alloca
 #define WC_ALLOC_ASSERT_ALIGN(align) \
     assert((align) != 0 && ((align) & ((align) - 1)) == 0 && "align must be a power of two >= 1")
 
-static inline wc_nonull(1) void* wc_alloc(const wc_allocator* a, size_t n, size_t align)
+wc_nodiscard wc_nonull(1) static wc_always_inline void* wc_alloc(const wc_allocator* a, size_t n, size_t align)
 {
     WC_ALLOC_ASSERT_ALIGN(align);
-    if (n == 0 || n > (size_t)PTRDIFF_MAX) { // any valid allocation will be less than PTRDIFF_MAX
+    if (wc_unlikely(n == 0 || n > (size_t)PTRDIFF_MAX)) { // any valid allocation will be less than PTRDIFF_MAX
         return NULL;
     }
     assert(a->vt && a->vt->alloc && "wc_alloc: no allocator"); // an allocator really only needs the alloc function
     return a->vt->alloc(a->ctx, n, align);
 }
 
-static inline wc_nonull(1) void wc_free(const wc_allocator* a, void* p, size_t n, size_t align)
+wc_nonull(1) static wc_always_inline void wc_free(const wc_allocator* a, void* p, size_t n, size_t align)
 {
     WC_ALLOC_ASSERT_ALIGN(align);
     if (!p) {
@@ -165,17 +219,18 @@ static inline wc_nonull(1) void wc_free(const wc_allocator* a, void* p, size_t n
     }
 }
 
-static inline wc_nonull(1) void* wc_realloc(const wc_allocator* a, void* p, size_t old_n, size_t n, size_t align)
+wc_nodiscard wc_nonull(1) static wc_always_inline void* wc_realloc(const wc_allocator* a, void* p, size_t old_n, size_t n,
+                                                                   size_t align)
 {
     WC_ALLOC_ASSERT_ALIGN(align);
-    if (!p) {
+    if (wc_unlikely(!p)) {
         return wc_alloc(a, n, align);
     }
-    if (n == 0) {
+    if (wc_unlikely(n == 0)) {
         wc_free(a, p, old_n, align);
         return NULL;
     }
-    if (n > (size_t)PTRDIFF_MAX) {
+    if (wc_unlikely(n > (size_t)PTRDIFF_MAX)) {
         return NULL; // overflowed size: fail, p stays valid
     }
     assert(a->vt && "wc_alloc: no allocator");
@@ -201,7 +256,7 @@ the object couldn't be represented. So any valid allocation size is <= PTRDIFF_M
 // count * size, saturating to SIZE_MAX on overflow. SIZE_MAX can never be
 // satisfied, so an overflowing request fails in the backend instead of wrapping
 // to a small size. (Returning 0 would be wrong: realloc to 0 means free.)
-static inline size_t wc_mul(size_t count, size_t size)
+wc_nodiscard static wc_always_inline size_t wc_mul(size_t count, size_t size)
 {
     size_t r;
     return wc_mul_overflow(count, size, &r) ? SIZE_MAX : r;
@@ -210,7 +265,7 @@ static inline size_t wc_mul(size_t count, size_t size)
 // Smallest safe alignment for elements of `elm_size` bytes: the
 // largest power of two dividing elm_size, capped at WC_MAX_ALIGN. Valid because
 // sizeof(T) is always a multiple of alignof(T).
-static inline size_t wc_align_for_size(size_t elm_size)
+wc_nodiscard static wc_always_inline size_t wc_align_for_size(size_t elm_size)
 {
     if (elm_size == 0) {
         return 1;
@@ -613,6 +668,8 @@ static inline void wc_print_cstr(const void* elm)
 #ifndef WC_ERRNO_H
 #define WC_ERRNO_H
 
+
+
 #include <stdio.h>
 
 
@@ -675,7 +732,7 @@ typedef enum {
     WC_ERR_INVALID_OP, // call to a function with preconditions not met
 } wc_err;
 
-static inline const char* wc_strerror(wc_err e)
+wc_nodiscard static inline const char* wc_strerror(wc_err e)
 {
     switch (e) {
     case WC_OK:
@@ -821,35 +878,34 @@ _Static_assert(sizeof(GenVec) == 48, "GenVec layout drifted from expected 48 byt
 
 // Vector with capacity n, storage from `alloc`.
 // ops: pointer to a shared wc_container_ops vtable, or NULL for POD types.
-wc_nodiscard GenVec GenVec_create(const wc_allocator* alloc, u64 n, u32 data_size, const wc_container_ops* ops)
-    wc_nonull(1);
+wc_nodiscard wc_nonull(1) GenVec GenVec_create(const wc_allocator* alloc, u64 n, u32 data_size, const wc_container_ops* ops);
 
 // Vector of size n with every element a copy of val.
-wc_nodiscard GenVec GenVec_create_val(const wc_allocator* alloc, u64 n, const void* val, u32 data_size,
-                                      const wc_container_ops* ops) wc_nonull(1, 3);
+wc_nodiscard wc_nonull(1, 3) GenVec GenVec_create_val(const wc_allocator* alloc, u64 n, const void* val, u32 data_size,
+                                                      const wc_container_ops* ops);
 
 // Vector over caller-owned storage of n elements (size 0, capacity n).
 // Uses WC_BORROWED: it can never grow (growth is a FATAL) and destroy frees nothing
-wc_nodiscard GenVec GenVec_create_buf(void* buf, u64 n, u32 data_size, const wc_container_ops* ops) wc_nonull(1);
+wc_nodiscard wc_nonull(1) GenVec GenVec_create_buf(void* buf, u64 n, u32 data_size, const wc_container_ops* ops);
 
 // Delete every element, free the storage through the stored allocator and
 // zero the struct. Never frees the struct itself. Safe on a zeroed vector.
-void GenVec_destroy(GenVec* vec) wc_nonull(1);
+wc_nonull(1) void GenVec_destroy(GenVec* vec);
 
 // Remove all elements (calls del_fn on each), keep capacity.
-void GenVec_clear(GenVec* vec) wc_nonull(1);
+wc_nonull(1) void GenVec_clear(GenVec* vec);
 
 // Remove all elements and free the storage; capacity 0, allocator kept.
-void GenVec_reset(GenVec* vec) wc_nonull(1);
+wc_nonull(1) void GenVec_reset(GenVec* vec);
 
 // Ensure vector has at least new_capacity space (never shrinks).
-void GenVec_reserve(GenVec* vec, u64 new_capacity) wc_nonull(1);
+wc_nonull(1) void GenVec_reserve(GenVec* vec, u64 new_capacity);
 
 // Grow to new_capacity and fill new slots with val.
-void GenVec_reserve_val(GenVec* vec, u64 new_capacity, const void* val) wc_nonull(1, 3);
+wc_nonull(1, 3) void GenVec_reserve_val(GenVec* vec, u64 new_capacity, const void* val);
 
 // Shrink vector to its size (reallocates).
-void GenVec_shrink_to_fit(GenVec* vec) wc_nonull(1);
+wc_nonull(1) void GenVec_shrink_to_fit(GenVec* vec);
 
 
 
@@ -857,118 +913,118 @@ void GenVec_shrink_to_fit(GenVec* vec) wc_nonull(1);
 // ===========================
 
 // Append element to end (makes deep copy if copy_fn provided).
-void GenVec_push(GenVec* vec, const void* data) wc_nonull(1, 2);
+wc_nonull(1, 2) void GenVec_push(GenVec* vec, const void* data);
 
 // Append element to end, transfer ownership: *data is moved in and zeroed.
-void GenVec_push_move(GenVec* vec, void* data) wc_nonull(1, 2);
+wc_nonull(1, 2) void GenVec_push_move(GenVec* vec, void* data);
 
 // Remove the last element. popped != NULL: the element is MOVED into it and the
 // caller owns it. popped == NULL: the element is deleted.
-void GenVec_pop(GenVec* vec, void* popped) wc_nonull(1);
+wc_nonull(1) void GenVec_pop(GenVec* vec, void* popped);
 
 // O(1) removal from the middle when order doesn't matter: element i is moved
 // into out (or deleted if out == NULL), the last element takes its place.
-void GenVec_swap_pop(GenVec* vec, u64 i, void* out) wc_nonull(1);
+wc_nonull(1) void GenVec_swap_pop(GenVec* vec, u64 i, void* out);
 
 // Swap elements i and j in place. Never allocates.
-void GenVec_swap(GenVec* vec, u64 i, u64 j) wc_nonull(1);
+wc_nonull(1) void GenVec_swap(GenVec* vec, u64 i, u64 j);
 
 // Deep COPY of element i into out (the vector keeps its own).
-void GenVec_get(const GenVec* vec, u64 i, void* out) wc_nonull(1, 3);
+wc_nonull(1, 3) void GenVec_get(const GenVec* vec, u64 i, void* out);
 
 // Get pointer to element at index i.
 // Note: Pointer invalidated by push/insert/remove operations.
-wc_nodiscard const void* GenVec_get_ptr(const GenVec* vec, u64 i) wc_nonull(1);
+wc_nodiscard wc_nonull(1) const void* GenVec_get_ptr(const GenVec* vec, u64 i);
 
 // Get MUTABLE pointer to element at index i.
 // Note: Pointer invalidated by push/insert/remove operations.
-wc_nodiscard void* GenVec_get_ptr_mut(GenVec* vec, u64 i) wc_nonull(1);
+wc_nodiscard wc_nonull(1) void* GenVec_get_ptr_mut(GenVec* vec, u64 i);
 
 // UNCHECKED variants: same as above but with the bounds WC_ASSERT elided, even in
 // Debug. Preconditions are NOT validated: caller must guarantee i < vec->size.
 // Use on hot paths where the check is provably redundant (macros, internal loops).
-wc_nodiscard wc_nonull(1) static inline const void* GenVec_get_ptr_unsafe(const GenVec* vec, u64 i)
+wc_nodiscard wc_nonull(1) static wc_always_inline const void* GenVec_get_ptr_unsafe(const GenVec* vec, u64 i)
 {
     return (vec->data + (i * vec->data_size));
 }
 
-wc_nodiscard wc_nonull(1) static inline void* GenVec_get_ptr_mut_unsafe(GenVec* vec, u64 i)
+wc_nodiscard wc_nonull(1) static wc_always_inline void* GenVec_get_ptr_mut_unsafe(GenVec* vec, u64 i)
 {
     return (vec->data + (i * vec->data_size));
 }
 
 // Replace element at index i with data (cleans up old element).
-void GenVec_replace(GenVec* vec, u64 i, const void* data) wc_nonull(1, 3);
+wc_nonull(1, 3) void GenVec_replace(GenVec* vec, u64 i, const void* data);
 
 // Replace element at index i, transfer ownership (cleans up old element, zeroes *data).
-void GenVec_replace_move(GenVec* vec, u64 i, void* data) wc_nonull(1, 3);
+wc_nonull(1, 3) void GenVec_replace_move(GenVec* vec, u64 i, void* data);
 
 // Insert element at index i, shifting elements right.
-void GenVec_insert(GenVec* vec, u64 i, const void* data) wc_nonull(1, 3);
+wc_nonull(1, 3) void GenVec_insert(GenVec* vec, u64 i, const void* data);
 
 // Insert element at index i with ownership transfer (zeroes *data), shifting elements right.
-void GenVec_insert_move(GenVec* vec, u64 i, void* data) wc_nonull(1, 3);
+wc_nonull(1, 3) void GenVec_insert_move(GenVec* vec, u64 i, void* data);
 
 // Insert num_data elements from data array into vec at index i.
-void GenVec_insert_multi(GenVec* vec, u64 i, const void* data, u64 num_data) wc_nonull(1, 3);
+wc_nonull(1, 3) void GenVec_insert_multi(GenVec* vec, u64 i, const void* data, u64 num_data);
 
 // Insert (move) num_data contiguous elements from data at index i; the source range is zeroed.
-void GenVec_insert_multi_move(GenVec* vec, u64 i, void* data, u64 num_data) wc_nonull(1, 3);
+wc_nonull(1, 3) void GenVec_insert_multi_move(GenVec* vec, u64 i, void* data, u64 num_data);
 
 // Remove element at index i, shift elements left. out != NULL: the element is
 // MOVED into it. out == NULL: the element is deleted.
-void GenVec_remove(GenVec* vec, u64 i, void* out) wc_nonull(1);
+wc_nonull(1) void GenVec_remove(GenVec* vec, u64 i, void* out);
 
 // Remove elements in range [start, start + len)
-void GenVec_remove_range(GenVec* vec, u64 start, u64 len) wc_nonull(1);
+wc_nonull(1) void GenVec_remove_range(GenVec* vec, u64 start, u64 len);
 
 // Get pointer to first element.
-wc_nodiscard const void* GenVec_front(const GenVec* vec) wc_nonull(1);
+wc_nodiscard wc_nonull(1) const void* GenVec_front(const GenVec* vec);
 
 // Get pointer to last element.
-wc_nodiscard const void* GenVec_back(const GenVec* vec) wc_nonull(1);
+wc_nodiscard wc_nonull(1) const void* GenVec_back(const GenVec* vec);
 
 // Search
 // ===========================
 
 // if cmp_fn = NULL, then use memcmp
-wc_nodiscard u64 GenVec_find(const GenVec* vec, void* elm, wc_compare_fn cmp_fn) wc_nonull(1, 2);
+wc_nodiscard wc_nonull(1, 2) u64 GenVec_find(const GenVec* vec, void* elm, wc_compare_fn cmp_fn);
 
 // New vector (storage from `alloc`) holding deep copies of [start, start + len).
-wc_nodiscard GenVec GenVec_subarr(const GenVec* vec, const wc_allocator* alloc, u64 start, u64 len) wc_nonull(1, 2);
+wc_nodiscard wc_nonull(1, 2) GenVec GenVec_subarr(const GenVec* vec, const wc_allocator* alloc, u64 start, u64 len);
 
 
 // Utility
 // ===========================
 
 // Print all elements using provided print function.
-void GenVec_print(const GenVec* vec, wc_print_fn fn) wc_nonull(1, 2);
+wc_nonull(1, 2) void GenVec_print(const GenVec* vec, wc_print_fn fn);
 
 // Deep copy of src whose storage (and every element's owned resources, via
 // copy_fn) comes from `alloc`. Never inherits src's allocator (A14).
 // Capacity is max(size, GENVEC_MIN_CAPACITY), or 0 for an empty src: a copy
 // does not carry the source's slack (F5).
-wc_nodiscard GenVec GenVec_copy(const wc_allocator* alloc, const GenVec* src) wc_nonull(1, 2);
+wc_nodiscard wc_nonull(1, 2) GenVec GenVec_copy(const wc_allocator* alloc, const GenVec* src);
 
 // Transfer everything from src to dest; src is left zeroed.
 // dest must be uninitialised or destroyed (its old contents are overwritten, not freed).
-void GenVec_move(GenVec* dest, GenVec* src) wc_nonull(1, 2);
+wc_nonull(1, 2) void GenVec_move(GenVec* dest, GenVec* src);
 
 
 // Get number of elements in vector.
-wc_nodiscard wc_nonull(1) static inline u64 GenVec_size(const GenVec* vec)
+wc_nodiscard wc_nonull(1) static wc_always_inline u64 GenVec_size(const GenVec* vec)
 {
     return vec->size;
 }
 
 // Get total capacity of vector.
-wc_nodiscard wc_nonull(1) static inline u64 GenVec_capacity(const GenVec* vec)
+wc_nodiscard wc_nonull(1) static wc_always_inline u64 GenVec_capacity(const GenVec* vec)
 {
     return vec->capacity;
 }
 
 // Check if vector is empty
-wc_nonull(1) static inline bool GenVec_empty(const GenVec* vec)
+wc_nodiscard wc_nonull(1) static wc_always_inline bool GenVec_empty(const GenVec* vec)
 {
     return vec->size == 0;
 }
@@ -1061,26 +1117,26 @@ typedef struct {
 } BitVec;
 
 
-BitVec BitVec_create(const wc_allocator* a) wc_nodiscard;
-void   BitVec_destroy(BitVec* bvec) wc_nonull(1);
+wc_nodiscard wc_nonull(1) BitVec BitVec_create(const wc_allocator* a);
+wc_nonull(1) void   BitVec_destroy(BitVec* bvec);
 
-void BitVec_set(BitVec* bvec, u64 i) wc_nonull(1);
-void BitVec_clear(BitVec* bvec, u64 i) wc_nonull(1);
-u8   BitVec_test(const BitVec* bvec, u64 i) wc_nonull(1);
-void BitVec_toggle(BitVec* bvec, u64 i) wc_nonull(1);
+wc_nonull(1) void BitVec_set(BitVec* bvec, u64 i);
+wc_nonull(1) void BitVec_clear(BitVec* bvec, u64 i);
+wc_nodiscard wc_nonull(1) u8   BitVec_test(const BitVec* bvec, u64 i);
+wc_nonull(1) void BitVec_toggle(BitVec* bvec, u64 i);
 
-void BitVec_push(BitVec* bvec) wc_nonull(1);
-void BitVec_pop(BitVec* bvec) wc_nonull(1);
+wc_nonull(1) void BitVec_push(BitVec* bvec);
+wc_nonull(1) void BitVec_pop(BitVec* bvec);
 
-void BitVec_print(BitVec* bvec, u64 byteI) wc_nonull(1);
+wc_nonull(1) void BitVec_print(BitVec* bvec, u64 byteI);
 
 // get the no of BITS in the vector
-static inline wc_nonull(1) u64 BitVec_size_bits(const BitVec* bvec)
+wc_nodiscard wc_nonull(1) static wc_always_inline u64 BitVec_size_bits(const BitVec* bvec)
 {
     return bvec->size;
 }
 // get the no of BYTES in the vector
-static inline wc_nonull(1) u64 BitVec_size_bytes(const BitVec* bvec)
+wc_nodiscard wc_nonull(1) static wc_always_inline u64 BitVec_size_bytes(const BitVec* bvec)
 {
     return GenVec_size(&bvec->arr);
 }
@@ -1137,28 +1193,26 @@ typedef u64 (*wc_hash_fn)(const void* key, u64 size);
  */
 
 // 64 x 64 -> 128 bit multiply. *a gets the low half, *b the high half.
-static wc_always_inline void wc_rapid_mum(u64* a, u64* b)
+static wc_always_inline void wc_rapid_mum(unsigned long long* a, unsigned long long* b) // TODO: is type right?
 {
-    __uint128_t r = (__uint128_t)*a * *b;
-    *a            = (u64)r;
-    *b            = (u64)(r >> 64);
+    wc_mum64(a, b);
 }
 
 // Multiply, then fold the 128-bit product to 64 bits.
-static wc_always_inline u64 wc_rapid_mix(u64 a, u64 b)
+wc_nodiscard static wc_always_inline u64 wc_rapid_mix(unsigned long long a, unsigned long long b)
 {
     wc_rapid_mum(&a, &b);
     return a ^ b;
 }
 
-static wc_always_inline u64 wc_rapid_read64(const u8* p)
+wc_nodiscard static wc_always_inline u64 wc_rapid_read64(const u8* p)
 {
     u64 v;
     memcpy(&v, p, 8);
     return v;
 }
 
-static wc_always_inline u64 wc_rapid_read32(const u8* p)
+wc_nodiscard static wc_always_inline u64 wc_rapid_read32(const u8* p)
 {
     u32 v;
     memcpy(&v, p, 4);
@@ -1173,13 +1227,13 @@ static wc_always_inline u64 wc_rapid_read32(const u8* p)
 
 // Hash `len` bytes. Inlined so short keys stay cheap: `len <= 16` takes the short
 // path, where a 4 or 8 byte key costs two 128-bit multiplies.
-static wc_always_inline u64 wc_hash(const void* key, u64 len)
+wc_nodiscard static wc_always_inline u64 wc_hash(const void* key, u64 len)
 {
-    const u8* p    = key;
-    u64       seed = WC_RAPID_SEED ^ wc_rapid_mix(WC_RAPID_SEED ^ WC_RAPID_S2, WC_RAPID_S1);
-    u64       a    = 0;
-    u64       b    = 0;
-    u64       i    = len;
+    const u8*          p    = key;
+    u64                seed = WC_RAPID_SEED ^ wc_rapid_mix(WC_RAPID_SEED ^ WC_RAPID_S2, WC_RAPID_S1);
+    unsigned long long a    = 0;
+    unsigned long long b    = 0;
+    u64                i    = len;
 
     if (wc_likely(len <= 16)) {
         if (len >= 4) {
@@ -1300,43 +1354,43 @@ _Static_assert(sizeof(HashMap) == 96, "HashMap must be 96 bytes");
 // hash_fn NULL: wc_hash over the key bytes. cmp_fn NULL: byte equality.
 // Both defaults are only correct for keys without pointers.
 // key_ops / val_ops: pass NULL for POD types. val_size 0 makes a set.
-wc_nodiscard HashMap HashMap_create(const wc_allocator* a, u32 key_size, u32 val_size, wc_hash_fn hash_fn,
+wc_nodiscard wc_nonull(1) HashMap HashMap_create(const wc_allocator* a, u32 key_size, u32 val_size, wc_hash_fn hash_fn,
                                     wc_compare_fn cmp_fn, const wc_container_ops* key_ops,
-                                    const wc_container_ops* val_ops) wc_nonull(1) wc_nodiscard;
+                                    const wc_container_ops* val_ops);
 
 // Destroy all elements and free internal buffers via map->alloc.
 // Safe on zeroed/moved-from maps. Leaves struct zeroed.
-void HashMap_destroy(HashMap* map) wc_nonull(1);
+wc_nonull(1) void HashMap_destroy(HashMap* map);
 
 // Deep copy src into a new HashMap allocated from `a`.
-wc_nodiscard HashMap HashMap_copy(const wc_allocator* a, const HashMap* src) wc_nonull(1, 2);
+wc_nodiscard wc_nonull(1, 2) HashMap HashMap_copy(const wc_allocator* a, const HashMap* src);
 
 // Transfer ownership from src to dest. src is left zeroed.
-void HashMap_move(HashMap* dest, HashMap* src) wc_nonull(1, 2);
+wc_nonull(1, 2) void HashMap_move(HashMap* dest, HashMap* src);
 
 // Insert or update — COPY semantics. val may be NULL for a set.
 // Returns 1 if key existed (updated), 0 if new key inserted.
-bool HashMap_put(HashMap* map, const void* key, const void* val) wc_nonull(1, 2);
+wc_nonull(1, 2) bool HashMap_put(HashMap* map, const void* key, const void* val);
 
 // Insert or update, MOVE semantics: key and val point at the caller's elements, both left zeroed
 // (a duplicate key is destroyed; the map keeps its own). val may be NULL for a set.
 // Returns 1 if key existed (updated), 0 if new key inserted.
-bool HashMap_put_move(HashMap* map, void* key, void* val) wc_nonull(1, 2);
+wc_nonull(1, 2) bool HashMap_put_move(HashMap* map, void* key, void* val);
 
 // Mixed: key copied, val moved.
-bool HashMap_put_val_move(HashMap* map, const void* key, void* val) wc_nonull(1, 2);
+wc_nonull(1, 2) bool HashMap_put_val_move(HashMap* map, const void* key, void* val);
 
 // Mixed: key moved, val copied.
-bool HashMap_put_key_move(HashMap* map, void* key, const void* val) wc_nonull(1, 2);
+wc_nonull(1, 2) bool HashMap_put_key_move(HashMap* map, void* key, const void* val);
 
 // Get value for key: deep COPY into val (the map keeps its own). Returns 1 if found.
 // For owning values prefer HashMap_get_ptr: no copy, no allocation.
-bool HashMap_get(const HashMap* map, const void* key, void* val) wc_nonull(1, 2, 3);
+wc_nodiscard wc_nonull(1, 2, 3) bool HashMap_get(const HashMap* map, const void* key, void* val);
 
 // Pointer to the stored value, or NULL if key is absent.
-const void* HashMap_get_ptr(const HashMap* map, const void* key) wc_nonull(1, 2);
+wc_nodiscard wc_nonull(1, 2) const void* HashMap_get_ptr(const HashMap* map, const void* key);
 
-wc_nodiscard wc_nonull(1, 2) static inline void* HashMap_get_ptr_mut(HashMap* map, const void* key)
+wc_nodiscard wc_nonull(1, 2) static wc_always_inline void* HashMap_get_ptr_mut(HashMap* map, const void* key)
 {
     return (void*)HashMap_get_ptr(map, key);
 }
@@ -1344,47 +1398,47 @@ wc_nodiscard wc_nonull(1, 2) static inline void* HashMap_get_ptr_mut(HashMap* ma
 // Pointer to the stored KEY equal to `key`, or NULL. For a set this is the
 // element; for a map it is the canonical key (e.g. an interned String).
 // Never change the bytes the hash or compare reads through it.
-const void* HashMap_get_key_ptr(const HashMap* map, const void* key) wc_nonull(1, 2);
+wc_nodiscard wc_nonull(1, 2) const void* HashMap_get_key_ptr(const HashMap* map, const void* key);
 
 // Bucket iteration accessors
-wc_nodiscard wc_nonull(1) static inline u64 HashMap_bucket_count(const HashMap* map)
+wc_nodiscard wc_nonull(1) static wc_always_inline u64 HashMap_bucket_count(const HashMap* map)
 {
     return map->capacity;
 }
 
-bool                     HashMap_bucket_occupied(const HashMap* map, u64 i) wc_nonull(1);
-wc_nodiscard const void* HashMap_bucket_key_ptr(const HashMap* map, u64 i) wc_nonull(1);
-wc_nodiscard void*       HashMap_bucket_val_ptr(HashMap* map, u64 i) wc_nonull(1);
+wc_nodiscard wc_nonull(1) bool HashMap_bucket_occupied(const HashMap* map, u64 i);
+wc_nodiscard wc_nonull(1) const void* HashMap_bucket_key_ptr(const HashMap* map, u64 i);
+wc_nodiscard wc_nonull(1) void*       HashMap_bucket_val_ptr(HashMap* map, u64 i);
 
 // Delete key. out != NULL: the value is MOVED into it (caller owns it, B7).
 // out == NULL: the value is deleted. The key is always deleted.
 // Returns 1 if found and deleted, 0 if not found.
-bool HashMap_del(HashMap* map, const void* key, void* out) wc_nonull(1, 2);
+wc_nonull(1, 2) bool HashMap_del(HashMap* map, const void* key, void* out);
 
 // Check if key exists.
-bool HashMap_has(const HashMap* map, const void* key) wc_nonull(1, 2);
+wc_nodiscard wc_nonull(1, 2) bool HashMap_has(const HashMap* map, const void* key);
 
 // Print all key-value pairs. val_print may be NULL (sets print keys only).
-void HashMap_print(const HashMap* map, wc_print_fn key_print, wc_print_fn val_print) wc_nonull(1, 2);
+wc_nonull(1, 2) void HashMap_print(const HashMap* map, wc_print_fn key_print, wc_print_fn val_print);
 
 // Make room for n elements in total so that inserting up to n never resizes.
 // No-op if the table is already large enough. Never shrinks.
-void HashMap_reserve(HashMap* map, u64 n) wc_nonull(1);
+wc_nonull(1) void HashMap_reserve(HashMap* map, u64 n);
 
 // Remove all elements, keep capacity.
-void HashMap_clear(HashMap* map) wc_nonull(1);
+wc_nonull(1) void HashMap_clear(HashMap* map);
 
-wc_nodiscard wc_nonull(1) static inline u64 HashMap_size(const HashMap* map)
+wc_nodiscard wc_nonull(1) static wc_always_inline u64 HashMap_size(const HashMap* map)
 {
     return map->size;
 }
 
-wc_nodiscard wc_nonull(1) static inline u64 HashMap_capacity(const HashMap* map)
+wc_nodiscard wc_nonull(1) static wc_always_inline u64 HashMap_capacity(const HashMap* map)
 {
     return map->capacity;
 }
 
-wc_nonull(1) static inline bool HashMap_empty(const HashMap* map)
+wc_nodiscard wc_nonull(1) static wc_always_inline bool HashMap_empty(const HashMap* map)
 {
     return map->size == 0;
 }
@@ -1489,37 +1543,35 @@ _Static_assert(sizeof(PriorityQueue) == 56, "PriorityQueue size mismatch");
 
 
 // Creation: returns by value; the allocator goes into pq->v.alloc
-PriorityQueue PriorityQueue_create(const wc_allocator* a, u64 n, u32 data_size, const wc_container_ops* ops,
-                                   wc_compare_fn cmp_fn) wc_nonull(1, 5) wc_nodiscard;
+wc_nodiscard wc_nonull(1, 5) PriorityQueue PriorityQueue_create(const wc_allocator* a, u64 n, u32 data_size, const wc_container_ops* ops,
+                                                               wc_compare_fn cmp_fn);
 
-void PriorityQueue_destroy(PriorityQueue* pq) wc_nonull(1);
+wc_nonull(1) void PriorityQueue_destroy(PriorityQueue* pq);
 
 // Heap from a deep COPY of vec (storage and elements from `a`). vec is unchanged.
-PriorityQueue PriorityQueue_from_vec(const wc_allocator* a, const GenVec* vec, wc_compare_fn cmp_fn)
-    wc_nonull(1, 2, 3) wc_nodiscard;
+wc_nodiscard wc_nonull(1, 2, 3) PriorityQueue PriorityQueue_from_vec(const wc_allocator* a, const GenVec* vec, wc_compare_fn cmp_fn);
 
 // Heap that TAKES OVER vec's buffer: no copy, vec is left zeroed. The heap keeps
 // vec's allocator. At most one realloc (for the sift slot) if vec is full.
-PriorityQueue PriorityQueue_from_vec_move(GenVec* vec, wc_compare_fn cmp_fn)
-    wc_nonull(1, 2) wc_nodiscard;
+wc_nodiscard wc_nonull(1, 2) PriorityQueue PriorityQueue_from_vec_move(GenVec* vec, wc_compare_fn cmp_fn);
 
 
 // operations
 
 // Highest priority element, without removing it. NULL (WC_ERR_EMPTY) if empty.
-const void* PriorityQueue_peek(const PriorityQueue* pq) wc_nonull(1);
+wc_nodiscard wc_nonull(1) const void* PriorityQueue_peek(const PriorityQueue* pq);
 
 // Push a deep COPY of *data.
-void PriorityQueue_push(PriorityQueue* pq, const void* data) wc_nonull(1, 2);
+wc_nonull(1, 2) void PriorityQueue_push(PriorityQueue* pq, const void* data);
 
 // Push *data by MOVE: *data is zeroed.
-void PriorityQueue_push_move(PriorityQueue* pq, void* data) wc_nonull(1, 2);
+wc_nonull(1, 2) void PriorityQueue_push_move(PriorityQueue* pq, void* data);
 
 // Remove the highest priority element: MOVED into popped, or deleted if NULL.
-void PriorityQueue_pop(PriorityQueue* pq, void* popped) wc_nonull(1);
+wc_nonull(1) void PriorityQueue_pop(PriorityQueue* pq, void* popped);
 
 // Element at heap index idx (0 = top).
-static inline wc_nonull(1) const void* PriorityQueue_get(const PriorityQueue* pq, u64 idx)
+wc_nodiscard wc_nonull(1) static wc_always_inline const void* PriorityQueue_get(const PriorityQueue* pq, u64 idx)
 {
     WC_ASSERT(pq->v.data_size != 0, "PriorityQueue is in the zero state (moved-from or destroyed): re-create it first");
     WC_ASSERT(idx < pq->v.size, "idx out of range");
@@ -1527,19 +1579,19 @@ static inline wc_nonull(1) const void* PriorityQueue_get(const PriorityQueue* pq
 }
 
 // Remove the element at heap index idx: MOVED into out, or deleted if NULL.
-void PriorityQueue_remove(PriorityQueue* pq, u64 idx, void* out) wc_nonull(1);
+wc_nonull(1) void PriorityQueue_remove(PriorityQueue* pq, u64 idx, void* out);
 
-static inline wc_nonull(1) u64 PriorityQueue_size(const PriorityQueue* pq)
+wc_nodiscard wc_nonull(1) static wc_always_inline u64 PriorityQueue_size(const PriorityQueue* pq)
 {
     return pq->v.size;
 }
 
-static inline wc_nonull(1) bool PriorityQueue_empty(const PriorityQueue* pq)
+wc_nodiscard wc_nonull(1) static wc_always_inline bool PriorityQueue_empty(const PriorityQueue* pq)
 {
     return pq->v.size == 0;
 }
 
-void PriorityQueue_print(const PriorityQueue* pq, wc_print_fn print_fn) wc_nonull(1, 2);
+wc_nonull(1, 2) void PriorityQueue_print(const PriorityQueue* pq, wc_print_fn print_fn);
 
 
 #endif // PRIORITY_QUEUE_H
@@ -1581,46 +1633,45 @@ _Static_assert(sizeof(Queue) == 64, "Queue size mismatch");
 #endif
 
 
-Queue Queue_create(const wc_allocator* a, u64 n, u32 data_size, const wc_container_ops* ops) wc_nonull(1) wc_nodiscard;
-Queue Queue_create_val(const wc_allocator* a, u64 n, const void* val, u32 data_size, const wc_container_ops* ops)
-    wc_nonull(1, 3) wc_nodiscard;
+wc_nodiscard wc_nonull(1) Queue Queue_create(const wc_allocator* a, u64 n, u32 data_size, const wc_container_ops* ops);
+wc_nodiscard wc_nonull(1, 3) Queue Queue_create_val(const wc_allocator* a, u64 n, const void* val, u32 data_size, const wc_container_ops* ops);
 
-void Queue_destroy(Queue* q) wc_nonull(1);
+wc_nonull(1) void Queue_destroy(Queue* q);
 // Delete every element, keep the storage.
-void Queue_clear(Queue* q) wc_nonull(1);
+wc_nonull(1) void Queue_clear(Queue* q);
 // Delete every element and free the storage; the allocator is kept.
-void Queue_reset(Queue* q) wc_nonull(1);
+wc_nonull(1) void Queue_reset(Queue* q);
 // Shrink storage to max(size, QUEUE_MIN_CAP). Only ever on request (F2).
-void Queue_shrink_to_fit(Queue* q) wc_nonull(1);
+wc_nonull(1) void Queue_shrink_to_fit(Queue* q);
 
 // Deep copy into `a`, compacted: head at 0, capacity max(size, QUEUE_MIN_CAP) (F5).
-Queue Queue_copy(const wc_allocator* a, const Queue* src) wc_nonull(1, 2) wc_nodiscard;
-void  Queue_move(Queue* dest, Queue* src) wc_nonull(1, 2);
+wc_nodiscard wc_nonull(1, 2) Queue Queue_copy(const wc_allocator* a, const Queue* src);
+wc_nonull(1, 2) void  Queue_move(Queue* dest, Queue* src);
 
-void        Queue_push(Queue* q, const void* x) wc_nonull(1, 2);    // deep copy of *x
-void        Queue_push_move(Queue* q, void* x) wc_nonull(1, 2);     // *x moved in and zeroed
-void        Queue_pop(Queue* q, void* out) wc_nonull(1);            // front, MOVED into out
-void        Queue_pop_back(Queue* q, void* out) wc_nonull(1);       // back, MOVED into out
-void        Queue_peek(const Queue* q, void* peek) wc_nonull(1, 2); // deep COPY of the front
-const void* Queue_peek_ptr(const Queue* q) wc_nonull(1);
+wc_nonull(1, 2) void        Queue_push(Queue* q, const void* x);    // deep copy of *x
+wc_nonull(1, 2) void        Queue_push_move(Queue* q, void* x);     // *x moved in and zeroed
+wc_nonull(1) void        Queue_pop(Queue* q, void* out);            // front, MOVED into out
+wc_nonull(1) void        Queue_pop_back(Queue* q, void* out);       // back, MOVED into out
+wc_nonull(1, 2) void        Queue_peek(const Queue* q, void* peek); // deep COPY of the front
+wc_nodiscard wc_nonull(1) const void* Queue_peek_ptr(const Queue* q);
 
 // Swap the elements at LOGICAL positions i and j. Never allocates.
-void Queue_swap(Queue* q, u64 i, u64 j) wc_nonull(1);
+wc_nonull(1) void Queue_swap(Queue* q, u64 i, u64 j);
 
-void Queue_print(const Queue* q, wc_print_fn print_fn) wc_nonull(1, 2);
+wc_nonull(1, 2) void Queue_print(const Queue* q, wc_print_fn print_fn);
 
 
-static inline wc_nonull(1) u64 Queue_size(const Queue* q)
+wc_nodiscard wc_nonull(1) static wc_always_inline u64 Queue_size(const Queue* q)
 {
     return q->size;
 }
 
-static inline wc_nonull(1) bool Queue_empty(const Queue* q)
+wc_nodiscard wc_nonull(1) static wc_always_inline bool Queue_empty(const Queue* q)
 {
     return q->size == 0;
 }
 
-static inline wc_nonull(1) u64 Queue_capacity(const Queue* q)
+wc_nodiscard wc_nonull(1) static wc_always_inline u64 Queue_capacity(const Queue* q)
 {
     return q->arr.capacity;
 }
@@ -1630,14 +1681,14 @@ static inline wc_nonull(1) u64 Queue_capacity(const Queue* q)
 
 // Physical slot of logical position idx. head < cap and idx < cap, so the sum
 // is below 2 * cap: one conditional subtract instead of a division.
-static inline wc_nonull(1) u64 Queue_slot(const Queue* q, u64 idx)
+wc_nodiscard wc_nonull(1) static wc_always_inline u64 Queue_slot(const Queue* q, u64 idx)
 {
     u64 i = q->head + idx;
     return i >= q->arr.capacity ? i - q->arr.capacity : i;
 }
 
 // Pointer to the element at LOGICAL position idx (0 = front).
-static inline wc_nonull(1) const void* Queue_get(const Queue* q, u64 idx)
+wc_nodiscard wc_nonull(1) static wc_always_inline const void* Queue_get(const Queue* q, u64 idx)
 {
     WC_ASSERT(idx < q->size, "Queue_get: idx out of bounds");
     return GenVec_get_ptr_unsafe(&q->arr, Queue_slot(q, idx));
@@ -1660,37 +1711,36 @@ static inline wc_nonull(1) const void* Queue_get(const Queue* q, u64 idx)
 // Stack is just a thin wrapper around GenVec
 typedef GenVec Stack;
 
-Stack Stack_create(const wc_allocator* a, u64 n, u32 data_size, const wc_container_ops* ops) wc_nodiscard;
-Stack Stack_create_val(const wc_allocator* a, u64 n, const void* val, u32 data_size, const wc_container_ops* ops)
-    wc_nonull(3) wc_nodiscard;
+wc_nodiscard wc_nonull(1) Stack Stack_create(const wc_allocator* a, u64 n, u32 data_size, const wc_container_ops* ops);
+wc_nodiscard wc_nonull(1, 3) Stack Stack_create_val(const wc_allocator* a, u64 n, const void* val, u32 data_size, const wc_container_ops* ops);
 
-void  Stack_destroy(Stack* stk) wc_nonull(1);
-Stack Stack_copy(const wc_allocator* a, const Stack* src) wc_nonull(2) wc_nodiscard;
-void  Stack_move(Stack* dest, Stack* src) wc_nonull(1, 2);
+wc_nonull(1) void  Stack_destroy(Stack* stk);
+wc_nodiscard wc_nonull(1, 2) Stack Stack_copy(const wc_allocator* a, const Stack* src);
+wc_nonull(1, 2) void  Stack_move(Stack* dest, Stack* src);
 
-void Stack_clear(Stack* stk) wc_nonull(1);
-void Stack_reset(Stack* stk) wc_nonull(1);
+wc_nonull(1) void Stack_clear(Stack* stk);
+wc_nonull(1) void Stack_reset(Stack* stk);
 
-void        Stack_push(Stack* stk, const void* x) wc_nonull(1, 2);
-void        Stack_push_move(Stack* stk, void* x) wc_nonull(1, 2); // *x is moved in and zeroed
-void        Stack_pop(Stack* stk, void* popped) wc_nonull(1);
-void        Stack_peek(Stack* stk, void* peek) wc_nonull(1, 2);
-const void* Stack_peek_ptr(const Stack* stk) wc_nonull(1);
+wc_nonull(1, 2) void        Stack_push(Stack* stk, const void* x);
+wc_nonull(1, 2) void        Stack_push_move(Stack* stk, void* x); // *x is moved in and zeroed
+wc_nonull(1) void        Stack_pop(Stack* stk, void* popped);
+wc_nonull(1, 2) void        Stack_peek(Stack* stk, void* peek);
+wc_nodiscard wc_nonull(1) const void* Stack_peek_ptr(const Stack* stk);
 
-static inline wc_nonull(1) u64 Stack_size(const Stack* stk)
+wc_nodiscard wc_nonull(1) static wc_always_inline u64 Stack_size(const Stack* stk)
 {
     return GenVec_size(stk);
 }
-static inline wc_nonull(1) bool Stack_empty(const Stack* stk)
+wc_nodiscard wc_nonull(1) static wc_always_inline bool Stack_empty(const Stack* stk)
 {
     return GenVec_empty(stk);
 }
-static inline wc_nonull(1) u64 Stack_capacity(const Stack* stk)
+wc_nodiscard wc_nonull(1) static wc_always_inline u64 Stack_capacity(const Stack* stk)
 {
     return GenVec_capacity(stk);
 }
 
-void Stack_print(Stack* stk, wc_print_fn print_fn) wc_nonull(1, 2);
+wc_nonull(1, 2) void Stack_print(Stack* stk, wc_print_fn print_fn);
 
 #endif // STACK_H
 
@@ -1734,31 +1784,29 @@ typedef struct {
 } ChainArena;
 
 // Initialises `ca` in place, it must not be moved or copied afterwards.
-void ChainArena_create(ChainArena* ca, const wc_allocator* alloc, u64 block_size) wc_nonull(1, 2);
+wc_nonull(1, 2) void ChainArena_create(ChainArena* ca, const wc_allocator* backing, u64 normal_cap);
 
 // Gives every block back to the backing allocator and zeroes the arena. Safe on a zeroed
 // arena and safe to call twice.
-void ChainArena_destroy(ChainArena* ca) wc_nonull(1);
+wc_nonull(1) void ChainArena_destroy(ChainArena* ca);
 
 // ChainArena_alloc aligns to WC_MAX_ALIGN (like malloc)
 // return NULL only if the backing allocator can't supply a block.
-wc_nodiscard void* ChainArena_alloc(ChainArena* ca, u64 size) wc_nonull(1);
+wc_nodiscard wc_nonull(1) void* ChainArena_alloc(ChainArena* ca, u64 size);
 
 // ChainArena_alloc_aligned aligns the ADDRESS to `align` (a power of two), including alignments larger than a page
 // return NULL only if the backing allocator can't supply a block.
-wc_nodiscard void* ChainArena_alloc_aligned(ChainArena* ca, u64 size, u64 align) wc_nonull(1);
-
-// The allocator to give to containers. Points into the arena, so it lives as long as the arena.
-wc_nodiscard static inline const wc_allocator* ChainArena_allocator(ChainArena* ca) wc_nonull(1);
+wc_nodiscard wc_nonull(1) void* ChainArena_alloc_aligned(ChainArena* ca, u64 size, u64 align);
 
 // Payload bytes carved out of the newest normal node right now. Memory taken from
 // dedicated big nodes is not included, and a freed (no-op) request does not rewind it.
-wc_nodiscard wc_nonull(1) static inline u64 ChainArena_used(const ChainArena* ca)
+wc_nodiscard wc_nonull(1) static wc_always_inline u64 ChainArena_used(const ChainArena* ca)
 {
     return ca->normal ? ca->normal->off : 0;
 }
 
-wc_nodiscard wc_nonull(1) static inline const wc_allocator* ChainArena_allocator(ChainArena* ca)
+// The allocator to give to containers. Points into the arena, so it lives as long as the arena.
+wc_nodiscard wc_nonull(1) static wc_always_inline const wc_allocator* ChainArena_allocator(ChainArena* ca)
 {
     // zeroed self has vt == NULL, which would silently read as WC_LIBC
     WC_ASSERT(ca->self.ctx != NULL, "ChainArena_allocator on zeroed/destroyed ChainArena");
@@ -1773,7 +1821,7 @@ typedef struct {
     u64                mark; // the offset of node n;
 } ChainArenaScratch;
 
-wc_nodiscard wc_nonull(1) static inline ChainArenaScratch ChainArenaScratch_create(ChainArena* ca)
+wc_nodiscard wc_nonull(1) static wc_always_inline ChainArenaScratch ChainArenaScratch_create(ChainArena* ca)
 {
     WC_ASSERT(ca->self.ctx == ca, "invalid chain arena (zeroed or moved)");
     return (ChainArenaScratch){
@@ -1832,30 +1880,30 @@ _Static_assert(sizeof(String) == 48, "String must be 48 bytes");
 //  Construction / Destruction
 
 // Create an empty String using allocator `a`.
-wc_nodiscard String String_create(const wc_allocator* a) wc_nonull(1);
+wc_nodiscard wc_nonull(1) String String_create(const wc_allocator* a);
 
-wc_nodiscard String String_with_cap(const wc_allocator* a, u64 cap) wc_nonull(1);
+wc_nodiscard wc_nonull(1) String String_with_cap(const wc_allocator* a, u64 cap);
 
 // Create a String from a C string using allocator `a`.
-wc_nodiscard String String_from_cstr(const wc_allocator* a, const char* cstr) wc_nonull(1);
+wc_nodiscard wc_nonull(1) String String_from_cstr(const wc_allocator* a, const char* cstr);
 
 // Destroy the String's internal buffer
 // Safe on a zeroed/moved-from String.
-void String_destroy(String* str) wc_nonull(1);
+wc_nonull(1) void String_destroy(String* str);
 
 // Deep copy src → new String in allocator `a`.
 // dest is raw/uninitialized: never reads it before writing.
-wc_nodiscard String String_copy(const wc_allocator* a, const String* src) wc_nonull(1, 2);
+wc_nodiscard wc_nonull(1, 2) String String_copy(const wc_allocator* a, const String* src);
 
 // Transfer ownership: dest gets src's contents, src is zeroed.
-void String_move(String* dest, String* src) wc_nonull(1, 2);
+wc_nonull(1, 2) void String_move(String* dest, String* src);
 
 // TODO: just use a StrView for this? can we for hashmap lookup?
 // Non-owning, READ-ONLY String over `len` existing bytes: no allocation.
 // For lookups only: a String-keyed map or set hashes and compares it like an
 // owning String with the same bytes. Never store it in a container.
 // Any mutation is fatal (WC_BORROWED cannot allocate); destroy is a no-op.
-wc_nodiscard wc_nonull(1) static inline String String_borrow(const char* p, u64 len)
+wc_nodiscard wc_nonull(1) static wc_always_inline String String_borrow(const char* p, u64 len)
 {
     String s;
     memset(&s, 0, sizeof(s)); // stk[STR_SSO_SIZE - 1] == 0: heap mode
@@ -1870,57 +1918,57 @@ wc_nodiscard wc_nonull(1) static inline String String_borrow(const char* p, u64 
 //  Capacity
 
 // Ensure capacity >= new_cap (never shrinks).
-void String_reserve(String* str, u64 new_cap) wc_nonull(1);
+wc_nonull(1) void String_reserve(String* str, u64 new_cap);
 
 // Reserve capacity and fill new slots with c.
-void String_reserve_char(String* str, u64 new_cap, char c) wc_nonull(1);
+wc_nonull(1) void String_reserve_char(String* str, u64 new_cap, char c);
 
 // Shrink allocation to exactly fit current size.
-void String_shrink_to_fit(String* str) wc_nonull(1);
+wc_nonull(1) void String_shrink_to_fit(String* str);
 
 
 //  Conversion
 
 // Return a buffer (allocated from `a`) holding a NUL-terminated copy, caller
 // must free with wc_free(a, ptr, str->size + 1, 1).
-wc_nodiscard char* String_to_cstr(const wc_allocator* a, const String* str) wc_nonull(1, 2);
+wc_nodiscard wc_nonull(1, 2) char* String_to_cstr(const wc_allocator* a, const String* str);
 
-void String_to_cstr_buf(const String* str, char* buff, u64 n) wc_nonull(1, 2);
+wc_nonull(1, 2) void String_to_cstr_buf(const String* str, char* buff, u64 n);
 
 // Return a raw pointer into the internal buffer (no NUL terminator).
-wc_nodiscard char* String_data_ptr(const String* str) wc_nonull(1);
+wc_nodiscard wc_nonull(1) char* String_data_ptr(const String* str);
 
 // Guarantee a '\0' sits one byte past the last real character, WITHOUT
 // touching str->size. Grows exactly like String_append_char would.
-void String_ensure_null_term(String* str) wc_nonull(1);
+wc_nonull(1) void String_ensure_null_term(String* str);
 
 
 //  Modification
 
-void String_append_char(String* str, char c) wc_nonull(1);
+wc_nonull(1) void String_append_char(String* str, char c);
 // TODO:
-void String_append_multi(String* str, const char* data, u64 len) wc_nonull(1, 2);
-void String_append_cstr(String* str, const char* cstr) wc_nonull(1, 2);
-void String_append_String(String* str, const String* other) wc_nonull(1, 2);
+wc_nonull(1, 2) void String_append_multi(String* str, const char* data, u64 len);
+wc_nonull(1, 2) void String_append_cstr(String* str, const char* cstr);
+wc_nonull(1, 2) void String_append_String(String* str, const String* other);
 // Append other then destroy it (leaves other zeroed). When str is empty and
 // both share an allocator, str takes over other's buffer: no copy.
-void String_append_String_move(String* str, String* other) wc_nonull(1, 2);
+wc_nonull(1, 2) void String_append_String_move(String* str, String* other);
 
-char String_pop_char(String* str) wc_nonull(1);
+wc_nodiscard wc_nonull(1) char String_pop_char(String* str);
 
-void String_insert_char(String* str, u64 i, char c) wc_nonull(1);
-void String_insert_cstr(String* str, u64 i, const char* cstr) wc_nonull(1, 3);
+wc_nonull(1) void String_insert_char(String* str, u64 i, char c);
+wc_nonull(1, 3) void String_insert_cstr(String* str, u64 i, const char* cstr);
 // TODO:
-void String_insert_multi(String* str, u64 i, const char* data, u64 len) wc_nonull(1, 3);
-void String_insert_String(String* str, u64 i, const String* other) wc_nonull(1, 3);
+wc_nonull(1, 3) void String_insert_multi(String* str, u64 i, const char* data, u64 len);
+wc_nonull(1, 3) void String_insert_String(String* str, u64 i, const String* other);
 
-void String_remove_char(String* str, u64 i) wc_nonull(1);
+wc_nonull(1) void String_remove_char(String* str, u64 i);
 
 // Remove chars in range [start, start + len)
-void String_remove_range(String* str, u64 start, u64 len) wc_nonull(1);
+wc_nonull(1) void String_remove_range(String* str, u64 start, u64 len);
 
 // Remove all chars (keep allocation).
-wc_nonull(1) static inline void String_clear(String* str)
+wc_nonull(1) static wc_always_inline void String_clear(String* str)
 {
     str->size = 0;
 }
@@ -1928,19 +1976,19 @@ wc_nonull(1) static inline void String_clear(String* str)
 
 //  Access
 
-wc_nodiscard wc_nonull(1) static inline char String_char_at(const String* str, u64 i)
+wc_nodiscard wc_nonull(1) static wc_always_inline char String_char_at(const String* str, u64 i)
 {
     WC_ASSERT(i < str->size, "index out of bounds");
     return ((str->stk[STR_SSO_SIZE - 1] != '\0') ? str->stk : str->heap)[i];
 }
 
 // UNCHECKED: no bounds check, even in Debug. Caller guarantees i < size.
-wc_nodiscard wc_nonull(1) static inline char String_char_at_unsafe(const String* str, u64 i)
+wc_nodiscard wc_nonull(1) static wc_always_inline char String_char_at_unsafe(const String* str, u64 i)
 {
     return ((str->stk[STR_SSO_SIZE - 1] != '\0') ? str->stk : str->heap)[i];
 }
 
-wc_nonull(1) static inline void String_set_char(String* str, u64 i, char c)
+wc_nonull(1) static wc_always_inline void String_set_char(String* str, u64 i, char c)
 {
     WC_ASSERT(i < str->size, "index out of bounds");
     ((str->stk[STR_SSO_SIZE - 1] != '\0') ? str->stk : str->heap)[i] = c;
@@ -1950,49 +1998,49 @@ wc_nonull(1) static inline void String_set_char(String* str, u64 i, char c)
 //  Comparison
 
 // 0 == equal, <0 == str1 < str2, >0 == str1 > str2
-int String_compare(const String* s1, const String* s2) wc_nonull(1, 2);
+wc_nodiscard wc_nonull(1, 2) int String_compare(const String* s1, const String* s2);
 
-wc_nonull(1, 2) static inline bool String_equals(const String* s1, const String* s2)
+wc_nodiscard wc_nonull(1, 2) static wc_always_inline bool String_equals(const String* s1, const String* s2)
 {
     return String_compare(s1, s2) == 0;
 }
 
-bool String_equals_cstr(const String* str, const char* cstr) wc_nonull(1, 2);
+wc_nodiscard wc_nonull(1, 2) bool String_equals_cstr(const String* str, const char* cstr);
 
 
 //  Search
 
 // Returns index, or WC_NOT_FOUND if not found.
-wc_nodiscard u64 String_find_char(const String* str, char c) wc_nonull(1);
-wc_nodiscard u64 String_find_cstr(const String* str, const char* substr) wc_nonull(1, 2);
+wc_nodiscard wc_nonull(1) u64 String_find_char(const String* str, char c);
+wc_nodiscard wc_nonull(1, 2) u64 String_find_cstr(const String* str, const char* substr);
 
 // Return a String (in allocator `a`) holding `length` chars starting at `start`.
-wc_nodiscard String String_substr(const wc_allocator* a, const String* str, u64 start, u64 length) wc_nonull(1, 2);
+wc_nodiscard wc_nonull(1, 2) String String_substr(const wc_allocator* a, const String* str, u64 start, u64 length);
 
 
 //  I/O
 
-void String_print(const String* str) wc_nonull(1);
+wc_nonull(1) void String_print(const String* str);
 
 
 //  Inline helpers
 
-wc_nodiscard wc_nonull(1) static inline u64 String_len(const String* str)
+wc_nodiscard wc_nonull(1) static wc_always_inline u64 String_len(const String* str)
 {
     return str->size;
 }
 
-wc_nodiscard wc_nonull(1) static inline u64 String_capacity(const String* str)
+wc_nodiscard wc_nonull(1) static wc_always_inline u64 String_capacity(const String* str)
 {
     return str->capacity;
 }
 
-wc_nonull(1) static inline bool String_empty(const String* str)
+wc_nodiscard wc_nonull(1) static wc_always_inline bool String_empty(const String* str)
 {
     return str->size == 0;
 }
 
-wc_nonull(1) static inline bool String_is_sso(const String* str)
+wc_nodiscard wc_nonull(1) static wc_always_inline bool String_is_sso(const String* str)
 {
     return str->stk[STR_SSO_SIZE - 1] != '\0';
 }
@@ -2000,7 +2048,7 @@ wc_nonull(1) static inline bool String_is_sso(const String* str)
 // Read-only pointer into the buffer. Unlike String_data_ptr, this never
 // returns NULL for an empty String. Internally, it uses String_ensure_null_term(),
 // which places a '\0' right after the last valid char without touching the size of the string.
-wc_nodiscard wc_nonull(1) static inline const char* String_cstr_view(String* str)
+wc_nodiscard wc_nonull(1) static wc_always_inline const char* String_cstr_view(String* str)
 {
     String_ensure_null_term(str);
     return String_is_sso(str) ? str->stk : str->heap;
@@ -2133,18 +2181,18 @@ typedef struct {
 // creation
 
 // Create a non-owning StrView over an already existing string
-wc_nodiscard wc_nonull(1) static inline StrView StrView_over_String(const String* str)
+wc_nodiscard wc_nonull(1) static wc_always_inline StrView StrView_over_String(const String* str)
 {
     return (StrView){.data = String_data_ptr(str), .len = String_len(str)};
 }
 
-wc_nodiscard wc_nonull(1) static inline StrView StrView_over_String_ex(const String* str, u64 off, u64 len)
+wc_nodiscard wc_nonull(1) static wc_always_inline StrView StrView_over_String_ex(const String* str, u64 off, u64 len)
 {
     WC_ASSERT(off + len <= String_len(str), "invalid range");
     return (StrView){.data = String_data_ptr(str) + off, .len = len};
 }
 
-wc_nodiscard wc_nonull(1) static inline StrView StrView_over_cstr(const char* cstr, u64 clen)
+wc_nodiscard wc_nonull(1) static wc_always_inline StrView StrView_over_cstr(const char* cstr, u64 clen)
 {
     return (StrView){.data = cstr, .len = clen};
 }
@@ -2152,27 +2200,27 @@ wc_nodiscard wc_nonull(1) static inline StrView StrView_over_cstr(const char* cs
 // conversion
 
 // Allocate a new String using `a` with content from `sv`.
-wc_nodiscard String StrView_to_String(const wc_allocator* a, StrView sv) wc_nonull(1); // one alloc
+wc_nodiscard wc_nonull(1) String StrView_to_String(const wc_allocator* a, StrView sv); // one alloc
 // Allocate a cstr (null terminated) with content from `sv`. Caller must free using wc_free with the same allocator
-wc_nodiscard char* StrView_to_cstr(const wc_allocator* a, StrView sv) wc_nonull(1);
+wc_nodiscard wc_nonull(1) char* StrView_to_cstr(const wc_allocator* a, StrView sv);
 // copy data from `sv` into `buf`. returns false if buf too small. NOT null terminated
-wc_nodiscard bool StrView_to_buf(StrView sv, char* buf, u64 cap) wc_nonull(2);
+wc_nodiscard wc_nonull(2) bool StrView_to_buf(StrView sv, char* buf, u64 cap);
 
 // slicing
 
 // Get a sub-view over another view
-wc_nodiscard static inline StrView StrView_slice(StrView sv, u64 start, u64 len)
+wc_nodiscard static wc_always_inline StrView StrView_slice(StrView sv, u64 start, u64 len)
 {
     WC_ASSERT(start <= sv.len && len <= sv.len - start, "out of range"); // overflow-safe
     return (StrView){.data = sv.data + start, .len = len};
 }
 // Get the first n chars from `sv`
-wc_nodiscard static inline StrView StrView_prefix(StrView sv, u64 n)
+wc_nodiscard static wc_always_inline StrView StrView_prefix(StrView sv, u64 n)
 {
     return StrView_slice(sv, 0, n);
 }
 // Get all the chars starting from index `start` till the end
-wc_nodiscard static inline StrView StrView_suffix(StrView sv, u64 start)
+wc_nodiscard static wc_always_inline StrView StrView_suffix(StrView sv, u64 start)
 {
     WC_ASSERT(start <= sv.len, "out of range");
     return StrView_slice(sv, start, sv.len - start);
@@ -2189,28 +2237,30 @@ wc_nodiscard StrView StrView_trim_right(StrView sv, const char* set, u64 len);
 
 // search
 
-wc_nodiscard u64 StrView_find(StrView sv, StrView needle); // WC_NOT_FOUND if absent
-wc_nodiscard u64 StrView_find_char(StrView sv, char c);
-bool             StrView_starts_with(StrView sv, StrView pfx);
-bool             StrView_ends_with(StrView sv, StrView sfx);
-bool             StrView_contains(StrView sv, StrView n);
+wc_nodiscard u64  StrView_find(StrView sv, StrView needle); // WC_NOT_FOUND if absent
+wc_nodiscard u64  StrView_findr(StrView sv, StrView needle); // WC_NOT_FOUND if absent
+wc_nodiscard u64  StrView_find_char(StrView sv, char c);
+wc_nodiscard u64  StrView_findr_char(StrView sv, char c);
+wc_nodiscard bool StrView_starts_with(StrView sv, StrView pfx);
+wc_nodiscard bool StrView_ends_with(StrView sv, StrView sfx);
+wc_nodiscard bool StrView_contains(StrView sv, StrView n);
 
 
 
 // consumption: take n bytes from a view and shorten it (from the left or the right)
 
 // A StrView with `.data == NULL` is invalid. The take functions return one to signal failure.
-wc_nodiscard static inline bool StrView_is_valid(StrView sv)
+wc_nodiscard static wc_always_inline bool StrView_is_valid(StrView sv)
 {
     return sv.data != NULL;
 }
 
 // Remove the first `n` bytes of `*sv` and return them. If `n > sv->len`, returns an invalid view
 // (`.data == NULL`) and leaves `*sv` untouched. Ignore the result to just skip bytes.
-wc_nodiscard StrView StrView_take_left(StrView* sv, u64 n) wc_nonull(1);
+wc_nodiscard wc_nonull(1) StrView StrView_take_left(StrView* sv, u64 n);
 // Remove the last `n` bytes of `*sv` and return them. If `n > sv->len`, returns an invalid view
 // (`.data == NULL`) and leaves `*sv` untouched. Ignore the result to just drop bytes.
-wc_nodiscard StrView StrView_take_right(StrView* sv, u64 n) wc_nonull(1);
+wc_nodiscard wc_nonull(1) StrView StrView_take_right(StrView* sv, u64 n);
 
 
 // output
@@ -2224,12 +2274,12 @@ static inline void StrView_print(StrView sv)
 
 // hashing / comparison
 
-wc_nodiscard static inline u64 StrView_hash(StrView sv)
+wc_nodiscard static wc_always_inline u64 StrView_hash(StrView sv)
 {
     return wc_hash(sv.data, sv.len);
 }
 
-wc_nodiscard static inline int StrView_compare(StrView a, StrView b)
+wc_nodiscard static wc_always_inline int StrView_compare(StrView a, StrView b)
 {
     u64 min = a.len < b.len ? a.len : b.len;
     if (min) {
@@ -2241,15 +2291,15 @@ wc_nodiscard static inline int StrView_compare(StrView a, StrView b)
     return (a.len > b.len) - (a.len < b.len); // sign of len difference
 }
 
-static inline bool StrView_equals(StrView a, StrView b)
+wc_nodiscard static wc_always_inline bool StrView_equals(StrView a, StrView b)
 {
     return (a.len == b.len && (a.len == 0 || memcmp(a.data, b.data, a.len) == 0)) != 0;
 }
 
 // C-string convenience
-wc_nonull(2) static inline bool StrView_equals_cstr(StrView sv, const char* cstr)
+wc_nodiscard wc_nonull(2) static wc_always_inline bool StrView_equals_cstr(StrView sv, const char* cstr, u64 clen)
 {
-    return StrView_equals(sv, StrView_over_cstr(cstr, strlen(cstr)));
+    return StrView_equals(sv, StrView_over_cstr(cstr, clen));
 }
 
 static inline int wc_strview_cmp(const void* a, const void* b, u64 size)
@@ -2258,17 +2308,18 @@ static inline int wc_strview_cmp(const void* a, const void* b, u64 size)
     return StrView_compare(*(StrView*)a, *(StrView*)b);
 }
 
-static inline u64 wc_strview_hash(const void* elm, u64 size)
-{
-
-}
+// can use wc_hash directly
+// static inline u64 wc_strview_hash(const void* elm, u64 len)
+// {
+//     return wc_hash(elm, len);
+// }
 
 
 // TODO: do this
 
 // A stringstore is a chain arena that provides immutable string storage and operations on them,
 // filepath storage and operations etc. it gives out StrViews, optional String wrappers for read, find operations.
-// NOTE: All ORIGINAL StrViews from the store are NUL-terminated. However, if you trim/consume from the end, then that's not gonna hold
+// NOTE: All ORIGINAL StrViews from the store are NUL-terminated. However, that's not gonna hold for subviews obtained via trim/consume
 typedef struct {
     ChainArena store;
     HashMap    interned;         // StrView -> {} (a set)
@@ -2283,20 +2334,24 @@ wc_nonull(1) void StringStore_destroy(StringStore* ss);
 // Copy bytes into the store; return a view. NUL-terminate too (1 extra byte),
 // so sv.data works as a C string, makes StringStore a drop-in for argv-style APIs.
 wc_nodiscard wc_nonull(1, 2) StrView StringStore_str(StringStore* ss, const String* s);
-wc_nodiscard wc_nonull(1, 2) StrView StringStore_cstr(StringStore* ss, const char* cstr);
+wc_nodiscard wc_nonull(1, 2) StrView StringStore_cstr(StringStore* ss, const char* cstr, u64 clen);
 wc_nodiscard wc_nonull(1) StrView StringStore_sv(StringStore* ss, StrView sv);
 
-
-
-// filepath storage/handling
+// TODO: extensive testing needed
+// filepath storage/handling (currently linux only)
 // store paths normally as strings in the stringstore (or wherever) and use these operations to work on them
+// We assume actual filepaths are passed to these functions, we are not asserting filepath validity. Check WCpath_valid to assert path validity.
 
-bool                 WCpath_is_absolute(StrView p); // starts with '/'
+// A path is valid if it is a non-NULL, non-empty view with no embedded NUL and no "//".
+// This is the contract the other WCpath_* functions assume. "/", "a/b/" and "../x" are valid.
+wc_nodiscard bool WCpath_valid(StrView p);
+
+wc_nodiscard bool    WCpath_is_absolute(StrView p); // starts with '/'
 wc_nodiscard StrView WCpath_basename(StrView p);    // "/a/b/c.txt" -> "c.txt"
 wc_nodiscard StrView WCpath_dirname(StrView p);     // "/a/b/c.txt" -> "/a/b"
 wc_nodiscard StrView WCpath_extension(StrView p);   // "c.txt"      -> "txt"   (no dot)
 wc_nodiscard StrView WCpath_stem(StrView p);        // "c.txt"      -> "c"
-bool                 WCpath_has_extension(StrView p, StrView ext);
+wc_nodiscard bool    WCpath_has_extension(StrView p, StrView ext);
 
 // Component iteration
 typedef struct {
@@ -2305,12 +2360,16 @@ typedef struct {
 } WCPathIter;
 
 wc_nodiscard WCPathIter WCpath_components(StrView p);
-bool                    WCpathIter_next(WCPathIter* it, StrView* out);
+wc_nodiscard            wc_nonull(1, 2) bool WCpathIter_next(WCPathIter* it, StrView* out);
 
-// Allocation-returning
-wc_nodiscard String  Path_join(const wc_allocator* alloc, StrView a, StrView b);
-wc_nodiscard StrView Path_join_sv(StringStore* ss, StrView a, StrView b);
-wc_nodiscard StrView Path_normalize(StringStore* ss, StrView p); // collapses "." and ".."
+// Path joining (Allocation-returning)
+
+// Join paths `a` and `b` and return a String allocated using `alloc`
+wc_nodiscard wc_nonull(1) String WCPath_join(const wc_allocator* alloc, StrView a, StrView b);
+// Join paths `a` and `b` and return a StrView stored in `ss`
+wc_nodiscard wc_nonull(1) StrView WCPath_join_sv(StringStore* ss, StrView a, StrView b);
+
+wc_nodiscard wc_nonull(1) StrView WCPath_normalize(StringStore* ss, StrView p); // collapses "." and ".."
 
 
 
@@ -3400,7 +3459,7 @@ void wc_warn_report(const char* file, int line, const char* func, const char* fm
 
 
 // Copy one element INTO raw slot memory: copy_fn if any, else memcpy
-static inline void vec_copy_into(const GenVec* vec, u8* dest, const void* src)
+static wc_always_inline void vec_copy_into(const GenVec* vec, u8* dest, const void* src)
 {
     wc_copy_fn copy = vec->is_pod ? NULL : VEC_COPY_FN(vec);
     if (copy) {
@@ -3411,14 +3470,14 @@ static inline void vec_copy_into(const GenVec* vec, u8* dest, const void* src)
 }
 
 // Move one element (always memcpy). The source is left zeroed.
-static inline void vec_move_into(const GenVec* vec, u8* dest, void* src)
+static wc_always_inline void vec_move_into(const GenVec* vec, u8* dest, void* src)
 {
     memcpy(dest, src, vec->data_size);
     memset(src, 0, vec->data_size);
 }
 
 // Delete `n` elements starting at `p`.
-static inline void vec_delete_range(const GenVec* vec, u8* p, u64 n)
+static wc_always_inline void vec_delete_range(const GenVec* vec, u8* p, u64 n)
 {
     wc_delete_fn del = vec->is_pod ? NULL : VEC_DEL_FN(vec);
     if (del) {
@@ -3430,7 +3489,7 @@ static inline void vec_delete_range(const GenVec* vec, u8* p, u64 n)
 
 // Take element at `slot` out: moved into `out`, or deleted when out == NULL (B7).
 // The slot itself is left as garbage: callers drop it from the live range.
-static inline void vec_take_out(const GenVec* vec, u8* slot, void* out)
+static wc_always_inline void vec_take_out(const GenVec* vec, u8* slot, void* out)
 {
     if (out) {
         memcpy(out, slot, vec->data_size);
@@ -3991,7 +4050,7 @@ void BitVec_set(BitVec* bvec, u64 i)
     u64 byte_index = i / 8;
     u64 bit_index  = i % 8;
 
-    while (byte_index >= bvec->arr.size) {
+    while (wc_unlikely(byte_index >= bvec->arr.size)) {
         u8 zero = 0;
         GenVec_push(&bvec->arr, &zero);
     }
@@ -4051,7 +4110,7 @@ void BitVec_pop(BitVec* bvec)
     WC_SET_RET(WC_ERR_EMPTY, bvec->size == 0, );
 
     bvec->size--;
-    if (bvec->size % 8 == 0) {
+    if (wc_unlikely(bvec->size % 8 == 0)) {
         GenVec_pop(&bvec->arr, NULL);
     }
 }
@@ -4120,13 +4179,13 @@ typedef enum {
 */
 
 // align `x` up to a multiple of `a`
-static inline u64 map_align_up(u64 x, u64 a)
+static wc_always_inline u64 map_align_up(u64 x, u64 a)
 {
     return (x + (a - 1)) & ~(a - 1);
 }
 
 // get the max alignment for an entry consisting of key,val of size key_size,val_size
-static inline u64 map_align(u32 key_size, u32 val_size)
+static wc_always_inline u64 map_align(u32 key_size, u32 val_size)
 {
     u64 ka = wc_align_for_size(key_size); // safe alignment for key_size
     u64 va = wc_align_for_size(val_size); // safe alignment for va_szie
@@ -4147,7 +4206,7 @@ static inline u64 map_align(u32 key_size, u32 val_size)
 #define SWAP_VAL(map)  ((map)->scratch + KPAD(map) + VPAD(map) + KPAD(map))
 
 // total size for scratch area: 2 * (KPAD + VPAD)
-static inline u64 map_scratch_size(u32 key_size, u32 val_size)
+static wc_always_inline u64 map_scratch_size(u32 key_size, u32 val_size)
 {
     u64 al = map_align(key_size, val_size); // get max align for key/val size
     return 2 * (map_align_up(key_size, al) + map_align_up(val_size, al));
@@ -4157,7 +4216,7 @@ typedef struct {
     u64 vals, scratch, psls, total; // byte offsets from the block start, and its size
 } map_layout;
 
-static inline map_layout map_layout_for(u64 cap, u32 key_size, u32 val_size)
+static wc_always_inline map_layout map_layout_for(u64 cap, u32 key_size, u32 val_size)
 {
     u64        al = map_align(key_size, val_size); // get max align for key/val size
     map_layout l  = {0};
@@ -4191,7 +4250,7 @@ static void map_free_block(const HashMap* map, u8* block, u64 cap)
 
 // Move one element into `dest` (memcpy). `src` is left zeroed.
 // size 0 (a set's value): nothing to move, and src may be NULL.
-static inline void map_move_into(u8* dest, u8* src, u32 size)
+static wc_always_inline void map_move_into(u8* dest, u8* src, u32 size)
 {
     if (size == 0) {
         return;
@@ -4202,7 +4261,7 @@ static inline void map_move_into(u8* dest, u8* src, u32 size)
 
 // Copy one element into raw `dest`: copy_fn if any, else memcpy.
 // size 0 (a set's value): nothing to copy, and src may be NULL.
-static inline void map_copy_into(const HashMap* map, const wc_container_ops* ops, u32 size, u8* dest, const void* src)
+static wc_always_inline void map_copy_into(const HashMap* map, const wc_container_ops* ops, u32 size, u8* dest, const void* src)
 {
     if (size == 0) {
         return;
@@ -4215,7 +4274,7 @@ static inline void map_copy_into(const HashMap* map, const wc_container_ops* ops
 }
 
 // Delete one element in place (if it owns anything)
-static inline void map_delete_elm(const wc_container_ops* ops, u8* elm)
+static wc_always_inline void map_delete_elm(const wc_container_ops* ops, u8* elm)
 {
     if (ops && ops->del_fn) {
         ops->del_fn(elm);
@@ -4223,7 +4282,7 @@ static inline void map_delete_elm(const wc_container_ops* ops, u8* elm)
 }
 
 // Destroy an incoming duplicate the container will not keep, and zero it
-static inline void map_consume_dup(const wc_container_ops* ops, u32 size, u8* elm)
+static wc_always_inline void map_consume_dup(const wc_container_ops* ops, u32 size, u8* elm)
 {
     if (size == 0) {
         return;
@@ -4267,10 +4326,10 @@ static wc_always_inline bool map_key_eq(const HashMap* map, const u8* a, const u
 ====================PRIVATE DECLARATIONS====================
 */
 
-static u64         map_lookup(const HashMap* map, const u8* key, LOOKUP_RES* res, u8* out_psl);
-static void        map_insert(HashMap* map, u8* key, u8* val, u8 psl, u64 idx);
-static inline void map_maybe_resize(HashMap* map);
-static void        map_resize(HashMap* map, u64 new_capacity);
+static u64                   map_lookup(const HashMap* map, const u8* key, LOOKUP_RES* res, u8* out_psl);
+static void                  map_insert(HashMap* map, u8* key, u8* val, u8 psl, u64 idx);
+static wc_always_inline void map_maybe_resize(HashMap* map);
+static void                  map_resize(HashMap* map, u64 new_capacity);
 
 
 /*
@@ -4336,7 +4395,7 @@ void HashMap_move(HashMap* dest, HashMap* src)
 
 
 // Insert the staged key/val (already owned by the map) at the lookup result.
-static inline void map_commit(HashMap* map, u8 psl, u64 slot)
+static wc_always_inline void map_commit(HashMap* map, u8 psl, u64 slot)
 {
     map_insert(map, STAGE_KEY(map), STAGE_VAL(map), psl, slot);
     map_maybe_resize(map);
@@ -4685,10 +4744,10 @@ HashMap HashMap_copy(const wc_allocator* a, const HashMap* src)
 ====================PRIVATE FUNCTIONS====================
 */
 
-static inline void map_maybe_resize(HashMap* map)
+static wc_always_inline void map_maybe_resize(HashMap* map)
 {
     // integer multiply avoids float. equivalent to load > 0.75
-    if (map->size * 4 >= map->capacity * 3) {
+    if (wc_unlikely(map->size * 4 >= map->capacity * 3)) {
         map_resize(map, map->capacity * 2);
     }
 }
@@ -6326,7 +6385,21 @@ u64 StrView_find(StrView sv, StrView needle)
     if (needle.len > sv.len) {
         return WC_NOT_FOUND;
     }
-    for (u64 i = 0; i + needle.len <= sv.len; i++) {
+    for (u64 i = 0; i <= sv.len - needle.len; i++) {
+        if (memcmp(sv.data + i, needle.data, needle.len) == 0) {
+            return i;
+        }
+    }
+    return WC_NOT_FOUND;
+}
+
+u64 StrView_findr(StrView sv, StrView needle)
+{
+    if (needle.len > sv.len) {
+        return WC_NOT_FOUND;
+    }
+    // i --> 0 tests the old value, then decrements, so the body sees sv.len - needle.len ... 0
+    for (u64 i = sv.len - needle.len + 1; i-- > 0;) {
         if (memcmp(sv.data + i, needle.data, needle.len) == 0) {
             return i;
         }
@@ -6339,8 +6412,22 @@ u64 StrView_find_char(StrView sv, char c)
     if (sv.len == 0) {
         return WC_NOT_FOUND;
     }
-    const char* p = memchr(sv.data, (unsigned char)c, sv.len);
+    const char* p = memchr(sv.data, c, sv.len);
     return p ? (u64)(p - sv.data) : WC_NOT_FOUND;
+}
+
+u64 StrView_findr_char(StrView sv, char c)
+{
+    if (sv.len == 0) {
+        return WC_NOT_FOUND;
+    }
+    // memrchr not working?
+    for (u64 i = sv.len - 1; i >= 0; i--) {
+        if (sv.data[i] == c) {
+            return i;
+        }
+    }
+    return WC_NOT_FOUND;
 }
 
 bool StrView_starts_with(StrView sv, StrView pfx)
@@ -6394,9 +6481,11 @@ StrView StrView_take_right(StrView* sv, u64 n)
 void StringStore_create(StringStore* ss, const wc_allocator* alloc, u64 block_size, bool intern)
 {
     ChainArena_create(&ss->store, alloc, block_size);
+    ss->interning_active = intern;
     if (intern) {
         ss->interning_active = true;
         // create a set of StrViews
+        // We can directly use u64 wc_hash(void*, u64) (the default hash) so pass NULL
         // StrViews are non-owning: no ops required
         ss->interned = HashMap_create(alloc, sizeof(StrView), 0, NULL, wc_strview_cmp, NULL, NULL);
     }
@@ -6414,9 +6503,317 @@ StrView StringStore_str(StringStore* ss, const String* s)
 {
     // store the String contents, add NUL
     char* data = ChainArena_alloc(&ss->store, s->size + 1);
+    FATAL_IF(!data, "chain arena alloc failed");
+
     memcpy(data, String_data_ptr(s), s->size);
     data[s->size] = 0;
-    return (StrView){.data = data, .len = s->size };
+    return (StrView){.data = data, .len = s->size};
+}
+
+StrView StringStore_cstr(StringStore* ss, const char* cstr, u64 clen)
+{
+    char* data = ChainArena_alloc(&ss->store, clen + 1);
+    FATAL_IF(!data, "chain arena alloc failed");
+
+    memcpy(data, cstr, clen + 1); // copy the WHOLE cstr, including NUL
+    return (StrView){.data = data, .len = clen};
+}
+
+StrView StringStore_sv(StringStore* ss, StrView sv)
+{
+    char* data = ChainArena_alloc(&ss->store, sv.len + 1);
+    FATAL_IF(!data, "chain arena alloc failed");
+
+    memcpy(data, sv.data, sv.len);
+    data[sv.len] = 0;
+    return (StrView){.data = data, .len = sv.len};
+}
+
+
+
+// Filepaths
+
+bool WCpath_valid(StrView p)
+{
+    if (!p.data) {
+        return false;
+    }
+    for (u64 i = 0; i < p.len; i++) {
+        if (p.data[i] == '\0') { // would truncate the path as a C string
+            return false;
+        }
+        // more than one '/' together
+        if (p.data[i] == '/' && i + 1 < p.len && p.data[i + 1] == '/') {
+            return false;
+        }
+    }
+    return true;
+}
+
+
+// length with the trailing '/' removed, but a lone "/" stays
+static u64 path_trimmed_len(StrView p)
+{
+    u64 n = p.len;
+    if (n > 1 && p.data[n - 1] == '/') {
+        n--;
+    }
+    return n;
+}
+
+bool WCpath_is_absolute(StrView p)
+{
+    return (p.len > 0 && p.data[0] == '/') != 0;
+}
+
+StrView WCpath_basename(StrView p)
+{
+    if (p.len == 0) {
+        return (StrView){0};
+    }
+    u64 n = path_trimmed_len(p);
+    if (n == 1 && p.data[0] == '/') {
+        return StrView_prefix(p, 1); // "/" -> "/"
+    }
+    u64 i = n;
+    while (i > 0 && p.data[i - 1] != '/') {
+        i--;
+    }
+    return StrView_slice(p, i, n - i);
+}
+
+StrView WCpath_dirname(StrView p)
+{
+    if (p.len == 0) {
+        return (StrView){0};
+    }
+
+    u64 n = path_trimmed_len(p);
+    if (n == 1 && p.data[0] == '/') {
+        return StrView_prefix(p, 1);
+    }
+
+    u64 i = n;
+    while (i > 0 && p.data[i - 1] != '/') { // skip basename
+        i--;
+    }
+    // we reached the beginning but no '/' found: no dir in the path
+    if (i == 0) {
+        return (StrView){0};
+    }
+    // drop the separator before the basename, keep a lone root "/"
+    if (i > 1) {
+        i--;
+    }
+
+    // we found a '/', everthing from the start (including root) till here is the dirname
+    return StrView_prefix(p, i);
+}
+
+// index of the extension dot in a basename, or WC_NOT_FOUND. A leading dot doesn't count.
+static u64 ext_dot(StrView b)
+{
+    for (u64 i = b.len; i-- > 1;) {
+        if (b.data[i] == '.') {
+            return i;
+        }
+    }
+    return WC_NOT_FOUND;
+}
+
+StrView WCpath_extension(StrView p)
+{
+    StrView b   = WCpath_basename(p);
+    u64     dot = ext_dot(b);
+    if (dot == WC_NOT_FOUND) {
+        return (StrView){0};
+    }
+    return StrView_suffix(b, dot + 1);
+}
+
+StrView WCpath_stem(StrView p)
+{
+    StrView b   = WCpath_basename(p);
+    u64     dot = ext_dot(b);
+    return dot == WC_NOT_FOUND ? (StrView){0} : StrView_prefix(b, dot);
+}
+
+// `ext` may be given with or without the leading dot: "txt" and ".txt" both match "c.txt"
+// Case-sensitive. An empty `ext` matches only paths that have no extension.
+bool WCpath_has_extension(StrView p, StrView ext)
+{
+    if (ext.len > 0 && ext.data[0] == '.') {
+        ext = StrView_suffix(ext, 1);
+    }
+    return StrView_equals(WCpath_extension(p), ext);
+}
+
+
+// component iteration
+
+// Yields only real names. Empty components ("a//b", leading or trailing '/') are skipped.
+// Check WCpath_is_absolute(p) separately if the root matters. "." and ".." are yielded as-is.
+WCPathIter WCpath_components(StrView p)
+{
+    return (WCPathIter){.src = p, .pos = 0};
+}
+
+bool WCpathIter_next(WCPathIter* it, StrView* out)
+{
+    StrView s = it->src;
+    u64     i = it->pos;
+
+    while (i < s.len && s.data[i] == '/') { // skip separator run
+        i++;
+    }
+    if (i >= s.len) {
+        it->pos = s.len;
+        return false;
+    }
+
+    u64 start = i;
+    while (i < s.len && s.data[i] != '/') { // consume the name
+        i++;
+    }
+    *out    = (StrView){.data = s.data + start, .len = i - start};
+    it->pos = i;
+    return true;
+}
+
+// Join rules (POSIX / Python os.path.join style):
+//   - `b` absolute          -> result is just `b`
+//   - `a` empty             -> result is just `b`
+//   - `b` empty             -> result is just `a` (no trailing '/' added)
+//   - otherwise             -> a + '/' + b, with the '/' omitted if `a` already ends in one
+typedef struct {
+    bool use_a;
+    bool sep;
+} JoinPlan;
+
+static JoinPlan join_plan(StrView a, StrView b)
+{
+    if (a.len == 0 || WCpath_is_absolute(b)) {
+        return (JoinPlan){.use_a = false, .sep = false};
+    }
+    bool sep = (b.len > 0 && a.data[a.len - 1] != '/') != 0;
+    return (JoinPlan){.use_a = true, .sep = sep};
+}
+
+static u64 join_len(JoinPlan plan, StrView a, StrView b)
+{
+    return (plan.use_a ? a.len : 0) + (plan.sep ? 1 : 0) + b.len;
+}
+
+// writes exactly join_len(plan, a, b) bytes, no NUL
+static void join_write(char* dst, JoinPlan plan, StrView a, StrView b)
+{
+    u64 n = 0;
+    if (plan.use_a && a.len) {
+        memcpy(dst, a.data, a.len);
+        n += a.len;
+    }
+    if (plan.sep) {
+        dst[n++] = '/';
+    }
+    if (b.len) {
+        memcpy(dst + n, b.data, b.len);
+    }
+}
+
+String WCPath_join(const wc_allocator* alloc, StrView a, StrView b)
+{
+    JoinPlan plan = join_plan(a, b);
+    u64      len  = join_len(plan, a, b);
+    String   s    = String_with_cap(alloc, len);
+
+    if (plan.use_a && a.len) {
+        String_append_multi(&s, a.data, a.len);
+    }
+    if (plan.sep) {
+        String_append_multi(&s, "/", 1);
+    }
+    if (b.len) {
+        String_append_multi(&s, b.data, b.len);
+    }
+    return s;
+}
+
+StrView WCPath_join_sv(StringStore* ss, StrView a, StrView b)
+{
+    JoinPlan plan = join_plan(a, b);
+    u64      len  = join_len(plan, a, b);
+
+    char* data = ChainArena_alloc(&ss->store, len + 1);
+    FATAL_IF(!data, "chain arena alloc failed");
+
+    join_write(data, plan, a, b);
+    data[len] = 0;
+    return (StrView){.data = data, .len = len};
+}
+
+// Purely lexical (never touches the filesystem, so symlinks are not considered):
+//   - duplicate and trailing '/' collapse     "a//b/"      -> "a/b"
+//   - "." components are dropped              "a/./b"      -> "a/b"
+//   - ".." pops the previous component        "a/b/../c"   -> "a/c"
+//   - ".." at the root of an absolute path    "/../a"      -> "/a"
+//   - leading ".." of a relative path stays   "../../a"    -> "../../a"
+//   - empty result                            ""  "a/.."   -> "."   ;   "/.."  -> "/"
+StrView WCPath_normalize(StringStore* ss, StrView p)
+{
+    // Output is never longer than the input, except the "." for an empty result. +1 for NUL.
+    char* dst = ChainArena_alloc(&ss->store, p.len + 2);
+    FATAL_IF(!dst, "chain arena alloc failed");
+
+    bool absolute = WCpath_is_absolute(p);
+    u64  n        = 0;
+    if (absolute) {
+        dst[n++] = '/';
+    }
+    // `keep` = length of the prefix that ".." must not pop: the root and any leading ".."s
+    u64 keep = n;
+
+    WCPathIter it = WCpath_components(p);
+    StrView    c;
+    while (WCpathIter_next(&it, &c)) {
+        if (StrView_equals_cstr(c, ".", 1)) {
+            continue;
+        }
+
+        if (StrView_equals_cstr(c, "..", 2)) {
+            if (n > keep) { // pop the last component
+                while (n > keep && dst[n - 1] != '/') {
+                    n--;
+                }
+                if (n > keep && dst[n - 1] == '/') { // drop the separator before it
+                    n--;
+                }
+                continue;
+            }
+            if (absolute) { // "/.." == "/"
+                continue;
+            }
+            // relative, nothing to pop: keep the ".." and protect it from later pops
+            if (n > 0) {
+                dst[n++] = '/';
+            }
+            dst[n++] = '.';
+            dst[n++] = '.';
+            keep     = n;
+            continue;
+        }
+
+        if (n > 0 && dst[n - 1] != '/') {
+            dst[n++] = '/';
+        }
+        memcpy(dst + n, c.data, c.len);
+        n += c.len;
+    }
+
+    if (n == 0) {
+        dst[n++] = '.';
+    }
+    dst[n] = 0;
+    return (StrView){.data = dst, .len = n};
 }
 
 #endif /* WC_VIEWS_IMPL */

@@ -19,45 +19,99 @@
  * Every non-standard construct the kit relies on (attributes, typeof, inline
  * hints, overflow/expect builtins) is wrapped here.
  *
+ * Attribute placement standard:
+ *   [attributes] [storage / linkage] [inlining] [return_type] func_name(params);
+ * All wc_* attributes are placed in PREFIX position (before return type)
+ * for full compatibility with GCC, Clang, clang-cl, and MSVC.
  */
 
 #if defined(__clang__) || defined(__GNUC__)
-    #define wc_likely(x)       __builtin_expect(!!(x), 1)
-    #define wc_unlikely(x)     __builtin_expect(!!(x), 0)
-    #define wc_nonull(...)     __attribute__((nonnull(__VA_ARGS__)))
-    #define wc_nodiscard       __attribute__((warn_unused_result))
-    #define wc_always_inline   inline __attribute__((always_inline))
-    #define wc_cold            __attribute__((cold))
-    #define wc_noinline        __attribute__((noinline))
-    #define wc_noreturn        __attribute__((noreturn))
-    #define wc_format(k, n, v) __attribute__((format(k, n, v)))
-    #define wc_typeof(expr)    __typeof__(expr)
-    #define wc_mul_overflow(a, b, res) (__builtin_mul_overflow((a), (b), (res)))
-    /* u64 trailing zeros (x must be nonzero). */
-    #define wc_ctz(x)          __builtin_ctzll(x)
+#define wc_likely(x)               __builtin_expect(!!(x), 1)
+#define wc_unlikely(x)             __builtin_expect(!!(x), 0)
+#define wc_nonull(...)             __attribute__((nonnull(__VA_ARGS__)))
+#define wc_nodiscard               __attribute__((warn_unused_result))
+#define wc_always_inline           inline __attribute__((always_inline))
+#define wc_cold                    __attribute__((cold))
+#define wc_noinline                __attribute__((noinline))
+#define wc_noreturn                __attribute__((noreturn))
+#define wc_format(k, n, v)         __attribute__((format(k, n, v)))
+#define wc_typeof(expr)            __typeof__(expr)
+#define wc_mul_overflow(a, b, res) (__builtin_mul_overflow((a), (b), (res)))
+/* u64 trailing zeros (x must be nonzero). */
+#define wc_ctz(x) __builtin_ctzll(x)
+/* u64 leading zeros (x must be nonzero). */
+#define wc_clz(x) __builtin_clzll(x)
+/* u64 population count (number of 1 bits). */
+#define wc_popcount(x)   __builtin_popcountll(x)
+#define wc_unreachable() __builtin_unreachable()
+
+static wc_always_inline void wc_mum64(unsigned long long* a, unsigned long long* b)
+{
+    __uint128_t r = (__uint128_t)*a * *b;
+    *a            = (unsigned long long)r;
+    *b            = (unsigned long long)(r >> 64);
+}
 #else
-    #define wc_likely(x)       (!!(x))
-    #define wc_unlikely(x)     (x)
-    #define wc_nonull(...)
-    #define wc_nodiscard
-    #define wc_always_inline   inline
-    #define wc_cold
-    #define wc_noinline
-    #define wc_noreturn
-    #define wc_format(k, n, v)
-    #define wc_typeof(expr)    __typeof__(expr)
-    /* res = a * b, evaluates to nonzero on overflow (division check). */
-    #define wc_mul_overflow(a, b, res)                                              \
-        ((res) = (unsigned long long)(a) * (unsigned long long)(b),                 \
-         (unsigned long long)(a) != 0ull &&                                         \
-             (res) / (unsigned long long)(a) != (unsigned long long)(b))
-    /* u64 trailing zeros (x must be nonzero). */
-    static inline unsigned wc_ctz(unsigned long long x)
-    {
-        unsigned long i;
-        _BitScanForward64(&i, x);
-        return (unsigned)i;
-    }
+#include <intrin.h>
+#include <sal.h>
+#define wc_likely(x)   (!!(x))
+#define wc_unlikely(x) (x)
+#define wc_nonull(...)
+#define wc_nodiscard     _Check_return_
+#define wc_always_inline __forceinline
+#define wc_cold
+#define wc_noinline __declspec(noinline)
+#define wc_noreturn __declspec(noreturn)
+#define wc_format(k, n, v)
+#define wc_typeof(expr)  __typeof__(expr)
+#define wc_unreachable() __assume(0)
+
+#define wc_mul_overflow(a, b, res)                              \
+    ((res) = (unsigned long long)(a) * (unsigned long long)(b), \
+     (unsigned long long)(a) != 0ull && (res) / (unsigned long long)(a) != (unsigned long long)(b))
+
+static inline unsigned wc_ctz(unsigned long long x)
+{
+    unsigned long i;
+    _BitScanForward64(&i, x);
+    return (unsigned)i;
+}
+
+static inline unsigned wc_clz(unsigned long long x)
+{
+    unsigned long i;
+    _BitScanReverse64(&i, x);
+    return (unsigned)(63 - i);
+}
+
+static inline unsigned wc_popcount(unsigned long long x)
+{
+    return (unsigned)__popcnt64(x);
+}
+
+static inline void wc_mum64(unsigned long long* a, unsigned long long* b)
+{
+#if defined(_M_X64) || defined(_M_AMD64)
+    unsigned __int64 hi;
+    *a = _umul128(*a, *b, &hi);
+    *b = hi;
+#else
+    unsigned long long u1 = (unsigned long)(*a);
+    unsigned long long v1 = (unsigned long)(*b);
+    unsigned long long t  = u1 * v1;
+    unsigned long long w3 = t & 0xFFFFFFFFull;
+    unsigned long long k  = t >> 32;
+    *a                    = (*a >> 32);
+    t                     = (*a) * v1 + k;
+    unsigned long long k1 = t & 0xFFFFFFFFull;
+    unsigned long long w1 = t >> 32;
+    *b                    = (*b >> 32);
+    t                     = u1 * (*b) + k1;
+    k                     = t >> 32;
+    *a                    = (t << 32) + w3;
+    *b                    = (*a) * (*b) + w1 + k;
+#endif
+}
 #endif
 
 #endif // WC_COMP_H
@@ -129,13 +183,13 @@ extern const wc_allocator wc_mmap;
 #define WC_MMAP (&wc_mmap)
 
 
-static inline wc_nonull(1) bool wc_is_libc(const wc_allocator* a)
+wc_nodiscard wc_nonull(1) static wc_always_inline bool wc_is_libc(const wc_allocator* a)
 {
     return a == WC_LIBC;
 }
 
 // Same backend and same context: memory from one may be freed through the other
-static inline wc_nonull(1, 2) int wc_same(const wc_allocator* a, const wc_allocator* b)
+wc_nodiscard wc_nonull(1, 2) static wc_always_inline int wc_same(const wc_allocator* a, const wc_allocator* b)
 {
     return a == b || (a->vt == b->vt && a->ctx == b->ctx);
 }
@@ -143,17 +197,17 @@ static inline wc_nonull(1, 2) int wc_same(const wc_allocator* a, const wc_alloca
 #define WC_ALLOC_ASSERT_ALIGN(align) \
     assert((align) != 0 && ((align) & ((align) - 1)) == 0 && "align must be a power of two >= 1")
 
-static inline wc_nonull(1) void* wc_alloc(const wc_allocator* a, size_t n, size_t align)
+wc_nodiscard wc_nonull(1) static wc_always_inline void* wc_alloc(const wc_allocator* a, size_t n, size_t align)
 {
     WC_ALLOC_ASSERT_ALIGN(align);
-    if (n == 0 || n > (size_t)PTRDIFF_MAX) { // any valid allocation will be less than PTRDIFF_MAX
+    if (wc_unlikely(n == 0 || n > (size_t)PTRDIFF_MAX)) { // any valid allocation will be less than PTRDIFF_MAX
         return NULL;
     }
     assert(a->vt && a->vt->alloc && "wc_alloc: no allocator"); // an allocator really only needs the alloc function
     return a->vt->alloc(a->ctx, n, align);
 }
 
-static inline wc_nonull(1) void wc_free(const wc_allocator* a, void* p, size_t n, size_t align)
+wc_nonull(1) static wc_always_inline void wc_free(const wc_allocator* a, void* p, size_t n, size_t align)
 {
     WC_ALLOC_ASSERT_ALIGN(align);
     if (!p) {
@@ -165,17 +219,18 @@ static inline wc_nonull(1) void wc_free(const wc_allocator* a, void* p, size_t n
     }
 }
 
-static inline wc_nonull(1) void* wc_realloc(const wc_allocator* a, void* p, size_t old_n, size_t n, size_t align)
+wc_nodiscard wc_nonull(1) static wc_always_inline void* wc_realloc(const wc_allocator* a, void* p, size_t old_n, size_t n,
+                                                                   size_t align)
 {
     WC_ALLOC_ASSERT_ALIGN(align);
-    if (!p) {
+    if (wc_unlikely(!p)) {
         return wc_alloc(a, n, align);
     }
-    if (n == 0) {
+    if (wc_unlikely(n == 0)) {
         wc_free(a, p, old_n, align);
         return NULL;
     }
-    if (n > (size_t)PTRDIFF_MAX) {
+    if (wc_unlikely(n > (size_t)PTRDIFF_MAX)) {
         return NULL; // overflowed size: fail, p stays valid
     }
     assert(a->vt && "wc_alloc: no allocator");
@@ -201,7 +256,7 @@ the object couldn't be represented. So any valid allocation size is <= PTRDIFF_M
 // count * size, saturating to SIZE_MAX on overflow. SIZE_MAX can never be
 // satisfied, so an overflowing request fails in the backend instead of wrapping
 // to a small size. (Returning 0 would be wrong: realloc to 0 means free.)
-static inline size_t wc_mul(size_t count, size_t size)
+wc_nodiscard static wc_always_inline size_t wc_mul(size_t count, size_t size)
 {
     size_t r;
     return wc_mul_overflow(count, size, &r) ? SIZE_MAX : r;
@@ -210,7 +265,7 @@ static inline size_t wc_mul(size_t count, size_t size)
 // Smallest safe alignment for elements of `elm_size` bytes: the
 // largest power of two dividing elm_size, capped at WC_MAX_ALIGN. Valid because
 // sizeof(T) is always a multiple of alignof(T).
-static inline size_t wc_align_for_size(size_t elm_size)
+wc_nodiscard static wc_always_inline size_t wc_align_for_size(size_t elm_size)
 {
     if (elm_size == 0) {
         return 1;
@@ -613,6 +668,8 @@ static inline void wc_print_cstr(const void* elm)
 #ifndef WC_ERRNO_H
 #define WC_ERRNO_H
 
+
+
 #include <stdio.h>
 
 
@@ -675,7 +732,7 @@ typedef enum {
     WC_ERR_INVALID_OP, // call to a function with preconditions not met
 } wc_err;
 
-static inline const char* wc_strerror(wc_err e)
+wc_nodiscard static inline const char* wc_strerror(wc_err e)
 {
     switch (e) {
     case WC_OK:
@@ -821,35 +878,34 @@ _Static_assert(sizeof(GenVec) == 48, "GenVec layout drifted from expected 48 byt
 
 // Vector with capacity n, storage from `alloc`.
 // ops: pointer to a shared wc_container_ops vtable, or NULL for POD types.
-wc_nodiscard GenVec GenVec_create(const wc_allocator* alloc, u64 n, u32 data_size, const wc_container_ops* ops)
-    wc_nonull(1);
+wc_nodiscard wc_nonull(1) GenVec GenVec_create(const wc_allocator* alloc, u64 n, u32 data_size, const wc_container_ops* ops);
 
 // Vector of size n with every element a copy of val.
-wc_nodiscard GenVec GenVec_create_val(const wc_allocator* alloc, u64 n, const void* val, u32 data_size,
-                                      const wc_container_ops* ops) wc_nonull(1, 3);
+wc_nodiscard wc_nonull(1, 3) GenVec GenVec_create_val(const wc_allocator* alloc, u64 n, const void* val, u32 data_size,
+                                                      const wc_container_ops* ops);
 
 // Vector over caller-owned storage of n elements (size 0, capacity n).
 // Uses WC_BORROWED: it can never grow (growth is a FATAL) and destroy frees nothing
-wc_nodiscard GenVec GenVec_create_buf(void* buf, u64 n, u32 data_size, const wc_container_ops* ops) wc_nonull(1);
+wc_nodiscard wc_nonull(1) GenVec GenVec_create_buf(void* buf, u64 n, u32 data_size, const wc_container_ops* ops);
 
 // Delete every element, free the storage through the stored allocator and
 // zero the struct. Never frees the struct itself. Safe on a zeroed vector.
-void GenVec_destroy(GenVec* vec) wc_nonull(1);
+wc_nonull(1) void GenVec_destroy(GenVec* vec);
 
 // Remove all elements (calls del_fn on each), keep capacity.
-void GenVec_clear(GenVec* vec) wc_nonull(1);
+wc_nonull(1) void GenVec_clear(GenVec* vec);
 
 // Remove all elements and free the storage; capacity 0, allocator kept.
-void GenVec_reset(GenVec* vec) wc_nonull(1);
+wc_nonull(1) void GenVec_reset(GenVec* vec);
 
 // Ensure vector has at least new_capacity space (never shrinks).
-void GenVec_reserve(GenVec* vec, u64 new_capacity) wc_nonull(1);
+wc_nonull(1) void GenVec_reserve(GenVec* vec, u64 new_capacity);
 
 // Grow to new_capacity and fill new slots with val.
-void GenVec_reserve_val(GenVec* vec, u64 new_capacity, const void* val) wc_nonull(1, 3);
+wc_nonull(1, 3) void GenVec_reserve_val(GenVec* vec, u64 new_capacity, const void* val);
 
 // Shrink vector to its size (reallocates).
-void GenVec_shrink_to_fit(GenVec* vec) wc_nonull(1);
+wc_nonull(1) void GenVec_shrink_to_fit(GenVec* vec);
 
 
 
@@ -857,118 +913,118 @@ void GenVec_shrink_to_fit(GenVec* vec) wc_nonull(1);
 // ===========================
 
 // Append element to end (makes deep copy if copy_fn provided).
-void GenVec_push(GenVec* vec, const void* data) wc_nonull(1, 2);
+wc_nonull(1, 2) void GenVec_push(GenVec* vec, const void* data);
 
 // Append element to end, transfer ownership: *data is moved in and zeroed.
-void GenVec_push_move(GenVec* vec, void* data) wc_nonull(1, 2);
+wc_nonull(1, 2) void GenVec_push_move(GenVec* vec, void* data);
 
 // Remove the last element. popped != NULL: the element is MOVED into it and the
 // caller owns it. popped == NULL: the element is deleted.
-void GenVec_pop(GenVec* vec, void* popped) wc_nonull(1);
+wc_nonull(1) void GenVec_pop(GenVec* vec, void* popped);
 
 // O(1) removal from the middle when order doesn't matter: element i is moved
 // into out (or deleted if out == NULL), the last element takes its place.
-void GenVec_swap_pop(GenVec* vec, u64 i, void* out) wc_nonull(1);
+wc_nonull(1) void GenVec_swap_pop(GenVec* vec, u64 i, void* out);
 
 // Swap elements i and j in place. Never allocates.
-void GenVec_swap(GenVec* vec, u64 i, u64 j) wc_nonull(1);
+wc_nonull(1) void GenVec_swap(GenVec* vec, u64 i, u64 j);
 
 // Deep COPY of element i into out (the vector keeps its own).
-void GenVec_get(const GenVec* vec, u64 i, void* out) wc_nonull(1, 3);
+wc_nonull(1, 3) void GenVec_get(const GenVec* vec, u64 i, void* out);
 
 // Get pointer to element at index i.
 // Note: Pointer invalidated by push/insert/remove operations.
-wc_nodiscard const void* GenVec_get_ptr(const GenVec* vec, u64 i) wc_nonull(1);
+wc_nodiscard wc_nonull(1) const void* GenVec_get_ptr(const GenVec* vec, u64 i);
 
 // Get MUTABLE pointer to element at index i.
 // Note: Pointer invalidated by push/insert/remove operations.
-wc_nodiscard void* GenVec_get_ptr_mut(GenVec* vec, u64 i) wc_nonull(1);
+wc_nodiscard wc_nonull(1) void* GenVec_get_ptr_mut(GenVec* vec, u64 i);
 
 // UNCHECKED variants: same as above but with the bounds WC_ASSERT elided, even in
 // Debug. Preconditions are NOT validated: caller must guarantee i < vec->size.
 // Use on hot paths where the check is provably redundant (macros, internal loops).
-wc_nodiscard wc_nonull(1) static inline const void* GenVec_get_ptr_unsafe(const GenVec* vec, u64 i)
+wc_nodiscard wc_nonull(1) static wc_always_inline const void* GenVec_get_ptr_unsafe(const GenVec* vec, u64 i)
 {
     return (vec->data + (i * vec->data_size));
 }
 
-wc_nodiscard wc_nonull(1) static inline void* GenVec_get_ptr_mut_unsafe(GenVec* vec, u64 i)
+wc_nodiscard wc_nonull(1) static wc_always_inline void* GenVec_get_ptr_mut_unsafe(GenVec* vec, u64 i)
 {
     return (vec->data + (i * vec->data_size));
 }
 
 // Replace element at index i with data (cleans up old element).
-void GenVec_replace(GenVec* vec, u64 i, const void* data) wc_nonull(1, 3);
+wc_nonull(1, 3) void GenVec_replace(GenVec* vec, u64 i, const void* data);
 
 // Replace element at index i, transfer ownership (cleans up old element, zeroes *data).
-void GenVec_replace_move(GenVec* vec, u64 i, void* data) wc_nonull(1, 3);
+wc_nonull(1, 3) void GenVec_replace_move(GenVec* vec, u64 i, void* data);
 
 // Insert element at index i, shifting elements right.
-void GenVec_insert(GenVec* vec, u64 i, const void* data) wc_nonull(1, 3);
+wc_nonull(1, 3) void GenVec_insert(GenVec* vec, u64 i, const void* data);
 
 // Insert element at index i with ownership transfer (zeroes *data), shifting elements right.
-void GenVec_insert_move(GenVec* vec, u64 i, void* data) wc_nonull(1, 3);
+wc_nonull(1, 3) void GenVec_insert_move(GenVec* vec, u64 i, void* data);
 
 // Insert num_data elements from data array into vec at index i.
-void GenVec_insert_multi(GenVec* vec, u64 i, const void* data, u64 num_data) wc_nonull(1, 3);
+wc_nonull(1, 3) void GenVec_insert_multi(GenVec* vec, u64 i, const void* data, u64 num_data);
 
 // Insert (move) num_data contiguous elements from data at index i; the source range is zeroed.
-void GenVec_insert_multi_move(GenVec* vec, u64 i, void* data, u64 num_data) wc_nonull(1, 3);
+wc_nonull(1, 3) void GenVec_insert_multi_move(GenVec* vec, u64 i, void* data, u64 num_data);
 
 // Remove element at index i, shift elements left. out != NULL: the element is
 // MOVED into it. out == NULL: the element is deleted.
-void GenVec_remove(GenVec* vec, u64 i, void* out) wc_nonull(1);
+wc_nonull(1) void GenVec_remove(GenVec* vec, u64 i, void* out);
 
 // Remove elements in range [start, start + len)
-void GenVec_remove_range(GenVec* vec, u64 start, u64 len) wc_nonull(1);
+wc_nonull(1) void GenVec_remove_range(GenVec* vec, u64 start, u64 len);
 
 // Get pointer to first element.
-wc_nodiscard const void* GenVec_front(const GenVec* vec) wc_nonull(1);
+wc_nodiscard wc_nonull(1) const void* GenVec_front(const GenVec* vec);
 
 // Get pointer to last element.
-wc_nodiscard const void* GenVec_back(const GenVec* vec) wc_nonull(1);
+wc_nodiscard wc_nonull(1) const void* GenVec_back(const GenVec* vec);
 
 // Search
 // ===========================
 
 // if cmp_fn = NULL, then use memcmp
-wc_nodiscard u64 GenVec_find(const GenVec* vec, void* elm, wc_compare_fn cmp_fn) wc_nonull(1, 2);
+wc_nodiscard wc_nonull(1, 2) u64 GenVec_find(const GenVec* vec, void* elm, wc_compare_fn cmp_fn);
 
 // New vector (storage from `alloc`) holding deep copies of [start, start + len).
-wc_nodiscard GenVec GenVec_subarr(const GenVec* vec, const wc_allocator* alloc, u64 start, u64 len) wc_nonull(1, 2);
+wc_nodiscard wc_nonull(1, 2) GenVec GenVec_subarr(const GenVec* vec, const wc_allocator* alloc, u64 start, u64 len);
 
 
 // Utility
 // ===========================
 
 // Print all elements using provided print function.
-void GenVec_print(const GenVec* vec, wc_print_fn fn) wc_nonull(1, 2);
+wc_nonull(1, 2) void GenVec_print(const GenVec* vec, wc_print_fn fn);
 
 // Deep copy of src whose storage (and every element's owned resources, via
 // copy_fn) comes from `alloc`. Never inherits src's allocator (A14).
 // Capacity is max(size, GENVEC_MIN_CAPACITY), or 0 for an empty src: a copy
 // does not carry the source's slack (F5).
-wc_nodiscard GenVec GenVec_copy(const wc_allocator* alloc, const GenVec* src) wc_nonull(1, 2);
+wc_nodiscard wc_nonull(1, 2) GenVec GenVec_copy(const wc_allocator* alloc, const GenVec* src);
 
 // Transfer everything from src to dest; src is left zeroed.
 // dest must be uninitialised or destroyed (its old contents are overwritten, not freed).
-void GenVec_move(GenVec* dest, GenVec* src) wc_nonull(1, 2);
+wc_nonull(1, 2) void GenVec_move(GenVec* dest, GenVec* src);
 
 
 // Get number of elements in vector.
-wc_nodiscard wc_nonull(1) static inline u64 GenVec_size(const GenVec* vec)
+wc_nodiscard wc_nonull(1) static wc_always_inline u64 GenVec_size(const GenVec* vec)
 {
     return vec->size;
 }
 
 // Get total capacity of vector.
-wc_nodiscard wc_nonull(1) static inline u64 GenVec_capacity(const GenVec* vec)
+wc_nodiscard wc_nonull(1) static wc_always_inline u64 GenVec_capacity(const GenVec* vec)
 {
     return vec->capacity;
 }
 
 // Check if vector is empty
-wc_nonull(1) static inline bool GenVec_empty(const GenVec* vec)
+wc_nodiscard wc_nonull(1) static wc_always_inline bool GenVec_empty(const GenVec* vec)
 {
     return vec->size == 0;
 }
@@ -1056,37 +1112,36 @@ static const wc_container_ops wc_vec_ptr_ops = {.copy_fn = vec_copy_ptr, .del_fn
 // Stack is just a thin wrapper around GenVec
 typedef GenVec Stack;
 
-Stack Stack_create(const wc_allocator* a, u64 n, u32 data_size, const wc_container_ops* ops) wc_nodiscard;
-Stack Stack_create_val(const wc_allocator* a, u64 n, const void* val, u32 data_size, const wc_container_ops* ops)
-    wc_nonull(3) wc_nodiscard;
+wc_nodiscard wc_nonull(1) Stack Stack_create(const wc_allocator* a, u64 n, u32 data_size, const wc_container_ops* ops);
+wc_nodiscard wc_nonull(1, 3) Stack Stack_create_val(const wc_allocator* a, u64 n, const void* val, u32 data_size, const wc_container_ops* ops);
 
-void  Stack_destroy(Stack* stk) wc_nonull(1);
-Stack Stack_copy(const wc_allocator* a, const Stack* src) wc_nonull(2) wc_nodiscard;
-void  Stack_move(Stack* dest, Stack* src) wc_nonull(1, 2);
+wc_nonull(1) void  Stack_destroy(Stack* stk);
+wc_nodiscard wc_nonull(1, 2) Stack Stack_copy(const wc_allocator* a, const Stack* src);
+wc_nonull(1, 2) void  Stack_move(Stack* dest, Stack* src);
 
-void Stack_clear(Stack* stk) wc_nonull(1);
-void Stack_reset(Stack* stk) wc_nonull(1);
+wc_nonull(1) void Stack_clear(Stack* stk);
+wc_nonull(1) void Stack_reset(Stack* stk);
 
-void        Stack_push(Stack* stk, const void* x) wc_nonull(1, 2);
-void        Stack_push_move(Stack* stk, void* x) wc_nonull(1, 2); // *x is moved in and zeroed
-void        Stack_pop(Stack* stk, void* popped) wc_nonull(1);
-void        Stack_peek(Stack* stk, void* peek) wc_nonull(1, 2);
-const void* Stack_peek_ptr(const Stack* stk) wc_nonull(1);
+wc_nonull(1, 2) void        Stack_push(Stack* stk, const void* x);
+wc_nonull(1, 2) void        Stack_push_move(Stack* stk, void* x); // *x is moved in and zeroed
+wc_nonull(1) void        Stack_pop(Stack* stk, void* popped);
+wc_nonull(1, 2) void        Stack_peek(Stack* stk, void* peek);
+wc_nodiscard wc_nonull(1) const void* Stack_peek_ptr(const Stack* stk);
 
-static inline wc_nonull(1) u64 Stack_size(const Stack* stk)
+wc_nodiscard wc_nonull(1) static wc_always_inline u64 Stack_size(const Stack* stk)
 {
     return GenVec_size(stk);
 }
-static inline wc_nonull(1) bool Stack_empty(const Stack* stk)
+wc_nodiscard wc_nonull(1) static wc_always_inline bool Stack_empty(const Stack* stk)
 {
     return GenVec_empty(stk);
 }
-static inline wc_nonull(1) u64 Stack_capacity(const Stack* stk)
+wc_nodiscard wc_nonull(1) static wc_always_inline u64 Stack_capacity(const Stack* stk)
 {
     return GenVec_capacity(stk);
 }
 
-void Stack_print(Stack* stk, wc_print_fn print_fn) wc_nonull(1, 2);
+wc_nonull(1, 2) void Stack_print(Stack* stk, wc_print_fn print_fn);
 
 #endif // STACK_H
 
@@ -1420,7 +1475,7 @@ void wc_warn_report(const char* file, int line, const char* func, const char* fm
 
 
 // Copy one element INTO raw slot memory: copy_fn if any, else memcpy
-static inline void vec_copy_into(const GenVec* vec, u8* dest, const void* src)
+static wc_always_inline void vec_copy_into(const GenVec* vec, u8* dest, const void* src)
 {
     wc_copy_fn copy = vec->is_pod ? NULL : VEC_COPY_FN(vec);
     if (copy) {
@@ -1431,14 +1486,14 @@ static inline void vec_copy_into(const GenVec* vec, u8* dest, const void* src)
 }
 
 // Move one element (always memcpy). The source is left zeroed.
-static inline void vec_move_into(const GenVec* vec, u8* dest, void* src)
+static wc_always_inline void vec_move_into(const GenVec* vec, u8* dest, void* src)
 {
     memcpy(dest, src, vec->data_size);
     memset(src, 0, vec->data_size);
 }
 
 // Delete `n` elements starting at `p`.
-static inline void vec_delete_range(const GenVec* vec, u8* p, u64 n)
+static wc_always_inline void vec_delete_range(const GenVec* vec, u8* p, u64 n)
 {
     wc_delete_fn del = vec->is_pod ? NULL : VEC_DEL_FN(vec);
     if (del) {
@@ -1450,7 +1505,7 @@ static inline void vec_delete_range(const GenVec* vec, u8* p, u64 n)
 
 // Take element at `slot` out: moved into `out`, or deleted when out == NULL (B7).
 // The slot itself is left as garbage: callers drop it from the live range.
-static inline void vec_take_out(const GenVec* vec, u8* slot, void* out)
+static wc_always_inline void vec_take_out(const GenVec* vec, u8* slot, void* out)
 {
     if (out) {
         memcpy(out, slot, vec->data_size);

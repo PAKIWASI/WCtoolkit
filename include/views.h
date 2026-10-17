@@ -211,6 +211,7 @@ wc_nodiscard            wc_nonull(1, 2) bool WCpathIter_next(WCPathIter* it, Str
 wc_nodiscard wc_nonull(1) String WCPath_join(const wc_allocator* alloc, StrView a, StrView b);
 // Join paths `a` and `b` and return a StrView stored in `ss`
 wc_nodiscard wc_nonull(1) StrView WCPath_join_sv(StringStore* ss, StrView a, StrView b);
+
 wc_nodiscard wc_nonull(1) StrView WCPath_normalize(StringStore* ss, StrView p); // collapses "." and ".."
 
 

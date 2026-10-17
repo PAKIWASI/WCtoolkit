@@ -19,45 +19,99 @@
  * Every non-standard construct the kit relies on (attributes, typeof, inline
  * hints, overflow/expect builtins) is wrapped here.
  *
+ * Attribute placement standard:
+ *   [attributes] [storage / linkage] [inlining] [return_type] func_name(params);
+ * All wc_* attributes are placed in PREFIX position (before return type)
+ * for full compatibility with GCC, Clang, clang-cl, and MSVC.
  */
 
 #if defined(__clang__) || defined(__GNUC__)
-    #define wc_likely(x)       __builtin_expect(!!(x), 1)
-    #define wc_unlikely(x)     __builtin_expect(!!(x), 0)
-    #define wc_nonull(...)     __attribute__((nonnull(__VA_ARGS__)))
-    #define wc_nodiscard       __attribute__((warn_unused_result))
-    #define wc_always_inline   inline __attribute__((always_inline))
-    #define wc_cold            __attribute__((cold))
-    #define wc_noinline        __attribute__((noinline))
-    #define wc_noreturn        __attribute__((noreturn))
-    #define wc_format(k, n, v) __attribute__((format(k, n, v)))
-    #define wc_typeof(expr)    __typeof__(expr)
-    #define wc_mul_overflow(a, b, res) (__builtin_mul_overflow((a), (b), (res)))
-    /* u64 trailing zeros (x must be nonzero). */
-    #define wc_ctz(x)          __builtin_ctzll(x)
+#define wc_likely(x)               __builtin_expect(!!(x), 1)
+#define wc_unlikely(x)             __builtin_expect(!!(x), 0)
+#define wc_nonull(...)             __attribute__((nonnull(__VA_ARGS__)))
+#define wc_nodiscard               __attribute__((warn_unused_result))
+#define wc_always_inline           inline __attribute__((always_inline))
+#define wc_cold                    __attribute__((cold))
+#define wc_noinline                __attribute__((noinline))
+#define wc_noreturn                __attribute__((noreturn))
+#define wc_format(k, n, v)         __attribute__((format(k, n, v)))
+#define wc_typeof(expr)            __typeof__(expr)
+#define wc_mul_overflow(a, b, res) (__builtin_mul_overflow((a), (b), (res)))
+/* u64 trailing zeros (x must be nonzero). */
+#define wc_ctz(x) __builtin_ctzll(x)
+/* u64 leading zeros (x must be nonzero). */
+#define wc_clz(x) __builtin_clzll(x)
+/* u64 population count (number of 1 bits). */
+#define wc_popcount(x)   __builtin_popcountll(x)
+#define wc_unreachable() __builtin_unreachable()
+
+static wc_always_inline void wc_mum64(unsigned long long* a, unsigned long long* b)
+{
+    __uint128_t r = (__uint128_t)*a * *b;
+    *a            = (unsigned long long)r;
+    *b            = (unsigned long long)(r >> 64);
+}
 #else
-    #define wc_likely(x)       (!!(x))
-    #define wc_unlikely(x)     (x)
-    #define wc_nonull(...)
-    #define wc_nodiscard
-    #define wc_always_inline   inline
-    #define wc_cold
-    #define wc_noinline
-    #define wc_noreturn
-    #define wc_format(k, n, v)
-    #define wc_typeof(expr)    __typeof__(expr)
-    /* res = a * b, evaluates to nonzero on overflow (division check). */
-    #define wc_mul_overflow(a, b, res)                                              \
-        ((res) = (unsigned long long)(a) * (unsigned long long)(b),                 \
-         (unsigned long long)(a) != 0ull &&                                         \
-             (res) / (unsigned long long)(a) != (unsigned long long)(b))
-    /* u64 trailing zeros (x must be nonzero). */
-    static inline unsigned wc_ctz(unsigned long long x)
-    {
-        unsigned long i;
-        _BitScanForward64(&i, x);
-        return (unsigned)i;
-    }
+#include <intrin.h>
+#include <sal.h>
+#define wc_likely(x)   (!!(x))
+#define wc_unlikely(x) (x)
+#define wc_nonull(...)
+#define wc_nodiscard     _Check_return_
+#define wc_always_inline __forceinline
+#define wc_cold
+#define wc_noinline __declspec(noinline)
+#define wc_noreturn __declspec(noreturn)
+#define wc_format(k, n, v)
+#define wc_typeof(expr)  __typeof__(expr)
+#define wc_unreachable() __assume(0)
+
+#define wc_mul_overflow(a, b, res)                              \
+    ((res) = (unsigned long long)(a) * (unsigned long long)(b), \
+     (unsigned long long)(a) != 0ull && (res) / (unsigned long long)(a) != (unsigned long long)(b))
+
+static inline unsigned wc_ctz(unsigned long long x)
+{
+    unsigned long i;
+    _BitScanForward64(&i, x);
+    return (unsigned)i;
+}
+
+static inline unsigned wc_clz(unsigned long long x)
+{
+    unsigned long i;
+    _BitScanReverse64(&i, x);
+    return (unsigned)(63 - i);
+}
+
+static inline unsigned wc_popcount(unsigned long long x)
+{
+    return (unsigned)__popcnt64(x);
+}
+
+static inline void wc_mum64(unsigned long long* a, unsigned long long* b)
+{
+#if defined(_M_X64) || defined(_M_AMD64)
+    unsigned __int64 hi;
+    *a = _umul128(*a, *b, &hi);
+    *b = hi;
+#else
+    unsigned long long u1 = (unsigned long)(*a);
+    unsigned long long v1 = (unsigned long)(*b);
+    unsigned long long t  = u1 * v1;
+    unsigned long long w3 = t & 0xFFFFFFFFull;
+    unsigned long long k  = t >> 32;
+    *a                    = (*a >> 32);
+    t                     = (*a) * v1 + k;
+    unsigned long long k1 = t & 0xFFFFFFFFull;
+    unsigned long long w1 = t >> 32;
+    *b                    = (*b >> 32);
+    t                     = u1 * (*b) + k1;
+    k                     = t >> 32;
+    *a                    = (t << 32) + w3;
+    *b                    = (*a) * (*b) + w1 + k;
+#endif
+}
 #endif
 
 #endif // WC_COMP_H
@@ -129,13 +183,13 @@ extern const wc_allocator wc_mmap;
 #define WC_MMAP (&wc_mmap)
 
 
-static inline wc_nonull(1) bool wc_is_libc(const wc_allocator* a)
+wc_nodiscard wc_nonull(1) static wc_always_inline bool wc_is_libc(const wc_allocator* a)
 {
     return a == WC_LIBC;
 }
 
 // Same backend and same context: memory from one may be freed through the other
-static inline wc_nonull(1, 2) int wc_same(const wc_allocator* a, const wc_allocator* b)
+wc_nodiscard wc_nonull(1, 2) static wc_always_inline int wc_same(const wc_allocator* a, const wc_allocator* b)
 {
     return a == b || (a->vt == b->vt && a->ctx == b->ctx);
 }
@@ -143,17 +197,17 @@ static inline wc_nonull(1, 2) int wc_same(const wc_allocator* a, const wc_alloca
 #define WC_ALLOC_ASSERT_ALIGN(align) \
     assert((align) != 0 && ((align) & ((align) - 1)) == 0 && "align must be a power of two >= 1")
 
-static inline wc_nonull(1) void* wc_alloc(const wc_allocator* a, size_t n, size_t align)
+wc_nodiscard wc_nonull(1) static wc_always_inline void* wc_alloc(const wc_allocator* a, size_t n, size_t align)
 {
     WC_ALLOC_ASSERT_ALIGN(align);
-    if (n == 0 || n > (size_t)PTRDIFF_MAX) { // any valid allocation will be less than PTRDIFF_MAX
+    if (wc_unlikely(n == 0 || n > (size_t)PTRDIFF_MAX)) { // any valid allocation will be less than PTRDIFF_MAX
         return NULL;
     }
     assert(a->vt && a->vt->alloc && "wc_alloc: no allocator"); // an allocator really only needs the alloc function
     return a->vt->alloc(a->ctx, n, align);
 }
 
-static inline wc_nonull(1) void wc_free(const wc_allocator* a, void* p, size_t n, size_t align)
+wc_nonull(1) static wc_always_inline void wc_free(const wc_allocator* a, void* p, size_t n, size_t align)
 {
     WC_ALLOC_ASSERT_ALIGN(align);
     if (!p) {
@@ -165,17 +219,18 @@ static inline wc_nonull(1) void wc_free(const wc_allocator* a, void* p, size_t n
     }
 }
 
-static inline wc_nonull(1) void* wc_realloc(const wc_allocator* a, void* p, size_t old_n, size_t n, size_t align)
+wc_nodiscard wc_nonull(1) static wc_always_inline void* wc_realloc(const wc_allocator* a, void* p, size_t old_n, size_t n,
+                                                                   size_t align)
 {
     WC_ALLOC_ASSERT_ALIGN(align);
-    if (!p) {
+    if (wc_unlikely(!p)) {
         return wc_alloc(a, n, align);
     }
-    if (n == 0) {
+    if (wc_unlikely(n == 0)) {
         wc_free(a, p, old_n, align);
         return NULL;
     }
-    if (n > (size_t)PTRDIFF_MAX) {
+    if (wc_unlikely(n > (size_t)PTRDIFF_MAX)) {
         return NULL; // overflowed size: fail, p stays valid
     }
     assert(a->vt && "wc_alloc: no allocator");
@@ -201,7 +256,7 @@ the object couldn't be represented. So any valid allocation size is <= PTRDIFF_M
 // count * size, saturating to SIZE_MAX on overflow. SIZE_MAX can never be
 // satisfied, so an overflowing request fails in the backend instead of wrapping
 // to a small size. (Returning 0 would be wrong: realloc to 0 means free.)
-static inline size_t wc_mul(size_t count, size_t size)
+wc_nodiscard static wc_always_inline size_t wc_mul(size_t count, size_t size)
 {
     size_t r;
     return wc_mul_overflow(count, size, &r) ? SIZE_MAX : r;
@@ -210,7 +265,7 @@ static inline size_t wc_mul(size_t count, size_t size)
 // Smallest safe alignment for elements of `elm_size` bytes: the
 // largest power of two dividing elm_size, capped at WC_MAX_ALIGN. Valid because
 // sizeof(T) is always a multiple of alignof(T).
-static inline size_t wc_align_for_size(size_t elm_size)
+wc_nodiscard static wc_always_inline size_t wc_align_for_size(size_t elm_size)
 {
     if (elm_size == 0) {
         return 1;
@@ -613,6 +668,8 @@ static inline void wc_print_cstr(const void* elm)
 #ifndef WC_ERRNO_H
 #define WC_ERRNO_H
 
+
+
 #include <stdio.h>
 
 
@@ -675,7 +732,7 @@ typedef enum {
     WC_ERR_INVALID_OP, // call to a function with preconditions not met
 } wc_err;
 
-static inline const char* wc_strerror(wc_err e)
+wc_nodiscard static inline const char* wc_strerror(wc_err e)
 {
     switch (e) {
     case WC_OK:
@@ -779,31 +836,29 @@ typedef struct {
 } ChainArena;
 
 // Initialises `ca` in place, it must not be moved or copied afterwards.
-void ChainArena_create(ChainArena* ca, const wc_allocator* alloc, u64 block_size) wc_nonull(1, 2);
+wc_nonull(1, 2) void ChainArena_create(ChainArena* ca, const wc_allocator* backing, u64 normal_cap);
 
 // Gives every block back to the backing allocator and zeroes the arena. Safe on a zeroed
 // arena and safe to call twice.
-void ChainArena_destroy(ChainArena* ca) wc_nonull(1);
+wc_nonull(1) void ChainArena_destroy(ChainArena* ca);
 
 // ChainArena_alloc aligns to WC_MAX_ALIGN (like malloc)
 // return NULL only if the backing allocator can't supply a block.
-wc_nodiscard void* ChainArena_alloc(ChainArena* ca, u64 size) wc_nonull(1);
+wc_nodiscard wc_nonull(1) void* ChainArena_alloc(ChainArena* ca, u64 size);
 
 // ChainArena_alloc_aligned aligns the ADDRESS to `align` (a power of two), including alignments larger than a page
 // return NULL only if the backing allocator can't supply a block.
-wc_nodiscard void* ChainArena_alloc_aligned(ChainArena* ca, u64 size, u64 align) wc_nonull(1);
-
-// The allocator to give to containers. Points into the arena, so it lives as long as the arena.
-wc_nodiscard static inline const wc_allocator* ChainArena_allocator(ChainArena* ca) wc_nonull(1);
+wc_nodiscard wc_nonull(1) void* ChainArena_alloc_aligned(ChainArena* ca, u64 size, u64 align);
 
 // Payload bytes carved out of the newest normal node right now. Memory taken from
 // dedicated big nodes is not included, and a freed (no-op) request does not rewind it.
-wc_nodiscard wc_nonull(1) static inline u64 ChainArena_used(const ChainArena* ca)
+wc_nodiscard wc_nonull(1) static wc_always_inline u64 ChainArena_used(const ChainArena* ca)
 {
     return ca->normal ? ca->normal->off : 0;
 }
 
-wc_nodiscard wc_nonull(1) static inline const wc_allocator* ChainArena_allocator(ChainArena* ca)
+// The allocator to give to containers. Points into the arena, so it lives as long as the arena.
+wc_nodiscard wc_nonull(1) static wc_always_inline const wc_allocator* ChainArena_allocator(ChainArena* ca)
 {
     // zeroed self has vt == NULL, which would silently read as WC_LIBC
     WC_ASSERT(ca->self.ctx != NULL, "ChainArena_allocator on zeroed/destroyed ChainArena");
@@ -818,7 +873,7 @@ typedef struct {
     u64                mark; // the offset of node n;
 } ChainArenaScratch;
 
-wc_nodiscard wc_nonull(1) static inline ChainArenaScratch ChainArenaScratch_create(ChainArena* ca)
+wc_nodiscard wc_nonull(1) static wc_always_inline ChainArenaScratch ChainArenaScratch_create(ChainArena* ca)
 {
     WC_ASSERT(ca->self.ctx == ca, "invalid chain arena (zeroed or moved)");
     return (ChainArenaScratch){

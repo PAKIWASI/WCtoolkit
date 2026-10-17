@@ -34,7 +34,7 @@ UTEST(views, over_cstr_borrows)
     EXPECT_EQ(sv.len, 3u);
     EXPECT_TRUE(sv.data == text);
     EXPECT_TRUE(sv_equals_cstr(sv, "bor"));
-    EXPECT_TRUE(StrView_equals_cstr(sv, "bor"));
+    EXPECT_TRUE(StrView_equals_cstr(sv, "bor", strlen("bor")));
 }
 
 UTEST(views, over_String)
@@ -376,9 +376,9 @@ UTEST(views, hash_and_equals)
     EXPECT_TRUE(StrView_equals(zero, zero));
     EXPECT_TRUE(!StrView_equals(zero, a));
 
-    EXPECT_TRUE(StrView_equals_cstr(a, "hello"));
-    EXPECT_TRUE(!StrView_equals_cstr(a, "hell")); // cstr is longer than the view
-    EXPECT_TRUE(!StrView_equals_cstr(a, "hello world"));
+    EXPECT_TRUE(StrView_equals_cstr(a, "hello", strlen("hello")));
+    EXPECT_TRUE(!StrView_equals_cstr(a, "hell", strlen("hell"))); // cstr is longer than the view
+    EXPECT_TRUE(!StrView_equals_cstr(a, "hello world", strlen("hello world")));
 }
 
 // memcmp ordering on shared bytes, then length as the tiebreak

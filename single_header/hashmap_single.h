@@ -19,45 +19,99 @@
  * Every non-standard construct the kit relies on (attributes, typeof, inline
  * hints, overflow/expect builtins) is wrapped here.
  *
+ * Attribute placement standard:
+ *   [attributes] [storage / linkage] [inlining] [return_type] func_name(params);
+ * All wc_* attributes are placed in PREFIX position (before return type)
+ * for full compatibility with GCC, Clang, clang-cl, and MSVC.
  */
 
 #if defined(__clang__) || defined(__GNUC__)
-    #define wc_likely(x)       __builtin_expect(!!(x), 1)
-    #define wc_unlikely(x)     __builtin_expect(!!(x), 0)
-    #define wc_nonull(...)     __attribute__((nonnull(__VA_ARGS__)))
-    #define wc_nodiscard       __attribute__((warn_unused_result))
-    #define wc_always_inline   inline __attribute__((always_inline))
-    #define wc_cold            __attribute__((cold))
-    #define wc_noinline        __attribute__((noinline))
-    #define wc_noreturn        __attribute__((noreturn))
-    #define wc_format(k, n, v) __attribute__((format(k, n, v)))
-    #define wc_typeof(expr)    __typeof__(expr)
-    #define wc_mul_overflow(a, b, res) (__builtin_mul_overflow((a), (b), (res)))
-    /* u64 trailing zeros (x must be nonzero). */
-    #define wc_ctz(x)          __builtin_ctzll(x)
+#define wc_likely(x)               __builtin_expect(!!(x), 1)
+#define wc_unlikely(x)             __builtin_expect(!!(x), 0)
+#define wc_nonull(...)             __attribute__((nonnull(__VA_ARGS__)))
+#define wc_nodiscard               __attribute__((warn_unused_result))
+#define wc_always_inline           inline __attribute__((always_inline))
+#define wc_cold                    __attribute__((cold))
+#define wc_noinline                __attribute__((noinline))
+#define wc_noreturn                __attribute__((noreturn))
+#define wc_format(k, n, v)         __attribute__((format(k, n, v)))
+#define wc_typeof(expr)            __typeof__(expr)
+#define wc_mul_overflow(a, b, res) (__builtin_mul_overflow((a), (b), (res)))
+/* u64 trailing zeros (x must be nonzero). */
+#define wc_ctz(x) __builtin_ctzll(x)
+/* u64 leading zeros (x must be nonzero). */
+#define wc_clz(x) __builtin_clzll(x)
+/* u64 population count (number of 1 bits). */
+#define wc_popcount(x)   __builtin_popcountll(x)
+#define wc_unreachable() __builtin_unreachable()
+
+static wc_always_inline void wc_mum64(unsigned long long* a, unsigned long long* b)
+{
+    __uint128_t r = (__uint128_t)*a * *b;
+    *a            = (unsigned long long)r;
+    *b            = (unsigned long long)(r >> 64);
+}
 #else
-    #define wc_likely(x)       (!!(x))
-    #define wc_unlikely(x)     (x)
-    #define wc_nonull(...)
-    #define wc_nodiscard
-    #define wc_always_inline   inline
-    #define wc_cold
-    #define wc_noinline
-    #define wc_noreturn
-    #define wc_format(k, n, v)
-    #define wc_typeof(expr)    __typeof__(expr)
-    /* res = a * b, evaluates to nonzero on overflow (division check). */
-    #define wc_mul_overflow(a, b, res)                                              \
-        ((res) = (unsigned long long)(a) * (unsigned long long)(b),                 \
-         (unsigned long long)(a) != 0ull &&                                         \
-             (res) / (unsigned long long)(a) != (unsigned long long)(b))
-    /* u64 trailing zeros (x must be nonzero). */
-    static inline unsigned wc_ctz(unsigned long long x)
-    {
-        unsigned long i;
-        _BitScanForward64(&i, x);
-        return (unsigned)i;
-    }
+#include <intrin.h>
+#include <sal.h>
+#define wc_likely(x)   (!!(x))
+#define wc_unlikely(x) (x)
+#define wc_nonull(...)
+#define wc_nodiscard     _Check_return_
+#define wc_always_inline __forceinline
+#define wc_cold
+#define wc_noinline __declspec(noinline)
+#define wc_noreturn __declspec(noreturn)
+#define wc_format(k, n, v)
+#define wc_typeof(expr)  __typeof__(expr)
+#define wc_unreachable() __assume(0)
+
+#define wc_mul_overflow(a, b, res)                              \
+    ((res) = (unsigned long long)(a) * (unsigned long long)(b), \
+     (unsigned long long)(a) != 0ull && (res) / (unsigned long long)(a) != (unsigned long long)(b))
+
+static inline unsigned wc_ctz(unsigned long long x)
+{
+    unsigned long i;
+    _BitScanForward64(&i, x);
+    return (unsigned)i;
+}
+
+static inline unsigned wc_clz(unsigned long long x)
+{
+    unsigned long i;
+    _BitScanReverse64(&i, x);
+    return (unsigned)(63 - i);
+}
+
+static inline unsigned wc_popcount(unsigned long long x)
+{
+    return (unsigned)__popcnt64(x);
+}
+
+static inline void wc_mum64(unsigned long long* a, unsigned long long* b)
+{
+#if defined(_M_X64) || defined(_M_AMD64)
+    unsigned __int64 hi;
+    *a = _umul128(*a, *b, &hi);
+    *b = hi;
+#else
+    unsigned long long u1 = (unsigned long)(*a);
+    unsigned long long v1 = (unsigned long)(*b);
+    unsigned long long t  = u1 * v1;
+    unsigned long long w3 = t & 0xFFFFFFFFull;
+    unsigned long long k  = t >> 32;
+    *a                    = (*a >> 32);
+    t                     = (*a) * v1 + k;
+    unsigned long long k1 = t & 0xFFFFFFFFull;
+    unsigned long long w1 = t >> 32;
+    *b                    = (*b >> 32);
+    t                     = u1 * (*b) + k1;
+    k                     = t >> 32;
+    *a                    = (t << 32) + w3;
+    *b                    = (*a) * (*b) + w1 + k;
+#endif
+}
 #endif
 
 #endif // WC_COMP_H
@@ -129,13 +183,13 @@ extern const wc_allocator wc_mmap;
 #define WC_MMAP (&wc_mmap)
 
 
-static inline wc_nonull(1) bool wc_is_libc(const wc_allocator* a)
+wc_nodiscard wc_nonull(1) static wc_always_inline bool wc_is_libc(const wc_allocator* a)
 {
     return a == WC_LIBC;
 }
 
 // Same backend and same context: memory from one may be freed through the other
-static inline wc_nonull(1, 2) int wc_same(const wc_allocator* a, const wc_allocator* b)
+wc_nodiscard wc_nonull(1, 2) static wc_always_inline int wc_same(const wc_allocator* a, const wc_allocator* b)
 {
     return a == b || (a->vt == b->vt && a->ctx == b->ctx);
 }
@@ -143,17 +197,17 @@ static inline wc_nonull(1, 2) int wc_same(const wc_allocator* a, const wc_alloca
 #define WC_ALLOC_ASSERT_ALIGN(align) \
     assert((align) != 0 && ((align) & ((align) - 1)) == 0 && "align must be a power of two >= 1")
 
-static inline wc_nonull(1) void* wc_alloc(const wc_allocator* a, size_t n, size_t align)
+wc_nodiscard wc_nonull(1) static wc_always_inline void* wc_alloc(const wc_allocator* a, size_t n, size_t align)
 {
     WC_ALLOC_ASSERT_ALIGN(align);
-    if (n == 0 || n > (size_t)PTRDIFF_MAX) { // any valid allocation will be less than PTRDIFF_MAX
+    if (wc_unlikely(n == 0 || n > (size_t)PTRDIFF_MAX)) { // any valid allocation will be less than PTRDIFF_MAX
         return NULL;
     }
     assert(a->vt && a->vt->alloc && "wc_alloc: no allocator"); // an allocator really only needs the alloc function
     return a->vt->alloc(a->ctx, n, align);
 }
 
-static inline wc_nonull(1) void wc_free(const wc_allocator* a, void* p, size_t n, size_t align)
+wc_nonull(1) static wc_always_inline void wc_free(const wc_allocator* a, void* p, size_t n, size_t align)
 {
     WC_ALLOC_ASSERT_ALIGN(align);
     if (!p) {
@@ -165,17 +219,18 @@ static inline wc_nonull(1) void wc_free(const wc_allocator* a, void* p, size_t n
     }
 }
 
-static inline wc_nonull(1) void* wc_realloc(const wc_allocator* a, void* p, size_t old_n, size_t n, size_t align)
+wc_nodiscard wc_nonull(1) static wc_always_inline void* wc_realloc(const wc_allocator* a, void* p, size_t old_n, size_t n,
+                                                                   size_t align)
 {
     WC_ALLOC_ASSERT_ALIGN(align);
-    if (!p) {
+    if (wc_unlikely(!p)) {
         return wc_alloc(a, n, align);
     }
-    if (n == 0) {
+    if (wc_unlikely(n == 0)) {
         wc_free(a, p, old_n, align);
         return NULL;
     }
-    if (n > (size_t)PTRDIFF_MAX) {
+    if (wc_unlikely(n > (size_t)PTRDIFF_MAX)) {
         return NULL; // overflowed size: fail, p stays valid
     }
     assert(a->vt && "wc_alloc: no allocator");
@@ -201,7 +256,7 @@ the object couldn't be represented. So any valid allocation size is <= PTRDIFF_M
 // count * size, saturating to SIZE_MAX on overflow. SIZE_MAX can never be
 // satisfied, so an overflowing request fails in the backend instead of wrapping
 // to a small size. (Returning 0 would be wrong: realloc to 0 means free.)
-static inline size_t wc_mul(size_t count, size_t size)
+wc_nodiscard static wc_always_inline size_t wc_mul(size_t count, size_t size)
 {
     size_t r;
     return wc_mul_overflow(count, size, &r) ? SIZE_MAX : r;
@@ -210,7 +265,7 @@ static inline size_t wc_mul(size_t count, size_t size)
 // Smallest safe alignment for elements of `elm_size` bytes: the
 // largest power of two dividing elm_size, capped at WC_MAX_ALIGN. Valid because
 // sizeof(T) is always a multiple of alignof(T).
-static inline size_t wc_align_for_size(size_t elm_size)
+wc_nodiscard static wc_always_inline size_t wc_align_for_size(size_t elm_size)
 {
     if (elm_size == 0) {
         return 1;
@@ -613,6 +668,8 @@ static inline void wc_print_cstr(const void* elm)
 #ifndef WC_ERRNO_H
 #define WC_ERRNO_H
 
+
+
 #include <stdio.h>
 
 
@@ -675,7 +732,7 @@ typedef enum {
     WC_ERR_INVALID_OP, // call to a function with preconditions not met
 } wc_err;
 
-static inline const char* wc_strerror(wc_err e)
+wc_nodiscard static inline const char* wc_strerror(wc_err e)
 {
     switch (e) {
     case WC_OK:
@@ -788,28 +845,26 @@ typedef u64 (*wc_hash_fn)(const void* key, u64 size);
  */
 
 // 64 x 64 -> 128 bit multiply. *a gets the low half, *b the high half.
-static wc_always_inline void wc_rapid_mum(u64* a, u64* b)
+static wc_always_inline void wc_rapid_mum(unsigned long long* a, unsigned long long* b) // TODO: is type right?
 {
-    __uint128_t r = (__uint128_t)*a * *b;
-    *a            = (u64)r;
-    *b            = (u64)(r >> 64);
+    wc_mum64(a, b);
 }
 
 // Multiply, then fold the 128-bit product to 64 bits.
-static wc_always_inline u64 wc_rapid_mix(u64 a, u64 b)
+wc_nodiscard static wc_always_inline u64 wc_rapid_mix(unsigned long long a, unsigned long long b)
 {
     wc_rapid_mum(&a, &b);
     return a ^ b;
 }
 
-static wc_always_inline u64 wc_rapid_read64(const u8* p)
+wc_nodiscard static wc_always_inline u64 wc_rapid_read64(const u8* p)
 {
     u64 v;
     memcpy(&v, p, 8);
     return v;
 }
 
-static wc_always_inline u64 wc_rapid_read32(const u8* p)
+wc_nodiscard static wc_always_inline u64 wc_rapid_read32(const u8* p)
 {
     u32 v;
     memcpy(&v, p, 4);
@@ -824,13 +879,13 @@ static wc_always_inline u64 wc_rapid_read32(const u8* p)
 
 // Hash `len` bytes. Inlined so short keys stay cheap: `len <= 16` takes the short
 // path, where a 4 or 8 byte key costs two 128-bit multiplies.
-static wc_always_inline u64 wc_hash(const void* key, u64 len)
+wc_nodiscard static wc_always_inline u64 wc_hash(const void* key, u64 len)
 {
-    const u8* p    = key;
-    u64       seed = WC_RAPID_SEED ^ wc_rapid_mix(WC_RAPID_SEED ^ WC_RAPID_S2, WC_RAPID_S1);
-    u64       a    = 0;
-    u64       b    = 0;
-    u64       i    = len;
+    const u8*          p    = key;
+    u64                seed = WC_RAPID_SEED ^ wc_rapid_mix(WC_RAPID_SEED ^ WC_RAPID_S2, WC_RAPID_S1);
+    unsigned long long a    = 0;
+    unsigned long long b    = 0;
+    u64                i    = len;
 
     if (wc_likely(len <= 16)) {
         if (len >= 4) {
@@ -951,43 +1006,43 @@ _Static_assert(sizeof(HashMap) == 96, "HashMap must be 96 bytes");
 // hash_fn NULL: wc_hash over the key bytes. cmp_fn NULL: byte equality.
 // Both defaults are only correct for keys without pointers.
 // key_ops / val_ops: pass NULL for POD types. val_size 0 makes a set.
-wc_nodiscard HashMap HashMap_create(const wc_allocator* a, u32 key_size, u32 val_size, wc_hash_fn hash_fn,
+wc_nodiscard wc_nonull(1) HashMap HashMap_create(const wc_allocator* a, u32 key_size, u32 val_size, wc_hash_fn hash_fn,
                                     wc_compare_fn cmp_fn, const wc_container_ops* key_ops,
-                                    const wc_container_ops* val_ops) wc_nonull(1) wc_nodiscard;
+                                    const wc_container_ops* val_ops);
 
 // Destroy all elements and free internal buffers via map->alloc.
 // Safe on zeroed/moved-from maps. Leaves struct zeroed.
-void HashMap_destroy(HashMap* map) wc_nonull(1);
+wc_nonull(1) void HashMap_destroy(HashMap* map);
 
 // Deep copy src into a new HashMap allocated from `a`.
-wc_nodiscard HashMap HashMap_copy(const wc_allocator* a, const HashMap* src) wc_nonull(1, 2);
+wc_nodiscard wc_nonull(1, 2) HashMap HashMap_copy(const wc_allocator* a, const HashMap* src);
 
 // Transfer ownership from src to dest. src is left zeroed.
-void HashMap_move(HashMap* dest, HashMap* src) wc_nonull(1, 2);
+wc_nonull(1, 2) void HashMap_move(HashMap* dest, HashMap* src);
 
 // Insert or update — COPY semantics. val may be NULL for a set.
 // Returns 1 if key existed (updated), 0 if new key inserted.
-bool HashMap_put(HashMap* map, const void* key, const void* val) wc_nonull(1, 2);
+wc_nonull(1, 2) bool HashMap_put(HashMap* map, const void* key, const void* val);
 
 // Insert or update, MOVE semantics: key and val point at the caller's elements, both left zeroed
 // (a duplicate key is destroyed; the map keeps its own). val may be NULL for a set.
 // Returns 1 if key existed (updated), 0 if new key inserted.
-bool HashMap_put_move(HashMap* map, void* key, void* val) wc_nonull(1, 2);
+wc_nonull(1, 2) bool HashMap_put_move(HashMap* map, void* key, void* val);
 
 // Mixed: key copied, val moved.
-bool HashMap_put_val_move(HashMap* map, const void* key, void* val) wc_nonull(1, 2);
+wc_nonull(1, 2) bool HashMap_put_val_move(HashMap* map, const void* key, void* val);
 
 // Mixed: key moved, val copied.
-bool HashMap_put_key_move(HashMap* map, void* key, const void* val) wc_nonull(1, 2);
+wc_nonull(1, 2) bool HashMap_put_key_move(HashMap* map, void* key, const void* val);
 
 // Get value for key: deep COPY into val (the map keeps its own). Returns 1 if found.
 // For owning values prefer HashMap_get_ptr: no copy, no allocation.
-bool HashMap_get(const HashMap* map, const void* key, void* val) wc_nonull(1, 2, 3);
+wc_nodiscard wc_nonull(1, 2, 3) bool HashMap_get(const HashMap* map, const void* key, void* val);
 
 // Pointer to the stored value, or NULL if key is absent.
-const void* HashMap_get_ptr(const HashMap* map, const void* key) wc_nonull(1, 2);
+wc_nodiscard wc_nonull(1, 2) const void* HashMap_get_ptr(const HashMap* map, const void* key);
 
-wc_nodiscard wc_nonull(1, 2) static inline void* HashMap_get_ptr_mut(HashMap* map, const void* key)
+wc_nodiscard wc_nonull(1, 2) static wc_always_inline void* HashMap_get_ptr_mut(HashMap* map, const void* key)
 {
     return (void*)HashMap_get_ptr(map, key);
 }
@@ -995,47 +1050,47 @@ wc_nodiscard wc_nonull(1, 2) static inline void* HashMap_get_ptr_mut(HashMap* ma
 // Pointer to the stored KEY equal to `key`, or NULL. For a set this is the
 // element; for a map it is the canonical key (e.g. an interned String).
 // Never change the bytes the hash or compare reads through it.
-const void* HashMap_get_key_ptr(const HashMap* map, const void* key) wc_nonull(1, 2);
+wc_nodiscard wc_nonull(1, 2) const void* HashMap_get_key_ptr(const HashMap* map, const void* key);
 
 // Bucket iteration accessors
-wc_nodiscard wc_nonull(1) static inline u64 HashMap_bucket_count(const HashMap* map)
+wc_nodiscard wc_nonull(1) static wc_always_inline u64 HashMap_bucket_count(const HashMap* map)
 {
     return map->capacity;
 }
 
-bool                     HashMap_bucket_occupied(const HashMap* map, u64 i) wc_nonull(1);
-wc_nodiscard const void* HashMap_bucket_key_ptr(const HashMap* map, u64 i) wc_nonull(1);
-wc_nodiscard void*       HashMap_bucket_val_ptr(HashMap* map, u64 i) wc_nonull(1);
+wc_nodiscard wc_nonull(1) bool HashMap_bucket_occupied(const HashMap* map, u64 i);
+wc_nodiscard wc_nonull(1) const void* HashMap_bucket_key_ptr(const HashMap* map, u64 i);
+wc_nodiscard wc_nonull(1) void*       HashMap_bucket_val_ptr(HashMap* map, u64 i);
 
 // Delete key. out != NULL: the value is MOVED into it (caller owns it, B7).
 // out == NULL: the value is deleted. The key is always deleted.
 // Returns 1 if found and deleted, 0 if not found.
-bool HashMap_del(HashMap* map, const void* key, void* out) wc_nonull(1, 2);
+wc_nonull(1, 2) bool HashMap_del(HashMap* map, const void* key, void* out);
 
 // Check if key exists.
-bool HashMap_has(const HashMap* map, const void* key) wc_nonull(1, 2);
+wc_nodiscard wc_nonull(1, 2) bool HashMap_has(const HashMap* map, const void* key);
 
 // Print all key-value pairs. val_print may be NULL (sets print keys only).
-void HashMap_print(const HashMap* map, wc_print_fn key_print, wc_print_fn val_print) wc_nonull(1, 2);
+wc_nonull(1, 2) void HashMap_print(const HashMap* map, wc_print_fn key_print, wc_print_fn val_print);
 
 // Make room for n elements in total so that inserting up to n never resizes.
 // No-op if the table is already large enough. Never shrinks.
-void HashMap_reserve(HashMap* map, u64 n) wc_nonull(1);
+wc_nonull(1) void HashMap_reserve(HashMap* map, u64 n);
 
 // Remove all elements, keep capacity.
-void HashMap_clear(HashMap* map) wc_nonull(1);
+wc_nonull(1) void HashMap_clear(HashMap* map);
 
-wc_nodiscard wc_nonull(1) static inline u64 HashMap_size(const HashMap* map)
+wc_nodiscard wc_nonull(1) static wc_always_inline u64 HashMap_size(const HashMap* map)
 {
     return map->size;
 }
 
-wc_nodiscard wc_nonull(1) static inline u64 HashMap_capacity(const HashMap* map)
+wc_nodiscard wc_nonull(1) static wc_always_inline u64 HashMap_capacity(const HashMap* map)
 {
     return map->capacity;
 }
 
-wc_nonull(1) static inline bool HashMap_empty(const HashMap* map)
+wc_nodiscard wc_nonull(1) static wc_always_inline bool HashMap_empty(const HashMap* map)
 {
     return map->size == 0;
 }
@@ -1429,13 +1484,13 @@ typedef enum {
 */
 
 // align `x` up to a multiple of `a`
-static inline u64 map_align_up(u64 x, u64 a)
+static wc_always_inline u64 map_align_up(u64 x, u64 a)
 {
     return (x + (a - 1)) & ~(a - 1);
 }
 
 // get the max alignment for an entry consisting of key,val of size key_size,val_size
-static inline u64 map_align(u32 key_size, u32 val_size)
+static wc_always_inline u64 map_align(u32 key_size, u32 val_size)
 {
     u64 ka = wc_align_for_size(key_size); // safe alignment for key_size
     u64 va = wc_align_for_size(val_size); // safe alignment for va_szie
@@ -1456,7 +1511,7 @@ static inline u64 map_align(u32 key_size, u32 val_size)
 #define SWAP_VAL(map)  ((map)->scratch + KPAD(map) + VPAD(map) + KPAD(map))
 
 // total size for scratch area: 2 * (KPAD + VPAD)
-static inline u64 map_scratch_size(u32 key_size, u32 val_size)
+static wc_always_inline u64 map_scratch_size(u32 key_size, u32 val_size)
 {
     u64 al = map_align(key_size, val_size); // get max align for key/val size
     return 2 * (map_align_up(key_size, al) + map_align_up(val_size, al));
@@ -1466,7 +1521,7 @@ typedef struct {
     u64 vals, scratch, psls, total; // byte offsets from the block start, and its size
 } map_layout;
 
-static inline map_layout map_layout_for(u64 cap, u32 key_size, u32 val_size)
+static wc_always_inline map_layout map_layout_for(u64 cap, u32 key_size, u32 val_size)
 {
     u64        al = map_align(key_size, val_size); // get max align for key/val size
     map_layout l  = {0};
@@ -1500,7 +1555,7 @@ static void map_free_block(const HashMap* map, u8* block, u64 cap)
 
 // Move one element into `dest` (memcpy). `src` is left zeroed.
 // size 0 (a set's value): nothing to move, and src may be NULL.
-static inline void map_move_into(u8* dest, u8* src, u32 size)
+static wc_always_inline void map_move_into(u8* dest, u8* src, u32 size)
 {
     if (size == 0) {
         return;
@@ -1511,7 +1566,7 @@ static inline void map_move_into(u8* dest, u8* src, u32 size)
 
 // Copy one element into raw `dest`: copy_fn if any, else memcpy.
 // size 0 (a set's value): nothing to copy, and src may be NULL.
-static inline void map_copy_into(const HashMap* map, const wc_container_ops* ops, u32 size, u8* dest, const void* src)
+static wc_always_inline void map_copy_into(const HashMap* map, const wc_container_ops* ops, u32 size, u8* dest, const void* src)
 {
     if (size == 0) {
         return;
@@ -1524,7 +1579,7 @@ static inline void map_copy_into(const HashMap* map, const wc_container_ops* ops
 }
 
 // Delete one element in place (if it owns anything)
-static inline void map_delete_elm(const wc_container_ops* ops, u8* elm)
+static wc_always_inline void map_delete_elm(const wc_container_ops* ops, u8* elm)
 {
     if (ops && ops->del_fn) {
         ops->del_fn(elm);
@@ -1532,7 +1587,7 @@ static inline void map_delete_elm(const wc_container_ops* ops, u8* elm)
 }
 
 // Destroy an incoming duplicate the container will not keep, and zero it
-static inline void map_consume_dup(const wc_container_ops* ops, u32 size, u8* elm)
+static wc_always_inline void map_consume_dup(const wc_container_ops* ops, u32 size, u8* elm)
 {
     if (size == 0) {
         return;
@@ -1576,10 +1631,10 @@ static wc_always_inline bool map_key_eq(const HashMap* map, const u8* a, const u
 ====================PRIVATE DECLARATIONS====================
 */
 
-static u64         map_lookup(const HashMap* map, const u8* key, LOOKUP_RES* res, u8* out_psl);
-static void        map_insert(HashMap* map, u8* key, u8* val, u8 psl, u64 idx);
-static inline void map_maybe_resize(HashMap* map);
-static void        map_resize(HashMap* map, u64 new_capacity);
+static u64                   map_lookup(const HashMap* map, const u8* key, LOOKUP_RES* res, u8* out_psl);
+static void                  map_insert(HashMap* map, u8* key, u8* val, u8 psl, u64 idx);
+static wc_always_inline void map_maybe_resize(HashMap* map);
+static void                  map_resize(HashMap* map, u64 new_capacity);
 
 
 /*
@@ -1645,7 +1700,7 @@ void HashMap_move(HashMap* dest, HashMap* src)
 
 
 // Insert the staged key/val (already owned by the map) at the lookup result.
-static inline void map_commit(HashMap* map, u8 psl, u64 slot)
+static wc_always_inline void map_commit(HashMap* map, u8 psl, u64 slot)
 {
     map_insert(map, STAGE_KEY(map), STAGE_VAL(map), psl, slot);
     map_maybe_resize(map);
@@ -1994,10 +2049,10 @@ HashMap HashMap_copy(const wc_allocator* a, const HashMap* src)
 ====================PRIVATE FUNCTIONS====================
 */
 
-static inline void map_maybe_resize(HashMap* map)
+static wc_always_inline void map_maybe_resize(HashMap* map)
 {
     // integer multiply avoids float. equivalent to load > 0.75
-    if (map->size * 4 >= map->capacity * 3) {
+    if (wc_unlikely(map->size * 4 >= map->capacity * 3)) {
         map_resize(map, map->capacity * 2);
     }
 }
