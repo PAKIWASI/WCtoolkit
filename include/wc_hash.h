@@ -45,13 +45,13 @@ typedef u64 (*wc_hash_fn)(const void* key, u64 size);
  */
 
 // 64 x 64 -> 128 bit multiply. *a gets the low half, *b the high half.
-static wc_always_inline void wc_rapid_mum(u64* a, u64* b)
+static wc_always_inline void wc_rapid_mum(unsigned long long* a, unsigned long long* b)
 {
     wc_mum64(a, b);
 }
 
 // Multiply, then fold the 128-bit product to 64 bits.
-wc_nodiscard static wc_always_inline u64 wc_rapid_mix(u64 a, u64 b)
+wc_nodiscard static wc_always_inline u64 wc_rapid_mix(unsigned long long a, unsigned long long b)
 {
     wc_rapid_mum(&a, &b);
     return a ^ b;
@@ -81,11 +81,11 @@ wc_nodiscard static wc_always_inline u64 wc_rapid_read32(const u8* p)
 // path, where a 4 or 8 byte key costs two 128-bit multiplies.
 wc_nodiscard static wc_always_inline u64 wc_hash(const void* key, u64 len)
 {
-    const u8* p    = key;
-    u64       seed = WC_RAPID_SEED ^ wc_rapid_mix(WC_RAPID_SEED ^ WC_RAPID_S2, WC_RAPID_S1);
-    u64       a    = 0;
-    u64       b    = 0;
-    u64       i    = len;
+    const u8*          p    = key;
+    u64                seed = WC_RAPID_SEED ^ wc_rapid_mix(WC_RAPID_SEED ^ WC_RAPID_S2, WC_RAPID_S1);
+    unsigned long long a    = 0;
+    unsigned long long b    = 0;
+    u64                i    = len;
 
     if (wc_likely(len <= 16)) {
         if (len >= 4) {
