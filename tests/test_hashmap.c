@@ -5,7 +5,7 @@
 #include "random.h"
 #include "utest.h"
 #include "wc_allocator.h"
-#include "wc_helpers.h"
+#include "wc_hash.h"
 #include "wc_macros.h"
 #include "wc_string.h"
 
@@ -28,7 +28,7 @@ static HashMap int_str_map(void)
 
 static HashMap str_str_map(void)
 {
-    return HashMap_create(WC_LIBC, sizeof(String), sizeof(String), wc_hash_str, str_cmp, &wc_str_ops, &wc_str_ops);
+    return HashMap_create(WC_LIBC, sizeof(String), sizeof(String), wc_str_hash, wc_str_cmp, &wc_str_ops, &wc_str_ops);
 }
 
 

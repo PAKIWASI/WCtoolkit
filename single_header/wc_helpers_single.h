@@ -755,6 +755,7 @@ static inline void wc_perror(const char* prefix)
 
 
 
+
 /*          TLDR
  * GenVec is a value-based generic vector.
  * Elements are stored inline and managed via user-supplied
@@ -988,6 +989,7 @@ wc_nonull(1) static inline bool GenVec_empty(const GenVec* vec)
 #define WC_HASH_H
 
 
+
 #include <string.h>
 
 
@@ -1124,6 +1126,7 @@ static wc_always_inline u64 wc_hash(const void* key, u64 len)
 #line 1 "include/wc_string.h"
 #ifndef STRING_H
 #define STRING_H
+
 
 
 
@@ -1844,6 +1847,7 @@ void wc_warn_report(const char* file, int line, const char* func, const char* fm
 
 
 
+
 #include <stdio.h>
 #include <string.h>
 
@@ -2436,6 +2440,7 @@ static void GenVec_grow_to(GenVec* vec, u64 needed)
 #define WC_WC_STRING_IMPL
 /* ===== wc_string.c ===== */
 #line 1 "src/wc_string.c"
+
 
 
 

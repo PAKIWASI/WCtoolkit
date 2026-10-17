@@ -6,7 +6,6 @@
 #include "wc_string.h"
 #include "wc_test_allocator.h"
 
-#include <stdlib.h>
 #include <string.h>
 
 
@@ -184,63 +183,6 @@ UTEST(views, starts_ends_contains)
     EXPECT_TRUE(StrView_contains(sv, StrView_over_cstr("", 0)));
     EXPECT_FALSE(StrView_contains(sv, StrView_over_cstr("xyz", 3)));
 }
-
-
-// Parse: whole view, digits only, target-type range
-
-UTEST(views, parse_u8_u16)
-{
-    u8 v8 = 0;
-    EXPECT_TRUE(StrView_parse_u8(StrView_over_cstr("255", 3), &v8));
-    EXPECT_EQ(v8, 255u);
-    EXPECT_TRUE(StrView_parse_u8(StrView_over_cstr("0", 1), &v8));
-    EXPECT_EQ(v8, 0u);
-    EXPECT_TRUE(StrView_parse_u8(StrView_over_cstr("007", 3), &v8)); // leading zeros allowed
-    EXPECT_EQ(v8, 7u);
-    EXPECT_FALSE(StrView_parse_u8(StrView_over_cstr("256", 3), &v8)); // overflow
-
-    u16 v16 = 0;
-    EXPECT_TRUE(StrView_parse_u16(StrView_over_cstr("65535", 5), &v16));
-    EXPECT_EQ(v16, 65535u);
-    EXPECT_FALSE(StrView_parse_u16(StrView_over_cstr("65536", 5), &v16));
-}
-
-UTEST(views, parse_u32_u64)
-{
-    u32 v32 = 0;
-    EXPECT_TRUE(StrView_parse_u32(StrView_over_cstr("4294967295", 10), &v32));
-    EXPECT_EQ(v32, 4294967295u);
-    EXPECT_FALSE(StrView_parse_u32(StrView_over_cstr("4294967296", 10), &v32));
-
-    u64 v64 = 0;
-    EXPECT_TRUE(StrView_parse_u64(StrView_over_cstr("18446744073709551615", 20), &v64));
-    EXPECT_EQ(v64, UINT64_MAX); // no wraparound at the top
-    EXPECT_FALSE(StrView_parse_u64(StrView_over_cstr("18446744073709551616", 20), &v64));
-}
-
-UTEST(views, parse_rejects_junk_keeps_out)
-{
-    u64 v = 0xABCDEF;
-
-    EXPECT_FALSE(StrView_parse_u64(StrView_over_cstr("", 0), &v)); // empty view
-    EXPECT_FALSE(StrView_parse_u64(StrView_over_cstr(" ", 1), &v));     // whitespace is not trimmed
-    EXPECT_FALSE(StrView_parse_u64(StrView_over_cstr(" 12", 3), &v));   // leading space
-    EXPECT_FALSE(StrView_parse_u64(StrView_over_cstr("12 ", 3), &v));   // trailing space
-    EXPECT_FALSE(StrView_parse_u64(StrView_over_cstr("+12", 3), &v));   // no sign
-    EXPECT_FALSE(StrView_parse_u64(StrView_over_cstr("-1", 2), &v));    // no sign
-    EXPECT_FALSE(StrView_parse_u64(StrView_over_cstr("12a", 3), &v));   // trailing junk
-    EXPECT_FALSE(StrView_parse_u64(StrView_over_cstr("a12", 3), &v));   // leading junk
-    EXPECT_FALSE(StrView_parse_u64(StrView_over_cstr("1.5", 3), &v));   // no float
-    EXPECT_FALSE(StrView_parse_u64(StrView_over_cstr("0x10", 4), &v));  // no base prefix
-    EXPECT_FALSE(StrView_parse_u64(StrView_over_cstr("1_2", 3), &v));   // separators
-    EXPECT_EQ(v, 0xABCDEFu); // *out untouched on every failure
-
-    // an invalid view (zero state) parses as false without dereferencing
-    StrView invalid = {0};
-    EXPECT_FALSE(StrView_parse_u64(invalid, &v));
-    EXPECT_EQ(v, 0xABCDEFu);
-}
-
 
 // Conversion
 

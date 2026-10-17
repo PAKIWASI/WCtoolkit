@@ -70,15 +70,15 @@ static inline void* carena_alloc(void* ctx, size_t size, size_t align)
 static const wc_alloc_vtable carena_vtable = {.alloc = carena_alloc, .realloc = NULL, .free = NULL};
 
 
-void ChainArena_create(ChainArena* ca, const wc_allocator* backing, u64 normal_cap)
+void ChainArena_create(ChainArena* ca, const wc_allocator* alloc, u64 block_size)
 {
     ca->big   = NULL;
-    ca->alloc = backing;
+    ca->alloc = alloc;
     // `self` has to be built here, in place, because its ctx is this arena's own address.
     ca->self = (wc_allocator){.vt = &carena_vtable, .ctx = ca};
     // need to set allocator before calling this
-    ca->normal = new_node(ca, normal_cap);
-    FATAL_IF(!ca->normal, "first node allocation failed (cap %lu)", normal_cap);
+    ca->normal = new_node(ca, block_size);
+    FATAL_IF(!ca->normal, "first node allocation failed (cap %lu)", block_size);
 }
 
 void ChainArena_destroy(ChainArena* ca)

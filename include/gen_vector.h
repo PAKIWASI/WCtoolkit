@@ -4,6 +4,8 @@
 #include "common.h"
 #include "wc_allocator.h"
 #include "wc_comp.h"
+#include <stdalign.h>
+#include <stdio.h>
 
 /*          TLDR
  * GenVec is a value-based generic vector.
@@ -227,6 +229,71 @@ wc_nonull(1) static inline bool GenVec_empty(const GenVec* vec)
 {
     return vec->size == 0;
 }
+
+
+// Helpers
+
+
+/*
+ * 3.  GENVEC BY VALUE  (vec of vecs)
+*/
+
+static inline void vec_copy(const wc_allocator* dst, void* dest, const void* src)
+{
+    *(GenVec*)dest = GenVec_copy(dst, (const GenVec*)src); // inner vec follows the outer container
+}
+
+static inline void vec_del(void* elm)
+{
+    GenVec_destroy((GenVec*)elm); // frees data with the inner vec's own allocator, NOT the slot
+}
+
+static inline void vec_print_int(const void* elm)
+{
+    const GenVec* v = (const GenVec*)elm;
+    printf("[");
+    for (u64 i = 0; i < v->size; i++) {
+        printf("%d", *(int*)GenVec_get_ptr(v, i));
+        if (i + 1 < v->size) {
+            printf(", ");
+        }
+    }
+    printf("]");
+}
+
+
+/*
+ * 4.  GENVEC BY POINTER  (slot holds GenVec*)
+*/
+
+static inline void vec_copy_ptr(const wc_allocator* dst, void* dest, const void* src)
+{
+    // shell and contents both from dst: the shell allocator equals the child's (D6)
+    *(GenVec**)dest = WC_BOX(dst, GenVec, GenVec_copy, *(const GenVec* const*)src);
+}
+
+static inline void vec_del_ptr(void* elm)
+{
+    GenVec* v = *(GenVec**)elm;
+    if (!v) {
+        return;
+    }
+    const wc_allocator* a = v->alloc; // read before destroy zeroes it
+    GenVec_destroy(v);
+    wc_free(a, v, sizeof(GenVec), alignof(GenVec));
+}
+
+static inline void vec_print_int_ptr(const void* elm)
+{
+    vec_print_int(*(const GenVec**)elm);
+}
+
+
+// SHARED OPS INSTANCES
+
+static const wc_container_ops wc_vec_ops     = {.copy_fn = vec_copy, .del_fn = vec_del};
+static const wc_container_ops wc_vec_ptr_ops = {.copy_fn = vec_copy_ptr, .del_fn = vec_del_ptr};
+
 
 
 

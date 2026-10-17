@@ -3,7 +3,6 @@
 #include "hashmap.h"
 #include "utest.h"
 #include "wc_allocator.h"
-#include "wc_helpers.h"
 #include "wc_macros.h"
 #include "wc_string.h"
 #include <stdalign.h>
@@ -466,7 +465,7 @@ UTEST(ops, map_int_vec_copy_independence)
 
 UTEST(ops, map_str_str_macro)
 {
-    HashMap m = HashMap_create(WC_LIBC, sizeof(String), sizeof(String), wc_hash_str, str_cmp, &wc_str_ops, &wc_str_ops);
+    HashMap m = HashMap_create(WC_LIBC, sizeof(String), sizeof(String), wc_str_hash, wc_str_cmp, &wc_str_ops, &wc_str_ops);
 
     MAP_PUT_STR_STR(&m, "name", "Alice");
     MAP_PUT_STR_STR(&m, "city", "Cairo");

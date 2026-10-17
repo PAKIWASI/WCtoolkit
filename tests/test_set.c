@@ -1,13 +1,12 @@
 #include "arena.h"
 #include "common.h"
+#include "hashmap.h"
 #include "utest.h"
 #include "wc_allocator.h"
-#include "wc_helpers.h"
 #include "wc_macros.h"
 #include "wc_string.h"
 
 #include <stdio.h>
-#include <string.h>
 
 
 /* ── Set constructors ────────────────────────────────────────────────────── */
@@ -19,7 +18,7 @@ static HashMap int_set(void)
 
 static HashMap str_set(void)
 {
-    return HashMap_create(WC_LIBC, sizeof(String), 0, wc_hash_str, str_cmp, &wc_str_ops, NULL);
+    return HashMap_create(WC_LIBC, sizeof(String), 0, wc_str_hash, wc_str_cmp, &wc_str_ops, NULL);
 }
 
 
@@ -581,7 +580,7 @@ UTEST(set, str_clear_then_reuse)
 
 UTEST(set, insert_move_nulls_src)
 {
-    HashMap s       = HashMap_create(WC_LIBC, sizeof(String), 0, wc_hash_str, str_cmp, &wc_str_ops, NULL);
+    HashMap s       = HashMap_create(WC_LIBC, sizeof(String), 0, wc_str_hash, wc_str_cmp, &wc_str_ops, NULL);
     String  el      = String_from_cstr(WC_LIBC, "owned");
     bool      existed = HashMap_put_key_move(&s, &el, NULL);
     String_destroy(&el); // moved-from: zeroed, safe destroy
@@ -596,7 +595,7 @@ UTEST(set, insert_move_nulls_src)
 
 UTEST(set, insert_move_duplicate_frees_incoming)
 {
-    HashMap s = HashMap_create(WC_LIBC, sizeof(String), 0, wc_hash_str, str_cmp, &wc_str_ops, NULL);
+    HashMap s = HashMap_create(WC_LIBC, sizeof(String), 0, wc_str_hash, wc_str_cmp, &wc_str_ops, NULL);
     SET_INSERT_CSTR(&s, "dup");
 
     String el      = String_from_cstr(WC_LIBC, "dup");
@@ -613,7 +612,7 @@ UTEST(set, insert_move_duplicate_frees_incoming)
 
 UTEST(set, copy_str_set_deep)
 {
-    HashMap src = HashMap_create(WC_LIBC, sizeof(String), 0, wc_hash_str, str_cmp, &wc_str_ops, NULL);
+    HashMap src = HashMap_create(WC_LIBC, sizeof(String), 0, wc_str_hash, wc_str_cmp, &wc_str_ops, NULL);
     SET_INSERT_CSTR(&src, "alpha");
     SET_INSERT_CSTR(&src, "beta");
 

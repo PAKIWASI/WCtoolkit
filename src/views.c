@@ -1,10 +1,11 @@
 #include "views.h"
+#include "chain_arena.h"
 #include "common.h"
+#include "hashmap.h"
 #include "wc_allocator.h"
 #include "wc_string.h"
 
 #include <stdalign.h>
-#include <stdint.h>
 #include <string.h>
 
 
@@ -138,66 +139,6 @@ bool StrView_contains(StrView sv, StrView n)
 }
 
 
-// parse
-
-// FIX: slow as fuck
-//
-// Shared decimal parser: whole view must be digits, value must be <= max
-static bool parse_uint_max(StrView sv, u64 max, u64* out)
-{
-    if (sv.len == 0) {
-        return false;
-    }
-    u64 v = 0;
-    for (u64 i = 0; i < sv.len; i++) {
-        u32 d = (u32)(sv.data[i] - '0'); // wraps to >9 for non-digits
-        if (d > 9) {
-            return false;
-        }
-        if (v > (max - d) / 10) { // v * 10 + d would exceed max
-            return false;
-        }
-        v = (v * 10) + d;
-    }
-    *out = v;
-    return true;
-}
-
-bool StrView_parse_u8(StrView sv, u8* out)
-{
-    u64 v;
-    if (!parse_uint_max(sv, UINT8_MAX, &v)) {
-        return false;
-    }
-    *out = (u8)v;
-    return true;
-}
-
-bool StrView_parse_u16(StrView sv, u16* out)
-{
-    u64 v;
-    if (!parse_uint_max(sv, UINT16_MAX, &v)) {
-        return false;
-    }
-    *out = (u16)v;
-    return true;
-}
-
-bool StrView_parse_u32(StrView sv, u32* out)
-{
-    u64 v;
-    if (!parse_uint_max(sv, UINT32_MAX, &v)) {
-        return false;
-    }
-    *out = (u32)v;
-    return true;
-}
-
-bool StrView_parse_u64(StrView sv, u64* out)
-{
-    return parse_uint_max(sv, UINT64_MAX, out);
-}
-
 // consumption
 
 StrView StrView_take_left(StrView* sv, u64 n)
@@ -220,4 +161,36 @@ StrView StrView_take_right(StrView* sv, u64 n)
     sv->len -= n;
     return tail;
 }
+
+
+// String Store
+
+void StringStore_create(StringStore* ss, const wc_allocator* alloc, u64 block_size, bool intern)
+{
+    ChainArena_create(&ss->store, alloc, block_size);
+    if (intern) {
+        ss->interning_active = true;
+        // create a set of StrViews
+        // StrViews are non-owning: no ops required
+        ss->interned = HashMap_create(alloc, sizeof(StrView), 0, NULL, wc_strview_cmp, NULL, NULL);
+    }
+}
+
+void StringStore_destroy(StringStore* ss)
+{
+    if (ss->interning_active) {
+        HashMap_destroy(&ss->interned);
+    }
+    ChainArena_destroy(&ss->store);
+}
+
+StrView StringStore_str(StringStore* ss, const String* s)
+{
+    // store the String contents, add NUL
+    char* data = ChainArena_alloc(&ss->store, s->size + 1);
+    memcpy(data, String_data_ptr(s), s->size);
+    data[s->size] = 0;
+    return (StrView){.data = data, .len = s->size };
+}
+
 

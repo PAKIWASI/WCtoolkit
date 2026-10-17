@@ -79,9 +79,6 @@
 
 #define WC_MAX_ALIGN alignof(max_align_t)
 
-// TODO: maybe we shouldn't implicitly default to libc. if no valid allocator is provided, we should fail
-// update docs
-
 /*
  * ALLOCATOR API
  *
@@ -168,8 +165,7 @@ static inline wc_nonull(1) void wc_free(const wc_allocator* a, void* p, size_t n
     }
 }
 
-static inline wc_nonull(1) void* wc_realloc(const wc_allocator* a, void* p, size_t old_n, size_t n,
-                                                           size_t align)
+static inline wc_nonull(1) void* wc_realloc(const wc_allocator* a, void* p, size_t old_n, size_t n, size_t align)
 {
     WC_ALLOC_ASSERT_ALIGN(align);
     if (!p) {
@@ -231,15 +227,11 @@ static inline size_t wc_align_for_size(size_t elm_size)
 
 #define WC_NEW(a, T)      ((T*)wc_alloc((a), sizeof(T), alignof(T)))
 #define WC_NEW_N(a, T, n) ((T*)wc_alloc((a), wc_mul((n), sizeof(T)), alignof(T)))
-#define WC_REALLOC_N(a, p, old_n, n) \
-    ((wc_typeof(p))wc_realloc((a), (p), wc_mul((old_n), sizeof(*(p))), wc_mul((n), sizeof(*(p))), alignof(wc_typeof(*(p)))))
+#define WC_REALLOC_N(a, p, old_n, n)                                                              \
+    ((wc_typeof(p))wc_realloc((a), (p), wc_mul((old_n), sizeof(*(p))), wc_mul((n), sizeof(*(p))), \
+                              alignof(wc_typeof(*(p)))))
 #define WC_FREE(a, p)      (wc_free((a), (p), sizeof(*(p)), alignof(wc_typeof(*(p)))))
 #define WC_FREE_N(a, p, n) (wc_free((a), (p), wc_mul((n), sizeof(*(p))), alignof(wc_typeof(*(p)))))
-
-// BUG: shadowing?
-// #define wc_alloc(a, size) (wc_alloc(a, size, WC_MAX_ALIGN))
-// #define wc_realloc(a, p, old_n, new_n) (wc_realloc(a, p, old_n, new_n, WC_MAX_ALIGN))
-// #define wc_free(a, p, n) (wc_free(a, p, n, WC_MAX_ALIGN))
 
 #endif // WC_ALLOCATOR_H
 
@@ -322,8 +314,8 @@ static inline size_t wc_align_for_size(size_t elm_size)
  */
 
 
-wc_cold wc_noinline wc_noreturn wc_format(printf, 4, 5) void
-wc_fatal_report(const char* file, int line, const char* func, const char* fmt, ...);
+wc_cold wc_noinline wc_noreturn wc_format(printf, 4, 5) void wc_fatal_report(const char* file, int line,
+                                                                             const char* func, const char* fmt, ...);
 
 // TODO:
 /* Fatal handler. Every FATAL / FATAL_IF formats its message and calls the
@@ -787,7 +779,7 @@ typedef struct {
 } ChainArena;
 
 // Initialises `ca` in place, it must not be moved or copied afterwards.
-void ChainArena_create(ChainArena* ca, const wc_allocator* backing, u64 normal_cap) wc_nonull(1, 2);
+void ChainArena_create(ChainArena* ca, const wc_allocator* alloc, u64 block_size) wc_nonull(1, 2);
 
 // Gives every block back to the backing allocator and zeroes the arena. Safe on a zeroed
 // arena and safe to call twice.
@@ -849,6 +841,7 @@ void ChainArenaScratch_to_mark(ChainArenaScratch scratch);
 #define WC_WC_ALLOCATOR_IMPL
 /* ===== wc_allocator.c ===== */
 #line 1 "src/wc_allocator.c"
+
 
 #include <stddef.h>
 #include <stdint.h>
@@ -1207,15 +1200,15 @@ static inline void* carena_alloc(void* ctx, size_t size, size_t align)
 static const wc_alloc_vtable carena_vtable = {.alloc = carena_alloc, .realloc = NULL, .free = NULL};
 
 
-void ChainArena_create(ChainArena* ca, const wc_allocator* backing, u64 normal_cap)
+void ChainArena_create(ChainArena* ca, const wc_allocator* alloc, u64 block_size)
 {
     ca->big   = NULL;
-    ca->alloc = backing;
+    ca->alloc = alloc;
     // `self` has to be built here, in place, because its ctx is this arena's own address.
     ca->self = (wc_allocator){.vt = &carena_vtable, .ctx = ca};
     // need to set allocator before calling this
-    ca->normal = new_node(ca, normal_cap);
-    FATAL_IF(!ca->normal, "first node allocation failed (cap %lu)", normal_cap);
+    ca->normal = new_node(ca, block_size);
+    FATAL_IF(!ca->normal, "first node allocation failed (cap %lu)", block_size);
 }
 
 void ChainArena_destroy(ChainArena* ca)

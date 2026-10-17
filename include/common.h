@@ -75,8 +75,8 @@
  */
 #include "wc_comp.h"
 
-wc_cold wc_noinline wc_noreturn wc_format(printf, 4, 5) void
-wc_fatal_report(const char* file, int line, const char* func, const char* fmt, ...);
+wc_cold wc_noinline wc_noreturn wc_format(printf, 4, 5) void wc_fatal_report(const char* file, int line,
+                                                                             const char* func, const char* fmt, ...);
 
 // TODO:
 /* Fatal handler. Every FATAL / FATAL_IF formats its message and calls the

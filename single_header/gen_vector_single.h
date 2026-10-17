@@ -79,9 +79,6 @@
 
 #define WC_MAX_ALIGN alignof(max_align_t)
 
-// TODO: maybe we shouldn't implicitly default to libc. if no valid allocator is provided, we should fail
-// update docs
-
 /*
  * ALLOCATOR API
  *
@@ -168,8 +165,7 @@ static inline wc_nonull(1) void wc_free(const wc_allocator* a, void* p, size_t n
     }
 }
 
-static inline wc_nonull(1) void* wc_realloc(const wc_allocator* a, void* p, size_t old_n, size_t n,
-                                                           size_t align)
+static inline wc_nonull(1) void* wc_realloc(const wc_allocator* a, void* p, size_t old_n, size_t n, size_t align)
 {
     WC_ALLOC_ASSERT_ALIGN(align);
     if (!p) {
@@ -231,15 +227,11 @@ static inline size_t wc_align_for_size(size_t elm_size)
 
 #define WC_NEW(a, T)      ((T*)wc_alloc((a), sizeof(T), alignof(T)))
 #define WC_NEW_N(a, T, n) ((T*)wc_alloc((a), wc_mul((n), sizeof(T)), alignof(T)))
-#define WC_REALLOC_N(a, p, old_n, n) \
-    ((wc_typeof(p))wc_realloc((a), (p), wc_mul((old_n), sizeof(*(p))), wc_mul((n), sizeof(*(p))), alignof(wc_typeof(*(p)))))
+#define WC_REALLOC_N(a, p, old_n, n)                                                              \
+    ((wc_typeof(p))wc_realloc((a), (p), wc_mul((old_n), sizeof(*(p))), wc_mul((n), sizeof(*(p))), \
+                              alignof(wc_typeof(*(p)))))
 #define WC_FREE(a, p)      (wc_free((a), (p), sizeof(*(p)), alignof(wc_typeof(*(p)))))
 #define WC_FREE_N(a, p, n) (wc_free((a), (p), wc_mul((n), sizeof(*(p))), alignof(wc_typeof(*(p)))))
-
-// BUG: shadowing?
-// #define wc_alloc(a, size) (wc_alloc(a, size, WC_MAX_ALIGN))
-// #define wc_realloc(a, p, old_n, new_n) (wc_realloc(a, p, old_n, new_n, WC_MAX_ALIGN))
-// #define wc_free(a, p, n) (wc_free(a, p, n, WC_MAX_ALIGN))
 
 #endif // WC_ALLOCATOR_H
 
@@ -322,8 +314,8 @@ static inline size_t wc_align_for_size(size_t elm_size)
  */
 
 
-wc_cold wc_noinline wc_noreturn wc_format(printf, 4, 5) void
-wc_fatal_report(const char* file, int line, const char* func, const char* fmt, ...);
+wc_cold wc_noinline wc_noreturn wc_format(printf, 4, 5) void wc_fatal_report(const char* file, int line,
+                                                                             const char* func, const char* fmt, ...);
 
 // TODO:
 /* Fatal handler. Every FATAL / FATAL_IF formats its message and calls the
@@ -755,6 +747,9 @@ static inline void wc_perror(const char* prefix)
 
 
 
+#include <stdalign.h>
+#include <stdio.h>
+
 /*          TLDR
  * GenVec is a value-based generic vector.
  * Elements are stored inline and managed via user-supplied
@@ -979,6 +974,71 @@ wc_nonull(1) static inline bool GenVec_empty(const GenVec* vec)
 }
 
 
+// Helpers
+
+
+/*
+ * 3.  GENVEC BY VALUE  (vec of vecs)
+*/
+
+static inline void vec_copy(const wc_allocator* dst, void* dest, const void* src)
+{
+    *(GenVec*)dest = GenVec_copy(dst, (const GenVec*)src); // inner vec follows the outer container
+}
+
+static inline void vec_del(void* elm)
+{
+    GenVec_destroy((GenVec*)elm); // frees data with the inner vec's own allocator, NOT the slot
+}
+
+static inline void vec_print_int(const void* elm)
+{
+    const GenVec* v = (const GenVec*)elm;
+    printf("[");
+    for (u64 i = 0; i < v->size; i++) {
+        printf("%d", *(int*)GenVec_get_ptr(v, i));
+        if (i + 1 < v->size) {
+            printf(", ");
+        }
+    }
+    printf("]");
+}
+
+
+/*
+ * 4.  GENVEC BY POINTER  (slot holds GenVec*)
+*/
+
+static inline void vec_copy_ptr(const wc_allocator* dst, void* dest, const void* src)
+{
+    // shell and contents both from dst: the shell allocator equals the child's (D6)
+    *(GenVec**)dest = WC_BOX(dst, GenVec, GenVec_copy, *(const GenVec* const*)src);
+}
+
+static inline void vec_del_ptr(void* elm)
+{
+    GenVec* v = *(GenVec**)elm;
+    if (!v) {
+        return;
+    }
+    const wc_allocator* a = v->alloc; // read before destroy zeroes it
+    GenVec_destroy(v);
+    wc_free(a, v, sizeof(GenVec), alignof(GenVec));
+}
+
+static inline void vec_print_int_ptr(const void* elm)
+{
+    vec_print_int(*(const GenVec**)elm);
+}
+
+
+// SHARED OPS INSTANCES
+
+static const wc_container_ops wc_vec_ops     = {.copy_fn = vec_copy, .del_fn = vec_del};
+static const wc_container_ops wc_vec_ptr_ops = {.copy_fn = vec_copy_ptr, .del_fn = vec_del_ptr};
+
+
+
 
 #endif // GEN_VECTOR_H
 
@@ -988,6 +1048,7 @@ wc_nonull(1) static inline bool GenVec_empty(const GenVec* vec)
 #define WC_WC_ALLOCATOR_IMPL
 /* ===== wc_allocator.c ===== */
 #line 1 "src/wc_allocator.c"
+
 
 #include <stddef.h>
 #include <stdint.h>
@@ -1274,6 +1335,7 @@ void wc_warn_report(const char* file, int line, const char* func, const char* fm
 #define WC_GEN_VECTOR_IMPL
 /* ===== gen_vector.c ===== */
 #line 1 "src/gen_vector.c"
+
 
 
 

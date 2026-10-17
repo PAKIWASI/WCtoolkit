@@ -86,15 +86,7 @@ bool             StrView_starts_with(StrView sv, StrView pfx);
 bool             StrView_ends_with(StrView sv, StrView sfx);
 bool             StrView_contains(StrView sv, StrView n);
 
-// parse
 
-// Parse an unsigned decimal integer from the WHOLE view: digits only, at least one, leading zeros allowed.
-// No sign, no whitespace, no base prefix. Returns false on empty input, any other character, or overflow
-// of the target type. `*out` is only written on success.
-wc_nodiscard wc_nonull(2) bool StrView_parse_u8(StrView sv, u8* out);
-wc_nodiscard wc_nonull(2) bool StrView_parse_u16(StrView sv, u16* out);
-wc_nodiscard wc_nonull(2) bool StrView_parse_u32(StrView sv, u32* out);
-wc_nodiscard wc_nonull(2) bool StrView_parse_u64(StrView sv, u64* out);
 
 // consumption: take n bytes from a view and shorten it (from the left or the right)
 
@@ -151,28 +143,39 @@ wc_nonull(2) static inline bool StrView_equals_cstr(StrView sv, const char* cstr
     return StrView_equals(sv, StrView_over_cstr(cstr, strlen(cstr)));
 }
 
+static inline int wc_strview_cmp(const void* a, const void* b, u64 size)
+{
+    (void)size;
+    return StrView_compare(*(StrView*)a, *(StrView*)b);
+}
+
+static inline u64 wc_strview_hash(const void* elm, u64 size)
+{
+
+}
+
 
 // TODO: do this
 
 // A stringstore is a chain arena that provides immutable string storage and operations on them,
 // filepath storage and operations etc. it gives out StrViews, optional String wrappers for read, find operations.
-// all strings in the store are null terminated
+// NOTE: All ORIGINAL StrViews from the store are NUL-terminated. However, if you trim/consume from the end, then that's not gonna hold
 typedef struct {
     ChainArena store;
-    HashMap*   interned;         // StrView -> {} (a set)
+    HashMap    interned;         // StrView -> {} (a set)
     bool       interning_active; // optional
     // probe the interned set: return the existing view if found, else alloc + insert. A deduped store must be append-only
     // This makes interning O(1) amortized and idempotent, repeated StringStore_store_cstr(&ss, "x") return the same view every time
 } StringStore;
 
-wc_nonull(1, 2) void StringStore_create(StringStore* ss, const wc_allocator* backing, u64 block_cap, bool intern);
+wc_nonull(1, 2) void StringStore_create(StringStore* ss, const wc_allocator* alloc, u64 block_size, bool intern);
 wc_nonull(1) void StringStore_destroy(StringStore* ss);
 
 // Copy bytes into the store; return a view. NUL-terminate too (1 extra byte),
 // so sv.data works as a C string, makes StringStore a drop-in for argv-style APIs.
-wc_nodiscard wc_nonull(1, 2) StrView StringStore_store(StringStore* ss, const String* s);
-wc_nodiscard wc_nonull(1, 2) StrView StringStore_store_cstr(StringStore* ss, const char* cstr);
-wc_nodiscard wc_nonull(1) StrView StringStore_store_sv(StringStore* ss, StrView sv);
+wc_nodiscard wc_nonull(1, 2) StrView StringStore_str(StringStore* ss, const String* s);
+wc_nodiscard wc_nonull(1, 2) StrView StringStore_cstr(StringStore* ss, const char* cstr);
+wc_nodiscard wc_nonull(1) StrView StringStore_sv(StringStore* ss, StrView sv);
 
 
 

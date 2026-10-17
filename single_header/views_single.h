@@ -79,9 +79,6 @@
 
 #define WC_MAX_ALIGN alignof(max_align_t)
 
-// TODO: maybe we shouldn't implicitly default to libc. if no valid allocator is provided, we should fail
-// update docs
-
 /*
  * ALLOCATOR API
  *
@@ -168,8 +165,7 @@ static inline wc_nonull(1) void wc_free(const wc_allocator* a, void* p, size_t n
     }
 }
 
-static inline wc_nonull(1) void* wc_realloc(const wc_allocator* a, void* p, size_t old_n, size_t n,
-                                                           size_t align)
+static inline wc_nonull(1) void* wc_realloc(const wc_allocator* a, void* p, size_t old_n, size_t n, size_t align)
 {
     WC_ALLOC_ASSERT_ALIGN(align);
     if (!p) {
@@ -231,15 +227,11 @@ static inline size_t wc_align_for_size(size_t elm_size)
 
 #define WC_NEW(a, T)      ((T*)wc_alloc((a), sizeof(T), alignof(T)))
 #define WC_NEW_N(a, T, n) ((T*)wc_alloc((a), wc_mul((n), sizeof(T)), alignof(T)))
-#define WC_REALLOC_N(a, p, old_n, n) \
-    ((wc_typeof(p))wc_realloc((a), (p), wc_mul((old_n), sizeof(*(p))), wc_mul((n), sizeof(*(p))), alignof(wc_typeof(*(p)))))
+#define WC_REALLOC_N(a, p, old_n, n)                                                              \
+    ((wc_typeof(p))wc_realloc((a), (p), wc_mul((old_n), sizeof(*(p))), wc_mul((n), sizeof(*(p))), \
+                              alignof(wc_typeof(*(p)))))
 #define WC_FREE(a, p)      (wc_free((a), (p), sizeof(*(p)), alignof(wc_typeof(*(p)))))
 #define WC_FREE_N(a, p, n) (wc_free((a), (p), wc_mul((n), sizeof(*(p))), alignof(wc_typeof(*(p)))))
-
-// BUG: shadowing?
-// #define wc_alloc(a, size) (wc_alloc(a, size, WC_MAX_ALIGN))
-// #define wc_realloc(a, p, old_n, new_n) (wc_realloc(a, p, old_n, new_n, WC_MAX_ALIGN))
-// #define wc_free(a, p, n) (wc_free(a, p, n, WC_MAX_ALIGN))
 
 #endif // WC_ALLOCATOR_H
 
@@ -322,8 +314,8 @@ static inline size_t wc_align_for_size(size_t elm_size)
  */
 
 
-wc_cold wc_noinline wc_noreturn wc_format(printf, 4, 5) void
-wc_fatal_report(const char* file, int line, const char* func, const char* fmt, ...);
+wc_cold wc_noinline wc_noreturn wc_format(printf, 4, 5) void wc_fatal_report(const char* file, int line,
+                                                                             const char* func, const char* fmt, ...);
 
 // TODO:
 /* Fatal handler. Every FATAL / FATAL_IF formats its message and calls the
@@ -787,7 +779,7 @@ typedef struct {
 } ChainArena;
 
 // Initialises `ca` in place, it must not be moved or copied afterwards.
-void ChainArena_create(ChainArena* ca, const wc_allocator* backing, u64 normal_cap) wc_nonull(1, 2);
+void ChainArena_create(ChainArena* ca, const wc_allocator* alloc, u64 block_size) wc_nonull(1, 2);
 
 // Gives every block back to the backing allocator and zeroes the arena. Safe on a zeroed
 // arena and safe to call twice.
@@ -847,6 +839,8 @@ void ChainArenaScratch_to_mark(ChainArenaScratch scratch);
 #line 1 "include/wc_hash.h"
 #ifndef WC_HASH_H
 #define WC_HASH_H
+
+
 
 
 #include <string.h>
@@ -985,6 +979,7 @@ static wc_always_inline u64 wc_hash(const void* key, u64 len)
 #line 1 "include/hashmap.h"
 #ifndef HASHMAP_H
 #define HASHMAP_H
+
 
 
 
@@ -1202,6 +1197,9 @@ Both patterns are valid. String_borrow is fine for occasional lookups; StrView +
 
 
 
+
+
+#include <stdalign.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -1408,6 +1406,102 @@ wc_nodiscard wc_nonull(1) static inline const char* String_cstr_view(String* str
 }
 
 
+// Helpers
+
+/* 
+ * 1.  STRING BY VALUE
+ *
+ * String stores its own allocator.
+ * str_copy  — copies using dst allocator (so a String follows its outer container)
+ * str_del   — delegates to String_destroy() (frees heap buf via str->alloc, NOT the slot)
+*/
+
+static inline void str_copy(const wc_allocator* dst, void* dest, const void* src)
+{
+    *(String*)dest = String_copy(dst, (const String*)src);
+}
+
+static inline void str_del(void* elm)
+{
+    String_destroy((String*)elm); // free data buffer via str->alloc, NOT the slot
+}
+
+static inline void str_print(const void* elm)
+{
+    String_print((const String*)elm);
+}
+
+
+/*
+ * 2.  STRING BY POINTER
+ *
+ * str_copy_ptr — box a deep copy in allocator `dst` (shell + contents from dst)
+ * str_del_ptr  — destroy pointee via its own allocator, then free shell
+*/
+
+static inline void str_copy_ptr(const wc_allocator* dst, void* dest, const void* src)
+{
+    // Box a deep copy: shell and contents both from dst
+    *(String**)dest = (String*)WC_BOX(dst, String, String_copy, *(const String* const*)src);
+}
+
+static inline void str_del_ptr(void* elm)
+{
+    String* s = *(String**)elm;
+    if (!s) {
+        return;
+    }
+    // Read allocator before destroy zeroes the struct
+    const wc_allocator* a = s->alloc;
+    String_destroy(s);                              // free heap buffer via s->alloc
+    wc_free(a, s, sizeof(String), alignof(String)); // free the shell
+}
+
+static inline void str_print_ptr(const void* elm)
+{
+    String_print(*(const String**)elm);
+}
+
+static inline int wc_str_cmp(const void* a, const void* b, u64 size)
+{
+    (void)size;
+    return String_compare((const String*)a, (const String*)b);
+}
+
+static inline int wc_str_ptr_cmp(const void* a, const void* b, u64 size)
+{
+    (void)size;
+    return String_compare(*(const String**)a, *(const String**)b);
+}
+
+// SHARED OPS INSTANCES
+
+static const wc_container_ops wc_str_ops     = {.copy_fn = str_copy, .del_fn = str_del};
+static const wc_container_ops wc_str_ptr_ops = {.copy_fn = str_copy_ptr, .del_fn = str_del_ptr};
+
+
+/*
+    Hash functions for string ops
+*/
+
+
+// String keys: hash the characters, not the struct (which holds a pointer).
+// Pair with str_cmp / str_cmp_ptr from wc_helpers.h. MAP_OF picks both for you.
+static inline u64 wc_str_hash(const void* key, u64 size)
+{
+    (void)size;
+    const String* str = key;
+    return wc_hash(String_data_ptr(str), String_len(str));
+}
+
+static inline u64 wc_str_ptr_hash(const void* key, u64 size)
+{
+    (void)size;
+    const String* str = *(String* const*)key;
+    return wc_hash(String_data_ptr(str), String_len(str));
+}
+
+
 #endif // STRING_H
 
 /* ===== views.h ===== */
@@ -1500,15 +1594,7 @@ bool             StrView_starts_with(StrView sv, StrView pfx);
 bool             StrView_ends_with(StrView sv, StrView sfx);
 bool             StrView_contains(StrView sv, StrView n);
 
-// parse
 
-// Parse an unsigned decimal integer from the WHOLE view: digits only, at least one, leading zeros allowed.
-// No sign, no whitespace, no base prefix. Returns false on empty input, any other character, or overflow
-// of the target type. `*out` is only written on success.
-wc_nodiscard wc_nonull(2) bool StrView_parse_u8(StrView sv, u8* out);
-wc_nodiscard wc_nonull(2) bool StrView_parse_u16(StrView sv, u16* out);
-wc_nodiscard wc_nonull(2) bool StrView_parse_u32(StrView sv, u32* out);
-wc_nodiscard wc_nonull(2) bool StrView_parse_u64(StrView sv, u64* out);
 
 // consumption: take n bytes from a view and shorten it (from the left or the right)
 
@@ -1565,28 +1651,39 @@ wc_nonull(2) static inline bool StrView_equals_cstr(StrView sv, const char* cstr
     return StrView_equals(sv, StrView_over_cstr(cstr, strlen(cstr)));
 }
 
+static inline int wc_strview_cmp(const void* a, const void* b, u64 size)
+{
+    (void)size;
+    return StrView_compare(*(StrView*)a, *(StrView*)b);
+}
+
+static inline u64 wc_strview_hash(const void* elm, u64 size)
+{
+
+}
+
 
 // TODO: do this
 
 // A stringstore is a chain arena that provides immutable string storage and operations on them,
 // filepath storage and operations etc. it gives out StrViews, optional String wrappers for read, find operations.
-// all strings in the store are null terminated
+// NOTE: All ORIGINAL StrViews from the store are NUL-terminated. However, if you trim/consume from the end, then that's not gonna hold
 typedef struct {
     ChainArena store;
-    HashMap*   interned;         // StrView -> {} (a set)
+    HashMap    interned;         // StrView -> {} (a set)
     bool       interning_active; // optional
     // probe the interned set: return the existing view if found, else alloc + insert. A deduped store must be append-only
     // This makes interning O(1) amortized and idempotent, repeated StringStore_store_cstr(&ss, "x") return the same view every time
 } StringStore;
 
-wc_nonull(1, 2) void StringStore_create(StringStore* ss, const wc_allocator* backing, u64 block_cap, bool intern);
+wc_nonull(1, 2) void StringStore_create(StringStore* ss, const wc_allocator* alloc, u64 block_size, bool intern);
 wc_nonull(1) void StringStore_destroy(StringStore* ss);
 
 // Copy bytes into the store; return a view. NUL-terminate too (1 extra byte),
 // so sv.data works as a C string, makes StringStore a drop-in for argv-style APIs.
-wc_nodiscard wc_nonull(1, 2) StrView StringStore_store(StringStore* ss, const String* s);
-wc_nodiscard wc_nonull(1, 2) StrView StringStore_store_cstr(StringStore* ss, const char* cstr);
-wc_nodiscard wc_nonull(1) StrView StringStore_store_sv(StringStore* ss, StrView sv);
+wc_nodiscard wc_nonull(1, 2) StrView StringStore_str(StringStore* ss, const String* s);
+wc_nodiscard wc_nonull(1, 2) StrView StringStore_cstr(StringStore* ss, const char* cstr);
+wc_nodiscard wc_nonull(1) StrView StringStore_sv(StringStore* ss, StrView sv);
 
 
 
@@ -1624,6 +1721,7 @@ wc_nodiscard StrView Path_normalize(StringStore* ss, StrView p); // collapses ".
 #define WC_WC_ALLOCATOR_IMPL
 /* ===== wc_allocator.c ===== */
 #line 1 "src/wc_allocator.c"
+
 
 #include <stddef.h>
 #include <stdint.h>
@@ -1982,15 +2080,15 @@ static inline void* carena_alloc(void* ctx, size_t size, size_t align)
 static const wc_alloc_vtable carena_vtable = {.alloc = carena_alloc, .realloc = NULL, .free = NULL};
 
 
-void ChainArena_create(ChainArena* ca, const wc_allocator* backing, u64 normal_cap)
+void ChainArena_create(ChainArena* ca, const wc_allocator* alloc, u64 block_size)
 {
     ca->big   = NULL;
-    ca->alloc = backing;
+    ca->alloc = alloc;
     // `self` has to be built here, in place, because its ctx is this arena's own address.
     ca->self = (wc_allocator){.vt = &carena_vtable, .ctx = ca};
     // need to set allocator before calling this
-    ca->normal = new_node(ca, normal_cap);
-    FATAL_IF(!ca->normal, "first node allocation failed (cap %lu)", normal_cap);
+    ca->normal = new_node(ca, block_size);
+    FATAL_IF(!ca->normal, "first node allocation failed (cap %lu)", block_size);
 }
 
 void ChainArena_destroy(ChainArena* ca)
@@ -2079,6 +2177,7 @@ void ChainArenaScratch_to_mark(ChainArenaScratch scratch)
 #define WC_HASHMAP_IMPL
 /* ===== hashmap.c ===== */
 #line 1 "src/hashmap.c"
+
 
 
 
@@ -2875,6 +2974,7 @@ static void map_resize(HashMap* map, u64 new_capacity)
 
 
 
+
 #include <stdio.h>
 #include <string.h>
 
@@ -3460,8 +3560,9 @@ static inline void ensure_capacity(String* s, u64 needed)
 
 
 
+
+
 #include <stdalign.h>
-#include <stdint.h>
 #include <string.h>
 
 
@@ -3595,66 +3696,6 @@ bool StrView_contains(StrView sv, StrView n)
 }
 
 
-// parse
-
-// FIX: slow as fuck
-//
-// Shared decimal parser: whole view must be digits, value must be <= max
-static bool parse_uint_max(StrView sv, u64 max, u64* out)
-{
-    if (sv.len == 0) {
-        return false;
-    }
-    u64 v = 0;
-    for (u64 i = 0; i < sv.len; i++) {
-        u32 d = (u32)(sv.data[i] - '0'); // wraps to >9 for non-digits
-        if (d > 9) {
-            return false;
-        }
-        if (v > (max - d) / 10) { // v * 10 + d would exceed max
-            return false;
-        }
-        v = (v * 10) + d;
-    }
-    *out = v;
-    return true;
-}
-
-bool StrView_parse_u8(StrView sv, u8* out)
-{
-    u64 v;
-    if (!parse_uint_max(sv, UINT8_MAX, &v)) {
-        return false;
-    }
-    *out = (u8)v;
-    return true;
-}
-
-bool StrView_parse_u16(StrView sv, u16* out)
-{
-    u64 v;
-    if (!parse_uint_max(sv, UINT16_MAX, &v)) {
-        return false;
-    }
-    *out = (u16)v;
-    return true;
-}
-
-bool StrView_parse_u32(StrView sv, u32* out)
-{
-    u64 v;
-    if (!parse_uint_max(sv, UINT32_MAX, &v)) {
-        return false;
-    }
-    *out = (u32)v;
-    return true;
-}
-
-bool StrView_parse_u64(StrView sv, u64* out)
-{
-    return parse_uint_max(sv, UINT64_MAX, out);
-}
-
 // consumption
 
 StrView StrView_take_left(StrView* sv, u64 n)
@@ -3676,6 +3717,37 @@ StrView StrView_take_right(StrView* sv, u64 n)
     StrView tail = {.data = sv->data + (sv->len - n), .len = n};
     sv->len -= n;
     return tail;
+}
+
+
+// String Store
+
+void StringStore_create(StringStore* ss, const wc_allocator* alloc, u64 block_size, bool intern)
+{
+    ChainArena_create(&ss->store, alloc, block_size);
+    if (intern) {
+        ss->interning_active = true;
+        // create a set of StrViews
+        // StrViews are non-owning: no ops required
+        ss->interned = HashMap_create(alloc, sizeof(StrView), 0, NULL, wc_strview_cmp, NULL, NULL);
+    }
+}
+
+void StringStore_destroy(StringStore* ss)
+{
+    if (ss->interning_active) {
+        HashMap_destroy(&ss->interned);
+    }
+    ChainArena_destroy(&ss->store);
+}
+
+StrView StringStore_str(StringStore* ss, const String* s)
+{
+    // store the String contents, add NUL
+    char* data = ChainArena_alloc(&ss->store, s->size + 1);
+    memcpy(data, String_data_ptr(s), s->size);
+    data[s->size] = 0;
+    return (StrView){.data = data, .len = s->size };
 }
 
 #endif /* WC_VIEWS_IMPL */
