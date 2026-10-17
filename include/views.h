@@ -24,18 +24,18 @@ typedef struct {
 // creation
 
 // Create a non-owning StrView over an already existing string
-wc_nodiscard wc_nonull(1) static inline StrView StrView_over_String(const String* str)
+wc_nodiscard wc_nonull(1) static wc_always_inline StrView StrView_over_String(const String* str)
 {
     return (StrView){.data = String_data_ptr(str), .len = String_len(str)};
 }
 
-wc_nodiscard wc_nonull(1) static inline StrView StrView_over_String_ex(const String* str, u64 off, u64 len)
+wc_nodiscard wc_nonull(1) static wc_always_inline StrView StrView_over_String_ex(const String* str, u64 off, u64 len)
 {
     WC_ASSERT(off + len <= String_len(str), "invalid range");
     return (StrView){.data = String_data_ptr(str) + off, .len = len};
 }
 
-wc_nodiscard wc_nonull(1) static inline StrView StrView_over_cstr(const char* cstr, u64 clen)
+wc_nodiscard wc_nonull(1) static wc_always_inline StrView StrView_over_cstr(const char* cstr, u64 clen)
 {
     return (StrView){.data = cstr, .len = clen};
 }
@@ -43,27 +43,27 @@ wc_nodiscard wc_nonull(1) static inline StrView StrView_over_cstr(const char* cs
 // conversion
 
 // Allocate a new String using `a` with content from `sv`.
-wc_nodiscard String StrView_to_String(const wc_allocator* a, StrView sv) wc_nonull(1); // one alloc
+wc_nodiscard wc_nonull(1) String StrView_to_String(const wc_allocator* a, StrView sv); // one alloc
 // Allocate a cstr (null terminated) with content from `sv`. Caller must free using wc_free with the same allocator
-wc_nodiscard char* StrView_to_cstr(const wc_allocator* a, StrView sv) wc_nonull(1);
+wc_nodiscard wc_nonull(1) char* StrView_to_cstr(const wc_allocator* a, StrView sv);
 // copy data from `sv` into `buf`. returns false if buf too small. NOT null terminated
-wc_nodiscard bool StrView_to_buf(StrView sv, char* buf, u64 cap) wc_nonull(2);
+wc_nodiscard wc_nonull(2) bool StrView_to_buf(StrView sv, char* buf, u64 cap);
 
 // slicing
 
 // Get a sub-view over another view
-wc_nodiscard static inline StrView StrView_slice(StrView sv, u64 start, u64 len)
+wc_nodiscard static wc_always_inline StrView StrView_slice(StrView sv, u64 start, u64 len)
 {
     WC_ASSERT(start <= sv.len && len <= sv.len - start, "out of range"); // overflow-safe
     return (StrView){.data = sv.data + start, .len = len};
 }
 // Get the first n chars from `sv`
-wc_nodiscard static inline StrView StrView_prefix(StrView sv, u64 n)
+wc_nodiscard static wc_always_inline StrView StrView_prefix(StrView sv, u64 n)
 {
     return StrView_slice(sv, 0, n);
 }
 // Get all the chars starting from index `start` till the end
-wc_nodiscard static inline StrView StrView_suffix(StrView sv, u64 start)
+wc_nodiscard static wc_always_inline StrView StrView_suffix(StrView sv, u64 start)
 {
     WC_ASSERT(start <= sv.len, "out of range");
     return StrView_slice(sv, start, sv.len - start);
@@ -82,26 +82,26 @@ wc_nodiscard StrView StrView_trim_right(StrView sv, const char* set, u64 len);
 
 wc_nodiscard u64 StrView_find(StrView sv, StrView needle); // WC_NOT_FOUND if absent
 wc_nodiscard u64 StrView_find_char(StrView sv, char c);
-bool             StrView_starts_with(StrView sv, StrView pfx);
-bool             StrView_ends_with(StrView sv, StrView sfx);
-bool             StrView_contains(StrView sv, StrView n);
+wc_nodiscard bool StrView_starts_with(StrView sv, StrView pfx);
+wc_nodiscard bool StrView_ends_with(StrView sv, StrView sfx);
+wc_nodiscard bool StrView_contains(StrView sv, StrView n);
 
 
 
 // consumption: take n bytes from a view and shorten it (from the left or the right)
 
 // A StrView with `.data == NULL` is invalid. The take functions return one to signal failure.
-wc_nodiscard static inline bool StrView_is_valid(StrView sv)
+wc_nodiscard static wc_always_inline bool StrView_is_valid(StrView sv)
 {
     return sv.data != NULL;
 }
 
 // Remove the first `n` bytes of `*sv` and return them. If `n > sv->len`, returns an invalid view
 // (`.data == NULL`) and leaves `*sv` untouched. Ignore the result to just skip bytes.
-wc_nodiscard StrView StrView_take_left(StrView* sv, u64 n) wc_nonull(1);
+wc_nodiscard wc_nonull(1) StrView StrView_take_left(StrView* sv, u64 n);
 // Remove the last `n` bytes of `*sv` and return them. If `n > sv->len`, returns an invalid view
 // (`.data == NULL`) and leaves `*sv` untouched. Ignore the result to just drop bytes.
-wc_nodiscard StrView StrView_take_right(StrView* sv, u64 n) wc_nonull(1);
+wc_nodiscard wc_nonull(1) StrView StrView_take_right(StrView* sv, u64 n);
 
 
 // output
@@ -115,12 +115,12 @@ static inline void StrView_print(StrView sv)
 
 // hashing / comparison
 
-wc_nodiscard static inline u64 StrView_hash(StrView sv)
+wc_nodiscard static wc_always_inline u64 StrView_hash(StrView sv)
 {
     return wc_hash(sv.data, sv.len);
 }
 
-wc_nodiscard static inline int StrView_compare(StrView a, StrView b)
+wc_nodiscard static wc_always_inline int StrView_compare(StrView a, StrView b)
 {
     u64 min = a.len < b.len ? a.len : b.len;
     if (min) {
@@ -132,13 +132,13 @@ wc_nodiscard static inline int StrView_compare(StrView a, StrView b)
     return (a.len > b.len) - (a.len < b.len); // sign of len difference
 }
 
-static inline bool StrView_equals(StrView a, StrView b)
+wc_nodiscard static wc_always_inline bool StrView_equals(StrView a, StrView b)
 {
     return (a.len == b.len && (a.len == 0 || memcmp(a.data, b.data, a.len) == 0)) != 0;
 }
 
 // C-string convenience
-wc_nonull(2) static inline bool StrView_equals_cstr(StrView sv, const char* cstr)
+wc_nodiscard wc_nonull(2) static wc_always_inline bool StrView_equals_cstr(StrView sv, const char* cstr)
 {
     return StrView_equals(sv, StrView_over_cstr(cstr, strlen(cstr)));
 }
@@ -182,12 +182,12 @@ wc_nodiscard wc_nonull(1) StrView StringStore_sv(StringStore* ss, StrView sv);
 // filepath storage/handling
 // store paths normally as strings in the stringstore (or wherever) and use these operations to work on them
 
-bool                 WCpath_is_absolute(StrView p); // starts with '/'
-wc_nodiscard StrView WCpath_basename(StrView p);    // "/a/b/c.txt" -> "c.txt"
-wc_nodiscard StrView WCpath_dirname(StrView p);     // "/a/b/c.txt" -> "/a/b"
-wc_nodiscard StrView WCpath_extension(StrView p);   // "c.txt"      -> "txt"   (no dot)
-wc_nodiscard StrView WCpath_stem(StrView p);        // "c.txt"      -> "c"
-bool                 WCpath_has_extension(StrView p, StrView ext);
+wc_nodiscard bool     WCpath_is_absolute(StrView p); // starts with '/'
+wc_nodiscard StrView  WCpath_basename(StrView p);    // "/a/b/c.txt" -> "c.txt"
+wc_nodiscard StrView  WCpath_dirname(StrView p);     // "/a/b/c.txt" -> "/a/b"
+wc_nodiscard StrView  WCpath_extension(StrView p);   // "c.txt"      -> "txt"   (no dot)
+wc_nodiscard StrView  WCpath_stem(StrView p);        // "c.txt"      -> "c"
+wc_nodiscard bool     WCpath_has_extension(StrView p, StrView ext);
 
 // Component iteration
 typedef struct {
@@ -196,12 +196,12 @@ typedef struct {
 } WCPathIter;
 
 wc_nodiscard WCPathIter WCpath_components(StrView p);
-bool                    WCpathIter_next(WCPathIter* it, StrView* out);
+wc_nodiscard wc_nonull(1, 2) bool WCpathIter_next(WCPathIter* it, StrView* out);
 
 // Allocation-returning
-wc_nodiscard String  Path_join(const wc_allocator* alloc, StrView a, StrView b);
-wc_nodiscard StrView Path_join_sv(StringStore* ss, StrView a, StrView b);
-wc_nodiscard StrView Path_normalize(StringStore* ss, StrView p); // collapses "." and ".."
+wc_nodiscard wc_nonull(1) String  Path_join(const wc_allocator* alloc, StrView a, StrView b);
+wc_nodiscard wc_nonull(1) StrView Path_join_sv(StringStore* ss, StrView a, StrView b);
+wc_nodiscard wc_nonull(1) StrView Path_normalize(StringStore* ss, StrView p); // collapses "." and ".."
 
 
 

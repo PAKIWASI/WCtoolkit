@@ -72,7 +72,7 @@ typedef struct {
      seed - Initial seed value (any 64-bit value works)
      seq  - Sequence selector (chooses which of 2^63 random sequences to use)
 */
-void pcg32_rand_seed(WC_Pcg32* rng, u64 seed, u64 seq) wc_nonull(1);
+wc_nonull(1) void pcg32_rand_seed(WC_Pcg32* rng, u64 seed, u64 seq);
 
 
 /*
@@ -84,7 +84,7 @@ void pcg32_rand_seed(WC_Pcg32* rng, u64 seed, u64 seq) wc_nonull(1);
    Note: If called multiple times in the same second, will produce the
          same sequence. Use pcg32_rand_seed_time_hp() for finer precision.
 */
-void pcg32_rand_seed_time(WC_Pcg32* rng) wc_nonull(1);
+wc_nonull(1) void pcg32_rand_seed_time(WC_Pcg32* rng);
 
 
 // INTEGER RANDOM GENERATION
@@ -100,7 +100,7 @@ void pcg32_rand_seed_time(WC_Pcg32* rng) wc_nonull(1);
    
    Returns: Random u32 in range [0, 4294967295]
 */
-u32 pcg32_rand(WC_Pcg32* rng) wc_nonull(1);
+wc_nodiscard wc_nonull(1) u32 pcg32_rand(WC_Pcg32* rng);
 
 
 /*
@@ -113,7 +113,7 @@ u32 pcg32_rand(WC_Pcg32* rng) wc_nonull(1);
    
    Returns: Random u32 in range [0, bound-1]
 */
-u32 pcg32_rand_bounded(WC_Pcg32* rng, u32 bound) wc_nonull(1);
+wc_nodiscard wc_nonull(1) u32 pcg32_rand_bounded(WC_Pcg32* rng, u32 bound);
 
 
 // FLOATING POINT UNIFORM DISTRIBUTION
@@ -126,7 +126,7 @@ u32 pcg32_rand_bounded(WC_Pcg32* rng, u32 bound) wc_nonull(1);
    
    Returns: Random float in range [0.0, 1.0) - note: 0.0 possible, 1.0 never
  */
-float pcg32_rand_float(WC_Pcg32* rng) wc_nonull(1);
+wc_nodiscard wc_nonull(1) float pcg32_rand_float(WC_Pcg32* rng);
 
 
 /*
@@ -137,7 +137,7 @@ float pcg32_rand_float(WC_Pcg32* rng) wc_nonull(1);
    
    Returns: Random double in [0.0, 1.0) with ~15-16 digits of precision
 */
-double pcg32_rand_double(WC_Pcg32* rng) wc_nonull(1);
+wc_nodiscard wc_nonull(1) double pcg32_rand_double(WC_Pcg32* rng);
 
 
 /*
@@ -153,7 +153,7 @@ double pcg32_rand_double(WC_Pcg32* rng) wc_nonull(1);
    
    Returns: Random float in [min, max)
 */
-float pcg32_rand_float_range(WC_Pcg32* rng, float min, float max) wc_nonull(1);
+wc_nodiscard wc_nonull(1) float pcg32_rand_float_range(WC_Pcg32* rng, float min, float max);
 
 
 /*
@@ -167,7 +167,7 @@ float pcg32_rand_float_range(WC_Pcg32* rng, float min, float max) wc_nonull(1);
    
    Returns: Random double in [min, max)
 */
-double pcg32_rand_double_range(WC_Pcg32* rng, double min, double max) wc_nonull(1);
+wc_nodiscard wc_nonull(1) double pcg32_rand_double_range(WC_Pcg32* rng, double min, double max);
 
 
 // GAUSSIAN (NORMAL) DISTRIBUTION
@@ -196,7 +196,7 @@ double pcg32_rand_double_range(WC_Pcg32* rng, double min, double max) wc_nonull(
    
    Returns: Random float from N(0, 1) distribution
 */
-float pcg32_rand_gaussian(WC_Pcg32* rng) wc_nonull(1);
+wc_nodiscard wc_nonull(1) float pcg32_rand_gaussian(WC_Pcg32* rng);
 
 
 /*
@@ -219,7 +219,7 @@ float pcg32_rand_gaussian(WC_Pcg32* rng) wc_nonull(1);
    
    Returns: Random float from N(mean, stddev²) distribution
 */
-float pcg32_rand_gaussian_custom(WC_Pcg32* rng, float mean, float stddev) wc_nonull(1);
+wc_nodiscard wc_nonull(1) float pcg32_rand_gaussian_custom(WC_Pcg32* rng, float mean, float stddev);
 
 
 

@@ -1,6 +1,7 @@
 #ifndef FAST_MATH_H
 #define FAST_MATH_H
 
+#include "wc_comp.h"
 
 /*
     Implement costy math functions using Numerical Methods
@@ -20,34 +21,34 @@ For √x, we solve: f(n) = n² - x = 0
 Newton-Raphson iteration: next = current - f(current)/f'(current)
 For square root: next = 0.5 * (current + x/current)
 */
-float fast_sqrt(float x);
+wc_nodiscard float fast_sqrt(float x);
 
 
 // Natural log using series expansion: ln(1+x) = x - x²/2 + x³/3 - x⁴/4 + ...
 // converges for |x| < 1
-float fast_log(float x);
+wc_nodiscard float fast_log(float x);
 
 /*
 Uses Taylor series expansion around x = 0:
 sin(x) = x - x³/3! + x⁵/5! - x⁷/7! + ...
        = x - x³/6 + x⁵/120 - x⁷/5040 + ...
 */
-float fast_sin(float x);
+wc_nodiscard float fast_sin(float x);
 
 /*
 Uses the trigonometric identity:
 cos(x) = sin(x + π/2)
 */
-float fast_cos(float x);
+wc_nodiscard float fast_cos(float x);
 
 /*
  By Taylor Series
 e^x = 1 + x + x²/2! + x³/3! + x⁴/4! + ...
 */
-float fast_exp(float x);
+wc_nodiscard float fast_exp(float x);
 
 
-float fast_ceil(float x);
+wc_nodiscard float fast_ceil(float x);
 
 
 /*
@@ -55,7 +56,7 @@ float fast_ceil(float x);
     Uses exponentiation by squaring for the integer part of the exponent,
     and fast_exp(frac * fast_log(base)) for the fractional part.
 */
-float fast_pow(float base, float exp);
+wc_nodiscard float fast_pow(float base, float exp);
 
 
 #endif // FAST_MATH_H

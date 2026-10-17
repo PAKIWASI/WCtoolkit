@@ -47,26 +47,24 @@ typedef u64 (*wc_hash_fn)(const void* key, u64 size);
 // 64 x 64 -> 128 bit multiply. *a gets the low half, *b the high half.
 static wc_always_inline void wc_rapid_mum(u64* a, u64* b)
 {
-    __uint128_t r = (__uint128_t)*a * *b;
-    *a            = (u64)r;
-    *b            = (u64)(r >> 64);
+    wc_mum64(a, b);
 }
 
 // Multiply, then fold the 128-bit product to 64 bits.
-static wc_always_inline u64 wc_rapid_mix(u64 a, u64 b)
+wc_nodiscard static wc_always_inline u64 wc_rapid_mix(u64 a, u64 b)
 {
     wc_rapid_mum(&a, &b);
     return a ^ b;
 }
 
-static wc_always_inline u64 wc_rapid_read64(const u8* p)
+wc_nodiscard static wc_always_inline u64 wc_rapid_read64(const u8* p)
 {
     u64 v;
     memcpy(&v, p, 8);
     return v;
 }
 
-static wc_always_inline u64 wc_rapid_read32(const u8* p)
+wc_nodiscard static wc_always_inline u64 wc_rapid_read32(const u8* p)
 {
     u32 v;
     memcpy(&v, p, 4);
@@ -81,7 +79,7 @@ static wc_always_inline u64 wc_rapid_read32(const u8* p)
 
 // Hash `len` bytes. Inlined so short keys stay cheap: `len <= 16` takes the short
 // path, where a 4 or 8 byte key costs two 128-bit multiplies.
-static wc_always_inline u64 wc_hash(const void* key, u64 len)
+wc_nodiscard static wc_always_inline u64 wc_hash(const void* key, u64 len)
 {
     const u8* p    = key;
     u64       seed = WC_RAPID_SEED ^ wc_rapid_mix(WC_RAPID_SEED ^ WC_RAPID_S2, WC_RAPID_S1);

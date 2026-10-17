@@ -68,43 +68,43 @@ _Static_assert(sizeof(HashMap) == 96, "HashMap must be 96 bytes");
 // hash_fn NULL: wc_hash over the key bytes. cmp_fn NULL: byte equality.
 // Both defaults are only correct for keys without pointers.
 // key_ops / val_ops: pass NULL for POD types. val_size 0 makes a set.
-wc_nodiscard HashMap HashMap_create(const wc_allocator* a, u32 key_size, u32 val_size, wc_hash_fn hash_fn,
+wc_nodiscard wc_nonull(1) HashMap HashMap_create(const wc_allocator* a, u32 key_size, u32 val_size, wc_hash_fn hash_fn,
                                     wc_compare_fn cmp_fn, const wc_container_ops* key_ops,
-                                    const wc_container_ops* val_ops) wc_nonull(1) wc_nodiscard;
+                                    const wc_container_ops* val_ops);
 
 // Destroy all elements and free internal buffers via map->alloc.
 // Safe on zeroed/moved-from maps. Leaves struct zeroed.
-void HashMap_destroy(HashMap* map) wc_nonull(1);
+wc_nonull(1) void HashMap_destroy(HashMap* map);
 
 // Deep copy src into a new HashMap allocated from `a`.
-wc_nodiscard HashMap HashMap_copy(const wc_allocator* a, const HashMap* src) wc_nonull(1, 2);
+wc_nodiscard wc_nonull(1, 2) HashMap HashMap_copy(const wc_allocator* a, const HashMap* src);
 
 // Transfer ownership from src to dest. src is left zeroed.
-void HashMap_move(HashMap* dest, HashMap* src) wc_nonull(1, 2);
+wc_nonull(1, 2) void HashMap_move(HashMap* dest, HashMap* src);
 
 // Insert or update — COPY semantics. val may be NULL for a set.
 // Returns 1 if key existed (updated), 0 if new key inserted.
-bool HashMap_put(HashMap* map, const void* key, const void* val) wc_nonull(1, 2);
+wc_nonull(1, 2) bool HashMap_put(HashMap* map, const void* key, const void* val);
 
 // Insert or update, MOVE semantics: key and val point at the caller's elements, both left zeroed
 // (a duplicate key is destroyed; the map keeps its own). val may be NULL for a set.
 // Returns 1 if key existed (updated), 0 if new key inserted.
-bool HashMap_put_move(HashMap* map, void* key, void* val) wc_nonull(1, 2);
+wc_nonull(1, 2) bool HashMap_put_move(HashMap* map, void* key, void* val);
 
 // Mixed: key copied, val moved.
-bool HashMap_put_val_move(HashMap* map, const void* key, void* val) wc_nonull(1, 2);
+wc_nonull(1, 2) bool HashMap_put_val_move(HashMap* map, const void* key, void* val);
 
 // Mixed: key moved, val copied.
-bool HashMap_put_key_move(HashMap* map, void* key, const void* val) wc_nonull(1, 2);
+wc_nonull(1, 2) bool HashMap_put_key_move(HashMap* map, void* key, const void* val);
 
 // Get value for key: deep COPY into val (the map keeps its own). Returns 1 if found.
 // For owning values prefer HashMap_get_ptr: no copy, no allocation.
-bool HashMap_get(const HashMap* map, const void* key, void* val) wc_nonull(1, 2, 3);
+wc_nodiscard wc_nonull(1, 2, 3) bool HashMap_get(const HashMap* map, const void* key, void* val);
 
 // Pointer to the stored value, or NULL if key is absent.
-const void* HashMap_get_ptr(const HashMap* map, const void* key) wc_nonull(1, 2);
+wc_nodiscard wc_nonull(1, 2) const void* HashMap_get_ptr(const HashMap* map, const void* key);
 
-wc_nodiscard wc_nonull(1, 2) static inline void* HashMap_get_ptr_mut(HashMap* map, const void* key)
+wc_nodiscard wc_nonull(1, 2) static wc_always_inline void* HashMap_get_ptr_mut(HashMap* map, const void* key)
 {
     return (void*)HashMap_get_ptr(map, key);
 }
@@ -112,47 +112,47 @@ wc_nodiscard wc_nonull(1, 2) static inline void* HashMap_get_ptr_mut(HashMap* ma
 // Pointer to the stored KEY equal to `key`, or NULL. For a set this is the
 // element; for a map it is the canonical key (e.g. an interned String).
 // Never change the bytes the hash or compare reads through it.
-const void* HashMap_get_key_ptr(const HashMap* map, const void* key) wc_nonull(1, 2);
+wc_nodiscard wc_nonull(1, 2) const void* HashMap_get_key_ptr(const HashMap* map, const void* key);
 
 // Bucket iteration accessors
-wc_nodiscard wc_nonull(1) static inline u64 HashMap_bucket_count(const HashMap* map)
+wc_nodiscard wc_nonull(1) static wc_always_inline u64 HashMap_bucket_count(const HashMap* map)
 {
     return map->capacity;
 }
 
-bool                     HashMap_bucket_occupied(const HashMap* map, u64 i) wc_nonull(1);
-wc_nodiscard const void* HashMap_bucket_key_ptr(const HashMap* map, u64 i) wc_nonull(1);
-wc_nodiscard void*       HashMap_bucket_val_ptr(HashMap* map, u64 i) wc_nonull(1);
+wc_nodiscard wc_nonull(1) bool HashMap_bucket_occupied(const HashMap* map, u64 i);
+wc_nodiscard wc_nonull(1) const void* HashMap_bucket_key_ptr(const HashMap* map, u64 i);
+wc_nodiscard wc_nonull(1) void*       HashMap_bucket_val_ptr(HashMap* map, u64 i);
 
 // Delete key. out != NULL: the value is MOVED into it (caller owns it, B7).
 // out == NULL: the value is deleted. The key is always deleted.
 // Returns 1 if found and deleted, 0 if not found.
-bool HashMap_del(HashMap* map, const void* key, void* out) wc_nonull(1, 2);
+wc_nonull(1, 2) bool HashMap_del(HashMap* map, const void* key, void* out);
 
 // Check if key exists.
-bool HashMap_has(const HashMap* map, const void* key) wc_nonull(1, 2);
+wc_nodiscard wc_nonull(1, 2) bool HashMap_has(const HashMap* map, const void* key);
 
 // Print all key-value pairs. val_print may be NULL (sets print keys only).
-void HashMap_print(const HashMap* map, wc_print_fn key_print, wc_print_fn val_print) wc_nonull(1, 2);
+wc_nonull(1, 2) void HashMap_print(const HashMap* map, wc_print_fn key_print, wc_print_fn val_print);
 
 // Make room for n elements in total so that inserting up to n never resizes.
 // No-op if the table is already large enough. Never shrinks.
-void HashMap_reserve(HashMap* map, u64 n) wc_nonull(1);
+wc_nonull(1) void HashMap_reserve(HashMap* map, u64 n);
 
 // Remove all elements, keep capacity.
-void HashMap_clear(HashMap* map) wc_nonull(1);
+wc_nonull(1) void HashMap_clear(HashMap* map);
 
-wc_nodiscard wc_nonull(1) static inline u64 HashMap_size(const HashMap* map)
+wc_nodiscard wc_nonull(1) static wc_always_inline u64 HashMap_size(const HashMap* map)
 {
     return map->size;
 }
 
-wc_nodiscard wc_nonull(1) static inline u64 HashMap_capacity(const HashMap* map)
+wc_nodiscard wc_nonull(1) static wc_always_inline u64 HashMap_capacity(const HashMap* map)
 {
     return map->capacity;
 }
 
-wc_nonull(1) static inline bool HashMap_empty(const HashMap* map)
+wc_nodiscard wc_nonull(1) static wc_always_inline bool HashMap_empty(const HashMap* map)
 {
     return map->size == 0;
 }
