@@ -1,13 +1,36 @@
 cmake_minimum_required(VERSION 3.20)
 
-# Prefer clang, fall back to gcc
+# Prefer clang, fall back to gcc. Windows builds use MinGW-w64 clang/gcc, or
+# an x86_64-w64-mingw32 cross toolchain. MSVC / clang-cl are not supported.
+if(NOT CMAKE_C_COMPILER AND DEFINED ENV{CC})
+  set(CMAKE_C_COMPILER "$ENV{CC}")
+endif()
+
 if(NOT CMAKE_C_COMPILER)
   find_program(WC_CLANG_PATH clang)
+  if(CMAKE_HOST_WIN32 AND WC_CLANG_PATH)
+    # A clang from llvm.org targets MSVC on Windows and needs the MSVC
+    # toolchain; skip it. MSYS2's clang targets MinGW and is accepted.
+    execute_process(COMMAND ${WC_CLANG_PATH} -dumpmachine
+        OUTPUT_VARIABLE WC_CLANG_TARGET OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+    if(WC_CLANG_TARGET MATCHES "msvc")
+      set(WC_CLANG_PATH "")
+    endif()
+  endif()
+
   find_program(WC_GCC_PATH gcc)
   if(WC_CLANG_PATH)
     set(CMAKE_C_COMPILER ${WC_CLANG_PATH})
   elseif(WC_GCC_PATH)
     set(CMAKE_C_COMPILER ${WC_GCC_PATH})
+  endif()
+
+  if(CMAKE_HOST_WIN32 AND NOT CMAKE_C_COMPILER)
+    message(FATAL_ERROR
+        "No MinGW-w64 clang/gcc found.\n"
+        "Windows builds are MinGW-w64 only:\n"
+        "  - native: open an MSYS2 UCRT64 shell (pacman -S mingw-w64-ucrt-x86_64-clang ...)\n"
+        "  - cross:  -DCMAKE_C_COMPILER=x86_64-w64-mingw32-gcc -DCMAKE_SYSTEM_NAME=Windows")
   endif()
 endif()
 
@@ -24,31 +47,44 @@ set(CMAKE_C_EXTENSIONS ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_COLOR_DIAGNOSTICS ON)
 
-if(WIN32)
-  # AddressSanitizer (clang-cl) cannot link against the debug CRT yet:
-  # force the release CRT everywhere on Windows.
-  set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
-endif()
+message(STATUS "C Compiler: ${CMAKE_C_COMPILER} (${CMAKE_C_COMPILER_ID})")
 
-message(STATUS "C Compiler: ${CMAKE_C_COMPILER}")
-
-# Default to Debug if not specified
+# defaults to Debug for development
 if(NOT CMAKE_BUILD_TYPE)
-  set(CMAKE_BUILD_TYPE Debug CACHE STRING "Build type" FORCE)
+    set(CMAKE_BUILD_TYPE Debug CACHE STRING "Build type" FORCE)
 endif()
 
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 
-# Debug: sanitizers + no optimisation
-set(CMAKE_C_FLAGS_DEBUG
-"-g -O0 -fno-omit-frame-pointer -fsanitize=address -fsanitize=undefined -march=native")
-set(CMAKE_EXE_LINKER_FLAGS_DEBUG
-"-fsanitize=address -fsanitize=undefined")
+# -march value. Cross compilers usually reject "native": pass
+# -DWC_MARCH=x86-64-v2 (or -DWC_MARCH= to omit the flag).
+set(WC_MARCH native CACHE STRING "Value for -march (empty to omit)")
+set(WC_MARCH_FLAG "")
+if(WC_MARCH)
+  set(WC_MARCH_FLAG " -march=${WC_MARCH}")
+endif()
 
-# DebugNoSan: debug info, no sanitizers - clean for lldb/gdb
-set(CMAKE_C_FLAGS_DEBUGNOSAN
-"-g -O0 -fno-omit-frame-pointer -march=native")
-set(CMAKE_EXE_LINKER_FLAGS_DEBUGNOSAN "")
+if(WIN32)
+  # Windows is release-only: no sanitizer runtime, plain Debug if used.
+  set(CMAKE_C_FLAGS_DEBUG "-g -O0${WC_MARCH_FLAG}")
+  set(CMAKE_EXE_LINKER_FLAGS_DEBUG "")
+  set(CMAKE_C_FLAGS_DEBUGNOSAN "-g -O0${WC_MARCH_FLAG}")
+  set(CMAKE_EXE_LINKER_FLAGS_DEBUGNOSAN "")
+  # Static libgcc/libwinpthread: a single self-contained main.exe.
+  set(CMAKE_EXE_LINKER_FLAGS_RELEASE "-static")
+else()
+  # Debug: sanitizers + no optimisation
+  set(CMAKE_C_FLAGS_DEBUG
+  "-g -O0 -fno-omit-frame-pointer -fsanitize=address -fsanitize=undefined${WC_MARCH_FLAG}")
+  set(CMAKE_EXE_LINKER_FLAGS_DEBUG
+  "-fsanitize=address -fsanitize=undefined")
+
+  # DebugNoSan: debug info, no sanitizers - clean for lldb/gdb
+  set(CMAKE_C_FLAGS_DEBUGNOSAN
+  "-g -O0 -fno-omit-frame-pointer${WC_MARCH_FLAG}")
+  set(CMAKE_EXE_LINKER_FLAGS_DEBUGNOSAN "")
+  set(CMAKE_EXE_LINKER_FLAGS_RELEASE "")
+endif()
 
 set(VALID_BUILD_TYPES Debug Release DebugNoSan)
 set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS ${VALID_BUILD_TYPES})
@@ -57,8 +93,7 @@ set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS ${VALID_BUILD_TYPES})
 # no NaN/inf and reassociate floats, which would silently change every float path in
 # the library and its tests. It is applied to src/fast_math.c only
 set(CMAKE_C_FLAGS_RELEASE
-"-O3 -DNDEBUG -march=native")
-set(CMAKE_EXE_LINKER_FLAGS_RELEASE "")
+"-O3 -DNDEBUG${WC_MARCH_FLAG}")
 
 option(WC_VECTORIZE_REPORT "Clang loop-vectorize remarks for every src/*.c (disables LTO)" OFF)
 
@@ -149,31 +184,6 @@ if(WC_VECTORIZE_REPORT AND CMAKE_C_COMPILER_ID STREQUAL "Clang")
 endif()
 
 
-# clang-cl/lld-link do not infer sanitizer runtimes from the object files at link
-# time the way MSVC's /INFERASANLIBS does: link them explicitly. Debug (the only
-# sanitizer config) gets ASan (dynamic engine) + UBSan; other configs link nothing.
-set(WC_WIN_SAN_LIBS "")
-if(WIN32 AND CMAKE_C_COMPILER_ID MATCHES "Clang" AND CMAKE_BUILD_TYPE STREQUAL "Debug")
-  execute_process(COMMAND ${CMAKE_C_COMPILER} --print-resource-dir
-      OUTPUT_VARIABLE WC_CLANG_LIB OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
-  string(APPEND WC_CLANG_LIB "/lib/windows")
-  set(WC_WIN_SAN_LIBS
-      "$<LINK_LIBRARY:WHOLE_ARCHIVE,${WC_CLANG_LIB}/clang_rt.asan_dynamic-x86_64.lib>"
-      "$<LINK_LIBRARY:WHOLE_ARCHIVE,${WC_CLANG_LIB}/clang_rt.asan_dynamic_runtime_thunk-x86_64.lib>"
-      "${WC_CLANG_LIB}/clang_rt.ubsan_standalone-x86_64.lib"
-  )
-endif()
-
-# lld-link folds identical string literals (/OPT:ICF) by default. Every module
-# keeps its own ASan global metadata, so a folded literal ends up poisoned by the
-# losing modules' redzones: reads of the merged literal abort (seen with "" in the
-# utest failure messages). Turn ICF off for the sanitizer build.
-if(WIN32)
-  set(WC_MSC_LINKER_FLAGS "/OPT:NOREF,NOICF")
-else()
-  set(WC_MSC_LINKER_FLAGS "")
-endif()
-
 # Main executable
 add_executable(main
     src/main.c
@@ -181,13 +191,11 @@ add_executable(main
 )
 target_include_directories(main PRIVATE include)
 target_compile_options(main PRIVATE ${WC_WARN_FLAGS})
-target_link_options(main PRIVATE ${WC_MSC_LINKER_FLAGS})
-target_link_libraries(main ${WC_WIN_SAN_LIBS})
 
 
 # Test executable
 # Tests: one tests/test_*.c per component, all registered through utest.h.
-# Debug build (default) runs them under ASan + UBSan.
+# Debug build (default on Linux) runs them under ASan + UBSan.
 file(GLOB TEST_SOURCES CONFIGURE_DEPENDS tests/test_*.c)
 add_executable(tests
     tests/main.c
@@ -197,13 +205,13 @@ add_executable(tests
 )
 target_include_directories(tests PRIVATE include tests)
 target_compile_options(tests PRIVATE ${WC_WARN_FLAGS})
-target_link_options(tests PRIVATE ${WC_MSC_LINKER_FLAGS})
-target_link_libraries(tests ${WC_WIN_SAN_LIBS})
+# libm is separate on Linux/macOS; the MinGW CRT includes it.
+if(NOT WIN32)
+  target_link_libraries(tests m)
+endif()
 # test_checking_allocator / test_wc_allocator hand stack buffers to allocators on
 # purpose. Their #pragma covers compile time; with LTO, GCC re-checks at link time.
-# There is no libm on MSVC-style toolchains (clang-cl): libc's is implicit.
 if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
-  target_link_libraries(tests m)
   target_link_options(tests PRIVATE -Wno-free-nonheap-object)
 endif()
 #

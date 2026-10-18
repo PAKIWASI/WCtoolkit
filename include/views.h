@@ -8,6 +8,7 @@
 #include "wc_comp.h"
 #include "wc_hash.h"
 #include "wc_string.h"
+
 #include <stdio.h>
 #include <string.h>
 
@@ -92,6 +93,10 @@ wc_nodiscard bool StrView_contains(StrView sv, StrView n);
 
 // consumption: take n bytes from a view and shorten it (from the left or the right)
 
+// BUG: you can't and shouldn't invalidate a strview, just return a new one
+// so consumption is just prefix/suffix and discarding the original strview
+// an empty strview is only returned on error, when the return value is strview
+//
 // A StrView with `.data == NULL` is invalid. The take functions return one to signal failure.
 wc_nodiscard static wc_always_inline bool StrView_is_valid(StrView sv)
 {
@@ -195,7 +200,7 @@ typedef struct {
 } WCPathIter;
 
 wc_nodiscard WCPathIter WCpath_components(StrView p);
-wc_nodiscard            wc_nonull(1, 2) bool WCpathIter_next(WCPathIter* it, StrView* out);
+wc_nodiscard            wc_nonull(1, 2) bool WCpathIter_next(WCPathIter* it, StrView* out); // TODO: return StrView, error indicated by (StrView){0}
 
 // Path joining (Allocation-returning)
 

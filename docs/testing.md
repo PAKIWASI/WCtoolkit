@@ -28,7 +28,9 @@ cmake -B build-rel -DCMAKE_BUILD_TYPE=Release && cmake --build build-rel
 ./build-rel/bench --filter=memory.* --output=bench.csv
 ```
 
-**Run the tests in both Debug and Release.** Release strips `WC_ASSERT` and enables `-O3 -ffast-math`, and some bugs only show there.
+On Windows (MinGW-w64) the default build type is `Release`: `cmake -B build -G Ninja && cmake --build build`, then `build\tests.exe`.
+
+**Run the tests in both Debug and Release.** Release strips `WC_ASSERT` and enables `-O3` (with `-ffast-math` on `src/fast_math.c` only), and some bugs only show there.
 
 **Run benchmarks only in Release.** Debug numbers are measured under the sanitizers and mean nothing. Under Debug, ubench may also take minutes to reach a stable result.
 

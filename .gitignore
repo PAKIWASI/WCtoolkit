@@ -2,6 +2,7 @@
 
 
 build/
+build-*/
 .cache/
 .gdb_history
 

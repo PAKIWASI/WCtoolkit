@@ -34,13 +34,32 @@ int main(void)
 
 ## Build
 
+Linux/macOS, with clang or gcc (Debug by default, under ASan + UBSan):
+
 ```sh
 cmake -B build -G Ninja && cmake --build build
-./build/tests                 # unit tests (utest.h), under ASan + UBSan
-./build/example_allocators    # examples/allocators.c
+./build/tests                 # unit tests (utest.h)
+./build/main                  # scratch program, src/main.c
 
-cmake -B build-rel -DCMAKE_BUILD_TYPE=Release && cmake --build build-rel
-./build-rel/bench             # benchmarks (ubench.h), Release only
+cmake -B build-rel -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build build-rel
+```
+
+Windows releases use **MinGW-w64** (clang or gcc), not MSVC/clang-cl. The
+default build type on Windows is `Release`. From an MSYS2 UCRT64 shell:
+
+```sh
+# pacman -S mingw-w64-ucrt-x86_64-clang mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-ninja
+CC=clang cmake -B build -G Ninja && cmake --build build
+.\build\main.exe
+```
+
+Or cross-compile from Linux:
+
+```sh
+# sudo apt install mingw-w64
+cmake -B build-win -G Ninja -DCMAKE_SYSTEM_NAME=Windows \
+      -DCMAKE_C_COMPILER=x86_64-w64-mingw32-gcc -DWC_MARCH=x86-64-v2
+cmake --build build-win       # build-win/main.exe
 ```
 
 ## Documentation

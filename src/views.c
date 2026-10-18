@@ -9,6 +9,7 @@
 #include <string.h>
 
 
+
 String StrView_to_String(const wc_allocator* a, StrView sv)
 {
     String s = String_with_cap(a, sv.len);
@@ -407,6 +408,7 @@ typedef struct {
 
 static JoinPlan join_plan(StrView a, StrView b)
 {
+    // can't join with an absolute path
     if (a.len == 0 || WCpath_is_absolute(b)) {
         return (JoinPlan){.use_a = false, .sep = false};
     }

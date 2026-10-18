@@ -5,21 +5,40 @@
 ## Requirements
 
 - A C11 compiler with GNU extensions: GCC or Clang. The library uses statement expressions `({ ... })`, `typeof`, `__attribute__((cleanup))` and `__builtin_expect`.
+- Linux/macOS: any recent Clang or GCC.
+- Windows: MinGW-w64 Clang or GCC only — MSYS2's UCRT64 environment, or an `x86_64-w64-mingw32` cross toolchain. MSVC and clang-cl are not supported.
 - CMake 3.20+ and Ninja or Make.
 - libc. Nothing else.
 
 ## Build
 
+Linux/macOS:
+
 ```sh
 cmake -B build -G Ninja             # omit -G Ninja to use Make
 cmake --build build
 ./build/tests                       # unit tests
-./build/example_allocators          # examples/allocators.c
 ./build/main                        # scratch program, src/main.c
-./build/bench                       # benchmarks: build Release for real numbers
 ```
 
-CMake prefers Clang and falls back to GCC. Pass `-DCMAKE_C_COMPILER=gcc` to choose.
+Windows (MinGW-w64). The default build type there is `Release`, and the exe is statically linked (`-static`). From an MSYS2 UCRT64 shell:
+
+```sh
+# pacman -S mingw-w64-ucrt-x86_64-clang mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-ninja
+CC=clang cmake -B build -G Ninja
+cmake --build build                 # build/main.exe
+```
+
+Cross-compiling from Linux:
+
+```sh
+# sudo apt install mingw-w64
+cmake -B build-win -G Ninja -DCMAKE_SYSTEM_NAME=Windows \
+      -DCMAKE_C_COMPILER=x86_64-w64-mingw32-gcc -DWC_MARCH=x86-64-v2
+cmake --build build-win             # build-win/main.exe
+```
+
+CMake prefers Clang and falls back to GCC. Pass `-DCMAKE_C_COMPILER=...` to choose.
 
 ### Build types
 
@@ -27,13 +46,17 @@ Pass `-DCMAKE_BUILD_TYPE=<type>`:
 
 | Type | Flags | Use it for |
 |---|---|---|
-| `Debug` (default) | `-O0`, AddressSanitizer + UndefinedBehaviorSanitizer | Day-to-day development and tests |
+| `Debug` (Linux default) | `-O0`, AddressSanitizer + UndefinedBehaviorSanitizer | Day-to-day development and tests |
 | `DebugNoSan` | `-O0`, no sanitizers | `gdb` / `lldb` sessions |
-| `Release` | `-O3 -DNDEBUG -march=native -ffast-math` | Benchmarks (`./build-rel/bench`) and shipping |
+| `Release` (Windows default) | `-O3 -DNDEBUG`, LTO | Shipping |
 
 `Release` defines `NDEBUG`, which strips every `WC_ASSERT`. Run the tests in both `Debug` and `Release`: some behavior differs between them by design. See [Diagnostics](diagnostics.md).
 
-If your Clang has no sanitizer runtime installed, the `Debug` link fails. Use GCC or `DebugNoSan`.
+`-ffast-math` is deliberately not global: it is applied to `src/fast_math.c` only, so it cannot silently change float behavior in the containers.
+
+`-march=native` is the default. Cross compilers usually reject `native`: pass `-DWC_MARCH=x86-64-v2` (a sane baseline) or `-DWC_MARCH=` to omit the flag.
+
+Windows builds are release-only, so `Debug` there has no sanitizers. If your Clang has no sanitizer runtime installed on Linux, the `Debug` link fails; use `DebugNoSan`.
 
 `-DWC_WARNINGS_AS_ERRORS=ON` adds `-Werror`. Three warnings are always errors: `incompatible-pointer-types`, `implicit-function-declaration` and `int-conversion`.
 
@@ -47,7 +70,9 @@ list(REMOVE_ITEM WC_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/path/to/wctoolkit/src/ma
 
 add_executable(app main.c ${WC_SOURCES})
 target_include_directories(app PRIVATE path/to/wctoolkit/include)
-target_link_libraries(app m)        # libm: needed by the test suite, harmless otherwise
+if(NOT WIN32)
+  target_link_libraries(app m)      # libm is separate on Linux/macOS
+endif()
 ```
 
 Leave out `src/main.c`: it is the toolkit's own scratch program.
