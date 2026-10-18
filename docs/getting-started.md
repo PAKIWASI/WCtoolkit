@@ -109,17 +109,17 @@ int main(void)
 
     // A map of String -> int, also on libc
     HashMap ages = MAP_OF(String, int);
-    MAP_PUT_STR_INT(&ages, "ada", 36);
-    MAP_PUT_STR_INT(&ages, "alan", 41);
+    MAP_PUT_STR_INT(&ages, "ada", 3, 36);
+    MAP_PUT_STR_INT(&ages, "alan", 4, 41);
 
-    printf("ada = %d\n", MAP_GET_CSTR(&ages, int, "ada"));   // lookup builds no String
+    printf("ada = %d\n", MAP_GET_CSTR(&ages, int, "ada", 3));   // lookup builds no String
     HashMap_destroy(&ages);
 
     // The same kind of work on an arena: one destroy, no per-container destroy
     Arena tmp;
     Arena_create(&tmp, WC_LIBC, nKB(4));
     GenVec words = VEC_OF_IN(Arena_allocator(&tmp), String, 4);
-    VEC_PUSH_CSTR(&words, "no destroy needed");
+    VEC_PUSH_CSTR(&words, "no destroy needed", sizeof("no destroy needed") - 1);
     Arena_destroy(&tmp);   // frees `words` and its Strings too
     return 0;
 }

@@ -9,7 +9,7 @@ A C11 data-structures toolkit with explicit ownership and allocators. No depende
 int main(void)
 {
     GenVec names = VEC_OF(String, 8);           // libc-backed, ops chosen from the type
-    VEC_PUSH_CSTR(&names, "Wasi");               // String built in the vector's allocator
+    VEC_PUSH_CSTR(&names, "Wasi", 4);             // String built in the vector's allocator
     VEC_FOREACH(&names, String, s) { String_append_char(s, '!'); }
     GenVec_destroy(&names);                      // destroys the Strings, then the buffer
 

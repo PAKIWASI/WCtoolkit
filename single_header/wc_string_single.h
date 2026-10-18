@@ -980,8 +980,8 @@ wc_nodiscard wc_nonull(1) String String_create(const wc_allocator* a);
 
 wc_nodiscard wc_nonull(1) String String_with_cap(const wc_allocator* a, u64 cap);
 
-// Create a String from a C string using allocator `a`.
-wc_nodiscard wc_nonull(1) String String_from_cstr(const wc_allocator* a, const char* cstr);
+// Create a String from `clen` bytes of a C string using allocator `a`.
+wc_nodiscard wc_nonull(1) String String_from_cstr(const wc_allocator* a, const char* cstr, u64 clen);
 
 // Destroy the String's internal buffer
 // Safe on a zeroed/moved-from String.
@@ -1044,7 +1044,7 @@ wc_nonull(1) void String_ensure_null_term(String* str);
 wc_nonull(1) void String_append_char(String* str, char c);
 // TODO:
 wc_nonull(1, 2) void String_append_multi(String* str, const char* data, u64 len);
-wc_nonull(1, 2) void String_append_cstr(String* str, const char* cstr);
+wc_nonull(1, 2) void String_append_cstr(String* str, const char* cstr, u64 clen);
 wc_nonull(1, 2) void String_append_String(String* str, const String* other);
 // Append other then destroy it (leaves other zeroed). When str is empty and
 // both share an allocator, str takes over other's buffer: no copy.
@@ -1053,7 +1053,7 @@ wc_nonull(1, 2) void String_append_String_move(String* str, String* other);
 wc_nodiscard wc_nonull(1) char String_pop_char(String* str);
 
 wc_nonull(1) void String_insert_char(String* str, u64 i, char c);
-wc_nonull(1, 3) void String_insert_cstr(String* str, u64 i, const char* cstr);
+wc_nonull(1, 3) void String_insert_cstr(String* str, u64 i, const char* cstr, u64 clen);
 // TODO:
 wc_nonull(1, 3) void String_insert_multi(String* str, u64 i, const char* data, u64 len);
 wc_nonull(1, 3) void String_insert_String(String* str, u64 i, const String* other);
@@ -1101,14 +1101,14 @@ wc_nodiscard wc_nonull(1, 2) static wc_always_inline bool String_equals(const St
     return String_compare(s1, s2) == 0;
 }
 
-wc_nodiscard wc_nonull(1, 2) bool String_equals_cstr(const String* str, const char* cstr);
+wc_nodiscard wc_nonull(1, 2) bool String_equals_cstr(const String* str, const char* cstr, u64 clen);
 
 
 //  Search
 
 // Returns index, or WC_NOT_FOUND if not found.
 wc_nodiscard wc_nonull(1) u64 String_find_char(const String* str, char c);
-wc_nodiscard wc_nonull(1, 2) u64 String_find_cstr(const String* str, const char* substr);
+wc_nodiscard wc_nonull(1, 2) u64 String_find_cstr(const String* str, const char* substr, u64 clen);
 
 // Return a String (in allocator `a`) holding `length` chars starting at `start`.
 wc_nodiscard wc_nonull(1, 2) String String_substr(const wc_allocator* a, const String* str, u64 start, u64 length);
@@ -1612,23 +1612,19 @@ String String_with_cap(const wc_allocator* a, u64 cap)
     return s;
 }
 
-String String_from_cstr(const wc_allocator* a, const char* cstr)
+String String_from_cstr(const wc_allocator* a, const char* cstr, u64 clen)
 {
     String s;
     str_init_sso(&s, a);
 
-    if (!cstr) {
+    if (clen == 0) {
         return s;
     }
 
-    u64 len = strlen(cstr);
-    if (len == 0) {
-        return s;
-    }
-
-    ensure_capacity(&s, len);
-    memcpy(GET_STR(&s), cstr, len);
-    s.size = len;
+    WC_ASSERT(cstr != NULL, "String_from_cstr: NULL cstr with non-zero length");
+    ensure_capacity(&s, clen);
+    memcpy(GET_STR(&s), cstr, clen);
+    s.size = clen;
     return s;
 }
 
@@ -1783,23 +1779,14 @@ void String_append_multi(String* str, const char* data, u64 len)
         return;
     }
 
-    ensure_capacity(str, len);
-    memcpy(GET_STR(str), data, len);
+    ensure_capacity(str, str->size + len);
+    memcpy(GET_STR(str) + str->size, data, len);
     str->size += len;
 }
 
-// TODO: whenever we take a cstr, we should also take the length
-void String_append_cstr(String* s, const char* cstr)
+void String_append_cstr(String* s, const char* cstr, u64 clen)
 {
-    WC_ASSERT(s->capacity != 0, "zeroed/moved-from String");
-    u64 len = strlen(cstr);
-    if (len == 0) {
-        return;
-    }
-
-    ensure_capacity(s, s->size + len);
-    memcpy(GET_STR(s) + s->size, cstr, len);
-    s->size += len;
+    String_append_multi(s, cstr, clen);
 }
 
 void String_append_String(String* s, const String* other)
@@ -1859,25 +1846,24 @@ void String_insert_char(String* s, u64 i, char c)
     s->size++;
 }
 
-void String_insert_cstr(String* s, u64 i, const char* cstr)
+void String_insert_cstr(String* s, u64 i, const char* cstr, u64 clen)
 {
     WC_ASSERT(s->capacity != 0, "String_insert_cstr on zeroed/moved-from String");
     WC_ASSERT(i <= s->size, "index out of bounds");
 
-    u64 len = strlen(cstr);
-    if (len == 0) {
+    if (clen == 0) {
         return;
     }
 
-    ensure_capacity(s, s->size + len);
+    ensure_capacity(s, s->size + clen);
 
     char* buf = GET_STR(s);
-    // Shift existing chars right by len positions.
+    // Shift existing chars right by clen positions.
     for (u64 j = s->size; j > i; j--) {
-        buf[j + len - 1] = buf[j - 1];
+        buf[j + clen - 1] = buf[j - 1];
     }
-    memcpy(buf + i, cstr, len);
-    s->size += len;
+    memcpy(buf + i, cstr, clen);
+    s->size += clen;
 }
 
 void String_insert_String(String* s, u64 i, const String* other)
@@ -1962,18 +1948,16 @@ int String_compare(const String* s1, const String* s2)
     return 0;
 }
 
-bool String_equals_cstr(const String* s, const char* cstr)
+bool String_equals_cstr(const String* s, const char* cstr, u64 clen)
 {
-    u64 len = strlen(cstr);
-
-    if (s->size != len) {
+    if (s->size != clen) {
         return false;
     }
-    if (len == 0) {
+    if (clen == 0) {
         return true;
     }
 
-    return memcmp(GET_STR(s), cstr, len) == 0;
+    return memcmp(GET_STR(s), cstr, clen) == 0;
 }
 
 
@@ -1989,22 +1973,21 @@ u64 String_find_char(const String* s, char c)
     return p ? (u64)(p - buf) : WC_NOT_FOUND;
 }
 
-u64 String_find_cstr(const String* s, const char* substr)
+u64 String_find_cstr(const String* s, const char* substr, u64 clen)
 {
-    u64 len = strlen(substr);
-    if (len == 0) {
+    if (clen == 0) {
         return 0;
     }
-    if (len > s->size) {
+    if (clen > s->size) {
         return WC_NOT_FOUND;
     }
 
     // memchr (SIMD in libc) jumps to each candidate first byte; memcmp confirms the rest.
     const char* buf = GET_STR(s);
-    const char* end = buf + (s->size - len) + 1; // one past the last valid start
+    const char* end = buf + (s->size - clen) + 1; // one past the last valid start
     const char* cur = buf;
     while (cur < end && (cur = memchr(cur, substr[0], (size_t)(end - cur))) != NULL) {
-        if (memcmp(cur, substr, len) == 0) {
+        if (memcmp(cur, substr, clen) == 0) {
             return (u64)(cur - buf);
         }
         cur++;

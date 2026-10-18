@@ -8,7 +8,7 @@ Include `wc_macros.h`. It pulls in every container header, `wc_string.h` and the
 
 ## Plain data vs owning elements
 
-A macro that takes an element **by value** copies it into a hidden temporary. For plain data that's free. For an owning type it would be a trap: `VEC_PUSH(&v, String_from_cstr(..))` would deep-copy the temporary and then leak it. So the macros split by element kind, and the compiler enforces the split ([memory rules](memory-rules.md) E2, E3):
+A macro that takes an element **by value** copies it into a hidden temporary. For plain data that's free. For an owning type it would be a trap: `VEC_PUSH(&v, String_from_cstr(alloc, cstr, clen))` would deep-copy the temporary and then leak it. So the macros split by element kind, and the compiler enforces the split ([memory rules](memory-rules.md) E2, E3):
 
 | You have | Push / put / insert with | Read with |
 |---|---|---|
@@ -77,7 +77,7 @@ Like every `WC_ASSERT`, the check is gone in Release, so a mismatch there reads 
 | `VEC_PUSH(&v, val)` | | Plain data. Size-checked in Debug. |
 | `VEC_PUSH_MOVE(&v, lval)` | | Moves an lvalue in; `lval` is zeroed. Size-checked. |
 | `VEC_PUSH_COPY(&v, lval)` | | Deep-copies an lvalue in; you keep it |
-| `VEC_PUSH_CSTR(&v, "text")` | | Builds a `String` in `v`'s allocator. Works for `String` and `String*` vectors. |
+| `VEC_PUSH_CSTR(&v, "text", clen)` | | Builds a `String` from `clen` bytes in `v`'s allocator. Works for `String` and `String*` vectors. |
 | `VEC_PUSH_VEC(&outer, inner)`, `VEC_PUSH_VEC_PTR(&outer, p)` | | Move a vector, or a boxed vector, into a vector of vectors |
 | `VEC_AT(&v, T, i)` | `T` | Element `i` by value. Not for owning structs. |
 | `VEC_REF(&v, T, i)` | `const T*` | A pointer into the vector, any `T` |
@@ -134,11 +134,11 @@ int main(void)
 | `MAP_PUT_COPY(&m, klval, vlval)` | `bool` | Deep-copies both lvalues; you keep them |
 | `MAP_PUT_MOVE(&m, klval, vlval)` | `bool` | Moves both; both zeroed |
 | `MAP_PUT_KEY_MOVE(&m, klval, val)`, `MAP_PUT_VAL_MOVE(&m, key, vlval)` | `bool` | Move one, copy the other (the copied one is plain data) |
-| `MAP_PUT_STR_STR(&m, "k", "v")`, `MAP_PUT_STR_INT(&m, "k", 1)`, `MAP_PUT_INT_STR(&m, 1, "v")` | `bool` | The key is looked up through a borrowed `String`: an existing key costs no allocation, a new one is copied once. Values are built in the map's allocator. |
+| `MAP_PUT_STR_STR(&m, "k", klen, "v", vlen)`, `MAP_PUT_STR_INT(&m, "k", klen, 1)`, `MAP_PUT_INT_STR(&m, 1, "v", vlen)` | `bool` | The key is looked up through a borrowed `String`: an existing key costs no allocation, a new one is copied once. Values are built in the map's allocator. All C strings carry their byte length. |
 | `MAP_GET(&m, V, key)` | `V` | Plain data. A missing key aborts in Debug and returns a zeroed `V` in Release. Use `MAP_TRY_GET` when absence is normal. |
 | `MAP_GET_PTR(&m, V, key)` | `const V*` | Any `V`, or `NULL` |
 | `MAP_TRY_GET(&m, V, key, &out)` | `bool` | Plain data: `1` and writes `out` if found |
-| `MAP_GET_CSTR(&m, V, "k")`, `MAP_GET_PTR_CSTR(&m, V, "k")`, `MAP_HAS_CSTR(&m, "k")` | | `String`-keyed lookups by C string. No allocation. |
+| `MAP_GET_CSTR(&m, V, "k", klen)`, `MAP_GET_PTR_CSTR(&m, V, "k", klen)`, `MAP_HAS_CSTR(&m, "k", klen)` | | `String`-keyed lookups by C string. No allocation. |
 | `MAP_FOREACH_KEY(&m, K, k) { ... }` | | `k` is a `const K*` |
 | `MAP_FOREACH_VAL(&m, V, v) { ... }` | | `v` is a `V*` |
 
@@ -172,8 +172,8 @@ A set is a `HashMap` with no values (`val_size == 0`). Declare one with `SET_OF(
 | `SET_INSERT(&s, val)` | Plain data. Returns `bool`: `1` if it was already present. Size-checked in Debug. |
 | `SET_INSERT_COPY(&s, lval)` | Deep-copies an lvalue in; you keep it |
 | `SET_INSERT_MOVE(&s, lval)` | Moves in, or destroys `lval` if already present. `lval` is zeroed either way. |
-| `SET_INSERT_CSTR(&s, "text")` | Probes with a borrowed `String`: an existing string costs nothing, a new one is copied once into the set's allocator |
-| `SET_HAS_CSTR(&s, "text")` | No allocation |
+| `SET_INSERT_CSTR(&s, "text", clen)` | Probes with a borrowed `String`: an existing string costs nothing, a new one is copied once into the set's allocator |
+| `SET_HAS_CSTR(&s, "text", clen)` | No allocation |
 | `SET_FROM_VEC(&v, hash, cmp)` | A new set of deep copies of `v`'s elements, on `v`'s allocator. Reserved once up front. |
 | `SET_FOREACH(&s, T, x) { ... }` | `x` is a `const T*` to each key. Works on any map too. |
 
@@ -182,7 +182,7 @@ A set is a `HashMap` with no values (`val_size == 0`). Declare one with `SET_OF(
 | Macro | Notes |
 |---|---|
 | `STACK_PUSH`, `STACK_PUSH_MOVE`, `STACK_PUSH_COPY`, `STACK_POP(&s, T)`, `STACK_AT(&s, T, i)`, `STACK_REF(&s, T, i)`, `STACK_FOREACH` | The `VEC_*` macros under stack names |
-| `QUEUE_PUSH(&q, val)` (plain data), `QUEUE_PUSH_MOVE(&q, lval)`, `QUEUE_PUSH_COPY(&q, lval)`, `QUEUE_PUSH_CSTR(&q, "text")` | |
+| `QUEUE_PUSH(&q, val)` (plain data), `QUEUE_PUSH_MOVE(&q, lval)`, `QUEUE_PUSH_COPY(&q, lval)`, `QUEUE_PUSH_CSTR(&q, "text", clen)` | |
 | `QUEUE_POP(&q, T)` | The head, moved out |
 | `QUEUE_PEEK(&q, T)` | The head by value, without removing it. Plain data. On an empty queue `Queue_peek_ptr` returns `NULL`, so check `Queue_empty` first. |
 | `QUEUE_PEEK_REF(&q, T)` | `const T*` to the head, any `T` |

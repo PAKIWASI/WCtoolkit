@@ -217,7 +217,7 @@ int main(void)
     HashMap_del(&seen, &k, NULL);            // 1: removed
 
     HashMap words = SET_OF(String);          // String elements, wc_str_ops
-    SET_INSERT_CSTR(&words, "ada");
+    SET_INSERT_CSTR(&words, "ada", 3);
     SET_FOREACH(&words, String, w) { String_print(w); }
 
     HashMap_destroy(&words);

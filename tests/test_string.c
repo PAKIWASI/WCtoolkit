@@ -20,23 +20,23 @@ UTEST(string, create_empty)
 
 UTEST(string, create_stk)
 {
-    String s = String_from_cstr(WC_LIBC, "hello");
+    String s = String_from_cstr(WC_LIBC, "hello", strlen("hello"));
     EXPECT_EQ(String_len(&s), 5u);
-    EXPECT_TRUE(String_equals_cstr(&s, "hello"));
+    EXPECT_TRUE(String_equals_cstr(&s, "hello", strlen("hello")));
     String_destroy(&s);
 }
 
 UTEST(string, from_cstr)
 {
-    String s = String_from_cstr(WC_LIBC, "world");
+    String s = String_from_cstr(WC_LIBC, "world", strlen("world"));
     EXPECT_EQ(String_len(&s), 5u);
-    EXPECT_TRUE(String_equals_cstr(&s, "world"));
+    EXPECT_TRUE(String_equals_cstr(&s, "world", strlen("world")));
     String_destroy(&s);
 }
 
 UTEST(string, from_cstr_empty)
 {
-    String s = String_from_cstr(WC_LIBC, "");
+    String s = String_from_cstr(WC_LIBC, "", strlen(""));
     EXPECT_EQ(String_len(&s), 0u);
     EXPECT_TRUE(String_empty(&s));
     String_destroy(&s);
@@ -47,30 +47,30 @@ UTEST(string, from_cstr_empty)
 
 UTEST(string, append_cstr)
 {
-    String s = String_from_cstr(WC_LIBC, "hello");
-    String_append_cstr(&s, " world");
+    String s = String_from_cstr(WC_LIBC, "hello", strlen("hello"));
+    String_append_cstr(&s, " world", strlen(" world"));
     EXPECT_EQ(String_len(&s), 11u);
-    EXPECT_TRUE(String_equals_cstr(&s, "hello world"));
+    EXPECT_TRUE(String_equals_cstr(&s, "hello world", strlen("hello world")));
     String_destroy(&s);
 }
 
 UTEST(string, append_char)
 {
-    String s = String_from_cstr(WC_LIBC, "ab");
+    String s = String_from_cstr(WC_LIBC, "ab", strlen("ab"));
     String_append_char(&s, 'c');
     EXPECT_EQ(String_len(&s), 3u);
-    EXPECT_TRUE(String_equals_cstr(&s, "abc"));
+    EXPECT_TRUE(String_equals_cstr(&s, "abc", strlen("abc")));
     String_destroy(&s);
 }
 
 UTEST(string, append_String)
 {
-    String a = String_from_cstr(WC_LIBC, "foo");
-    String b = String_from_cstr(WC_LIBC, "bar");
+    String a = String_from_cstr(WC_LIBC, "foo", strlen("foo"));
+    String b = String_from_cstr(WC_LIBC, "bar", strlen("bar"));
     String_append_String(&a, &b);
-    EXPECT_TRUE(String_equals_cstr(&a, "foobar"));
+    EXPECT_TRUE(String_equals_cstr(&a, "foobar", strlen("foobar")));
     /* b must be unchanged */
-    EXPECT_TRUE(String_equals_cstr(&b, "bar"));
+    EXPECT_TRUE(String_equals_cstr(&b, "bar", strlen("bar")));
     String_destroy(&a);
     String_destroy(&b);
 }
@@ -79,9 +79,17 @@ UTEST(string, append_String)
 UTEST(string, append_to_empty)
 {
     String s = String_create(WC_LIBC);
-    String_append_cstr(&s, "first");
+    String_append_cstr(&s, "first", strlen("first"));
     EXPECT_EQ(String_len(&s), 5u);
-    EXPECT_TRUE(String_equals_cstr(&s, "first"));
+    EXPECT_TRUE(String_equals_cstr(&s, "first", strlen("first")));
+    String_destroy(&s);
+}
+
+UTEST(string, append_multi_to_nonempty)
+{
+    String s = String_from_cstr(WC_LIBC, "ab", 2);
+    String_append_multi(&s, "cd", 2);
+    EXPECT_TRUE(String_equals_cstr(&s, "abcd", 4));
     String_destroy(&s);
 }
 
@@ -90,53 +98,53 @@ UTEST(string, append_to_empty)
 
 UTEST(string, insert_char_front)
 {
-    String s = String_from_cstr(WC_LIBC, "bc");
+    String s = String_from_cstr(WC_LIBC, "bc", strlen("bc"));
     String_insert_char(&s, 0, 'a');
-    EXPECT_TRUE(String_equals_cstr(&s, "abc"));
+    EXPECT_TRUE(String_equals_cstr(&s, "abc", strlen("abc")));
     String_destroy(&s);
 }
 
 UTEST(string, insert_char_mid)
 {
-    String s = String_from_cstr(WC_LIBC, "ac");
+    String s = String_from_cstr(WC_LIBC, "ac", strlen("ac"));
     String_insert_char(&s, 1, 'b');
-    EXPECT_TRUE(String_equals_cstr(&s, "abc"));
+    EXPECT_TRUE(String_equals_cstr(&s, "abc", strlen("abc")));
     String_destroy(&s);
 }
 
 UTEST(string, insert_cstr)
 {
-    String s = String_from_cstr(WC_LIBC, "helo");
-    String_insert_cstr(&s, 3, "l");
-    EXPECT_TRUE(String_equals_cstr(&s, "hello"));
+    String s = String_from_cstr(WC_LIBC, "helo", strlen("helo"));
+    String_insert_cstr(&s, 3, "l", strlen("l"));
+    EXPECT_TRUE(String_equals_cstr(&s, "hello", strlen("hello")));
     String_destroy(&s);
 }
 
 UTEST(string, remove_char)
 {
-    String s = String_from_cstr(WC_LIBC, "aXb");
+    String s = String_from_cstr(WC_LIBC, "aXb", strlen("aXb"));
     String_remove_char(&s, 1);
     EXPECT_EQ(String_len(&s), 2u);
-    EXPECT_TRUE(String_equals_cstr(&s, "ab"));
+    EXPECT_TRUE(String_equals_cstr(&s, "ab", strlen("ab")));
     String_destroy(&s);
 }
 
 UTEST(string, remove_range)
 {
-    String s = String_from_cstr(WC_LIBC, "aXXXb");
+    String s = String_from_cstr(WC_LIBC, "aXXXb", strlen("aXXXb"));
     String_remove_range(&s, 1, 3);
     EXPECT_EQ(String_len(&s), 2u);
-    EXPECT_TRUE(String_equals_cstr(&s, "ab"));
+    EXPECT_TRUE(String_equals_cstr(&s, "ab", strlen("ab")));
     String_destroy(&s);
 }
 
 UTEST(string, pop_char)
 {
-    String s = String_from_cstr(WC_LIBC, "abc");
+    String s = String_from_cstr(WC_LIBC, "abc", strlen("abc"));
     char   c = String_pop_char(&s);
     EXPECT_EQ(c, 'c');
     EXPECT_EQ(String_len(&s), 2u);
-    EXPECT_TRUE(String_equals_cstr(&s, "ab"));
+    EXPECT_TRUE(String_equals_cstr(&s, "ab", strlen("ab")));
     String_destroy(&s);
 }
 
@@ -145,7 +153,7 @@ UTEST(string, pop_char)
 
 UTEST(string, char_at)
 {
-    String s = String_from_cstr(WC_LIBC, "xyz");
+    String s = String_from_cstr(WC_LIBC, "xyz", strlen("xyz"));
     EXPECT_EQ(String_char_at(&s, 0), 'x');
     EXPECT_EQ(String_char_at(&s, 1), 'y');
     EXPECT_EQ(String_char_at(&s, 2), 'z');
@@ -154,9 +162,9 @@ UTEST(string, char_at)
 
 UTEST(string, set_char)
 {
-    String s = String_from_cstr(WC_LIBC, "aXc");
+    String s = String_from_cstr(WC_LIBC, "aXc", strlen("aXc"));
     String_set_char(&s, 1, 'b');
-    EXPECT_TRUE(String_equals_cstr(&s, "abc"));
+    EXPECT_TRUE(String_equals_cstr(&s, "abc", strlen("abc")));
     String_destroy(&s);
 }
 
@@ -165,9 +173,9 @@ UTEST(string, set_char)
 
 UTEST(string, equals)
 {
-    String a = String_from_cstr(WC_LIBC, "same");
-    String b = String_from_cstr(WC_LIBC, "same");
-    String c = String_from_cstr(WC_LIBC, "different");
+    String a = String_from_cstr(WC_LIBC, "same", strlen("same"));
+    String b = String_from_cstr(WC_LIBC, "same", strlen("same"));
+    String c = String_from_cstr(WC_LIBC, "different", strlen("different"));
     EXPECT_TRUE(String_equals(&a, &b));
     EXPECT_FALSE(String_equals(&a, &c));
     String_destroy(&a);
@@ -177,8 +185,8 @@ UTEST(string, equals)
 
 UTEST(string, compare_ordering)
 {
-    String a = String_from_cstr(WC_LIBC, "abc");
-    String b = String_from_cstr(WC_LIBC, "abd");
+    String a = String_from_cstr(WC_LIBC, "abc", strlen("abc"));
+    String b = String_from_cstr(WC_LIBC, "abd", strlen("abd"));
     EXPECT_TRUE(String_compare(&a, &b) < 0);
     EXPECT_TRUE(String_compare(&b, &a) > 0);
     EXPECT_EQ(String_compare(&a, &a), 0);
@@ -188,7 +196,7 @@ UTEST(string, compare_ordering)
 
 UTEST(string, find_char)
 {
-    String s = String_from_cstr(WC_LIBC, "hello");
+    String s = String_from_cstr(WC_LIBC, "hello", strlen("hello"));
     EXPECT_EQ(String_find_char(&s, 'e'), 1u);
     EXPECT_EQ(String_find_char(&s, 'z'), WC_NOT_FOUND);
     String_destroy(&s);
@@ -196,18 +204,46 @@ UTEST(string, find_char)
 
 UTEST(string, find_cstr)
 {
-    String s = String_from_cstr(WC_LIBC, "hello world");
-    EXPECT_EQ(String_find_cstr(&s, "world"), 6u);
-    EXPECT_EQ(String_find_cstr(&s, "xyz"), WC_NOT_FOUND);
-    EXPECT_EQ(String_find_cstr(&s, ""), 0u);
+    String s = String_from_cstr(WC_LIBC, "hello world", strlen("hello world"));
+    EXPECT_EQ(String_find_cstr(&s, "world", strlen("world")), 6u);
+    EXPECT_EQ(String_find_cstr(&s, "xyz", strlen("xyz")), WC_NOT_FOUND);
+    EXPECT_EQ(String_find_cstr(&s, "", strlen("")), 0u);
+    String_destroy(&s);
+}
+
+UTEST(string, cstr_length_is_authoritative)
+{
+    // No NUL terminator: clen is the only source of length.
+    const char no_nul[5] = {'h', 'e', 'l', 'l', 'o'};
+    String     s         = String_from_cstr(WC_LIBC, no_nul, sizeof(no_nul));
+    EXPECT_EQ(String_len(&s), 5u);
+    EXPECT_TRUE(String_equals_cstr(&s, "hello", 5u));
+
+    // clen, not the first NUL, decides what is copied.
+    String prefix = String_from_cstr(WC_LIBC, "abcdef", 3u);
+    EXPECT_TRUE(String_equals_cstr(&prefix, "abc", 3u));
+    EXPECT_FALSE(String_equals_cstr(&prefix, "abcdef", 6u));
+
+    char tail[2] = {'d', 'e'};
+    String_append_cstr(&s, tail, sizeof(tail));
+    EXPECT_TRUE(String_equals_cstr(&s, "hellode", 7u));
+
+    char mid[2] = {'x', 'y'};
+    String_insert_cstr(&s, 5, mid, sizeof(mid));
+    EXPECT_TRUE(String_equals_cstr(&s, "helloxyde", 9u));
+
+    EXPECT_EQ(String_find_cstr(&s, "xyzz", 2u), 5u);
+    EXPECT_TRUE(String_equals_cstr(&s, "helloxydeEXTRA", 9u));
+
+    String_destroy(&prefix);
     String_destroy(&s);
 }
 
 UTEST(string, substr)
 {
-    String s   = String_from_cstr(WC_LIBC, "hello world");
+    String s   = String_from_cstr(WC_LIBC, "hello world", strlen("hello world"));
     String sub = String_substr(WC_LIBC, &s, 6, 5);
-    EXPECT_TRUE(String_equals_cstr(&sub, "world"));
+    EXPECT_TRUE(String_equals_cstr(&sub, "world", strlen("world")));
     String_destroy(&s);
     String_destroy(&sub);
 }
@@ -217,22 +253,22 @@ UTEST(string, substr)
 
 UTEST(string, copy_independence)
 {
-    String a = String_from_cstr(WC_LIBC, "original");
+    String a = String_from_cstr(WC_LIBC, "original", strlen("original"));
     String b = String_copy(WC_LIBC, &a);
-    String_append_cstr(&a, "_modified");
+    String_append_cstr(&a, "_modified", strlen("_modified"));
     EXPECT_FALSE(String_equals(&a, &b));
-    EXPECT_TRUE(String_equals_cstr(&b, "original"));
+    EXPECT_TRUE(String_equals_cstr(&b, "original", strlen("original")));
     String_destroy(&a);
     String_destroy(&b);
 }
 
 UTEST(string, move_nulls_src)
 {
-    String src = String_from_cstr(WC_LIBC, "move me");
+    String src = String_from_cstr(WC_LIBC, "move me", strlen("move me"));
     String dest = {0};
     String_move(&dest, &src);
     EXPECT_EQ(src.capacity, 0u); // moved-from String is zeroed
-    EXPECT_TRUE(String_equals_cstr(&dest, "move me"));
+    EXPECT_TRUE(String_equals_cstr(&dest, "move me", strlen("move me")));
     String_destroy(&dest);
     String_destroy(&src); // safe on zeroed
 }
@@ -242,7 +278,7 @@ UTEST(string, move_nulls_src)
 
 UTEST(string, clear)
 {
-    String s = String_from_cstr(WC_LIBC, "data");
+    String s = String_from_cstr(WC_LIBC, "data", strlen("data"));
     String_clear(&s);
     EXPECT_EQ(String_len(&s), 0u);
     EXPECT_TRUE(String_empty(&s));
@@ -254,13 +290,13 @@ UTEST(string, reserve_char)
     String s = String_create(WC_LIBC);
     String_reserve_char(&s, 5, 'x');
     EXPECT_EQ(String_len(&s), 5u);
-    EXPECT_TRUE(String_equals_cstr(&s, "xxxxx"));
+    EXPECT_TRUE(String_equals_cstr(&s, "xxxxx", strlen("xxxxx")));
     String_destroy(&s);
 }
 
 UTEST(string, to_cstr)
 {
-    String s    = String_from_cstr(WC_LIBC, "hello");
+    String s    = String_from_cstr(WC_LIBC, "hello", strlen("hello"));
     char*  cstr = String_to_cstr(WC_LIBC, &s);
     EXPECT_TRUE((cstr) != NULL);
     EXPECT_STREQ(cstr, "hello");
@@ -319,40 +355,40 @@ UTEST(string, shrink)
 
 UTEST(string, insert_String_front)
 {
-    String a = String_from_cstr(WC_LIBC, "world");
-    String b = String_from_cstr(WC_LIBC, "hello ");
+    String a = String_from_cstr(WC_LIBC, "world", strlen("world"));
+    String b = String_from_cstr(WC_LIBC, "hello ", strlen("hello "));
     String_insert_String(&a, 0, &b);
-    EXPECT_TRUE(String_equals_cstr(&a, "hello world"));
+    EXPECT_TRUE(String_equals_cstr(&a, "hello world", strlen("hello world")));
     String_destroy(&a);
     String_destroy(&b);
 }
 
 UTEST(string, insert_String_end)
 {
-    String a = String_from_cstr(WC_LIBC, "hello");
-    String b = String_from_cstr(WC_LIBC, " world");
+    String a = String_from_cstr(WC_LIBC, "hello", strlen("hello"));
+    String b = String_from_cstr(WC_LIBC, " world", strlen(" world"));
     String_insert_String(&a, String_len(&a), &b);
-    EXPECT_TRUE(String_equals_cstr(&a, "hello world"));
+    EXPECT_TRUE(String_equals_cstr(&a, "hello world", strlen("hello world")));
     String_destroy(&a);
     String_destroy(&b);
 }
 
 UTEST(string, insert_String_mid)
 {
-    String a = String_from_cstr(WC_LIBC, "ac");
-    String b = String_from_cstr(WC_LIBC, "b");
+    String a = String_from_cstr(WC_LIBC, "ac", strlen("ac"));
+    String b = String_from_cstr(WC_LIBC, "b", strlen("b"));
     String_insert_String(&a, 1, &b);
-    EXPECT_TRUE(String_equals_cstr(&a, "abc"));
+    EXPECT_TRUE(String_equals_cstr(&a, "abc", strlen("abc")));
     String_destroy(&a);
     String_destroy(&b);
 }
 
 UTEST(string, insert_empty_String_noop)
 {
-    String a = String_from_cstr(WC_LIBC, "hello");
-    String b = String_from_cstr(WC_LIBC, "");
+    String a = String_from_cstr(WC_LIBC, "hello", strlen("hello"));
+    String b = String_from_cstr(WC_LIBC, "", strlen(""));
     String_insert_String(&a, 0, &b);
-    EXPECT_TRUE(String_equals_cstr(&a, "hello"));
+    EXPECT_TRUE(String_equals_cstr(&a, "hello", strlen("hello")));
     EXPECT_EQ(String_len(&a), 5u);
     String_destroy(&a);
     String_destroy(&b);
@@ -363,7 +399,7 @@ UTEST(string, insert_empty_String_noop)
 
 UTEST(string, to_cstr_buf_basic)
 {
-    String s       = String_from_cstr(WC_LIBC, "hello");
+    String s       = String_from_cstr(WC_LIBC, "hello", strlen("hello"));
     char   buf[16] = {0};
     String_to_cstr_buf(&s, buf, sizeof(buf));
     EXPECT_STREQ(buf, "hello");
@@ -372,7 +408,7 @@ UTEST(string, to_cstr_buf_basic)
 
 UTEST(string, to_cstr_buf_nul_terminated)
 {
-    String s = String_from_cstr(WC_LIBC, "abc");
+    String s = String_from_cstr(WC_LIBC, "abc", strlen("abc"));
     char   buf[8];
     memset(buf, 0xFF, sizeof(buf));
     String_to_cstr_buf(&s, buf, 8);
@@ -395,7 +431,7 @@ UTEST(string, to_cstr_buf_empty_String)
 
 UTEST(string, data_ptr_non_empty)
 {
-    String s = String_from_cstr(WC_LIBC, "hello");
+    String s = String_from_cstr(WC_LIBC, "hello", strlen("hello"));
     char*  p = String_data_ptr(&s);
     EXPECT_TRUE((p) != NULL);
     EXPECT_EQ(p[0], 'h');
@@ -412,10 +448,10 @@ UTEST(string, data_ptr_empty_returns_null)
 
 UTEST(string, data_ptr_mutation)
 {
-    String s = String_from_cstr(WC_LIBC, "hello");
+    String s = String_from_cstr(WC_LIBC, "hello", strlen("hello"));
     char*  p = String_data_ptr(&s);
     p[0]     = 'H';
-    EXPECT_TRUE(String_equals_cstr(&s, "Hello"));
+    EXPECT_TRUE(String_equals_cstr(&s, "Hello", strlen("Hello")));
     String_destroy(&s);
 }
 
@@ -424,7 +460,7 @@ UTEST(string, data_ptr_mutation)
 
 UTEST(string, temp_cstr_read)
 {
-    String s            = String_from_cstr(WC_LIBC, "test");
+    String s            = String_from_cstr(WC_LIBC, "test", strlen("test"));
     u64    len_before   = String_len(&s);
     char   captured[16] = {0};
 
@@ -459,7 +495,7 @@ UTEST(string, temp_cstr_read_empty)
 
 UTEST(string, ensure_null_term_direct)
 {
-    String s          = String_from_cstr(WC_LIBC, "abc");
+    String s          = String_from_cstr(WC_LIBC, "abc", strlen("abc"));
     u64    len_before = String_len(&s);
     u64    cap_before = String_capacity(&s);
 
@@ -486,7 +522,7 @@ UTEST(string, ensure_null_term_sso_boundary)
     }
     buf[STR_SSO_SIZE - 1] = '\0';
 
-    String s = String_from_cstr(WC_LIBC, buf);
+    String s = String_from_cstr(WC_LIBC, buf, strlen(buf));
     EXPECT_EQ(String_len(&s), (u64)(STR_SSO_SIZE - 1));
     EXPECT_TRUE(String_is_sso(&s));
 
@@ -527,11 +563,11 @@ UTEST(string, ensure_null_term_heap_boundary)
 
 UTEST(string, append_String_move_nulls_src)
 {
-    String a = String_from_cstr(WC_LIBC, "hello");
-    String b = String_from_cstr(WC_LIBC, " world");
+    String a = String_from_cstr(WC_LIBC, "hello", strlen("hello"));
+    String b = String_from_cstr(WC_LIBC, " world", strlen(" world"));
     String_append_String_move(&a, &b);
     EXPECT_EQ(b.capacity, 0u); // zeroed
-    EXPECT_TRUE(String_equals_cstr(&a, "hello world"));
+    EXPECT_TRUE(String_equals_cstr(&a, "hello world", strlen("hello world")));
     String_destroy(&a);
 }
 
@@ -540,7 +576,7 @@ UTEST(string, append_String_move_nulls_src)
 
 UTEST(string, copy_into_heap_String)
 {
-    String a = String_from_cstr(WC_LIBC, "source");
+    String a = String_from_cstr(WC_LIBC, "source", strlen("source"));
     String b = String_copy(WC_LIBC, &a);
     EXPECT_TRUE(String_equals(&a, &b));
     /* Independence */
@@ -592,9 +628,9 @@ UTEST(string, shrink_empty_heap_string_returns_to_sso)
     EXPECT_EQ(s.capacity, (u64)(STR_SSO_SIZE - 1));
 
     String_append_char(&s, 'b');
-    String_append_cstr(&s, "cd");
+    String_append_cstr(&s, "cd", strlen("cd"));
     EXPECT_EQ(String_len(&s), 3u);
-    EXPECT_TRUE(String_equals_cstr(&s, "bcd"));
+    EXPECT_TRUE(String_equals_cstr(&s, "bcd", strlen("bcd")));
 
     String_destroy(&s);
 }
@@ -608,9 +644,9 @@ UTEST(string, arena_and_cross_alloc_copy)
     Arena_create(&a, WC_LIBC, 4096);
 
     const char* long_str = "a long string beyond sso to force arena heap allocation 12345678901234567890";
-    String      s        = String_from_cstr(Arena_allocator(&a), long_str);
+    String      s        = String_from_cstr(Arena_allocator(&a), long_str, strlen(long_str));
     EXPECT_FALSE(String_is_sso(&s));
-    EXPECT_TRUE(String_equals_cstr(&s, long_str));
+    EXPECT_TRUE(String_equals_cstr(&s, long_str, strlen(long_str)));
 
     /* Cross-allocator copy: Arena-backed string copied into WC_LIBC */
     String copy = String_copy(WC_LIBC, &s);

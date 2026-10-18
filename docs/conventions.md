@@ -31,6 +31,10 @@ GenVec_destroy(&c);
 GenVec_destroy(&v);
 ```
 
+## C strings
+
+Every function and macro that accepts a C string also takes a `u64 clen` immediately after it. Exactly `clen` bytes are used, so the input does not need to be NUL-terminated.
+
 ## Create and destroy
 
 - `X_create(alloc, ...)` **returns the container by value**. It never returns `NULL`: allocation failure aborts.

@@ -70,7 +70,7 @@
 /* Compile-time guards.
  * WC_REQUIRE_POD (E2): a value macro takes the element BY VALUE into a hidden
  *   temporary. Owning structs AND owning pointers are rejected: an rvalue
- *   (String_from_cstr(..), WC_BOX(..)) would be deep-copied and then leak.
+ *   (String_from_cstr(alloc, cstr, clen), WC_BOX(..)) would be deep-copied and then leak.
  * WC_REQUIRE_NO_ALIAS (E3): a read macro returns the element BY VALUE. An
  *   owning struct is rejected: the copy would share the container's buffer.
  *   Pointer elements are allowed: a returned pointer is a visible borrow.
@@ -242,21 +242,21 @@ Usage:
         GenVec_push((vec), (const void*)&(lval));    \
     })
 
-// VEC_PUSH_CSTR — build a String from a C string and move it into a String
-// vector, by value (wc_str_ops) or by pointer (wc_str_ptr_ops).
+// VEC_PUSH_CSTR — build a String from `clen` bytes of a C string and move it
+// into a String vector, by value (wc_str_ops) or by pointer (wc_str_ptr_ops).
 // Uses the container's own allocator so strings follow their vector.
-#define VEC_PUSH_CSTR(vec, cstr)                                                     \
-    ({                                                                               \
-        if ((vec)->data_size == sizeof(String)) {                                    \
-            /* by value: build on the vec's allocator, move the struct in */         \
-            String _wpc_s = String_from_cstr((vec)->alloc, (cstr));                  \
-            GenVec_push_move((vec), (void*)&_wpc_s); /* _wpc_s zeroed by move */     \
-        } else {                                                                     \
-            /* by pointer: box the String in the vec's allocator */                  \
-            WC_ASSERT_ELEM_SIZE((vec), String*);                                     \
-            String* _wpc_p = WC_BOX((vec)->alloc, String, String_from_cstr, (cstr)); \
-            GenVec_push_move((vec), (void*)&_wpc_p); /* slot owns the pointer */     \
-        }                                                                            \
+#define VEC_PUSH_CSTR(vec, cstr, clen)                                                      \
+    ({                                                                                      \
+        if ((vec)->data_size == sizeof(String)) {                                           \
+            /* by value: build on the vec's allocator, move the struct in */                \
+            String _wpc_s = String_from_cstr((vec)->alloc, (cstr), (clen));                 \
+            GenVec_push_move((vec), (void*)&_wpc_s); /* _wpc_s zeroed by move */            \
+        } else {                                                                            \
+            /* by pointer: box the String in the vec's allocator */                         \
+            WC_ASSERT_ELEM_SIZE((vec), String*);                                            \
+            String* _wpc_p = WC_BOX((vec)->alloc, String, String_from_cstr, (cstr), (clen)); \
+            GenVec_push_move((vec), (void*)&_wpc_p); /* slot owns the pointer */            \
+        }                                                                                   \
     })
 
 
@@ -398,73 +398,73 @@ Usage:
     WC_ASSERT((map)->key_size == sizeof(String) && (map)->key_ops && (map)->key_ops->copy_fn, \
               what ": map keys must be String with wc_str_ops")
 
-#define WC_CSTR_PROBE(cstr) String_borrow((cstr), strlen(cstr))
+#define WC_CSTR_PROBE(cstr, clen) String_borrow((cstr), (clen))
 
 /*
- * MAP_PUT_INT_STR(map, int_key, cstr_val)
+ * MAP_PUT_INT_STR(map, int_key, cstr_val, clen)
  * Map must have int key, String val, created with &wc_str_ops for val.
  * The value String is built in the map's allocator and moved in.
  */
-#define MAP_PUT_INT_STR(map, k, cstr_val)                                              \
+#define MAP_PUT_INT_STR(map, k, cstr_val, clen)                                        \
     ({                                                                                 \
-        String _v = String_from_cstr((map)->alloc, (cstr_val));                        \
+        String _v = String_from_cstr((map)->alloc, (cstr_val), (clen));                 \
         bool   _r = HashMap_put_val_move((map), (const void*)&(int){(k)}, (void*)&_v); \
         _r;                                                                            \
     })
 
 /*
- * MAP_PUT_STR_INT(map, cstr_key, int_val)
+ * MAP_PUT_STR_INT(map, cstr_key, clen, int_val)
  * The key is COPIED from a borrowed probe: an existing key costs no allocation;
  * a new key is copied once into the map's allocator.
  */
-#define MAP_PUT_STR_INT(map, cstr_key, int_val)                                           \
+#define MAP_PUT_STR_INT(map, cstr_key, clen, int_val)                                     \
     ({                                                                                    \
         WC_ASSERT_STR_KEYS((map), "MAP_PUT_STR_INT");                                     \
-        String _k = WC_CSTR_PROBE(cstr_key);                                              \
+        String _k = WC_CSTR_PROBE(cstr_key, clen);                                        \
         bool   _r = HashMap_put((map), (const void*)&_k, (const void*)&(int){(int_val)}); \
         _r;                                                                               \
     })
 
 /*
- * MAP_PUT_STR_STR(map, cstr_key, cstr_val)
+ * MAP_PUT_STR_STR(map, cstr_key, key_clen, cstr_val, val_clen)
  * Map must use &wc_str_ops for both key and val. Key as in MAP_PUT_STR_INT;
  * the value String is built in the map's allocator and moved in.
  */
-#define MAP_PUT_STR_STR(map, cstr_key, cstr_val)                               \
+#define MAP_PUT_STR_STR(map, cstr_key, key_clen, cstr_val, val_clen)           \
     ({                                                                         \
         WC_ASSERT_STR_KEYS((map), "MAP_PUT_STR_STR");                          \
-        String _k = WC_CSTR_PROBE(cstr_key);                                   \
-        String _v = String_from_cstr((map)->alloc, (cstr_val));                \
+        String _k = WC_CSTR_PROBE(cstr_key, key_clen);                         \
+        String _v = String_from_cstr((map)->alloc, (cstr_val), (val_clen));    \
         bool   _r = HashMap_put_val_move((map), (const void*)&_k, (void*)&_v); \
         _r;                                                                    \
     })
 
 // bool: is the C string a key?
-#define MAP_HAS_CSTR(map, cstr)                    \
+#define MAP_HAS_CSTR(map, cstr, clen)              \
     ({                                             \
         WC_ASSERT_STR_KEYS((map), "MAP_HAS_CSTR"); \
-        String _k = WC_CSTR_PROBE(cstr);           \
+        String _k = WC_CSTR_PROBE(cstr, clen);     \
         HashMap_has((map), (const void*)&_k);      \
     })
 
 // const V*: the value under the C string key, or NULL. Any V.
 // NOLINTBEGIN(bugprone-macro-parentheses): V is a type; (V)* would parse as a cast
-#define MAP_GET_PTR_CSTR(map, V, cstr)                                             \
+#define MAP_GET_PTR_CSTR(map, V, cstr, clen)                                       \
     ({                                                                             \
         WC_ASSERT_STR_KEYS((map), "MAP_GET_PTR_CSTR");                             \
         WC_ASSERT_SIZE(sizeof(V), (map)->val_size, "MAP_GET_PTR_CSTR value type"); \
-        String _k = WC_CSTR_PROBE(cstr);                                           \
+        String _k = WC_CSTR_PROBE(cstr, clen);                                     \
         (const V*)HashMap_get_ptr((map), (const void*)&_k);                        \
     })
 // NOLINTEND(bugprone-macro-parentheses)
 
 // V by value (plain data only, E3). A missing key aborts in Debug, zero V in Release.
-#define MAP_GET_CSTR(map, V, cstr)                         \
-    ({                                                     \
-        WC_REQUIRE_NO_ALIAS(V, "MAP_GET_CSTR");            \
-        const V* _mp = MAP_GET_PTR_CSTR((map), V, (cstr)); \
-        WC_ASSERT(_mp, "MAP_GET_CSTR: key not found");     \
-        _mp ? *_mp : (V){0};                               \
+#define MAP_GET_CSTR(map, V, cstr, clen)                        \
+    ({                                                          \
+        WC_REQUIRE_NO_ALIAS(V, "MAP_GET_CSTR");                 \
+        const V* _mp = MAP_GET_PTR_CSTR((map), V, (cstr), (clen)); \
+        WC_ASSERT(_mp, "MAP_GET_CSTR: key not found");          \
+        _mp ? *_mp : (V){0};                                    \
     })
 
 
@@ -641,19 +641,19 @@ Usage:
 
 // Insert a C string into a String set. Probes with a borrowed String first: an
 // existing string costs no allocation; a new one is copied once into the set's allocator.
-#define SET_INSERT_CSTR(set, cstr)                   \
-    ({                                               \
-        WC_ASSERT_STR_SET((set), "SET_INSERT_CSTR"); \
-        String _s = WC_CSTR_PROBE(cstr);             \
-        HashMap_put((set), (const void*)&_s, NULL);  \
+#define SET_INSERT_CSTR(set, cstr, clen)                \
+    ({                                                  \
+        WC_ASSERT_STR_SET((set), "SET_INSERT_CSTR");    \
+        String _s = WC_CSTR_PROBE(cstr, clen);          \
+        HashMap_put((set), (const void*)&_s, NULL);     \
     })
 
 // bool: is the C string in a String set? No allocation.
-#define SET_HAS_CSTR(set, cstr)                   \
-    ({                                            \
-        WC_ASSERT_STR_SET((set), "SET_HAS_CSTR"); \
-        String _s = WC_CSTR_PROBE(cstr);          \
-        HashMap_has((set), (const void*)&_s);     \
+#define SET_HAS_CSTR(set, cstr, clen)                \
+    ({                                               \
+        WC_ASSERT_STR_SET((set), "SET_HAS_CSTR");    \
+        String _s = WC_CSTR_PROBE(cstr, clen);       \
+        HashMap_has((set), (const void*)&_s);        \
     })
 
 
@@ -716,10 +716,10 @@ Usage:
         Queue_push((q), (const void*)&(lval));           \
     })
 
-#define QUEUE_PUSH_CSTR(q, cstr)                               \
-    ({                                                         \
-        String _qp_s = String_from_cstr((q)->arr.alloc, cstr); \
-        Queue_push_move((q), (void*)&_qp_s);                   \
+#define QUEUE_PUSH_CSTR(q, cstr, clen)                                \
+    ({                                                                \
+        String _qp_s = String_from_cstr((q)->arr.alloc, cstr, clen);  \
+        Queue_push_move((q), (void*)&_qp_s);                          \
     })
 
 // Front element MOVED out (B7): yours, for every T.

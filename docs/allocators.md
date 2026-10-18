@@ -125,7 +125,7 @@ static GenVec build_names(void)
     Arena_create(&tmp, WC_LIBC, nKB(16));
 
     GenVec names  = VEC_OF_IN(Arena_allocator(&tmp), String, 8);
-    VEC_PUSH_CSTR(&names, "kept");
+    VEC_PUSH_CSTR(&names, "kept", 4);
     GenVec result = GenVec_copy(WC_LIBC, &names);   // every String is copied into libc
 
     Arena_destroy(&tmp);                            // the arena and `names` die here

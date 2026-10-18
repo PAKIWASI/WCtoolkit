@@ -54,7 +54,7 @@ typedef struct {
 static void expect_join_str(int* utest_result, StrView a, StrView b, const char* out)
 {
     String s = WCPath_join_str(WC_LIBC, a, b);
-    EXPECT_TRUE(String_equals_cstr(&s, out));
+    EXPECT_TRUE(String_equals_cstr(&s, out, strlen(out)));
     String_destroy(&s);
 }
 
@@ -76,7 +76,7 @@ UTEST(views, over_cstr_borrows)
 
 UTEST(views, over_String)
 {
-    String  s  = String_from_cstr(WC_LIBC, "viewme");
+    String  s  = String_from_cstr(WC_LIBC, "viewme", strlen("viewme"));
     StrView sv = StrView_over_String(&s);
 
     EXPECT_EQ(sv.len, String_len(&s));
@@ -105,7 +105,7 @@ UTEST(views, over_empty_String_is_valid)
 
 UTEST(views, over_String_ex_window)
 {
-    String s = String_from_cstr(WC_LIBC, "hello world");
+    String s = String_from_cstr(WC_LIBC, "hello world", strlen("hello world"));
 
     StrView mid = StrView_over_String_ex(&s, 6, 5);
     EXPECT_TRUE(sv_equals_cstr(mid, "world"));
@@ -271,7 +271,7 @@ UTEST(views, to_String_copies)
 
     StrView sv = StrView_over_cstr("owned copy", 10);
     String  s  = StrView_to_String(al, sv);
-    EXPECT_TRUE(String_equals_cstr(&s, "owned copy"));
+    EXPECT_TRUE(String_equals_cstr(&s, "owned copy", strlen("owned copy")));
 
     String_destroy(&s);
     EXPECT_EQ(wc_test_alloc_destroy(&ta), 0u);
@@ -675,7 +675,7 @@ UTEST(views, path_join_str_cleanup)
     const wc_allocator* al = wc_test_alloc_allocator(&ta);
 
     String s = WCPath_join_str(al, SV_LIT("a"), SV_LIT("b"));
-    EXPECT_TRUE(String_equals_cstr(&s, "a/b"));
+    EXPECT_TRUE(String_equals_cstr(&s, "a/b", strlen("a/b")));
     String_destroy(&s);
 
     EXPECT_EQ(wc_test_alloc_destroy(&ta), 0u);
@@ -791,7 +791,7 @@ UTEST(views, stringstore_str)
     char longbuf[65];
     memset(longbuf, 'a', 64);
     longbuf[64] = 0;
-    String heap = String_from_cstr(WC_LIBC, longbuf);
+    String heap = String_from_cstr(WC_LIBC, longbuf, strlen(longbuf));
 
     StrView h = StringStore_str(&ss, &heap);
     EXPECT_EQ(h.len, 64u);
@@ -800,7 +800,7 @@ UTEST(views, stringstore_str)
     String_destroy(&heap);
     EXPECT_TRUE(memcmp(h.data, longbuf, 64) == 0); // stored copy survives the source
 
-    String sso = String_from_cstr(WC_LIBC, "xy");
+    String sso = String_from_cstr(WC_LIBC, "xy", strlen("xy"));
     StrView s = StringStore_str(&ss, &sso);
     EXPECT_TRUE(sv_equals_cstr(s, "xy"));
     EXPECT_EQ(s.data[s.len], (char)0);
@@ -914,7 +914,7 @@ UTEST(views, stringstore_intern)
     StrView d = StringStore_cstr(&ss, "x", 1);
     EXPECT_TRUE(a.data == d.data);
 
-    String s = String_from_cstr(WC_LIBC, "x");
+    String s = String_from_cstr(WC_LIBC, "x", strlen("x"));
     StrView e = StringStore_str(&ss, &s);
     EXPECT_TRUE(a.data == e.data);
     String_destroy(&s);
@@ -985,7 +985,7 @@ UTEST(views, invalid_propagation)
 
 UTEST(views, over_String_ex_overflow)
 {
-    String s = String_from_cstr(WC_LIBC, "abc");
+    String s = String_from_cstr(WC_LIBC, "abc", strlen("abc"));
 
     EXPECT_FALSE(StrView_is_valid(StrView_over_String_ex(&s, (u64)-1, 0)));
     EXPECT_FALSE(StrView_is_valid(StrView_over_String_ex(&s, 1, (u64)-1)));

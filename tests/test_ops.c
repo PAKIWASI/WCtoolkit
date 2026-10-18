@@ -20,15 +20,15 @@
 UTEST(ops, strval_push_copy_independent)
 {
     GenVec v = VEC_OF_STR(4);
-    String s = String_from_cstr(WC_LIBC, "hello");
+    String s = String_from_cstr(WC_LIBC, "hello", strlen("hello"));
 
     VEC_PUSH_COPY(&v, s);
     VEC_PUSH_COPY(&v, s);
 
     /* mutate source — stored copies must be independent */
-    String_append_cstr(&s, "_MUTATED");
-    EXPECT_TRUE(String_equals_cstr(VEC_AT_MUT(&v, String, 0), "hello"));
-    EXPECT_TRUE(String_equals_cstr(VEC_AT_MUT(&v, String, 1), "hello"));
+    String_append_cstr(&s, "_MUTATED", strlen("_MUTATED"));
+    EXPECT_TRUE(String_equals_cstr(VEC_AT_MUT(&v, String, 0), "hello", strlen("hello")));
+    EXPECT_TRUE(String_equals_cstr(VEC_AT_MUT(&v, String, 1), "hello", strlen("hello")));
 
     String_destroy(&s);
     GenVec_destroy(&v);
@@ -37,53 +37,53 @@ UTEST(ops, strval_push_copy_independent)
 UTEST(ops, strval_push_move_nulls_src)
 {
     GenVec v = VEC_OF_STR(4);
-    String s = String_from_cstr(WC_LIBC, "world");
+    String s = String_from_cstr(WC_LIBC, "world", strlen("world"));
     VEC_PUSH_MOVE(&v, s); // by-value vec: move the String itself
 
     EXPECT_EQ(s.size, 0u); // moved-from String is zeroed
     String_destroy(&s);    // safe on zeroed
-    EXPECT_TRUE(String_equals_cstr(VEC_AT_MUT(&v, String, 0), "world"));
+    EXPECT_TRUE(String_equals_cstr(VEC_AT_MUT(&v, String, 0), "world", strlen("world")));
     GenVec_destroy(&v);
 }
 
 UTEST(ops, strval_push_cstr)
 {
     GenVec v = VEC_OF_STR(4);
-    VEC_PUSH_CSTR(&v, "alpha");
-    VEC_PUSH_CSTR(&v, "beta");
-    VEC_PUSH_CSTR(&v, "gamma");
+    VEC_PUSH_CSTR(&v, "alpha", strlen("alpha"));
+    VEC_PUSH_CSTR(&v, "beta", strlen("beta"));
+    VEC_PUSH_CSTR(&v, "gamma", strlen("gamma"));
 
     EXPECT_EQ(GenVec_size(&v), 3u);
-    EXPECT_TRUE(String_equals_cstr(VEC_AT_MUT(&v, String, 0), "alpha"));
-    EXPECT_TRUE(String_equals_cstr(VEC_AT_MUT(&v, String, 1), "beta"));
-    EXPECT_TRUE(String_equals_cstr(VEC_AT_MUT(&v, String, 2), "gamma"));
+    EXPECT_TRUE(String_equals_cstr(VEC_AT_MUT(&v, String, 0), "alpha", strlen("alpha")));
+    EXPECT_TRUE(String_equals_cstr(VEC_AT_MUT(&v, String, 1), "beta", strlen("beta")));
+    EXPECT_TRUE(String_equals_cstr(VEC_AT_MUT(&v, String, 2), "gamma", strlen("gamma")));
     GenVec_destroy(&v);
 }
 
 UTEST(ops, strval_foreach_mutates_in_place)
 {
     GenVec v = VEC_OF_STR(4);
-    VEC_PUSH_CSTR(&v, "one");
-    VEC_PUSH_CSTR(&v, "two");
+    VEC_PUSH_CSTR(&v, "one", strlen("one"));
+    VEC_PUSH_CSTR(&v, "two", strlen("two"));
 
     VEC_FOREACH (&v, String, s) {
         String_append_char(s, '!');
     }
 
-    EXPECT_TRUE(String_equals_cstr(VEC_AT_MUT(&v, String, 0), "one!"));
-    EXPECT_TRUE(String_equals_cstr(VEC_AT_MUT(&v, String, 1), "two!"));
+    EXPECT_TRUE(String_equals_cstr(VEC_AT_MUT(&v, String, 0), "one!", strlen("one!")));
+    EXPECT_TRUE(String_equals_cstr(VEC_AT_MUT(&v, String, 1), "two!", strlen("two!")));
     GenVec_destroy(&v);
 }
 
 UTEST(ops, strval_pop_returns_owned_String)
 {
     GenVec v = VEC_OF_STR(4);
-    VEC_PUSH_CSTR(&v, "first");
-    VEC_PUSH_CSTR(&v, "second");
+    VEC_PUSH_CSTR(&v, "first", strlen("first"));
+    VEC_PUSH_CSTR(&v, "second", strlen("second"));
 
     /* VEC_POP moves the element out (rule B7): no copy, no allocation */
     String popped = VEC_POP(&v, String);
-    EXPECT_TRUE(String_equals_cstr(&popped, "second"));
+    EXPECT_TRUE(String_equals_cstr(&popped, "second", strlen("second")));
     EXPECT_EQ(GenVec_size(&v), 1u);
     String_destroy(&popped); /* caller owns it */
     GenVec_destroy(&v);
@@ -92,27 +92,27 @@ UTEST(ops, strval_pop_returns_owned_String)
 UTEST(ops, strval_at_mut_modifies_in_place)
 {
     GenVec v = VEC_OF_STR(4);
-    VEC_PUSH_CSTR(&v, "hello");
+    VEC_PUSH_CSTR(&v, "hello", strlen("hello"));
 
     String* slot = VEC_AT_MUT(&v, String, 0);
-    String_append_cstr(slot, "_world");
-    EXPECT_TRUE(String_equals_cstr(VEC_AT_MUT(&v, String, 0), "hello_world"));
+    String_append_cstr(slot, "_world", strlen("_world"));
+    EXPECT_TRUE(String_equals_cstr(VEC_AT_MUT(&v, String, 0), "hello_world", strlen("hello_world")));
     GenVec_destroy(&v);
 }
 
 UTEST(ops, strval_copy_vec)
 {
     GenVec src = VEC_OF_STR(4);
-    VEC_PUSH_CSTR(&src, "a");
-    VEC_PUSH_CSTR(&src, "b");
+    VEC_PUSH_CSTR(&src, "a", strlen("a"));
+    VEC_PUSH_CSTR(&src, "b", strlen("b"));
 
     GenVec dest;
     dest = GenVec_create(WC_LIBC, 0, sizeof(String), &wc_str_ops);
     dest = GenVec_copy(WC_LIBC, &src);
 
     /* modifying &src must not affect dest */
-    String_append_cstr(VEC_AT_MUT(&src, String, 0), "_mutated");
-    EXPECT_TRUE(String_equals_cstr(VEC_AT_MUT(&dest, String, 0), "a"));
+    String_append_cstr(VEC_AT_MUT(&src, String, 0), "_mutated", strlen("_mutated"));
+    EXPECT_TRUE(String_equals_cstr(VEC_AT_MUT(&dest, String, 0), "a", strlen("a")));
 
     GenVec_destroy(&src);
     GenVec_destroy(&dest);
@@ -122,12 +122,12 @@ UTEST(ops, strval_triggers_growth)
 {
     GenVec v = VEC_OF_STR(2);
     for (int i = 0; i < 20; i++) {
-        VEC_PUSH_CSTR(&v, "x");
+        VEC_PUSH_CSTR(&v, "x", strlen("x"));
     }
     EXPECT_EQ(GenVec_size(&v), 20u);
     /* all elements must survive multiple reallocations */
     VEC_FOREACH (&v, String, s) {
-        EXPECT_TRUE(String_equals_cstr(s, "x"));
+        EXPECT_TRUE(String_equals_cstr(s, "x", strlen("x")));
     }
     GenVec_destroy(&v);
 }
@@ -150,9 +150,9 @@ UTEST(ops, strptr_push_copy_independent)
     VEC_PUSH_COPY(&v, s);
 
     /* mutate source — copies in vec must be independent */
-    String_append_cstr(s, "_MUTATED");
-    EXPECT_TRUE(String_equals_cstr(VEC_AT(&v, String*, 0), "hello"));
-    EXPECT_TRUE(String_equals_cstr(VEC_AT(&v, String*, 1), "hello"));
+    String_append_cstr(s, "_MUTATED", strlen("_MUTATED"));
+    EXPECT_TRUE(String_equals_cstr(VEC_AT(&v, String*, 0), "hello", strlen("hello")));
+    EXPECT_TRUE(String_equals_cstr(VEC_AT(&v, String*, 1), "hello", strlen("hello")));
 
     String_destroy(s);
     WC_FREE(WC_LIBC, s);
@@ -166,7 +166,7 @@ UTEST(ops, strptr_push_move_nulls_src)
     VEC_PUSH_MOVE(&v, s);
 
     EXPECT_TRUE((s) == NULL);
-    EXPECT_TRUE(String_equals_cstr(VEC_AT(&v, String*, 0), "world"));
+    EXPECT_TRUE(String_equals_cstr(VEC_AT(&v, String*, 0), "world", strlen("world")));
     GenVec_destroy(&v);
 }
 
@@ -180,33 +180,33 @@ UTEST(ops, strptr_address_stable_after_growth)
 
     /* force many reallocations */
     for (int i = 0; i < 30; i++) {
-        VEC_PUSH_CSTR(&v, "filler");
+        VEC_PUSH_CSTR(&v, "filler", strlen("filler"));
     }
 
     EXPECT_TRUE(VEC_AT(&v, String*, 0) == addr); /* same address */
-    EXPECT_TRUE(String_equals_cstr(addr, "stable"));
+    EXPECT_TRUE(String_equals_cstr(addr, "stable", strlen("stable")));
     GenVec_destroy(&v);
 }
 
 UTEST(ops, strptr_foreach_dereference)
 {
     GenVec v = VEC_OF_STR_PTR(4);
-    VEC_PUSH_CSTR(&v, "one");
-    VEC_PUSH_CSTR(&v, "two");
+    VEC_PUSH_CSTR(&v, "one", strlen("one"));
+    VEC_PUSH_CSTR(&v, "two", strlen("two"));
 
     VEC_FOREACH (&v, String*, sp) { /* sp is String** */
         String_append_char(*sp, '!');
     }
 
-    EXPECT_TRUE(String_equals_cstr(VEC_AT(&v, String*, 0), "one!"));
-    EXPECT_TRUE(String_equals_cstr(VEC_AT(&v, String*, 1), "two!"));
+    EXPECT_TRUE(String_equals_cstr(VEC_AT(&v, String*, 0), "one!", strlen("one!")));
+    EXPECT_TRUE(String_equals_cstr(VEC_AT(&v, String*, 1), "two!", strlen("two!")));
     GenVec_destroy(&v);
 }
 
 UTEST(ops, strptr_replace_slot_pointer)
 {
     GenVec v = VEC_OF_STR_PTR(4);
-    VEC_PUSH_CSTR(&v, "old");
+    VEC_PUSH_CSTR(&v, "old", strlen("old"));
 
     /* VEC_AT_MUT gives String** — we can replace which String the slot points to */
     String** slot        = VEC_AT_MUT(&v, String*, 0);
@@ -215,7 +215,7 @@ UTEST(ops, strptr_replace_slot_pointer)
     WC_FREE(WC_LIBC, *slot);
     *slot = replacement; /* put new String* in slot */
 
-    EXPECT_TRUE(String_equals_cstr(VEC_AT(&v, String*, 0), "new"));
+    EXPECT_TRUE(String_equals_cstr(VEC_AT(&v, String*, 0), "new", strlen("new")));
     GenVec_destroy(&v);
 }
 
@@ -467,14 +467,14 @@ UTEST(ops, map_str_str_macro)
 {
     HashMap m = HashMap_create(WC_LIBC, sizeof(String), sizeof(String), wc_str_hash, wc_str_cmp, &wc_str_ops, &wc_str_ops);
 
-    MAP_PUT_STR_STR(&m, "name", "Alice");
-    MAP_PUT_STR_STR(&m, "city", "Cairo");
-    MAP_PUT_STR_STR(&m, "lang", "C");
+    MAP_PUT_STR_STR(&m, "name", strlen("name"), "Alice", strlen("Alice"));
+    MAP_PUT_STR_STR(&m, "city", strlen("city"), "Cairo", strlen("Cairo"));
+    MAP_PUT_STR_STR(&m, "lang", strlen("lang"), "C", strlen("C"));
 
-    String  probe = String_from_cstr(WC_LIBC, "city");
+    String  probe = String_from_cstr(WC_LIBC, "city", strlen("city"));
     String* val   = (String*)HashMap_get_ptr(&m, &probe);
     EXPECT_TRUE((val) != NULL);
-    EXPECT_TRUE(String_equals_cstr(val, "Cairo"));
+    EXPECT_TRUE(String_equals_cstr(val, "Cairo", strlen("Cairo")));
     String_destroy(&probe);
 
     EXPECT_EQ(HashMap_size(&m), 3u);
@@ -485,14 +485,14 @@ UTEST(ops, map_int_str_macro)
 {
     HashMap m = HashMap_create(WC_LIBC, sizeof(int), sizeof(String), NULL, NULL, NULL, &wc_str_ops);
 
-    MAP_PUT_INT_STR(&m, 1, "one");
-    MAP_PUT_INT_STR(&m, 2, "two");
-    MAP_PUT_INT_STR(&m, 3, "three");
+    MAP_PUT_INT_STR(&m, 1, "one", strlen("one"));
+    MAP_PUT_INT_STR(&m, 2, "two", strlen("two"));
+    MAP_PUT_INT_STR(&m, 3, "three", strlen("three"));
 
     int     key = 2;
     String* val = (String*)HashMap_get_ptr(&m, &key);
     EXPECT_TRUE((val) != NULL);
-    EXPECT_TRUE(String_equals_cstr(val, "two"));
+    EXPECT_TRUE(String_equals_cstr(val, "two", strlen("two")));
     EXPECT_EQ(HashMap_size(&m), 3u);
     HashMap_destroy(&m);
 }
@@ -510,8 +510,8 @@ UTEST(ops, strategy_a_b_same_content)
 
     const char* words[] = {"hello", "world", "foo", "bar"};
     for (int i = 0; i < 4; i++) {
-        VEC_PUSH_CSTR(&by_val, words[i]);
-        VEC_PUSH_CSTR(&by_ptr, words[i]);
+        VEC_PUSH_CSTR(&by_val, words[i], strlen(words[i]));
+        VEC_PUSH_CSTR(&by_ptr, words[i], strlen(words[i]));
     }
 
     for (int i = 0; i < 4; i++) {
@@ -527,16 +527,16 @@ UTEST(ops, strategy_a_b_same_content)
 UTEST(ops, strategy_b_pointer_outlives_growth)
 {
     GenVec v = VEC_OF_STR_PTR(2);
-    VEC_PUSH_CSTR(&v, "anchor");
+    VEC_PUSH_CSTR(&v, "anchor", strlen("anchor"));
     String* anchor = VEC_AT(&v, String*, 0);
 
     /* force 10x growth */
     for (int i = 0; i < 60; i++) {
-        VEC_PUSH_CSTR(&v, "x");
+        VEC_PUSH_CSTR(&v, "x", strlen("x"));
     }
 
     /* anchor still points to the same heap String, content intact */
     EXPECT_TRUE(VEC_AT(&v, String*, 0) == anchor);
-    EXPECT_TRUE(String_equals_cstr(anchor, "anchor"));
+    EXPECT_TRUE(String_equals_cstr(anchor, "anchor", strlen("anchor")));
     GenVec_destroy(&v);
 }

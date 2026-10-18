@@ -36,7 +36,7 @@ UBENCH(hashmap, put_string)
     char    key[32];
     for (int i = 0; i < N; i++) {
         snprintf(key, sizeof(key), "key_%d", i);
-        MAP_PUT_STR_INT(&m, key, i);
+        MAP_PUT_STR_INT(&m, key, strlen(key), i);
     }
     UBENCH_DO_NOTHING(m.keys);
     HashMap_destroy(&m);
@@ -66,8 +66,8 @@ UBENCH_EX(hashmap, get_string)
     char    buf[32];
     for (int i = 0; i < N; i++) {
         snprintf(buf, sizeof(buf), "key_%d", i);
-        keys[i] = String_from_cstr(WC_LIBC, buf);
-        MAP_PUT_STR_INT(&m, buf, i);
+        keys[i] = String_from_cstr(WC_LIBC, buf, strlen(buf));
+        MAP_PUT_STR_INT(&m, buf, strlen(buf), i);
     }
     UBENCH_DO_BENCHMARK()
     {
@@ -92,7 +92,7 @@ UBENCH(hashmap, fill_clear_string)
     char    key[32];
     for (int i = 0; i < N; i++) {
         snprintf(key, sizeof(key), "key_%d", i);
-        MAP_PUT_STR_STR(&m, key, LONG_STR);
+        MAP_PUT_STR_STR(&m, key, strlen(key), LONG_STR, strlen(LONG_STR));
     }
     HashMap_clear(&m); // del_fn on every key and value
     HashMap_destroy(&m);

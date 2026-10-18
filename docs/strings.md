@@ -22,11 +22,11 @@ A growable byte string with small-string optimization.
 
 int main(void)
 {
-    String s = String_from_cstr(WC_LIBC, "hello");
-    String_append_cstr(&s, ", world");
+    String s = String_from_cstr(WC_LIBC, "hello", sizeof("hello") - 1);
+    String_append_cstr(&s, ", world", sizeof(", world") - 1);
     String_insert_char(&s, 0, '>');                  // ">hello, world"
 
-    u64 at = String_find_cstr(&s, "world");          // 8, or WC_NOT_FOUND
+    u64 at = String_find_cstr(&s, "world", sizeof("world") - 1); // 8, or WC_NOT_FOUND
     String w = String_substr(WC_LIBC, &s, at, 5);    // "world", its own allocation
 
     String_destroy(&w);
@@ -37,20 +37,22 @@ int main(void)
 
 | Group | Functions |
 |---|---|
-| Create | `String_create(a)`, `String_with_cap(a, cap)` (pre-reserved), `String_from_cstr(a, cstr)` |
+| Create | `String_create(a)`, `String_with_cap(a, cap)` (pre-reserved), `String_from_cstr(a, cstr, clen)` |
 | Lifetime | `String_destroy`, `String_copy(a, &src)`, `String_move(&dst, &src)` |
 | Borrow | `String_borrow(ptr, len)`: a read-only `String` over existing bytes, no allocation. For lookups in `String`-keyed maps and sets. Never store it; any mutation is fatal. |
 | Capacity | `String_reserve(s, cap)`, `String_reserve_char(s, cap, c)` (grow and fill), `String_shrink_to_fit` (back to inline when it fits) |
-| Append | `String_append_char`, `String_append_cstr`, `String_append_String`, `String_append_String_move` (appends, then destroys the source; into an empty string on the same allocator it takes over the source's buffer instead of copying) |
-| Insert / remove | `String_insert_char`, `String_insert_cstr`, `String_insert_String`, `String_remove_char`, `String_remove_range(s, start, len)`, `String_pop_char`, `String_clear` |
+| Append | `String_append_char`, `String_append_cstr(s, cstr, clen)`, `String_append_String`, `String_append_String_move` (appends, then destroys the source; into an empty string on the same allocator it takes over the source's buffer instead of copying) |
+| Insert / remove | `String_insert_char`, `String_insert_cstr(s, i, cstr, clen)`, `String_insert_String`, `String_remove_char`, `String_remove_range(s, start, len)`, `String_pop_char`, `String_clear` |
 | Access | `String_char_at(s, i)`, `String_set_char(s, i, c)`, `String_char_at_unsafe` |
-| Compare | `String_compare` (like `strcmp`), `String_equals`, `String_equals_cstr` |
-| Search | `String_find_char`, `String_find_cstr`: index or `WC_NOT_FOUND` |
+| Compare | `String_compare` (like `strcmp`), `String_equals`, `String_equals_cstr(s, cstr, clen)` |
+| Search | `String_find_char`, `String_find_cstr(s, cstr, clen)`: index or `WC_NOT_FOUND` |
 | Slice | `String_substr(a, s, start, len)` |
 | Size | `String_len`, `String_capacity`, `String_empty`, `String_is_sso` |
 | Output | `String_print` |
 
 Index and range errors are `WC_ASSERT`s: checked in Debug, unchecked in Release.
+
+Every function that takes a C string also takes an explicit `u64 clen`. It operates on exactly `clen` bytes, so the input does not need to be NUL-terminated and the library never calls `strlen` on it.
 
 ### C strings
 
@@ -68,7 +70,7 @@ Index and range errors are `WC_ASSERT`s: checked in Debug, unchecked in Release.
 
 int main(void)
 {
-    String s = String_from_cstr(WC_LIBC, "path/to/file");
+    String s = String_from_cstr(WC_LIBC, "path/to/file", sizeof("path/to/file") - 1);
     String_ensure_null_term(&s);
     printf("%s\n", String_cstr_view(&s));    // no copy, no allocation
     String_destroy(&s);
@@ -104,7 +106,7 @@ A `StrView` is valid when `.data != NULL`. Functions that can fail return `(StrV
 
 int main(void)
 {
-    String  s  = String_from_cstr(WC_LIBC, "  cat/eats.txt  ");
+    String  s  = String_from_cstr(WC_LIBC, "  cat/eats.txt  ", sizeof("  cat/eats.txt  ") - 1);
     StrView sv = StrView_trim(StrView_over_String(&s), NULL, 0);        // "cat/eats.txt"
 
     u64     slash = StrView_find_char(sv, '/');                         // 3

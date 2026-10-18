@@ -293,7 +293,7 @@ UTEST(set, clear_frees_String_elms)
     for (int i = 0; i < 5; i++) {
         char buf[16];
         snprintf(buf, sizeof(buf), "str%d", i);
-        String v = String_from_cstr(WC_LIBC, buf);
+        String v = String_from_cstr(WC_LIBC, buf, strlen(buf));
         HashMap_put_key_move(&s, &v, NULL);
         String_destroy(&v); // safe on zeroed
     }
@@ -301,7 +301,7 @@ UTEST(set, clear_frees_String_elms)
     EXPECT_EQ(HashMap_size(&s), 0u);
 
     // Set must still be usable after clearing owned-resource entries
-    String v = String_from_cstr(WC_LIBC, "after_clear");
+    String v = String_from_cstr(WC_LIBC, "after_clear", strlen("after_clear"));
     HashMap_put_key_move(&s, &v, NULL);
     String_destroy(&v); // safe on zeroed
     EXPECT_EQ(HashMap_size(&s), 1u);
@@ -366,7 +366,7 @@ UTEST(set, copy_str_set)
     HashMap     src     = str_set();
     const char* words[] = {"alpha", "beta", "gamma"};
     for (int i = 0; i < 3; i++) {
-        String sv = String_from_cstr(WC_LIBC, words[i]);
+        String sv = String_from_cstr(WC_LIBC, words[i], strlen(words[i]));
         HashMap_put(&src, &sv, NULL);
         String_destroy(&sv);
     }
@@ -376,7 +376,7 @@ UTEST(set, copy_str_set)
 
     HashMap_destroy(&src); // src gone — dest must still be intact
 
-    String probe = String_from_cstr(WC_LIBC, "beta");
+    String probe = String_from_cstr(WC_LIBC, "beta", strlen("beta"));
     EXPECT_TRUE(HashMap_has(&dest, &probe));
     String_destroy(&probe);
 
@@ -420,12 +420,12 @@ UTEST(set, copy_then_remove_src_elm)
 UTEST(set, str_insert_move_nulls_ptr)
 {
     HashMap s  = str_set();
-    String  s1 = String_from_cstr(WC_LIBC, "hello");
+    String  s1 = String_from_cstr(WC_LIBC, "hello", strlen("hello"));
     HashMap_put_key_move(&s, &s1, NULL);
     EXPECT_EQ(s1.size, 0u); // ownership transferred: source zeroed
     String_destroy(&s1);    // safe on zeroed
 
-    String probe = String_from_cstr(WC_LIBC, "hello");
+    String probe = String_from_cstr(WC_LIBC, "hello", strlen("hello"));
     EXPECT_TRUE(HashMap_has(&s, &probe));
     String_destroy(&probe);
     HashMap_destroy(&s);
@@ -435,10 +435,10 @@ UTEST(set, str_insert_copy_leaves_src_valid)
 {
     // Source String must still be valid and unchanged after copy insert
     HashMap s  = str_set();
-    String  s1 = String_from_cstr(WC_LIBC, "world");
+    String  s1 = String_from_cstr(WC_LIBC, "world", strlen("world"));
     HashMap_put(&s, &s1, NULL);
 
-    EXPECT_TRUE(String_equals_cstr(&s1, "world"));
+    EXPECT_TRUE(String_equals_cstr(&s1, "world", strlen("world")));
     String_destroy(&s1);
     HashMap_destroy(&s);
 }
@@ -447,11 +447,11 @@ UTEST(set, str_insert_copy_independence)
 {
     // Mutating source String after copy insert must not affect stored copy
     HashMap s  = str_set();
-    String  sv = String_from_cstr(WC_LIBC, "original");
+    String  sv = String_from_cstr(WC_LIBC, "original", strlen("original"));
     HashMap_put(&s, &sv, NULL);
-    String_append_cstr(&sv, "_mutated");
+    String_append_cstr(&sv, "_mutated", strlen("_mutated"));
 
-    String probe = String_from_cstr(WC_LIBC, "original");
+    String probe = String_from_cstr(WC_LIBC, "original", strlen("original"));
     EXPECT_TRUE(HashMap_has(&s, &probe));
     String_destroy(&probe);
 
@@ -462,7 +462,7 @@ UTEST(set, str_insert_copy_independence)
 UTEST(set, str_has_miss)
 {
     HashMap s     = str_set();
-    String  probe = String_from_cstr(WC_LIBC, "missing");
+    String  probe = String_from_cstr(WC_LIBC, "missing", strlen("missing"));
     EXPECT_FALSE(HashMap_has(&s, &probe));
     String_destroy(&probe);
     HashMap_destroy(&s);
@@ -471,7 +471,7 @@ UTEST(set, str_has_miss)
 UTEST(set, str_no_duplicates)
 {
     HashMap s      = str_set();
-    String  sv     = String_from_cstr(WC_LIBC, "dup");
+    String  sv     = String_from_cstr(WC_LIBC, "dup", strlen("dup"));
     bool      first  = HashMap_put(&s, &sv, NULL);
     bool      second = HashMap_put(&s, &sv, NULL);
     EXPECT_FALSE(first);
@@ -485,10 +485,10 @@ UTEST(set, str_insert_move_duplicate_frees_elm)
 {
     // insert_move on a duplicate must free the incoming pointer
     HashMap s  = str_set();
-    String  sv = String_from_cstr(WC_LIBC, "dup");
+    String  sv = String_from_cstr(WC_LIBC, "dup", strlen("dup"));
     HashMap_put(&s, &sv, NULL);
 
-    String dup     = String_from_cstr(WC_LIBC, "dup");
+    String dup     = String_from_cstr(WC_LIBC, "dup", strlen("dup"));
     bool     existed = HashMap_put_key_move(&s, &dup, NULL);
     EXPECT_TRUE(existed);
     EXPECT_EQ(dup.size, 0u); // duplicate destroyed and zeroed
@@ -503,11 +503,11 @@ UTEST(set, str_insert_move_duplicate_frees_elm)
 UTEST(set, str_remove)
 {
     HashMap s  = str_set();
-    String  s1 = String_from_cstr(WC_LIBC, "remove_me");
+    String  s1 = String_from_cstr(WC_LIBC, "remove_me", strlen("remove_me"));
     HashMap_put_key_move(&s, &s1, NULL);
     String_destroy(&s1); // moved-from: zeroed, safe on zeroed
 
-    String probe = String_from_cstr(WC_LIBC, "remove_me");
+    String probe = String_from_cstr(WC_LIBC, "remove_me", strlen("remove_me"));
     EXPECT_TRUE(HashMap_del(&s, &probe, NULL));
     EXPECT_FALSE(HashMap_has(&s, &probe));
     EXPECT_EQ(HashMap_size(&s), 0u);
@@ -521,7 +521,7 @@ UTEST(set, str_resize_preserves_membership)
     char    buf[16];
     for (int i = 0; i < 40; i++) {
         snprintf(buf, sizeof(buf), "word%d", i);
-        String sv = String_from_cstr(WC_LIBC, buf);
+        String sv = String_from_cstr(WC_LIBC, buf, strlen(buf));
         HashMap_put(&s, &sv, NULL);
         String_destroy(&sv);
     }
@@ -529,7 +529,7 @@ UTEST(set, str_resize_preserves_membership)
 
     for (int i = 0; i < 40; i++) {
         snprintf(buf, sizeof(buf), "word%d", i);
-        String probe = String_from_cstr(WC_LIBC, buf);
+        String probe = String_from_cstr(WC_LIBC, buf, strlen(buf));
         EXPECT_TRUE(HashMap_has(&s, &probe));
         String_destroy(&probe);
     }
@@ -540,11 +540,11 @@ UTEST(set, str_remove_frees_elm)
 {
     // remove must call del_fn on owned String before clearing the slot
     HashMap s  = str_set();
-    String  sv = String_from_cstr(WC_LIBC, "owned");
+    String  sv = String_from_cstr(WC_LIBC, "owned", strlen("owned"));
     HashMap_put(&s, &sv, NULL);
     String_destroy(&sv);
 
-    String probe = String_from_cstr(WC_LIBC, "owned");
+    String probe = String_from_cstr(WC_LIBC, "owned", strlen("owned"));
     EXPECT_TRUE(HashMap_del(&s, &probe, NULL));
     EXPECT_EQ(HashMap_size(&s), 0u);
     String_destroy(&probe);
@@ -557,7 +557,7 @@ UTEST(set, str_clear_then_reuse)
     for (int i = 0; i < 8; i++) {
         char buf[16];
         snprintf(buf, sizeof(buf), "item%d", i);
-        String sv = String_from_cstr(WC_LIBC, buf);
+        String sv = String_from_cstr(WC_LIBC, buf, strlen(buf));
         HashMap_put(&s, &sv, NULL);
         String_destroy(&sv);
     }
@@ -565,12 +565,12 @@ UTEST(set, str_clear_then_reuse)
     EXPECT_EQ(HashMap_size(&s), 0u);
 
     // Usable after clear
-    String v = String_from_cstr(WC_LIBC, "fresh");
+    String v = String_from_cstr(WC_LIBC, "fresh", strlen("fresh"));
     HashMap_put_key_move(&s, &v, NULL);
     String_destroy(&v); // moved-from: zeroed, safe destroy
     EXPECT_EQ(HashMap_size(&s), 1u);
 
-    String probe = String_from_cstr(WC_LIBC, "fresh");
+    String probe = String_from_cstr(WC_LIBC, "fresh", strlen("fresh"));
     EXPECT_TRUE(HashMap_has(&s, &probe));
     String_destroy(&probe);
     HashMap_destroy(&s);
@@ -581,13 +581,13 @@ UTEST(set, str_clear_then_reuse)
 UTEST(set, insert_move_nulls_src)
 {
     HashMap s       = HashMap_create(WC_LIBC, sizeof(String), 0, wc_str_hash, wc_str_cmp, &wc_str_ops, NULL);
-    String  el      = String_from_cstr(WC_LIBC, "owned");
+    String  el      = String_from_cstr(WC_LIBC, "owned", strlen("owned"));
     bool      existed = HashMap_put_key_move(&s, &el, NULL);
     String_destroy(&el); // moved-from: zeroed, safe destroy
     EXPECT_FALSE(existed);
     EXPECT_EQ(HashMap_size(&s), 1u);
 
-    String k = String_from_cstr(WC_LIBC, "owned");
+    String k = String_from_cstr(WC_LIBC, "owned", strlen("owned"));
     EXPECT_TRUE(HashMap_has(&s, &k));
     String_destroy(&k);
     HashMap_destroy(&s);
@@ -596,9 +596,9 @@ UTEST(set, insert_move_nulls_src)
 UTEST(set, insert_move_duplicate_frees_incoming)
 {
     HashMap s = HashMap_create(WC_LIBC, sizeof(String), 0, wc_str_hash, wc_str_cmp, &wc_str_ops, NULL);
-    SET_INSERT_CSTR(&s, "dup");
+    SET_INSERT_CSTR(&s, "dup", strlen("dup"));
 
-    String el      = String_from_cstr(WC_LIBC, "dup");
+    String el      = String_from_cstr(WC_LIBC, "dup", strlen("dup"));
     bool     existed = HashMap_put_key_move(&s, &el, NULL);
     EXPECT_TRUE(existed);   /* already in set */
     EXPECT_EQ(el.size, 0u); /* incoming consumed and zeroed */
@@ -613,15 +613,15 @@ UTEST(set, insert_move_duplicate_frees_incoming)
 UTEST(set, copy_str_set_deep)
 {
     HashMap src = HashMap_create(WC_LIBC, sizeof(String), 0, wc_str_hash, wc_str_cmp, &wc_str_ops, NULL);
-    SET_INSERT_CSTR(&src, "alpha");
-    SET_INSERT_CSTR(&src, "beta");
+    SET_INSERT_CSTR(&src, "alpha", strlen("alpha"));
+    SET_INSERT_CSTR(&src, "beta", strlen("beta"));
 
     HashMap dest = HashMap_copy(WC_LIBC, &src);
     EXPECT_EQ(HashMap_size(&dest), 2u);
 
     HashMap_destroy(&src); /* src gone — dest must still be intact */
 
-    String k = String_from_cstr(WC_LIBC, "alpha");
+    String k = String_from_cstr(WC_LIBC, "alpha", strlen("alpha"));
     EXPECT_TRUE(HashMap_has(&dest, &k));
     String_destroy(&k);
     HashMap_destroy(&dest);

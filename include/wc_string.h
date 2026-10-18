@@ -42,8 +42,8 @@ wc_nodiscard wc_nonull(1) String String_create(const wc_allocator* a);
 
 wc_nodiscard wc_nonull(1) String String_with_cap(const wc_allocator* a, u64 cap);
 
-// Create a String from a C string using allocator `a`.
-wc_nodiscard wc_nonull(1) String String_from_cstr(const wc_allocator* a, const char* cstr);
+// Create a String from `clen` bytes of a C string using allocator `a`.
+wc_nodiscard wc_nonull(1) String String_from_cstr(const wc_allocator* a, const char* cstr, u64 clen);
 
 // Destroy the String's internal buffer
 // Safe on a zeroed/moved-from String.
@@ -106,7 +106,7 @@ wc_nonull(1) void String_ensure_null_term(String* str);
 wc_nonull(1) void String_append_char(String* str, char c);
 // TODO:
 wc_nonull(1, 2) void String_append_multi(String* str, const char* data, u64 len);
-wc_nonull(1, 2) void String_append_cstr(String* str, const char* cstr);
+wc_nonull(1, 2) void String_append_cstr(String* str, const char* cstr, u64 clen);
 wc_nonull(1, 2) void String_append_String(String* str, const String* other);
 // Append other then destroy it (leaves other zeroed). When str is empty and
 // both share an allocator, str takes over other's buffer: no copy.
@@ -115,7 +115,7 @@ wc_nonull(1, 2) void String_append_String_move(String* str, String* other);
 wc_nodiscard wc_nonull(1) char String_pop_char(String* str);
 
 wc_nonull(1) void String_insert_char(String* str, u64 i, char c);
-wc_nonull(1, 3) void String_insert_cstr(String* str, u64 i, const char* cstr);
+wc_nonull(1, 3) void String_insert_cstr(String* str, u64 i, const char* cstr, u64 clen);
 // TODO:
 wc_nonull(1, 3) void String_insert_multi(String* str, u64 i, const char* data, u64 len);
 wc_nonull(1, 3) void String_insert_String(String* str, u64 i, const String* other);
@@ -163,14 +163,14 @@ wc_nodiscard wc_nonull(1, 2) static wc_always_inline bool String_equals(const St
     return String_compare(s1, s2) == 0;
 }
 
-wc_nodiscard wc_nonull(1, 2) bool String_equals_cstr(const String* str, const char* cstr);
+wc_nodiscard wc_nonull(1, 2) bool String_equals_cstr(const String* str, const char* cstr, u64 clen);
 
 
 //  Search
 
 // Returns index, or WC_NOT_FOUND if not found.
 wc_nodiscard wc_nonull(1) u64 String_find_char(const String* str, char c);
-wc_nodiscard wc_nonull(1, 2) u64 String_find_cstr(const String* str, const char* substr);
+wc_nodiscard wc_nonull(1, 2) u64 String_find_cstr(const String* str, const char* substr, u64 clen);
 
 // Return a String (in allocator `a`) holding `length` chars starting at `start`.
 wc_nodiscard wc_nonull(1, 2) String String_substr(const wc_allocator* a, const String* str, u64 start, u64 length);

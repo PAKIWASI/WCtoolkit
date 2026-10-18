@@ -188,8 +188,8 @@ UTEST(macros, create_of_String_by_value)
     GenVec v = VEC_OF(String, 4);
     EXPECT_EQ(v.data_size, sizeof(String));
 
-    VEC_PUSH_CSTR(&v, "hello");
-    VEC_PUSH_CSTR(&v, "world");
+    VEC_PUSH_CSTR(&v, "hello", strlen("hello"));
+    VEC_PUSH_CSTR(&v, "world", strlen("world"));
     EXPECT_EQ(v.size, 2u);
 
     GenVec_destroy(&v);
@@ -221,17 +221,17 @@ UTEST(macros, map_of_string_keys_hash_content)
     // String struct and every lookup with an equal-but-distinct key missed.
     HashMap m = MAP_OF(String, int);
 
-    String k1 = String_from_cstr(WC_LIBC, "key");
+    String k1 = String_from_cstr(WC_LIBC, "key", strlen("key"));
     int    v  = 1;
     HashMap_put_move(&m, &k1, &v);
-    String big = String_from_cstr(WC_LIBC, "a key longer than the inline buffer!!");
+    String big = String_from_cstr(WC_LIBC, "a key longer than the inline buffer!!", strlen("a key longer than the inline buffer!!"));
     v          = 2;
     HashMap_put_move(&m, &big, &v);
 
     String q1 = String_create(WC_LIBC); // built differently, same content
-    String_append_cstr(&q1, "k");
-    String_append_cstr(&q1, "ey");
-    String q2 = String_from_cstr(WC_LIBC, "a key longer than the inline buffer!!");
+    String_append_cstr(&q1, "k", strlen("k"));
+    String_append_cstr(&q1, "ey", strlen("ey"));
+    String q2 = String_from_cstr(WC_LIBC, "a key longer than the inline buffer!!", strlen("a key longer than the inline buffer!!"));
 
     const int* r1 = HashMap_get_ptr(&m, &q1);
     const int* r2 = HashMap_get_ptr(&m, &q2);

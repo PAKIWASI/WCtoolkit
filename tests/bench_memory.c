@@ -68,7 +68,7 @@ UBENCH(memory, string_store)
 UBENCH(memory, string_inline)
 {
     for (int i = 0; i < N; i++) {
-        String s = String_from_cstr(WC_LIBC, WORD); // fits in 31 chars: no allocation
+        String s = String_from_cstr(WC_LIBC, WORD, strlen(WORD)); // fits in 31 chars: no allocation
         UBENCH_DO_NOTHING(&s);
         String_destroy(&s);
     }
@@ -77,7 +77,7 @@ UBENCH(memory, string_inline)
 UBENCH(memory, string_heap)
 {
     for (int i = 0; i < N; i++) {
-        String s = String_from_cstr(WC_LIBC, LONG_STR); // one allocation each
+        String s = String_from_cstr(WC_LIBC, LONG_STR, strlen(LONG_STR)); // one allocation each
         UBENCH_DO_NOTHING(&s);
         String_destroy(&s);
     }
