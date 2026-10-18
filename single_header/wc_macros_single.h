@@ -1475,7 +1475,7 @@ HashMap m = HashMap_create(
 
 // Insert: intern first, then put a view (with interning on, storing the same
 // bytes again returns the same view, so repeated keys cost nothing)
-StrView key = StringStore_store_cstr(&ss, "hello");
+StrView key = StringStore_cstr(&ss, "hello", 5);
 int     v   = 42;
 HashMap_put(&m, &key, &v);
 
@@ -1784,7 +1784,7 @@ typedef struct {
 } ChainArena;
 
 // Initialises `ca` in place, it must not be moved or copied afterwards.
-wc_nonull(1, 2) void ChainArena_create(ChainArena* ca, const wc_allocator* backing, u64 normal_cap);
+wc_nonull(1, 2) void ChainArena_create(ChainArena* ca, const wc_allocator* backing, u64 block_cap);
 
 // Gives every block back to the backing allocator and zeroes the arena. Safe on a zeroed
 // arena and safe to call twice.
@@ -2165,6 +2165,7 @@ static inline u64 wc_str_ptr_hash(const void* key, u64 size)
 
 
 
+
 #include <stdio.h>
 #include <string.h>
 
@@ -2173,23 +2174,40 @@ static inline u64 wc_str_ptr_hash(const void* key, u64 size)
 
 
 // non-owning view into any memory that stores a string
+//
+// `.data == NULL` means invalid: functions that can fail return (StrView){0}.
+// A successful view may still be empty (`len == 0`); in that case `data` stays
+// non-NULL, so StrView_is_valid separates "empty" from "error".
 typedef struct {
     const char* data;
     u64         len;
 } StrView;
 
-// creation
-
-// Create a non-owning StrView over an already existing string
-wc_nodiscard wc_nonull(1) static wc_always_inline StrView StrView_over_String(const String* str)
+wc_nodiscard static wc_always_inline bool StrView_is_valid(StrView sv)
 {
-    return (StrView){.data = String_data_ptr(str), .len = String_len(str)};
+    return sv.data != NULL;
 }
 
+// creation
+
+// Create a non-owning StrView over an already existing string.
+// An empty String has a NULL data pointer internally; substitute a static empty
+// string so the resulting view stays valid.
+wc_nodiscard wc_nonull(1) static wc_always_inline StrView StrView_over_String(const String* str)
+{
+    const char* data = String_data_ptr(str);
+    return (StrView){.data = data ? data : "", .len = String_len(str)};
+}
+
+// Sub-range of a String. Returns (StrView){0} if the range is out of bounds.
 wc_nodiscard wc_nonull(1) static wc_always_inline StrView StrView_over_String_ex(const String* str, u64 off, u64 len)
 {
-    WC_ASSERT(off + len <= String_len(str), "invalid range");
-    return (StrView){.data = String_data_ptr(str) + off, .len = len};
+    u64         slen = String_len(str);
+    const char* data = String_data_ptr(str);
+    if (off > slen || len > slen - off) {
+        return (StrView){0};
+    }
+    return (StrView){.data = (data ? data : "") + off, .len = len};
 }
 
 wc_nodiscard wc_nonull(1) static wc_always_inline StrView StrView_over_cstr(const char* cstr, u64 clen)
@@ -2208,21 +2226,27 @@ wc_nodiscard wc_nonull(2) bool StrView_to_buf(StrView sv, char* buf, u64 cap);
 
 // slicing
 
-// Get a sub-view over another view
+// Get a sub-view over another view. Returns (StrView){0} if the range is out of
+// bounds (overflow-safe). Slicing an invalid view stays invalid.
 wc_nodiscard static wc_always_inline StrView StrView_slice(StrView sv, u64 start, u64 len)
 {
-    WC_ASSERT(start <= sv.len && len <= sv.len - start, "out of range"); // overflow-safe
+    if (!sv.data || start > sv.len || len > sv.len - start) {
+        return (StrView){0};
+    }
     return (StrView){.data = sv.data + start, .len = len};
 }
-// Get the first n chars from `sv`
+// Get the first n chars from `sv`. Returns (StrView){0} if n > sv.len.
 wc_nodiscard static wc_always_inline StrView StrView_prefix(StrView sv, u64 n)
 {
     return StrView_slice(sv, 0, n);
 }
-// Get all the chars starting from index `start` till the end
+// Get all the chars starting from index `start` till the end.
+// Returns (StrView){0} if start > sv.len.
 wc_nodiscard static wc_always_inline StrView StrView_suffix(StrView sv, u64 start)
 {
-    WC_ASSERT(start <= sv.len, "out of range");
+    if (start > sv.len) {
+        return (StrView){0};
+    }
     return StrView_slice(sv, start, sv.len - start);
 }
 
@@ -2237,7 +2261,7 @@ wc_nodiscard StrView StrView_trim_right(StrView sv, const char* set, u64 len);
 
 // search
 
-wc_nodiscard u64  StrView_find(StrView sv, StrView needle); // WC_NOT_FOUND if absent
+wc_nodiscard u64  StrView_find(StrView sv, StrView needle);  // WC_NOT_FOUND if absent
 wc_nodiscard u64  StrView_findr(StrView sv, StrView needle); // WC_NOT_FOUND if absent
 wc_nodiscard u64  StrView_find_char(StrView sv, char c);
 wc_nodiscard u64  StrView_findr_char(StrView sv, char c);
@@ -2247,20 +2271,10 @@ wc_nodiscard bool StrView_contains(StrView sv, StrView n);
 
 
 
-// consumption: take n bytes from a view and shorten it (from the left or the right)
-
-// A StrView with `.data == NULL` is invalid. The take functions return one to signal failure.
-wc_nodiscard static wc_always_inline bool StrView_is_valid(StrView sv)
-{
-    return sv.data != NULL;
-}
-
-// Remove the first `n` bytes of `*sv` and return them. If `n > sv->len`, returns an invalid view
-// (`.data == NULL`) and leaves `*sv` untouched. Ignore the result to just skip bytes.
-wc_nodiscard wc_nonull(1) StrView StrView_take_left(StrView* sv, u64 n);
-// Remove the last `n` bytes of `*sv` and return them. If `n > sv->len`, returns an invalid view
-// (`.data == NULL`) and leaves `*sv` untouched. Ignore the result to just drop bytes.
-wc_nodiscard wc_nonull(1) StrView StrView_take_right(StrView* sv, u64 n);
+// Splitting a view is just prefix/suffix on a value: nothing is mutated.
+//   StrView head = StrView_prefix(sv, n);
+//   sv           = StrView_suffix(sv, n);
+// Both return (StrView){0} when n/start is past the end.
 
 
 // output
@@ -2308,30 +2322,22 @@ static inline int wc_strview_cmp(const void* a, const void* b, u64 size)
     return StrView_compare(*(StrView*)a, *(StrView*)b);
 }
 
-// can use wc_hash directly
-// static inline u64 wc_strview_hash(const void* elm, u64 len)
-// {
-//     return wc_hash(elm, len);
-// }
-
-
-// TODO: do this
 
 // A stringstore is a chain arena that provides immutable string storage and operations on them,
 // filepath storage and operations etc. it gives out StrViews, optional String wrappers for read, find operations.
-// NOTE: All ORIGINAL StrViews from the store are NUL-terminated. However, that's not gonna hold for subviews obtained via trim/consume
+// NOTE: All ORIGINAL StrViews from the store are NUL-terminated. However, that's not gonna hold for subviews obtained via trim/slice
 typedef struct {
     ChainArena store;
     HashMap    interned;         // StrView -> {} (a set)
     bool       interning_active; // optional
     // probe the interned set: return the existing view if found, else alloc + insert. A deduped store must be append-only
-    // This makes interning O(1) amortized and idempotent, repeated StringStore_store_cstr(&ss, "x") return the same view every time
+    // This makes interning O(1) amortized and idempotent: repeated StringStore_cstr(&ss, "x", 1) return the same view every time
 } StringStore;
 
 wc_nonull(1, 2) void StringStore_create(StringStore* ss, const wc_allocator* alloc, u64 block_size, bool intern);
 wc_nonull(1) void StringStore_destroy(StringStore* ss);
 
-// Copy bytes into the store; return a view. NUL-terminate too (1 extra byte),
+// Copy `clen` bytes into the store; return a view. NUL-terminate too (1 extra byte),
 // so sv.data works as a C string, makes StringStore a drop-in for argv-style APIs.
 wc_nodiscard wc_nonull(1, 2) StrView StringStore_str(StringStore* ss, const String* s);
 wc_nodiscard wc_nonull(1, 2) StrView StringStore_cstr(StringStore* ss, const char* cstr, u64 clen);
@@ -2348,9 +2354,9 @@ wc_nodiscard bool WCpath_valid(StrView p);
 
 wc_nodiscard bool    WCpath_is_absolute(StrView p); // starts with '/'
 wc_nodiscard StrView WCpath_basename(StrView p);    // "/a/b/c.txt" -> "c.txt"
-wc_nodiscard StrView WCpath_dirname(StrView p);     // "/a/b/c.txt" -> "/a/b"
+wc_nodiscard StrView WCpath_dirname(StrView p);     // "/a/b/c.txt" -> "/a/b"; "a" -> valid empty
 wc_nodiscard StrView WCpath_extension(StrView p);   // "c.txt"      -> "txt"   (no dot)
-wc_nodiscard StrView WCpath_stem(StrView p);        // "c.txt"      -> "c"
+wc_nodiscard StrView WCpath_stem(StrView p);        // "c.txt" -> "c"; "Makefile" -> "Makefile"
 wc_nodiscard bool    WCpath_has_extension(StrView p, StrView ext);
 
 // Component iteration
@@ -2360,12 +2366,14 @@ typedef struct {
 } WCPathIter;
 
 wc_nodiscard WCPathIter WCpath_components(StrView p);
-wc_nodiscard            wc_nonull(1, 2) bool WCpathIter_next(WCPathIter* it, StrView* out);
+// Return the next component, or (StrView){0} when the path is exhausted.
+// Components are never empty: runs of '/' (and leading/trailing ones) are skipped.
+wc_nodiscard wc_nonull(1) StrView WCpathIter_next(WCPathIter* it);
 
 // Path joining (Allocation-returning)
 
 // Join paths `a` and `b` and return a String allocated using `alloc`
-wc_nodiscard wc_nonull(1) String WCPath_join(const wc_allocator* alloc, StrView a, StrView b);
+wc_nodiscard wc_nonull(1) String WCPath_join_str(const wc_allocator* alloc, StrView a, StrView b);
 // Join paths `a` and `b` and return a StrView stored in `ss`
 wc_nodiscard wc_nonull(1) StrView WCPath_join_sv(StringStore* ss, StrView a, StrView b);
 
@@ -6294,6 +6302,7 @@ static inline void ensure_capacity(String* s, u64 needed)
 #include <string.h>
 
 
+
 String StrView_to_String(const wc_allocator* a, StrView sv)
 {
     String s = String_with_cap(a, sv.len);
@@ -6308,7 +6317,9 @@ String StrView_to_String(const wc_allocator* a, StrView sv)
 char* StrView_to_cstr(const wc_allocator* a, StrView sv)
 {
     char* data = wc_alloc(a, sv.len + 1, WC_MAX_ALIGN);
-    memcpy(data, sv.data, sv.len);
+    if (sv.len) {
+        memcpy(data, sv.data, sv.len);
+    }
     data[sv.len] = '\0';
     return data;
 }
@@ -6319,7 +6330,9 @@ bool StrView_to_buf(StrView sv, char* buf, u64 cap)
         return false;
     }
 
-    memcpy(buf, sv.data, sv.len);
+    if (sv.len) {
+        memcpy(buf, sv.data, sv.len);
+    }
     return true;
 }
 
@@ -6343,6 +6356,9 @@ static void trim_table_fill(bool active[256], const char* set, u64 len)
 
 static StrView trim_left_table(StrView sv, const bool active[256])
 {
+    if (!sv.data) {
+        return (StrView){0};
+    }
     u64 to_skip = 0;
     while (to_skip < sv.len && active[(u8)sv.data[to_skip]]) {
         to_skip++;
@@ -6418,11 +6434,8 @@ u64 StrView_find_char(StrView sv, char c)
 
 u64 StrView_findr_char(StrView sv, char c)
 {
-    if (sv.len == 0) {
-        return WC_NOT_FOUND;
-    }
     // memrchr not working?
-    for (u64 i = sv.len - 1; i >= 0; i--) {
+    for (u64 i = sv.len; i-- > 0;) {
         if (sv.data[i] == c) {
             return i;
         }
@@ -6452,42 +6465,53 @@ bool StrView_contains(StrView sv, StrView n)
 }
 
 
-// consumption
-
-StrView StrView_take_left(StrView* sv, u64 n)
-{
-    if (n > sv->len) {
-        return (StrView){0}; // invalid
-    }
-    StrView head = {.data = sv->data, .len = n};
-    sv->data += n;
-    sv->len -= n;
-    return head;
-}
-
-StrView StrView_take_right(StrView* sv, u64 n)
-{
-    if (n > sv->len) {
-        return (StrView){0}; // invalid
-    }
-    StrView tail = {.data = sv->data + (sv->len - n), .len = n};
-    sv->len -= n;
-    return tail;
-}
-
-
 // String Store
+
+// TODO: make this hash fn visible
+// HashMap hashes the raw key bytes by default; StrView keys must hash their contents.
+static u64 sv_hash_fn(const void* key, u64 size)
+{
+    (void)size;
+    StrView k = *(StrView*)key;
+    return wc_hash(k.data, k.len);
+}
+
+// Copy `sv` into the store and NUL-terminate it. With interning on, return the
+// already-stored view for equal contents instead of allocating a duplicate.
+static StrView stringstore_copy(StringStore* ss, StrView sv)
+{
+    if (!sv.data) {
+        return (StrView){0};
+    }
+    if (ss->interning_active) {
+        const StrView* found = (const StrView*)HashMap_get_key_ptr(&ss->interned, &sv);
+        if (found) {
+            return *found;
+        }
+    }
+
+    char* data = ChainArena_alloc(&ss->store, sv.len + 1);
+    FATAL_IF(!data, "chain arena alloc failed");
+    if (sv.len) {
+        memcpy(data, sv.data, sv.len);
+    }
+    data[sv.len] = 0;
+
+    StrView stored = {.data = data, .len = sv.len};
+    if (ss->interning_active) {
+        HashMap_put(&ss->interned, &stored, NULL);
+    }
+    return stored;
+}
 
 void StringStore_create(StringStore* ss, const wc_allocator* alloc, u64 block_size, bool intern)
 {
     ChainArena_create(&ss->store, alloc, block_size);
+    ss->interned         = (HashMap){0};
     ss->interning_active = intern;
     if (intern) {
-        ss->interning_active = true;
-        // create a set of StrViews
-        // We can directly use u64 wc_hash(void*, u64) (the default hash) so pass NULL
-        // StrViews are non-owning: no ops required
-        ss->interned = HashMap_create(alloc, sizeof(StrView), 0, NULL, wc_strview_cmp, NULL, NULL);
+        // A set of StrViews. The keys are non-owning; the chain arena owns the bytes.
+        ss->interned = HashMap_create(alloc, sizeof(StrView), 0, sv_hash_fn, wc_strview_cmp, NULL, NULL);
     }
 }
 
@@ -6501,32 +6525,17 @@ void StringStore_destroy(StringStore* ss)
 
 StrView StringStore_str(StringStore* ss, const String* s)
 {
-    // store the String contents, add NUL
-    char* data = ChainArena_alloc(&ss->store, s->size + 1);
-    FATAL_IF(!data, "chain arena alloc failed");
-
-    memcpy(data, String_data_ptr(s), s->size);
-    data[s->size] = 0;
-    return (StrView){.data = data, .len = s->size};
+    return stringstore_copy(ss, StrView_over_String(s));
 }
 
 StrView StringStore_cstr(StringStore* ss, const char* cstr, u64 clen)
 {
-    char* data = ChainArena_alloc(&ss->store, clen + 1);
-    FATAL_IF(!data, "chain arena alloc failed");
-
-    memcpy(data, cstr, clen + 1); // copy the WHOLE cstr, including NUL
-    return (StrView){.data = data, .len = clen};
+    return stringstore_copy(ss, StrView_over_cstr(cstr, clen));
 }
 
 StrView StringStore_sv(StringStore* ss, StrView sv)
 {
-    char* data = ChainArena_alloc(&ss->store, sv.len + 1);
-    FATAL_IF(!data, "chain arena alloc failed");
-
-    memcpy(data, sv.data, sv.len);
-    data[sv.len] = 0;
-    return (StrView){.data = data, .len = sv.len};
+    return stringstore_copy(ss, sv);
 }
 
 
@@ -6535,7 +6544,7 @@ StrView StringStore_sv(StringStore* ss, StrView sv)
 
 bool WCpath_valid(StrView p)
 {
-    if (!p.data) {
+    if (!p.data || p.len == 0) {
         return false;
     }
     for (u64 i = 0; i < p.len; i++) {
@@ -6584,7 +6593,7 @@ StrView WCpath_basename(StrView p)
 
 StrView WCpath_dirname(StrView p)
 {
-    if (p.len == 0) {
+    if (!p.data || p.len == 0) {
         return (StrView){0};
     }
 
@@ -6597,9 +6606,10 @@ StrView WCpath_dirname(StrView p)
     while (i > 0 && p.data[i - 1] != '/') { // skip basename
         i--;
     }
-    // we reached the beginning but no '/' found: no dir in the path
+    // we reached the beginning but no '/' found: no directory component.
+    // That is a successful result, not an error: return a valid empty view.
     if (i == 0) {
-        return (StrView){0};
+        return StrView_prefix(p, 0);
     }
     // drop the separator before the basename, keep a lone root "/"
     if (i > 1) {
@@ -6610,9 +6620,13 @@ StrView WCpath_dirname(StrView p)
     return StrView_prefix(p, i);
 }
 
-// index of the extension dot in a basename, or WC_NOT_FOUND. A leading dot doesn't count.
+// index of the extension dot in a basename, or WC_NOT_FOUND. A leading dot
+// doesn't count; "." and ".." have no extension.
 static u64 ext_dot(StrView b)
 {
+    if (b.len == 2 && b.data[0] == '.' && b.data[1] == '.') {
+        return WC_NOT_FOUND;
+    }
     for (u64 i = b.len; i-- > 1;) {
         if (b.data[i] == '.') {
             return i;
@@ -6635,7 +6649,7 @@ StrView WCpath_stem(StrView p)
 {
     StrView b   = WCpath_basename(p);
     u64     dot = ext_dot(b);
-    return dot == WC_NOT_FOUND ? (StrView){0} : StrView_prefix(b, dot);
+    return dot == WC_NOT_FOUND ? b : StrView_prefix(b, dot);
 }
 
 // `ext` may be given with or without the leading dot: "txt" and ".txt" both match "c.txt"
@@ -6658,7 +6672,7 @@ WCPathIter WCpath_components(StrView p)
     return (WCPathIter){.src = p, .pos = 0};
 }
 
-bool WCpathIter_next(WCPathIter* it, StrView* out)
+StrView WCpathIter_next(WCPathIter* it)
 {
     StrView s = it->src;
     u64     i = it->pos;
@@ -6668,16 +6682,15 @@ bool WCpathIter_next(WCPathIter* it, StrView* out)
     }
     if (i >= s.len) {
         it->pos = s.len;
-        return false;
+        return (StrView){0};
     }
 
     u64 start = i;
-    while (i < s.len && s.data[i] != '/') { // consume the name
+    while (i < s.len && s.data[i] != '/') { // advance over the name
         i++;
     }
-    *out    = (StrView){.data = s.data + start, .len = i - start};
     it->pos = i;
-    return true;
+    return (StrView){.data = s.data + start, .len = i - start};
 }
 
 // Join rules (POSIX / Python os.path.join style):
@@ -6692,6 +6705,7 @@ typedef struct {
 
 static JoinPlan join_plan(StrView a, StrView b)
 {
+    // can't join with an absolute path
     if (a.len == 0 || WCpath_is_absolute(b)) {
         return (JoinPlan){.use_a = false, .sep = false};
     }
@@ -6720,7 +6734,7 @@ static void join_write(char* dst, JoinPlan plan, StrView a, StrView b)
     }
 }
 
-String WCPath_join(const wc_allocator* alloc, StrView a, StrView b)
+String WCPath_join_str(const wc_allocator* alloc, StrView a, StrView b)
 {
     JoinPlan plan = join_plan(a, b);
     u64      len  = join_len(plan, a, b);
@@ -6773,8 +6787,7 @@ StrView WCPath_normalize(StringStore* ss, StrView p)
     u64 keep = n;
 
     WCPathIter it = WCpath_components(p);
-    StrView    c;
-    while (WCpathIter_next(&it, &c)) {
+    for (StrView c = WCpathIter_next(&it); StrView_is_valid(c); c = WCpathIter_next(&it)) {
         if (StrView_equals_cstr(c, ".", 1)) {
             continue;
         }

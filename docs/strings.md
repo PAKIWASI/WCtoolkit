@@ -82,16 +82,15 @@ Call `String_cstr_view` only after `String_ensure_null_term`: on a fresh empty s
 
 A non-owning `{ const char* data; u64 len; }` slice. It never frees anything, and is only valid while the memory it points at is.
 
-Range arguments (`off`, `start`, `len`, `n`) are `WC_ASSERT`s: checked in Debug, unchecked in Release.
+A `StrView` is valid when `.data != NULL`. Functions that can fail return `(StrView){0}`; `StrView_is_valid()` tells that error value apart from a successful empty view, which keeps a non-NULL pointer. Slicing out of range returns `{0}` instead of asserting.
 
 | Group | Functions |
 |---|---|
 | Create | `StrView_over_String(&s)`, `StrView_over_String_ex(&s, off, len)` (sub-range), `StrView_over_cstr(cstr, len)` — all borrow, no allocation |
-| Combine | `StrView_slice(sv, start, len)`, `StrView_prefix(sv, n)`, `StrView_suffix(sv, start)` |
+| Combine | `StrView_slice(sv, start, len)`, `StrView_prefix(sv, n)`, `StrView_suffix(sv, start)` — return `{0}` when the range is out of bounds |
 | Trim | `StrView_trim(sv, set, len)`, `StrView_trim_left`, `StrView_trim_right`. The six ASCII whitespace chars are always trimmable; `set` adds trimmable bytes on top. `set == NULL` or `len == 0` leaves only the defaults. |
-| Search | `StrView_find(sv, needle)`, `StrView_find_char(sv, c)` — index or `WC_NOT_FOUND`; `StrView_starts_with`, `StrView_ends_with`, `StrView_contains` |
-| Parse | `StrView_parse_u8/u16/u32/u64(sv, &out)`: the whole view must be plain decimal digits (no sign, no whitespace, no base prefix, leading zeros fine); overflow of the target type is an error. `*out` is written only on success. |
-| Consume | `StrView_take_left(&sv, n)`, `StrView_take_right(&sv, n)`: take `n` bytes from the front/back and shorten `sv`. Asking for more than there is returns an invalid view (`data == NULL`) and leaves `sv` alone; `StrView_is_valid(sv)` separates such an error value from a good view. |
+| Search | `StrView_find(sv, needle)`, `StrView_findr(sv, needle)`, `StrView_find_char(sv, c)`, `StrView_findr_char(sv, c)` — index or `WC_NOT_FOUND`; `StrView_starts_with`, `StrView_ends_with`, `StrView_contains` |
+| Advance | A view is a value: read `StrView_prefix(sv, n)`, then move on with `sv = StrView_suffix(sv, n)`. Nothing is mutated in place. |
 | Convert | `StrView_to_String(a, sv)` (one allocation), `StrView_to_cstr(a, sv)` (NUL-terminated; free with `wc_free(a, p, len + 1, WC_MAX_ALIGN)`), `StrView_to_buf(sv, buf, cap)` (plain copy, `false` when `cap < len`; not terminated) |
 | Compare | `StrView_compare` (like `memcmp` on shared bytes, then length as the tiebreak), `StrView_equals`, `StrView_equals_cstr`, `StrView_hash` |
 | Output | `StrView_print` |
@@ -117,13 +116,15 @@ int main(void)
     printf("%s\n", cstr);                                               // eats.txt
     Arena_destroy(&arena); // cstr dies here, and with it every view of it
 
-    // take_left consumes: fields come out one by one, no copies
+    // advance the view: fields come out one by one, no copies
     StrView csv = StrView_over_cstr("1,22,333", 8);
     while (csv.len > 0) {
         u64     stop  = StrView_find_char(csv, ',');
-        StrView field = StrView_take_left(&csv, stop == WC_NOT_FOUND ? csv.len : stop + 1);
+        u64     n     = stop == WC_NOT_FOUND ? csv.len : stop + 1;
+        StrView field = StrView_prefix(csv, n);
         StrView_print(field); // "1," then "22," then "333"
         putchar(' ');
+        csv = StrView_suffix(csv, n);
     }
 
     String_destroy(&s);
@@ -133,15 +134,13 @@ int main(void)
 
 ## StringStore
 
-**Not implemented yet.** Declared in `views.h`, no code behind it — don't call it.
+Append-only immutable string storage on a `ChainArena`. You hand it bytes, it hands back a `StrView` that stays valid until the store is destroyed. Every stored string is NUL-terminated, so the view is directly usable as a C string.
 
-The plan: append-only immutable string storage on a `ChainArena`. You hand it bytes, it hands back a `StrView` that stays valid until the store is destroyed, and every string in the store is NUL-terminated, so a returned view is directly usable as a C string. Planned on top:
+- **Interning** (`intern = true` at creation): identical bytes return the same view — dedup by content, O(1) amortized.
+- **Path storage**: build, join, and normalize paths over stored strings (see `WCPath_*`).
 
-- **Interning** (`intern = true` at creation): identical bytes always come back as the same view — dedup by content, O(1) amortized.
-- **Path storage**: build, join, and normalize paths over stored strings (the `WCpath_*` declarations in `views.h`).
-
-| Declared | Notes |
+| Function | Notes |
 |---|---|
 | `StringStore_create(&ss, backing, block_cap, intern)` | |
 | `StringStore_destroy(&ss)` | |
-| `StringStore_store(&ss, &s)`, `StringStore_store_cstr(&ss, cstr)`, `StringStore_store_sv(&ss, sv)` | Copy the bytes in, return a view |
+| `StringStore_str(&ss, &s)`, `StringStore_cstr(&ss, cstr, clen)`, `StringStore_sv(&ss, sv)` | Copy the bytes in, NUL-terminate, return a view. `clen` is authoritative. |

@@ -60,7 +60,7 @@ UBENCH(memory, string_store)
     StringStore ss;
     StringStore_create(&ss, WC_LIBC, (u64)sizeof(WORD) * (u64)N, false);
     for (int i = 0; i < N; i++) {
-        (void)StringStore_store_cstr(&ss, WORD);
+        (void)StringStore_cstr(&ss, WORD, sizeof(WORD) - 1);
     }
     StringStore_destroy(&ss);
 }

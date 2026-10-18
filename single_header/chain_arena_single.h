@@ -836,7 +836,7 @@ typedef struct {
 } ChainArena;
 
 // Initialises `ca` in place, it must not be moved or copied afterwards.
-wc_nonull(1, 2) void ChainArena_create(ChainArena* ca, const wc_allocator* backing, u64 normal_cap);
+wc_nonull(1, 2) void ChainArena_create(ChainArena* ca, const wc_allocator* backing, u64 block_cap);
 
 // Gives every block back to the backing allocator and zeroes the arena. Safe on a zeroed
 // arena and safe to call twice.

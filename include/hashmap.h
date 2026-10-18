@@ -189,7 +189,7 @@ HashMap m = HashMap_create(
 
 // Insert: intern first, then put a view (with interning on, storing the same
 // bytes again returns the same view, so repeated keys cost nothing)
-StrView key = StringStore_store_cstr(&ss, "hello");
+StrView key = StringStore_cstr(&ss, "hello", 5);
 int     v   = 42;
 HashMap_put(&m, &key, &v);
 
