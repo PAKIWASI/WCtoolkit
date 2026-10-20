@@ -5958,6 +5958,28 @@ void String_insert_cstr(String* s, u64 i, const char* cstr)
     s->size += clen;
 }
 
+
+void String_insert_multi(String* s, u64 i, const char* data, u64 len)
+{
+    WC_ASSERT(s->capacity != 0, "String_insert_cstr on zeroed/moved-from String");
+    WC_ASSERT(i <= s->size, "index out of bounds");
+
+    if (len == 0) {
+        return;
+    }
+
+    ensure_capacity(s, s->size + len);
+
+    char* buf = GET_STR(s);
+    // Shift existing chars right by clen positions.
+    for (u64 j = s->size; j > i; j--) {
+        buf[j + len - 1] = buf[j - 1];
+    }
+    memcpy(buf + i, data, len);
+    s->size += len;
+
+}
+
 void String_insert_String(String* s, u64 i, const String* other)
 {
     WC_ASSERT(s->capacity != 0, "String_insert_String on zeroed/moved-from String");
