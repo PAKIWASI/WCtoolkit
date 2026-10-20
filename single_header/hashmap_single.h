@@ -844,16 +844,12 @@ typedef u64 (*wc_hash_fn)(const void* key, u64 size);
  * rapidhashNano() on little-endian hosts; tests/test_hashmap.c checks it.
  */
 
-// 64 x 64 -> 128 bit multiply. *a gets the low half, *b the high half.
-static wc_always_inline void wc_rapid_mum(unsigned long long* a, unsigned long long* b) // TODO: is type right?
-{
-    wc_mum64(a, b);
-}
-
 // Multiply, then fold the 128-bit product to 64 bits.
+// wc_mum64 takes ULL (matching __uint128_t / _umul128), so ULL is used here too:
+// u64 is `unsigned long` on LP64, which would be an incompatible pointer type.
 wc_nodiscard static wc_always_inline u64 wc_rapid_mix(unsigned long long a, unsigned long long b)
 {
-    wc_rapid_mum(&a, &b);
+    wc_mum64(&a, &b);
     return a ^ b;
 }
 
@@ -927,7 +923,7 @@ wc_nodiscard static wc_always_inline u64 wc_hash(const void* key, u64 len)
 
     a ^= WC_RAPID_S1;
     b ^= seed;
-    wc_rapid_mum(&a, &b);
+    wc_mum64(&a, &b);
     return wc_rapid_mix(a ^ WC_RAPID_S7, b ^ WC_RAPID_S1 ^ i);
 }
 
