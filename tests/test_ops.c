@@ -6,6 +6,7 @@
 #include "wc_macros.h"
 #include "wc_string.h"
 #include <stdalign.h>
+#include <string.h>
 
 
 /* ══════════════════════════════════════════════════════════════════════════
