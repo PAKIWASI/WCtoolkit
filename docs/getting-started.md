@@ -107,19 +107,23 @@ int main(void)
     printf("v[3] = %d\n", VEC_AT(&v, int, 3));
     GenVec_destroy(&v);
 
-    // A map of String -> int, also on libc
-    HashMap ages = MAP_OF(String, int);
-    MAP_PUT_STR_INT(&ages, "ada", 3, 36);
-    MAP_PUT_STR_INT(&ages, "alan", 4, 41);
+    // A map of StrView -> int. The store owns the key bytes, so it must
+    // outlive the map.
+    StringStore ss;
+    StringStore_create(&ss, WC_LIBC, nKB(4), true);
+    HashMap ages = MAP_OF(StrView, int);
+    MAP_PUT(&ages, StringStore_cstr(&ss, "ada"), 36);
+    MAP_PUT(&ages, StringStore_cstr(&ss, "alan"), 41);
 
-    printf("ada = %d\n", MAP_GET_CSTR(&ages, int, "ada", 3));   // lookup builds no String
+    printf("ada = %d\n", MAP_GET_CSTR(&ages, int, "ada"));   // transient view, no allocation
     HashMap_destroy(&ages);
+    StringStore_destroy(&ss);
 
     // The same kind of work on an arena: one destroy, no per-container destroy
     Arena tmp;
     Arena_create(&tmp, WC_LIBC, nKB(4));
     GenVec words = VEC_OF_IN(Arena_allocator(&tmp), String, 4);
-    VEC_PUSH_CSTR(&words, "no destroy needed", sizeof("no destroy needed") - 1);
+    VEC_PUSH_CSTR(&words, "no destroy needed");
     Arena_destroy(&tmp);   // frees `words` and its Strings too
     return 0;
 }

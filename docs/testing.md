@@ -119,7 +119,7 @@ UTEST(gen_vector, strings_leak_free)
     const wc_allocator* a = wc_test_alloc_allocator(&ta);   // points into ta
 
     GenVec v = VEC_OF_IN(a, String, 2);
-    for (int i = 0; i < 50; i++) { VEC_PUSH_CSTR(&v, "a string long enough for the heap", sizeof("a string long enough for the heap") - 1); }
+    for (int i = 0; i < 50; i++) { VEC_PUSH_CSTR(&v, "a string long enough for the heap"); }
     GenVec_destroy(&v);
 
     EXPECT_EQ(ta.n_errors, 0u);

@@ -32,14 +32,19 @@ UBENCH(hashmap, put_int_reserved)
 
 UBENCH(hashmap, put_string)
 {
-    HashMap m = MAP_OF(String, int);
+    // Keys are interned: the map stores a 16-byte StrView, not a String.
+    StringStore ss;
+    StringStore_create(&ss, WC_LIBC, nKB(64), true);
+    HashMap m = MAP_OF(StrView, int);
     char    key[32];
     for (int i = 0; i < N; i++) {
         snprintf(key, sizeof(key), "key_%d", i);
-        MAP_PUT_STR_INT(&m, key, strlen(key), i);
+        StrView k = StringStore_cstr(&ss, key);
+        MAP_PUT(&m, k, i);
     }
     UBENCH_DO_NOTHING(m.keys);
     HashMap_destroy(&m);
+    StringStore_destroy(&ss);
 }
 
 UBENCH_EX(hashmap, get_int)
@@ -61,13 +66,15 @@ UBENCH_EX(hashmap, get_int)
 
 UBENCH_EX(hashmap, get_string)
 {
-    HashMap m = MAP_OF(String, int);
-    String* keys = malloc(sizeof(String) * N); // N strings are too big for the stack
-    char    buf[32];
+    StringStore ss;
+    StringStore_create(&ss, WC_LIBC, nKB(64), true);
+    HashMap  m    = MAP_OF(StrView, int);
+    StrView* keys = malloc(sizeof(StrView) * N); // N views are too big for the stack
+    char     buf[32];
     for (int i = 0; i < N; i++) {
         snprintf(buf, sizeof(buf), "key_%d", i);
-        keys[i] = String_from_cstr(WC_LIBC, buf, strlen(buf));
-        MAP_PUT_STR_INT(&m, buf, strlen(buf), i);
+        keys[i] = StringStore_cstr(&ss, buf);
+        MAP_PUT(&m, keys[i], i);
     }
     UBENCH_DO_BENCHMARK()
     {
@@ -77,25 +84,26 @@ UBENCH_EX(hashmap, get_string)
         }
         UBENCH_DO_NOTHING(&sum);
     }
-    for (int i = 0; i < N; i++) {
-        String_destroy(&keys[i]);
-    }
     free(keys);
     HashMap_destroy(&m);
+    StringStore_destroy(&ss);
 }
 
 // Times fill + clear + destroy together (HashMap_clear alone cannot be re-run on an
-// emptied map). The fill dominates: snprintf, a key String, a heap-allocated value copy.
+// emptied map). The fill dominates: snprintf, interning the key, a heap-allocated value copy.
 UBENCH(hashmap, fill_clear_string)
 {
-    HashMap m = MAP_OF(String, String);
+    StringStore ss;
+    StringStore_create(&ss, WC_LIBC, nKB(64), true);
+    HashMap m = MAP_OF(StrView, String);
     char    key[32];
     for (int i = 0; i < N; i++) {
         snprintf(key, sizeof(key), "key_%d", i);
-        MAP_PUT_STR_STR(&m, key, strlen(key), LONG_STR, strlen(LONG_STR));
+        MAP_PUT_SV_STR(&m, StringStore_cstr(&ss, key), LONG_STR);
     }
-    HashMap_clear(&m); // del_fn on every key and value
+    HashMap_clear(&m); // del_fn on every value; key bytes stay in the store
     HashMap_destroy(&m);
+    StringStore_destroy(&ss);
 }
 
 // NOLINTEND(bugprone-suspicious-realloc-usage)

@@ -581,13 +581,13 @@ UTEST(gen_vector, shrink_to_fit_already_tight)
 UTEST(gen_vector, push_move_zeroes_src)
 {
     GenVec v = VEC_OF_STR(4);
-    String s = String_from_cstr(WC_LIBC, "owned", strlen("owned"));
+    String s = String_from_cstr(WC_LIBC, "owned");
     GenVec_push_move(&v, &s);
     EXPECT_EQ(s.size, 0u); // moved-from String is zeroed
     EXPECT_TRUE((s.heap) == NULL);
     String_destroy(&s); // zero-safe no-op
     EXPECT_EQ(GenVec_size(&v), 1u);
-    EXPECT_TRUE(String_equals_cstr(VEC_AT_MUT(&v, String, 0), "owned", strlen("owned")));
+    EXPECT_TRUE(String_equals_cstr(VEC_AT_MUT(&v, String, 0), "owned"));
     GenVec_destroy(&v);
 }
 
@@ -597,15 +597,15 @@ UTEST(gen_vector, push_move_zeroes_src)
 UTEST(gen_vector, insert_move_front)
 {
     GenVec v = VEC_OF_STR(4);
-    VEC_PUSH_CSTR(&v, "b", strlen("b"));
-    VEC_PUSH_CSTR(&v, "c", strlen("c"));
-    String s = String_from_cstr(WC_LIBC, "a", strlen("a"));
+    VEC_PUSH_CSTR(&v, "b");
+    VEC_PUSH_CSTR(&v, "c");
+    String s = String_from_cstr(WC_LIBC, "a");
     GenVec_insert_move(&v, 0, &s);
     EXPECT_EQ(s.size, 0u);
     String_destroy(&s);
     EXPECT_EQ(GenVec_size(&v), 3u);
-    EXPECT_TRUE(String_equals_cstr(VEC_AT_MUT(&v, String, 0), "a", strlen("a")));
-    EXPECT_TRUE(String_equals_cstr(VEC_AT_MUT(&v, String, 1), "b", strlen("b")));
+    EXPECT_TRUE(String_equals_cstr(VEC_AT_MUT(&v, String, 0), "a"));
+    EXPECT_TRUE(String_equals_cstr(VEC_AT_MUT(&v, String, 1), "b"));
     GenVec_destroy(&v);
 }
 
@@ -615,12 +615,12 @@ UTEST(gen_vector, insert_move_front)
 UTEST(gen_vector, replace_move_frees_old)
 {
     GenVec v = VEC_OF_STR(4);
-    VEC_PUSH_CSTR(&v, "old", strlen("old"));
-    String s = String_from_cstr(WC_LIBC, "new", strlen("new"));
+    VEC_PUSH_CSTR(&v, "old");
+    String s = String_from_cstr(WC_LIBC, "new");
     GenVec_replace_move(&v, 0, &s);
     EXPECT_EQ(s.size, 0u);
     String_destroy(&s);
-    EXPECT_TRUE(String_equals_cstr(VEC_AT_MUT(&v, String, 0), "new", strlen("new")));
+    EXPECT_TRUE(String_equals_cstr(VEC_AT_MUT(&v, String, 0), "new"));
     GenVec_destroy(&v);
 }
 

@@ -1443,56 +1443,25 @@ wc_nodiscard wc_nonull(1) static wc_always_inline bool HashMap_empty(const HashM
     return map->size == 0;
 }
 
-/* TODO:
-StrView keys + arena-backed storage (the scale play)
-
-Keys are 16 bytes instead of 48. No allocator pointer per entry. No SSO struct. Lookups never allocate.
-c
-
-// wrappers that fit wc_hash_fn / wc_compare_fn
-static u64 sv_hash_fn(const void* k, u64 size) {
-    (void)size; StrView v; memcpy(&v, k, sizeof v); return wc_hash(v.data, v.len);
-}
-static int sv_cmp_fn(const void* a, const void* b, u64 size) {
-    (void)size;
-    StrView va, vb; memcpy(&va, a, sizeof va); memcpy(&vb, b, sizeof vb);
-    return StrView_compare(va, vb);
-}
-
-Setup:
-c
-
-StringStore ss;   // see §5
-StringStore_create(&ss, WC_MMAP, nKB(64), true);
-
-HashMap m = HashMap_create(
-    WC_LIBC,
-    sizeof(StrView),   // key
-    sizeof(int),       // val
-    sv_hash_fn, sv_cmp_fn,
-    NULL, NULL         // keys/vals are POD — 16 raw bytes
-);
-
-// Insert: intern first, then put a view (with interning on, storing the same
-// bytes again returns the same view, so repeated keys cost nothing)
-StrView key = StringStore_cstr(&ss, "hello", 5);
-int     v   = 42;
-HashMap_put(&m, &key, &v);
-
-// Lookup with a transient view — zero allocation
-StrView probe = StrView_over_cstr("hello", 5);
-const int* got = HashMap_get_ptr(&m, &probe);
-
-The one rule you must enforce: the store must outlive the map. If ss is destroyed or reset, every key becomes a dangling pointer and every subsequent hash/compare reads freed memory. That means:
-
-    StringStore is append-only if deduped by a HashMap (see §5).
-
-    Never call ChainArenaScratch_to_mark(ChainArenaScratch_create(&ss)) while a map references it.
-
-    A convenience macro (MAP_OF_STRVIEW(alloc)) that wires up sv_hash_fn/sv_cmp_fn/sizeof(StrView) would prevent a lot of copy-paste, mirroring your existing MAP_OF.
-
-Both patterns are valid. String_borrow is fine for occasional lookups; StrView + store is what you want when the map is large or the strings are parsed (JSON, config, token streams).
-*/
+/* String-keyed maps: use StrView keys
+ *
+ * A StrView key is a 16-byte view whose bytes live in a StringStore (or any
+ * storage) that outlives the map. MAP_OF(StrView, V) wires the content hash and
+ * compare; insert a view returned by StringStore_cstr, and look up with a
+ * transient StrView_over_cstr (zero allocation).
+ *
+ *   StringStore ss;
+ *   StringStore_create(&ss, WC_LIBC, nKB(64), true);
+ *   HashMap m = MAP_OF(StrView, int);
+ *   MAP_PUT(&m, StringStore_cstr(&ss, "hello"), 42);
+ *   const int* got = MAP_GET_PTR_CSTR(&m, int, "hello");
+ *
+ * The map does not own key bytes: destroy it before the store. HashMap_copy
+ * shallow-copies views, so both maps must use the same live store.
+ *
+ * String keys are rejected at compile time: a String is mutable, 48 bytes, and
+ * owns an allocation, all wasted on a key. See docs/containers.md.
+ */
 
 #endif // HASHMAP_H
 
@@ -1884,8 +1853,9 @@ wc_nodiscard wc_nonull(1) String String_create(const wc_allocator* a);
 
 wc_nodiscard wc_nonull(1) String String_with_cap(const wc_allocator* a, u64 cap);
 
-// Create a String from `clen` bytes of a C string using allocator `a`.
-wc_nodiscard wc_nonull(1) String String_from_cstr(const wc_allocator* a, const char* cstr, u64 clen);
+// Create a String from a NUL-terminated C string using allocator `a`.
+// The length is computed internally with strlen.
+wc_nodiscard wc_nonull(1, 2) String String_from_cstr(const wc_allocator* a, const char* cstr);
 
 // Destroy the String's internal buffer
 // Safe on a zeroed/moved-from String.
@@ -1897,23 +1867,6 @@ wc_nodiscard wc_nonull(1, 2) String String_copy(const wc_allocator* a, const Str
 
 // Transfer ownership: dest gets src's contents, src is zeroed.
 wc_nonull(1, 2) void String_move(String* dest, String* src);
-
-// TODO: just use a StrView for this? can we for hashmap lookup?
-// Non-owning, READ-ONLY String over `len` existing bytes: no allocation.
-// For lookups only: a String-keyed map or set hashes and compares it like an
-// owning String with the same bytes. Never store it in a container.
-// Any mutation is fatal (WC_BORROWED cannot allocate); destroy is a no-op.
-wc_nodiscard wc_nonull(1) static wc_always_inline String String_borrow(const char* p, u64 len)
-{
-    String s;
-    memset(&s, 0, sizeof(s)); // stk[STR_SSO_SIZE - 1] == 0: heap mode
-    s.heap     = (char*)(uintptr_t)p;
-    s.size     = len;
-    s.capacity = len ? len : 1; // capacity 0 is the zero state
-    s.alloc    = WC_BORROWED;
-    return s;
-}
-
 
 //  Capacity
 
@@ -1948,7 +1901,7 @@ wc_nonull(1) void String_ensure_null_term(String* str);
 wc_nonull(1) void String_append_char(String* str, char c);
 // TODO:
 wc_nonull(1, 2) void String_append_multi(String* str, const char* data, u64 len);
-wc_nonull(1, 2) void String_append_cstr(String* str, const char* cstr, u64 clen);
+wc_nonull(1, 2) void String_append_cstr(String* str, const char* cstr);
 wc_nonull(1, 2) void String_append_String(String* str, const String* other);
 // Append other then destroy it (leaves other zeroed). When str is empty and
 // both share an allocator, str takes over other's buffer: no copy.
@@ -1957,7 +1910,7 @@ wc_nonull(1, 2) void String_append_String_move(String* str, String* other);
 wc_nodiscard wc_nonull(1) char String_pop_char(String* str);
 
 wc_nonull(1) void String_insert_char(String* str, u64 i, char c);
-wc_nonull(1, 3) void String_insert_cstr(String* str, u64 i, const char* cstr, u64 clen);
+wc_nonull(1, 3) void String_insert_cstr(String* str, u64 i, const char* cstr);
 // TODO:
 wc_nonull(1, 3) void String_insert_multi(String* str, u64 i, const char* data, u64 len);
 wc_nonull(1, 3) void String_insert_String(String* str, u64 i, const String* other);
@@ -2005,14 +1958,14 @@ wc_nodiscard wc_nonull(1, 2) static wc_always_inline bool String_equals(const St
     return String_compare(s1, s2) == 0;
 }
 
-wc_nodiscard wc_nonull(1, 2) bool String_equals_cstr(const String* str, const char* cstr, u64 clen);
+wc_nodiscard wc_nonull(1, 2) bool String_equals_cstr(const String* str, const char* cstr);
 
 
 //  Search
 
 // Returns index, or WC_NOT_FOUND if not found.
 wc_nodiscard wc_nonull(1) u64 String_find_char(const String* str, char c);
-wc_nodiscard wc_nonull(1, 2) u64 String_find_cstr(const String* str, const char* substr, u64 clen);
+wc_nodiscard wc_nonull(1, 2) u64 String_find_cstr(const String* str, const char* substr);
 
 // Return a String (in allocator `a`) holding `length` chars starting at `start`.
 wc_nodiscard wc_nonull(1, 2) String String_substr(const wc_allocator* a, const String* str, u64 start, u64 length);
@@ -2111,44 +2064,10 @@ static inline void str_print_ptr(const void* elm)
     String_print(*(const String**)elm);
 }
 
-static inline int wc_str_cmp(const void* a, const void* b, u64 size)
-{
-    (void)size;
-    return String_compare((const String*)a, (const String*)b);
-}
-
-static inline int wc_str_ptr_cmp(const void* a, const void* b, u64 size)
-{
-    (void)size;
-    return String_compare(*(const String**)a, *(const String**)b);
-}
-
-// SHARED OPS INSTANCES
+// SHARED OPS INSTANCES (for String VALUES and vectors; String is not a map key)
 
 static const wc_container_ops wc_str_ops     = {.copy_fn = str_copy, .del_fn = str_del};
 static const wc_container_ops wc_str_ptr_ops = {.copy_fn = str_copy_ptr, .del_fn = str_del_ptr};
-
-
-/*
-    Hash functions for string ops
-*/
-
-
-// String keys: hash the characters, not the struct (which holds a pointer).
-// Pair with str_cmp / str_cmp_ptr from wc_helpers.h. MAP_OF picks both for you.
-static inline u64 wc_str_hash(const void* key, u64 size)
-{
-    (void)size;
-    const String* str = key;
-    return wc_hash(String_data_ptr(str), String_len(str));
-}
-
-static inline u64 wc_str_ptr_hash(const void* key, u64 size)
-{
-    (void)size;
-    const String* str = *(String* const*)key;
-    return wc_hash(String_data_ptr(str), String_len(str));
-}
 
 
 #endif // STRING_H
@@ -2210,9 +2129,11 @@ wc_nodiscard wc_nonull(1) static wc_always_inline StrView StrView_over_String_ex
     return (StrView){.data = (data ? data : "") + off, .len = len};
 }
 
-wc_nodiscard wc_nonull(1) static wc_always_inline StrView StrView_over_cstr(const char* cstr, u64 clen)
+// Non-owning view over a NUL-terminated C string. The length is computed
+// internally with strlen.
+wc_nodiscard wc_nonull(1) static wc_always_inline StrView StrView_over_cstr(const char* cstr)
 {
-    return (StrView){.data = cstr, .len = clen};
+    return (StrView){.data = cstr, .len = strlen(cstr)};
 }
 
 // conversion
@@ -2252,12 +2173,15 @@ wc_nodiscard static wc_always_inline StrView StrView_suffix(StrView sv, u64 star
 
 // trim
 
-// trim all chars from `set` from left and right of `sv`. leave `set = NUL` to trim whitespaces
-wc_nodiscard StrView StrView_trim(StrView sv, const char* set, u64 len);
-// trim all chars from `set` from the left of `sv`. leave `set = NUL` to trim whitespaces
-wc_nodiscard StrView StrView_trim_left(StrView sv, const char* set, u64 len);
-// trim all chars from `set` from the right of `sv`. leave `set = NUL` to trim whitespaces
-wc_nodiscard StrView StrView_trim_right(StrView sv, const char* set, u64 len);
+// trim all chars from the NUL-terminated `set` from left and right of `sv`.
+// leave `set = NULL` to trim whitespaces.
+wc_nodiscard StrView StrView_trim(StrView sv, const char* set);
+// trim all chars from the NUL-terminated `set` from the left of `sv`.
+// leave `set = NULL` to trim whitespaces.
+wc_nodiscard StrView StrView_trim_left(StrView sv, const char* set);
+// trim all chars from the NUL-terminated `set` from the right of `sv`.
+// leave `set = NULL` to trim whitespaces.
+wc_nodiscard StrView StrView_trim_right(StrView sv, const char* set);
 
 // search
 
@@ -2311,15 +2235,25 @@ wc_nodiscard static wc_always_inline bool StrView_equals(StrView a, StrView b)
 }
 
 // C-string convenience
-wc_nodiscard wc_nonull(2) static wc_always_inline bool StrView_equals_cstr(StrView sv, const char* cstr, u64 clen)
+wc_nodiscard wc_nonull(2) static wc_always_inline bool StrView_equals_cstr(StrView sv, const char* cstr)
 {
-    return StrView_equals(sv, StrView_over_cstr(cstr, clen));
+    return StrView_equals(sv, StrView_over_cstr(cstr));
+}
+
+// Hash/compare wrappers for StrView-keyed maps and sets. The map stores the
+// 16-byte view; these functions hash and compare the bytes it points at.
+static inline u64 wc_strview_hash(const void* key, u64 size)
+{
+    (void)size;
+    StrView v;
+    memcpy(&v, key, sizeof(v));
+    return StrView_hash(v);
 }
 
 static inline int wc_strview_cmp(const void* a, const void* b, u64 size)
 {
     (void)size;
-    return StrView_compare(*(StrView*)a, *(StrView*)b);
+    return StrView_compare(*(const StrView*)a, *(const StrView*)b);
 }
 
 
@@ -2331,16 +2265,16 @@ typedef struct {
     HashMap    interned;         // StrView -> {} (a set)
     bool       interning_active; // optional
     // probe the interned set: return the existing view if found, else alloc + insert. A deduped store must be append-only
-    // This makes interning O(1) amortized and idempotent: repeated StringStore_cstr(&ss, "x", 1) return the same view every time
+    // This makes interning O(1) amortized and idempotent: repeated StringStore_cstr(&ss, "x") return the same view every time
 } StringStore;
 
 wc_nonull(1, 2) void StringStore_create(StringStore* ss, const wc_allocator* alloc, u64 block_size, bool intern);
 wc_nonull(1) void StringStore_destroy(StringStore* ss);
 
-// Copy `clen` bytes into the store; return a view. NUL-terminate too (1 extra byte),
+// Copy the bytes into the store; return a view. NUL-terminate too (1 extra byte),
 // so sv.data works as a C string, makes StringStore a drop-in for argv-style APIs.
 wc_nodiscard wc_nonull(1, 2) StrView StringStore_str(StringStore* ss, const String* s);
-wc_nodiscard wc_nonull(1, 2) StrView StringStore_cstr(StringStore* ss, const char* cstr, u64 clen);
+wc_nodiscard wc_nonull(1, 2) StrView StringStore_cstr(StringStore* ss, const char* cstr);
 wc_nodiscard wc_nonull(1) StrView StringStore_sv(StringStore* ss, StrView sv);
 
 // TODO: extensive testing needed
@@ -2457,7 +2391,7 @@ wc_nodiscard wc_nonull(1) StrView WCPath_normalize(StringStore* ss, StrView p); 
 /* Compile-time guards.
  * WC_REQUIRE_POD (E2): a value macro takes the element BY VALUE into a hidden
  *   temporary. Owning structs AND owning pointers are rejected: an rvalue
- *   (String_from_cstr(alloc, cstr, clen), WC_BOX(..)) would be deep-copied and then leak.
+ *   (String_from_cstr(alloc, cstr), WC_BOX(..)) would be deep-copied and then leak.
  * WC_REQUIRE_NO_ALIAS (E3): a read macro returns the element BY VALUE. An
  *   owning struct is rejected: the copy would share the container's buffer.
  *   Pointer elements are allowed: a returned pointer is a visible borrow.
@@ -2543,28 +2477,44 @@ wc_nodiscard wc_nonull(1) StrView WCPath_normalize(StringStore* ss, StrView p); 
 // New vector of T on the same allocator as an existing vector `v`.
 #define VEC_LIKE(v, T, cap) GenVec_create((v)->alloc, (cap), sizeof(T), WC_OPS(T))
 
-/* Key hash/compare picked from K, like WC_OPS. Owning keys must hash their
- * CONTENT: hashing the raw String struct (pointer, capacity, allocator) makes
- * every lookup miss. NULL = wc_hash / byte equality over the key bytes (POD keys).
- * GenVec keys have no content hash: pass explicit functions to HashMap_create. */
-#define WC_HASH_FN(K)                            \
-    _Generic((K*)0,                              \
-        String*: (wc_hash_fn)wc_str_hash,        \
-        String * *: (wc_hash_fn)wc_str_ptr_hash, \
+/* Key hash/compare picked from K, like WC_OPS.
+ *   StrView keys hash and compare their CONTENT (the bytes the view points at).
+ *   NULL = wc_hash / byte equality over the key bytes (POD keys).
+ * String keys are deliberately unsupported: use StrView keys whose bytes live
+ * in a StringStore (or other storage) that outlives the map. */
+#define WC_HASH_FN(K)                          \
+    _Generic((K*)0,                            \
+        StrView*: (wc_hash_fn)wc_strview_hash, \
         default: (wc_hash_fn)NULL)
 
-#define WC_CMP_FN(K)                               \
-    _Generic((K*)0,                                \
-        String*: (wc_compare_fn)wc_str_cmp,        \
-        String * *: (wc_compare_fn)wc_str_ptr_cmp, \
+#define WC_CMP_FN(K)                           \
+    _Generic((K*)0,                            \
+        StrView*: (wc_compare_fn)wc_strview_cmp, \
         default: (wc_compare_fn)NULL)
 
-#define MAP_OF_IN(A, K, V) HashMap_create((A), sizeof(K), sizeof(V), WC_HASH_FN(K), WC_CMP_FN(K), WC_OPS(K), WC_OPS(V))
+#define WC_IS_STRING_KEY(K) _Generic((K*)0, String*: 1, String * *: 1, default: 0)
+
+#define WC_REQUIRE_STRVIEW_KEY(K, what)                                           \
+    _Static_assert(!WC_IS_STRING_KEY(K),                                          \
+                   what ": String keys are not supported; use StrView keys "      \
+                        "backed by a StringStore")
+
+#define MAP_OF_IN(A, K, V)                                                  \
+    ({                                                                      \
+        WC_REQUIRE_STRVIEW_KEY(K, "MAP_OF");                                \
+        HashMap_create((A), sizeof(K), sizeof(V), WC_HASH_FN(K),            \
+                       WC_CMP_FN(K), WC_OPS(K), WC_OPS(V));                 \
+    })
 #define MAP_OF(K, V)       MAP_OF_IN(WC_LIBC, K, V)
 
 // A set of K: a HashMap with no values (val_size 0). Use HashMap_has / _del /
 // _get_key_ptr on it directly, and the SET_* macros below to insert and iterate.
-#define SET_OF_IN(A, K) HashMap_create((A), sizeof(K), 0, WC_HASH_FN(K), WC_CMP_FN(K), WC_OPS(K), NULL)
+#define SET_OF_IN(A, K)                                                     \
+    ({                                                                      \
+        WC_REQUIRE_STRVIEW_KEY(K, "SET_OF");                                \
+        HashMap_create((A), sizeof(K), 0, WC_HASH_FN(K), WC_CMP_FN(K),      \
+                       WC_OPS(K), NULL);                                    \
+    })
 #define SET_OF(K)       SET_OF_IN(WC_LIBC, K)
 
 #define VEC_MAKE_OPS(copy, del) \
@@ -2629,21 +2579,21 @@ Usage:
         GenVec_push((vec), (const void*)&(lval));    \
     })
 
-// VEC_PUSH_CSTR — build a String from `clen` bytes of a C string and move it
-// into a String vector, by value (wc_str_ops) or by pointer (wc_str_ptr_ops).
+// VEC_PUSH_CSTR — build a String from a C string and move it into a String
+// vector, by value (wc_str_ops) or by pointer (wc_str_ptr_ops).
 // Uses the container's own allocator so strings follow their vector.
-#define VEC_PUSH_CSTR(vec, cstr, clen)                                                      \
-    ({                                                                                      \
-        if ((vec)->data_size == sizeof(String)) {                                           \
-            /* by value: build on the vec's allocator, move the struct in */                \
-            String _wpc_s = String_from_cstr((vec)->alloc, (cstr), (clen));                 \
-            GenVec_push_move((vec), (void*)&_wpc_s); /* _wpc_s zeroed by move */            \
-        } else {                                                                            \
-            /* by pointer: box the String in the vec's allocator */                         \
-            WC_ASSERT_ELEM_SIZE((vec), String*);                                            \
-            String* _wpc_p = WC_BOX((vec)->alloc, String, String_from_cstr, (cstr), (clen)); \
-            GenVec_push_move((vec), (void*)&_wpc_p); /* slot owns the pointer */            \
-        }                                                                                   \
+#define VEC_PUSH_CSTR(vec, cstr)                                                 \
+    ({                                                                           \
+        if ((vec)->data_size == sizeof(String)) {                                \
+            /* by value: build on the vec's allocator, move the struct in */     \
+            String _wpc_s = String_from_cstr((vec)->alloc, (cstr));              \
+            GenVec_push_move((vec), (void*)&_wpc_s); /* _wpc_s zeroed by move */ \
+        } else {                                                                 \
+            /* by pointer: box the String in the vec's allocator */              \
+            WC_ASSERT_ELEM_SIZE((vec), String*);                                 \
+            String* _wpc_p = WC_BOX((vec)->alloc, String, String_from_cstr, (cstr)); \
+            GenVec_push_move((vec), (void*)&_wpc_p); /* slot owns the pointer */ \
+        }                                                                        \
     })
 
 
@@ -2776,82 +2726,62 @@ Usage:
 #define VEC_PUSH_VEC_PTR(outer, inner_ptr) VEC_PUSH_MOVE((outer), (inner_ptr)) // inner_ptr: GenVec* lvalue
 
 
-// Hashmap: String-keyed lookups without building a String (rule E1)
-/* A C string is wrapped in a borrowed, read-only String (String_borrow): it
- * hashes and compares exactly like an owning String with the same bytes, and
- * costs no allocation. The map must use &wc_str_ops for its keys (MAP_OF(String, V)). */
+// Hashmap: StrView keys and C-string lookups (rule E1)
+/* String keys are not supported. A StrView key is a 16-byte view; the bytes it
+ * points at must outlive the map (usually they live in a StringStore).
+ * A lookup by C string builds a transient view, so it needs no storage. */
 
-#define WC_ASSERT_STR_KEYS(map, what)                                                         \
-    WC_ASSERT((map)->key_size == sizeof(String) && (map)->key_ops && (map)->key_ops->copy_fn, \
-              what ": map keys must be String with wc_str_ops")
-
-#define WC_CSTR_PROBE(cstr, clen) String_borrow((cstr), (clen))
+#define WC_ASSERT_STRVIEW_KEYS(map, what) \
+    WC_ASSERT((map)->key_size == sizeof(StrView), what ": map keys must be StrView")
 
 /*
- * MAP_PUT_INT_STR(map, int_key, cstr_val, clen)
+ * MAP_PUT_INT_STR(map, int_key, cstr_val)
  * Map must have int key, String val, created with &wc_str_ops for val.
  * The value String is built in the map's allocator and moved in.
  */
-#define MAP_PUT_INT_STR(map, k, cstr_val, clen)                                        \
+#define MAP_PUT_INT_STR(map, k, cstr_val)                                              \
     ({                                                                                 \
-        String _v = String_from_cstr((map)->alloc, (cstr_val), (clen));                 \
+        String _v = String_from_cstr((map)->alloc, (cstr_val));                         \
         bool   _r = HashMap_put_val_move((map), (const void*)&(int){(k)}, (void*)&_v); \
         _r;                                                                            \
     })
 
 /*
- * MAP_PUT_STR_INT(map, cstr_key, clen, int_val)
- * The key is COPIED from a borrowed probe: an existing key costs no allocation;
- * a new key is copied once into the map's allocator.
+ * MAP_PUT_SV_STR(map, key_view, cstr_val)
+ * Map must have StrView keys and String values (&wc_str_ops).
+ * The view is copied as-is; its bytes must outlive the map.
+ * The value String is built in the map's allocator and moved in.
  */
-#define MAP_PUT_STR_INT(map, cstr_key, clen, int_val)                                     \
-    ({                                                                                    \
-        WC_ASSERT_STR_KEYS((map), "MAP_PUT_STR_INT");                                     \
-        String _k = WC_CSTR_PROBE(cstr_key, clen);                                        \
-        bool   _r = HashMap_put((map), (const void*)&_k, (const void*)&(int){(int_val)}); \
-        _r;                                                                               \
+#define MAP_PUT_SV_STR(map, key_sv, cstr_val)                                        \
+    ({                                                                               \
+        WC_ASSERT_STRVIEW_KEYS((map), "MAP_PUT_SV_STR");                             \
+        WC_ASSERT_SIZE(sizeof(String), (map)->val_size, "MAP_PUT_SV_STR value type");\
+        StrView _k = (key_sv);                                                       \
+        String  _v = String_from_cstr((map)->alloc, (cstr_val));                     \
+        bool    _r = HashMap_put_val_move((map), (const void*)&_k, (void*)&_v);      \
+        _r;                                                                          \
     })
 
-/*
- * MAP_PUT_STR_STR(map, cstr_key, key_clen, cstr_val, val_clen)
- * Map must use &wc_str_ops for both key and val. Key as in MAP_PUT_STR_INT;
- * the value String is built in the map's allocator and moved in.
- */
-#define MAP_PUT_STR_STR(map, cstr_key, key_clen, cstr_val, val_clen)           \
-    ({                                                                         \
-        WC_ASSERT_STR_KEYS((map), "MAP_PUT_STR_STR");                          \
-        String _k = WC_CSTR_PROBE(cstr_key, key_clen);                         \
-        String _v = String_from_cstr((map)->alloc, (cstr_val), (val_clen));    \
-        bool   _r = HashMap_put_val_move((map), (const void*)&_k, (void*)&_v); \
-        _r;                                                                    \
-    })
-
-// bool: is the C string a key?
-#define MAP_HAS_CSTR(map, cstr, clen)              \
-    ({                                             \
-        WC_ASSERT_STR_KEYS((map), "MAP_HAS_CSTR"); \
-        String _k = WC_CSTR_PROBE(cstr, clen);     \
-        HashMap_has((map), (const void*)&_k);      \
+// bool: is the C string a key? A transient view; no storage needed.
+#define MAP_HAS_CSTR(map, cstr)                        \
+    ({                                                 \
+        WC_ASSERT_STRVIEW_KEYS((map), "MAP_HAS_CSTR"); \
+        StrView _k = StrView_over_cstr(cstr);           \
+        HashMap_has((map), (const void*)&_k);          \
     })
 
 // const V*: the value under the C string key, or NULL. Any V.
-// NOLINTBEGIN(bugprone-macro-parentheses): V is a type; (V)* would parse as a cast
-#define MAP_GET_PTR_CSTR(map, V, cstr, clen)                                       \
-    ({                                                                             \
-        WC_ASSERT_STR_KEYS((map), "MAP_GET_PTR_CSTR");                             \
-        WC_ASSERT_SIZE(sizeof(V), (map)->val_size, "MAP_GET_PTR_CSTR value type"); \
-        String _k = WC_CSTR_PROBE(cstr, clen);                                     \
-        (const V*)HashMap_get_ptr((map), (const void*)&_k);                        \
+#define MAP_GET_PTR_CSTR(map, V, cstr)                                                  \
+    ({                                                                                  \
+        WC_ASSERT_STRVIEW_KEYS((map), "MAP_GET_PTR_CSTR");                              \
+        MAP_GET_PTR((map), V, StrView_over_cstr(cstr));                                 \
     })
-// NOLINTEND(bugprone-macro-parentheses)
 
 // V by value (plain data only, E3). A missing key aborts in Debug, zero V in Release.
-#define MAP_GET_CSTR(map, V, cstr, clen)                        \
-    ({                                                          \
-        WC_REQUIRE_NO_ALIAS(V, "MAP_GET_CSTR");                 \
-        const V* _mp = MAP_GET_PTR_CSTR((map), V, (cstr), (clen)); \
-        WC_ASSERT(_mp, "MAP_GET_CSTR: key not found");          \
-        _mp ? *_mp : (V){0};                                    \
+#define MAP_GET_CSTR(map, V, cstr)                                                      \
+    ({                                                                                  \
+        WC_ASSERT_STRVIEW_KEYS((map), "MAP_GET_CSTR");                                  \
+        MAP_GET((map), V, StrView_over_cstr(cstr));                                     \
     })
 
 
@@ -2908,7 +2838,7 @@ Usage:
     })
 
 
-// Get (plain-data key; String keys use the _CSTR forms above)
+// Get (plain-data key; C-string lookups use the _CSTR forms above)
 
 // const V*: pointer to the value, or NULL. Any V. Valid until the next insert/delete (D1).
 // NOLINTBEGIN(bugprone-macro-parentheses): V is a type; (V)* would parse as a cast
@@ -3022,25 +2952,25 @@ Usage:
         HashMap_put_key_move((set), (void*)&(lval), NULL);                \
     })
 
-#define WC_ASSERT_STR_SET(set, what)                                                                                  \
-    WC_ASSERT((set)->val_size == 0 && (set)->key_size == sizeof(String) && (set)->key_ops && (set)->key_ops->copy_fn, \
-              what ": must be a set of String with wc_str_ops")
+#define WC_ASSERT_STRVIEW_SET(set, what)                                                \
+    WC_ASSERT((set)->val_size == 0 && (set)->key_size == sizeof(StrView),               \
+              what ": must be a set of StrView")
 
-// Insert a C string into a String set. Probes with a borrowed String first: an
-// existing string costs no allocation; a new one is copied once into the set's allocator.
-#define SET_INSERT_CSTR(set, cstr, clen)                \
-    ({                                                  \
-        WC_ASSERT_STR_SET((set), "SET_INSERT_CSTR");    \
-        String _s = WC_CSTR_PROBE(cstr, clen);          \
-        HashMap_put((set), (const void*)&_s, NULL);     \
+// Insert a C string into a StrView set. The bytes must outlive the set: use a
+// literal, or intern dynamic strings in a StringStore first.
+#define SET_INSERT_CSTR(set, cstr)                    \
+    ({                                                \
+        WC_ASSERT_STRVIEW_SET((set), "SET_INSERT_CSTR"); \
+        StrView _s = StrView_over_cstr(cstr);          \
+        HashMap_put((set), (const void*)&_s, NULL);   \
     })
 
-// bool: is the C string in a String set? No allocation.
-#define SET_HAS_CSTR(set, cstr, clen)                \
-    ({                                               \
-        WC_ASSERT_STR_SET((set), "SET_HAS_CSTR");    \
-        String _s = WC_CSTR_PROBE(cstr, clen);       \
-        HashMap_has((set), (const void*)&_s);        \
+// bool: is the C string in a StrView set? A transient view; no allocation.
+#define SET_HAS_CSTR(set, cstr)                     \
+    ({                                              \
+        WC_ASSERT_STRVIEW_SET((set), "SET_HAS_CSTR"); \
+        StrView _s = StrView_over_cstr(cstr);        \
+        HashMap_has((set), (const void*)&_s);       \
     })
 
 
@@ -3103,10 +3033,10 @@ Usage:
         Queue_push((q), (const void*)&(lval));           \
     })
 
-#define QUEUE_PUSH_CSTR(q, cstr, clen)                                \
-    ({                                                                \
-        String _qp_s = String_from_cstr((q)->arr.alloc, cstr, clen);  \
-        Queue_push_move((q), (void*)&_qp_s);                          \
+#define QUEUE_PUSH_CSTR(q, cstr)                                     \
+    ({                                                               \
+        String _qp_s = String_from_cstr((q)->arr.alloc, (cstr));     \
+        Queue_push_move((q), (void*)&_qp_s);                         \
     })
 
 // Front element MOVED out (B7): yours, for every T.
@@ -5776,16 +5706,17 @@ String String_with_cap(const wc_allocator* a, u64 cap)
     return s;
 }
 
-String String_from_cstr(const wc_allocator* a, const char* cstr, u64 clen)
+String String_from_cstr(const wc_allocator* a, const char* cstr)
 {
     String s;
     str_init_sso(&s, a);
 
+    WC_ASSERT(cstr != NULL, "String_from_cstr: NULL cstr");
+    u64 clen = strlen(cstr);
     if (clen == 0) {
         return s;
     }
 
-    WC_ASSERT(cstr != NULL, "String_from_cstr: NULL cstr with non-zero length");
     ensure_capacity(&s, clen);
     memcpy(GET_STR(&s), cstr, clen);
     s.size = clen;
@@ -5948,9 +5879,9 @@ void String_append_multi(String* str, const char* data, u64 len)
     str->size += len;
 }
 
-void String_append_cstr(String* s, const char* cstr, u64 clen)
+void String_append_cstr(String* s, const char* cstr)
 {
-    String_append_multi(s, cstr, clen);
+    String_append_multi(s, cstr, strlen(cstr));
 }
 
 void String_append_String(String* s, const String* other)
@@ -6010,11 +5941,12 @@ void String_insert_char(String* s, u64 i, char c)
     s->size++;
 }
 
-void String_insert_cstr(String* s, u64 i, const char* cstr, u64 clen)
+void String_insert_cstr(String* s, u64 i, const char* cstr)
 {
     WC_ASSERT(s->capacity != 0, "String_insert_cstr on zeroed/moved-from String");
     WC_ASSERT(i <= s->size, "index out of bounds");
 
+    u64 clen = strlen(cstr);
     if (clen == 0) {
         return;
     }
@@ -6112,8 +6044,9 @@ int String_compare(const String* s1, const String* s2)
     return 0;
 }
 
-bool String_equals_cstr(const String* s, const char* cstr, u64 clen)
+bool String_equals_cstr(const String* s, const char* cstr)
 {
+    u64 clen = strlen(cstr);
     if (s->size != clen) {
         return false;
     }
@@ -6137,8 +6070,9 @@ u64 String_find_char(const String* s, char c)
     return p ? (u64)(p - buf) : WC_NOT_FOUND;
 }
 
-u64 String_find_cstr(const String* s, const char* substr, u64 clen)
+u64 String_find_cstr(const String* s, const char* substr)
 {
+    u64 clen = strlen(substr);
     if (clen == 0) {
         return 0;
     }
@@ -6323,8 +6257,8 @@ bool StrView_to_buf(StrView sv, char* buf, u64 cap)
 static const char trimmable_ascii[] = {9, 10, 11, 12, 13, 32};
 
 // The default chars are always active. Every char of `set` is then made active on top of them.
-// A NULL set or len 0 adds nothing, leaving just the defaults
-static void trim_table_fill(bool active[256], const char* set, u64 len)
+// A NULL set adds nothing, leaving just the defaults. `set` is NUL-terminated.
+static void trim_table_fill(bool active[256], const char* set)
 {
     for (u64 i = 0; i < sizeof(trimmable_ascii); i++) {
         active[(u8)trimmable_ascii[i]] = true;
@@ -6332,6 +6266,7 @@ static void trim_table_fill(bool active[256], const char* set, u64 len)
     if (set == NULL) {
         return;
     }
+    u64 len = strlen(set);
     for (u64 i = 0; i < len; i++) {
         active[(u8)set[i]] = true;
     }
@@ -6358,24 +6293,24 @@ static StrView trim_right_table(StrView sv, const bool active[256])
     return (StrView){.data = sv.data, .len = len_reduced};
 }
 
-StrView StrView_trim(StrView sv, const char* set, u64 len)
+StrView StrView_trim(StrView sv, const char* set)
 {
     bool active_trim[256] = {false};
-    trim_table_fill(active_trim, set, len); // built once, shared by both sides
+    trim_table_fill(active_trim, set); // built once, shared by both sides
     return trim_right_table(trim_left_table(sv, active_trim), active_trim);
 }
 
-StrView StrView_trim_left(StrView sv, const char* set, u64 len)
+StrView StrView_trim_left(StrView sv, const char* set)
 {
     bool active_trim[256] = {false};
-    trim_table_fill(active_trim, set, len);
+    trim_table_fill(active_trim, set);
     return trim_left_table(sv, active_trim);
 }
 
-StrView StrView_trim_right(StrView sv, const char* set, u64 len)
+StrView StrView_trim_right(StrView sv, const char* set)
 {
     bool active_trim[256] = {false};
-    trim_table_fill(active_trim, set, len);
+    trim_table_fill(active_trim, set);
     return trim_right_table(sv, active_trim);
 }
 
@@ -6450,15 +6385,6 @@ bool StrView_contains(StrView sv, StrView n)
 
 // String Store
 
-// TODO: make this hash fn visible
-// HashMap hashes the raw key bytes by default; StrView keys must hash their contents.
-static u64 sv_hash_fn(const void* key, u64 size)
-{
-    (void)size;
-    StrView k = *(StrView*)key;
-    return wc_hash(k.data, k.len);
-}
-
 // Copy `sv` into the store and NUL-terminate it. With interning on, return the
 // already-stored view for equal contents instead of allocating a duplicate.
 static StrView stringstore_copy(StringStore* ss, StrView sv)
@@ -6494,7 +6420,7 @@ void StringStore_create(StringStore* ss, const wc_allocator* alloc, u64 block_si
     ss->interning_active = intern;
     if (intern) {
         // A set of StrViews. The keys are non-owning; the chain arena owns the bytes.
-        ss->interned = HashMap_create(alloc, sizeof(StrView), 0, sv_hash_fn, wc_strview_cmp, NULL, NULL);
+        ss->interned = HashMap_create(alloc, sizeof(StrView), 0, wc_strview_hash, wc_strview_cmp, NULL, NULL);
     }
 }
 
@@ -6511,9 +6437,9 @@ StrView StringStore_str(StringStore* ss, const String* s)
     return stringstore_copy(ss, StrView_over_String(s));
 }
 
-StrView StringStore_cstr(StringStore* ss, const char* cstr, u64 clen)
+StrView StringStore_cstr(StringStore* ss, const char* cstr)
 {
-    return stringstore_copy(ss, StrView_over_cstr(cstr, clen));
+    return stringstore_copy(ss, StrView_over_cstr(cstr));
 }
 
 StrView StringStore_sv(StringStore* ss, StrView sv)
@@ -6771,11 +6697,11 @@ StrView WCPath_normalize(StringStore* ss, StrView p)
 
     WCPathIter it = WCpath_components(p);
     for (StrView c = WCpathIter_next(&it); StrView_is_valid(c); c = WCpathIter_next(&it)) {
-        if (StrView_equals_cstr(c, ".", 1)) {
+        if (StrView_equals_cstr(c, ".")) {
             continue;
         }
 
-        if (StrView_equals_cstr(c, "..", 2)) {
+        if (StrView_equals_cstr(c, "..")) {
             if (n > keep) { // pop the last component
                 while (n > keep && dst[n - 1] != '/') {
                     n--;

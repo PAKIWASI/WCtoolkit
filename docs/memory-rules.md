@@ -61,14 +61,14 @@ B4 was the old `move_fn` contract, removed by B6.
 |---|---|
 | D1 | Element pointers are invalidated by: vector growth; any map/set insert or delete; queue push or pop; any change to a `String` (`cstr_view`). |
 | D2 | A container must not grow inside its own FOREACH. |
-| D3 | A `StrView` is valid while its memory lives. `StringStore` views stay valid until destroy. A `String_borrow` is valid while its bytes are. |
+| D3 | A `StrView` is valid while its memory lives. `StringStore` views stay valid until destroy. A map or set keyed by `StrView` requires its key bytes to outlive the container. |
 | D4 | The element passed to `push`, `insert` or `replace` must not live inside that container's own buffer. Debug builds assert it. |
 
 ## E. Macro layer
 
 | ID | Rule |
 |---|---|
-| E1 | A macro never allocates or frees anything you don't see. `String`-keyed lookups by C string go through `String_borrow`: no allocation. |
+| E1 | A macro never allocates or frees anything you don't see. C-string lookups in a `StrView`-keyed map build a transient view: no allocation. |
 | E2 | Value-in macros (`VEC_PUSH`, `VEC_SET`, `QUEUE_PUSH`, `SET_INSERT`, `MAP_PUT`, the by-value side of `MAP_PUT_*_MOVE`, `MAP_GET_PTR` keys) accept plain data only. Compile-time check. Owning elements use `_MOVE` or `_COPY`, which take an lvalue: no hidden temporary. |
 | E3 | Value-out macros (`VEC_AT`, `VEC_FRONT`, `VEC_BACK`, `QUEUE_PEEK`, `MAP_GET`, `MAP_TRY_GET`) reject owning structs at compile time. Read those through pointers (`VEC_REF`, `MAP_GET_PTR`, `QUEUE_PEEK_REF`). Pointer elements are allowed: a returned pointer is a visible borrow. `VEC_POP` / `QUEUE_POP` work for every type (B7). |
 | E4 | Typed macros check `sizeof(T)` against the slot in Debug. |

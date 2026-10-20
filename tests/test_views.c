@@ -22,11 +22,11 @@ static int sv_equals_cstr(StrView sv, const char* cstr)
 }
 
 // Compile-time view over a string literal. Keeps embedded NULs (sizeof, not strlen).
-#define SV_LIT(s) StrView_over_cstr((s), sizeof(s) - 1)
+#define SV_LIT(s) ((StrView){.data = (s), .len = sizeof(s) - 1})
 
 static StrView sv_cstr(const char* s)
 {
-    return StrView_over_cstr(s, strlen(s));
+    return StrView_over_cstr(s);
 }
 
 // out == NULL expects the {0} error sentinel; out == "" expects a valid empty view.
@@ -54,7 +54,7 @@ typedef struct {
 static void expect_join_str(int* utest_result, StrView a, StrView b, const char* out)
 {
     String s = WCPath_join_str(WC_LIBC, a, b);
-    EXPECT_TRUE(String_equals_cstr(&s, out, strlen(out)));
+    EXPECT_TRUE(String_equals_cstr(&s, out));
     String_destroy(&s);
 }
 
@@ -66,17 +66,17 @@ static void expect_join_str(int* utest_result, StrView a, StrView b, const char*
 UTEST(views, over_cstr_borrows)
 {
     const char* text = "borrowed";
-    StrView     sv   = StrView_over_cstr(text, 3);
+    StrView     sv   = StrView_prefix(StrView_over_cstr(text), 3);
 
     EXPECT_EQ(sv.len, 3u);
     EXPECT_TRUE(sv.data == text);
     EXPECT_TRUE(sv_equals_cstr(sv, "bor"));
-    EXPECT_TRUE(StrView_equals_cstr(sv, "bor", strlen("bor")));
+    EXPECT_TRUE(StrView_equals_cstr(sv, "bor"));
 }
 
 UTEST(views, over_String)
 {
-    String  s  = String_from_cstr(WC_LIBC, "viewme", strlen("viewme"));
+    String  s  = String_from_cstr(WC_LIBC, "viewme");
     StrView sv = StrView_over_String(&s);
 
     EXPECT_EQ(sv.len, String_len(&s));
@@ -105,7 +105,7 @@ UTEST(views, over_empty_String_is_valid)
 
 UTEST(views, over_String_ex_window)
 {
-    String s = String_from_cstr(WC_LIBC, "hello world", strlen("hello world"));
+    String s = String_from_cstr(WC_LIBC, "hello world");
 
     StrView mid = StrView_over_String_ex(&s, 6, 5);
     EXPECT_TRUE(sv_equals_cstr(mid, "world"));
@@ -126,7 +126,7 @@ UTEST(views, over_String_ex_window)
 
 UTEST(views, slice_prefix_suffix)
 {
-    StrView sv = StrView_over_cstr("abcdef", 6);
+    StrView sv = StrView_over_cstr("abcdef");
 
     StrView mid = StrView_slice(sv, 1, 3);
     EXPECT_TRUE(sv_equals_cstr(mid, "bcd"));
@@ -145,7 +145,7 @@ UTEST(views, slice_prefix_suffix)
 
 UTEST(views, slice_degenerate_bounds)
 {
-    StrView sv = StrView_over_cstr("abcdef", 6);
+    StrView sv = StrView_over_cstr("abcdef");
 
     EXPECT_TRUE(sv_equals_cstr(StrView_slice(sv, 0, 6), "abcdef"));
     EXPECT_TRUE(sv_equals_cstr(StrView_prefix(sv, 6), "abcdef"));
@@ -160,41 +160,41 @@ UTEST(views, slice_degenerate_bounds)
 
 UTEST(views, trim_default_whitespace)
 {
-    EXPECT_TRUE(sv_equals_cstr(StrView_trim(StrView_over_cstr(" \t hi \n ", 8), NULL, 0), "hi"));
-    EXPECT_TRUE(sv_equals_cstr(StrView_trim(StrView_over_cstr("  hi there  ", 12), NULL, 0), "hi there"));
-    EXPECT_TRUE(sv_equals_cstr(StrView_trim(StrView_over_cstr("   ", 3), NULL, 0), ""));
-    EXPECT_TRUE(sv_equals_cstr(StrView_trim(StrView_over_cstr("", 0), NULL, 0), ""));
-    EXPECT_TRUE(sv_equals_cstr(StrView_trim(StrView_over_cstr("no-trim", 7), NULL, 0), "no-trim"));
+    EXPECT_TRUE(sv_equals_cstr(StrView_trim(StrView_over_cstr(" \t hi \n "), NULL), "hi"));
+    EXPECT_TRUE(sv_equals_cstr(StrView_trim(StrView_over_cstr("  hi there  "), NULL), "hi there"));
+    EXPECT_TRUE(sv_equals_cstr(StrView_trim(StrView_over_cstr("   "), NULL), ""));
+    EXPECT_TRUE(sv_equals_cstr(StrView_trim(StrView_over_cstr(""), NULL), ""));
+    EXPECT_TRUE(sv_equals_cstr(StrView_trim(StrView_over_cstr("no-trim"), NULL), "no-trim"));
     // all six ASCII whitespace chars: \t \n \v \f \r space
-    EXPECT_TRUE(sv_equals_cstr(StrView_trim(StrView_over_cstr("\t\n\v\f\r ", 6), NULL, 0), ""));
+    EXPECT_TRUE(sv_equals_cstr(StrView_trim(StrView_over_cstr("\t\n\v\f\r "), NULL), ""));
 }
 
 // Left and right trim half of the job each
 
 UTEST(views, trim_left_right_split)
 {
-    StrView sv = StrView_over_cstr("  ab  ", 6);
+    StrView sv = StrView_over_cstr("  ab  ");
 
-    EXPECT_TRUE(sv_equals_cstr(StrView_trim_left(sv, NULL, 0), "ab  "));
-    EXPECT_TRUE(sv_equals_cstr(StrView_trim_right(sv, NULL, 0), "  ab"));
+    EXPECT_TRUE(sv_equals_cstr(StrView_trim_left(sv, NULL), "ab  "));
+    EXPECT_TRUE(sv_equals_cstr(StrView_trim_right(sv, NULL), "  ab"));
 }
 
 UTEST(views, trim_custom_set)
 {
-    StrView path = StrView_over_cstr("///about.html///", 16);
+    StrView path = StrView_over_cstr("///about.html///");
 
-    EXPECT_TRUE(sv_equals_cstr(StrView_trim(path, "/", 1), "about.html"));
-    EXPECT_TRUE(sv_equals_cstr(StrView_trim_left(path, "/", 1), "about.html///"));
-    EXPECT_TRUE(sv_equals_cstr(StrView_trim_right(path, "/", 1), "///about.html"));
+    EXPECT_TRUE(sv_equals_cstr(StrView_trim(path, "/"), "about.html"));
+    EXPECT_TRUE(sv_equals_cstr(StrView_trim_left(path, "/"), "about.html///"));
+    EXPECT_TRUE(sv_equals_cstr(StrView_trim_right(path, "/"), "///about.html"));
 
     // defaults still active together with the set
-    EXPECT_TRUE(sv_equals_cstr(StrView_trim(StrView_over_cstr(" \t/\tab/ \t", 9), "/", 1), "ab"));
+    EXPECT_TRUE(sv_equals_cstr(StrView_trim(StrView_over_cstr(" \t/\tab/ \t"), "/"), "ab"));
 
-    // set non-null but len 0: only the defaults are active
-    EXPECT_TRUE(sv_equals_cstr(StrView_trim(StrView_over_cstr(" a ", 3), "x", 0), "a"));
+    // set non-null but no matching chars: only the defaults are active
+    EXPECT_TRUE(sv_equals_cstr(StrView_trim(StrView_over_cstr(" a "), "x"), "a"));
 
     // set chars that never match: only the always-active whitespace is trimmed
-    EXPECT_TRUE(sv_equals_cstr(StrView_trim(StrView_over_cstr("  keep  ", 8), "yz", 2), "keep"));
+    EXPECT_TRUE(sv_equals_cstr(StrView_trim(StrView_over_cstr("  keep  "), "yz"), "keep"));
 }
 
 
@@ -202,63 +202,63 @@ UTEST(views, trim_custom_set)
 
 UTEST(views, find)
 {
-    StrView sv = StrView_over_cstr("banana", 6);
+    StrView sv = StrView_over_cstr("banana");
 
-    EXPECT_EQ(StrView_find(sv, StrView_over_cstr("na", 2)), 2u);
-    EXPECT_EQ(StrView_find(sv, StrView_over_cstr("ban", 3)), 0u);
-    EXPECT_EQ(StrView_find(sv, StrView_over_cstr("banana", 6)), 0u);
-    EXPECT_EQ(StrView_find(sv, StrView_over_cstr("xyz", 3)), WC_NOT_FOUND);
-    EXPECT_EQ(StrView_find(sv, StrView_over_cstr("ana", 3)), 1u); // first of two matches (also at 3)
-    EXPECT_EQ(StrView_find(sv, StrView_over_cstr("banana_", 7)), WC_NOT_FOUND); // longer than the view
-    EXPECT_EQ(StrView_find(sv, StrView_over_cstr("", 0)), 0u); // empty needle matches at 0
+    EXPECT_EQ(StrView_find(sv, StrView_over_cstr("na")), 2u);
+    EXPECT_EQ(StrView_find(sv, StrView_over_cstr("ban")), 0u);
+    EXPECT_EQ(StrView_find(sv, StrView_over_cstr("banana")), 0u);
+    EXPECT_EQ(StrView_find(sv, StrView_over_cstr("xyz")), WC_NOT_FOUND);
+    EXPECT_EQ(StrView_find(sv, StrView_over_cstr("ana")), 1u); // first of two matches (also at 3)
+    EXPECT_EQ(StrView_find(sv, StrView_over_cstr("banana_")), WC_NOT_FOUND); // longer than the view
+    EXPECT_EQ(StrView_find(sv, StrView_over_cstr("")), 0u); // empty needle matches at 0
 }
 
 UTEST(views, find_char)
 {
-    StrView sv = StrView_over_cstr("banana", 6);
+    StrView sv = StrView_over_cstr("banana");
 
     EXPECT_EQ(StrView_find_char(sv, 'a'), 1u); // first occurrence
     EXPECT_EQ(StrView_find_char(sv, 'n'), 2u);
     EXPECT_EQ(StrView_find_char(sv, 'z'), WC_NOT_FOUND);
-    EXPECT_EQ(StrView_find_char(StrView_over_cstr("", 0), 'a'), WC_NOT_FOUND);
+    EXPECT_EQ(StrView_find_char(StrView_over_cstr(""), 'a'), WC_NOT_FOUND);
 }
 
 UTEST(views, findr)
 {
-    StrView sv = StrView_over_cstr("banana", 6);
+    StrView sv = StrView_over_cstr("banana");
 
-    EXPECT_EQ(StrView_findr(sv, StrView_over_cstr("ana", 3)), 3u); // last occurrence
-    EXPECT_EQ(StrView_findr(sv, StrView_over_cstr("ban", 3)), 0u);
-    EXPECT_EQ(StrView_findr(sv, StrView_over_cstr("xyz", 3)), WC_NOT_FOUND);
-    EXPECT_EQ(StrView_findr(StrView_over_cstr("", 0), StrView_over_cstr("", 0)), 0u);
+    EXPECT_EQ(StrView_findr(sv, StrView_over_cstr("ana")), 3u); // last occurrence
+    EXPECT_EQ(StrView_findr(sv, StrView_over_cstr("ban")), 0u);
+    EXPECT_EQ(StrView_findr(sv, StrView_over_cstr("xyz")), WC_NOT_FOUND);
+    EXPECT_EQ(StrView_findr(StrView_over_cstr(""), StrView_over_cstr("")), 0u);
 }
 
 UTEST(views, findr_char)
 {
-    StrView sv = StrView_over_cstr("banana", 6);
+    StrView sv = StrView_over_cstr("banana");
 
     EXPECT_EQ(StrView_findr_char(sv, 'a'), 5u); // last occurrence
     EXPECT_EQ(StrView_findr_char(sv, 'b'), 0u);
     EXPECT_EQ(StrView_findr_char(sv, 'z'), WC_NOT_FOUND);
-    EXPECT_EQ(StrView_findr_char(StrView_over_cstr("", 0), 'a'), WC_NOT_FOUND);
+    EXPECT_EQ(StrView_findr_char(StrView_over_cstr(""), 'a'), WC_NOT_FOUND);
 }
 
 UTEST(views, starts_ends_contains)
 {
-    StrView sv = StrView_over_cstr("hello world", 11);
+    StrView sv = StrView_over_cstr("hello world");
 
-    EXPECT_TRUE(StrView_starts_with(sv, StrView_over_cstr("hell", 4)));
-    EXPECT_TRUE(StrView_starts_with(sv, StrView_over_cstr("hello world", 11)));
-    EXPECT_TRUE(StrView_starts_with(sv, StrView_over_cstr("", 0)));
-    EXPECT_FALSE(StrView_starts_with(sv, StrView_over_cstr("hello world!", 12)));
+    EXPECT_TRUE(StrView_starts_with(sv, StrView_over_cstr("hell")));
+    EXPECT_TRUE(StrView_starts_with(sv, StrView_over_cstr("hello world")));
+    EXPECT_TRUE(StrView_starts_with(sv, StrView_over_cstr("")));
+    EXPECT_FALSE(StrView_starts_with(sv, StrView_over_cstr("hello world!")));
 
-    EXPECT_TRUE(StrView_ends_with(sv, StrView_over_cstr("rld", 3)));
-    EXPECT_TRUE(StrView_ends_with(sv, StrView_over_cstr("hello world", 11)));
-    EXPECT_FALSE(StrView_ends_with(sv, StrView_over_cstr("x", 1)));
+    EXPECT_TRUE(StrView_ends_with(sv, StrView_over_cstr("rld")));
+    EXPECT_TRUE(StrView_ends_with(sv, StrView_over_cstr("hello world")));
+    EXPECT_FALSE(StrView_ends_with(sv, StrView_over_cstr("x")));
 
-    EXPECT_TRUE(StrView_contains(sv, StrView_over_cstr("lo wo", 5)));
-    EXPECT_TRUE(StrView_contains(sv, StrView_over_cstr("", 0)));
-    EXPECT_FALSE(StrView_contains(sv, StrView_over_cstr("xyz", 3)));
+    EXPECT_TRUE(StrView_contains(sv, StrView_over_cstr("lo wo")));
+    EXPECT_TRUE(StrView_contains(sv, StrView_over_cstr("")));
+    EXPECT_FALSE(StrView_contains(sv, StrView_over_cstr("xyz")));
 }
 
 // Conversion
@@ -269,9 +269,9 @@ UTEST(views, to_String_copies)
     wc_test_alloc_init(&ta, WC_LIBC);
     const wc_allocator* al = wc_test_alloc_allocator(&ta);
 
-    StrView sv = StrView_over_cstr("owned copy", 10);
+    StrView sv = StrView_over_cstr("owned copy");
     String  s  = StrView_to_String(al, sv);
-    EXPECT_TRUE(String_equals_cstr(&s, "owned copy", strlen("owned copy")));
+    EXPECT_TRUE(String_equals_cstr(&s, "owned copy"));
 
     String_destroy(&s);
     EXPECT_EQ(wc_test_alloc_destroy(&ta), 0u);
@@ -279,7 +279,7 @@ UTEST(views, to_String_copies)
 
 UTEST(views, to_String_empty)
 {
-    StrView empty = StrView_over_cstr("", 0);
+    StrView empty = StrView_over_cstr("");
     String  s     = StrView_to_String(WC_LIBC, empty);
 
     EXPECT_EQ(String_len(&s), 0u);
@@ -293,7 +293,7 @@ UTEST(views, to_cstr_terminates_and_frees)
     wc_test_alloc_init(&ta, WC_LIBC);
     const wc_allocator* al = wc_test_alloc_allocator(&ta);
 
-    StrView sv = StrView_over_cstr("cat eats", 5);
+    StrView sv = StrView_prefix(StrView_over_cstr("cat eats"), 5);
     char*   c  = StrView_to_cstr(al, sv);
 
     EXPECT_TRUE(wc_test_alloc_owns(&ta, c));
@@ -310,11 +310,11 @@ UTEST(views, to_cstr_on_arena)
     Arena arena;
     Arena_create(&arena, WC_LIBC, 256);
 
-    StrView sv = StrView_over_cstr("arena", 5);
+    StrView sv = StrView_over_cstr("arena");
     char*   c  = StrView_to_cstr(Arena_allocator(&arena), sv);
 
     EXPECT_TRUE((u8*)c >= arena.base && (u8*)c < arena.base + arena.cap);
-    EXPECT_TRUE(sv_equals_cstr(StrView_over_cstr(c, 5), "arena"));
+    EXPECT_TRUE(sv_equals_cstr(StrView_over_cstr(c), "arena"));
     EXPECT_TRUE(c[5] == '\0');
 
     Arena_destroy(&arena); // the cstr's lifetime ends here
@@ -324,7 +324,7 @@ UTEST(views, to_cstr_on_arena)
 
 UTEST(views, to_buf_exact_fit)
 {
-    StrView sv = StrView_over_cstr("12345", 5);
+    StrView sv = StrView_over_cstr("12345");
 
     char buf[8];
     memset(buf, 0xAA, sizeof(buf));
@@ -337,7 +337,7 @@ UTEST(views, to_buf_exact_fit)
 
 UTEST(views, to_buf_too_small)
 {
-    StrView sv = StrView_over_cstr("12345", 5);
+    StrView sv = StrView_over_cstr("12345");
 
     char buf[4];
     memset(buf, 0xAA, sizeof(buf));
@@ -351,7 +351,7 @@ UTEST(views, to_buf_too_small)
 
 UTEST(views, to_buf_larger_cap)
 {
-    StrView sv = StrView_over_cstr("12345", 5);
+    StrView sv = StrView_over_cstr("12345");
 
     char buf[8];
     memset(buf, 0xAA, sizeof(buf));
@@ -367,7 +367,7 @@ UTEST(views, to_buf_larger_cap)
 
 UTEST(views, slice_error_is_invalid)
 {
-    StrView sv = StrView_over_cstr("abcd", 4);
+    StrView sv = StrView_over_cstr("abcd");
 
     EXPECT_FALSE(StrView_is_valid(StrView_slice(sv, 5, 0)));
     EXPECT_FALSE(StrView_is_valid(StrView_slice(sv, 2, 3)));
@@ -385,7 +385,7 @@ UTEST(views, slice_error_is_invalid)
 
 UTEST(views, split_with_prefix_suffix)
 {
-    StrView rest = StrView_over_cstr("abcd", 4);
+    StrView rest = StrView_over_cstr("abcd");
 
     StrView head = StrView_prefix(rest, 2);
     rest         = StrView_suffix(rest, 2);
@@ -404,7 +404,7 @@ UTEST(views, suffix_tokenizer)
     StrView comps[8];
     u64     n = 0;
 
-    StrView rest = StrView_over_cstr("usr/local/bin", 13);
+    StrView rest = StrView_over_cstr("usr/local/bin");
     while (rest.len > 0) {
         u64 slash = StrView_find_char(rest, '/');
         u64 adv   = slash == WC_NOT_FOUND ? rest.len : slash + 1;
@@ -422,7 +422,7 @@ UTEST(views, suffix_tokenizer)
 
 UTEST(views, path_iter_next)
 {
-    WCPathIter it = WCpath_components(StrView_over_cstr("/a//b/", 6));
+    WCPathIter it = WCpath_components(StrView_over_cstr("/a//b/"));
 
     StrView c = WCpathIter_next(&it);
     EXPECT_TRUE(sv_equals_cstr(c, "a"));
@@ -438,30 +438,30 @@ UTEST(views, path_iter_next)
 
 UTEST(views, hash_and_equals)
 {
-    StrView a = StrView_over_cstr("hello", 5);
-    StrView b = StrView_over_cstr("hello", 5); // same content, different object
-    StrView c = StrView_over_cstr("hellp", 5);
+    StrView a = StrView_over_cstr("hello");
+    StrView b = StrView_over_cstr("hello"); // same content, different object
+    StrView c = StrView_over_cstr("hellp");
 
     EXPECT_EQ(StrView_hash(a), StrView_hash(b));
     EXPECT_TRUE(StrView_equals(a, b));
     EXPECT_TRUE(!StrView_equals(a, c));
 
-    StrView zero = StrView_over_cstr("", 0);
+    StrView zero = StrView_over_cstr("");
     EXPECT_TRUE(StrView_equals(zero, zero));
     EXPECT_TRUE(!StrView_equals(zero, a));
 
-    EXPECT_TRUE(StrView_equals_cstr(a, "hello", strlen("hello")));
-    EXPECT_TRUE(!StrView_equals_cstr(a, "hell", strlen("hell"))); // cstr is longer than the view
-    EXPECT_TRUE(!StrView_equals_cstr(a, "hello world", strlen("hello world")));
+    EXPECT_TRUE(StrView_equals_cstr(a, "hello"));
+    EXPECT_TRUE(!StrView_equals_cstr(a, "hell")); // cstr is longer than the view
+    EXPECT_TRUE(!StrView_equals_cstr(a, "hello world"));
 }
 
 // memcmp ordering on shared bytes, then length as the tiebreak
 
 UTEST(views, compare)
 {
-    StrView abc  = StrView_over_cstr("abc", 3);
-    StrView abd  = StrView_over_cstr("abd", 3);
-    StrView abcd = StrView_over_cstr("abcd", 4);
+    StrView abc  = StrView_over_cstr("abc");
+    StrView abd  = StrView_over_cstr("abd");
+    StrView abcd = StrView_over_cstr("abcd");
 
     EXPECT_EQ(StrView_compare(abc, abc), 0);
     EXPECT_TRUE(StrView_compare(abc, abd) < 0);
@@ -469,7 +469,7 @@ UTEST(views, compare)
     EXPECT_TRUE(StrView_compare(abc, abcd) < 0); // prefix is the shorter one
     EXPECT_TRUE(StrView_compare(abcd, abc) > 0);
 
-    StrView empty = StrView_over_cstr("", 0);
+    StrView empty = StrView_over_cstr("");
     EXPECT_TRUE(StrView_compare(empty, abc) < 0);
     EXPECT_TRUE(StrView_compare(abc, empty) > 0);
     EXPECT_EQ(StrView_compare(empty, empty), 0);
@@ -675,7 +675,7 @@ UTEST(views, path_join_str_cleanup)
     const wc_allocator* al = wc_test_alloc_allocator(&ta);
 
     String s = WCPath_join_str(al, SV_LIT("a"), SV_LIT("b"));
-    EXPECT_TRUE(String_equals_cstr(&s, "a/b", strlen("a/b")));
+    EXPECT_TRUE(String_equals_cstr(&s, "a/b"));
     String_destroy(&s);
 
     EXPECT_EQ(wc_test_alloc_destroy(&ta), 0u);
@@ -791,7 +791,7 @@ UTEST(views, stringstore_str)
     char longbuf[65];
     memset(longbuf, 'a', 64);
     longbuf[64] = 0;
-    String heap = String_from_cstr(WC_LIBC, longbuf, strlen(longbuf));
+    String heap = String_from_cstr(WC_LIBC, longbuf);
 
     StrView h = StringStore_str(&ss, &heap);
     EXPECT_EQ(h.len, 64u);
@@ -800,7 +800,7 @@ UTEST(views, stringstore_str)
     String_destroy(&heap);
     EXPECT_TRUE(memcmp(h.data, longbuf, 64) == 0); // stored copy survives the source
 
-    String sso = String_from_cstr(WC_LIBC, "xy", strlen("xy"));
+    String sso = String_from_cstr(WC_LIBC, "xy");
     StrView s = StringStore_str(&ss, &sso);
     EXPECT_TRUE(sv_equals_cstr(s, "xy"));
     EXPECT_EQ(s.data[s.len], (char)0);
@@ -828,19 +828,18 @@ UTEST(views, stringstore_cstr)
     StringStore ss;
     StringStore_create(&ss, al, 64, false);
 
-    // `clen` is authoritative: copy exactly that many bytes and add the NUL.
-    char buf[4] = {'a', 'b', 'c', 'X'};
-    StrView v = StringStore_cstr(&ss, buf, 3);
+    // Copy up to the NUL and add the store's own terminator.
+    char buf[4] = {'a', 'b', 'c', '\0'};
+    StrView v = StringStore_cstr(&ss, buf);
     EXPECT_TRUE(sv_equals_cstr(v, "abc"));
     EXPECT_EQ(v.len, 3u);
     EXPECT_EQ(v.data[3], (char)0);
-    EXPECT_NE(v.data[3], (char)'X'); // the byte after clen was not copied
 
-    StrView w = StringStore_cstr(&ss, "hello", 5);
+    StrView w = StringStore_cstr(&ss, "hello");
     EXPECT_TRUE(sv_equals_cstr(w, "hello"));
     EXPECT_EQ(w.data[5], (char)0);
 
-    StrView e = StringStore_cstr(&ss, "", 0);
+    StrView e = StringStore_cstr(&ss, "");
     EXPECT_TRUE(StrView_is_valid(e));
     EXPECT_EQ(e.len, 0u);
     EXPECT_EQ(e.data[0], (char)0);
@@ -911,17 +910,17 @@ UTEST(views, stringstore_intern)
     EXPECT_TRUE(a.data != c.data);
 
     // Interning is shared by all three entry points.
-    StrView d = StringStore_cstr(&ss, "x", 1);
+    StrView d = StringStore_cstr(&ss, "x");
     EXPECT_TRUE(a.data == d.data);
 
-    String s = String_from_cstr(WC_LIBC, "x", strlen("x"));
+    String s = String_from_cstr(WC_LIBC, "x");
     StrView e = StringStore_str(&ss, &s);
     EXPECT_TRUE(a.data == e.data);
     String_destroy(&s);
 
     // Empty strings dedupe too, including the NULL-data String path.
     StrView e1 = StringStore_sv(&ss, SV_LIT(""));
-    StrView e2 = StringStore_cstr(&ss, "", 0);
+    StrView e2 = StringStore_cstr(&ss, "");
     String  empty = String_create(WC_LIBC);
     StrView e3 = StringStore_str(&ss, &empty);
     EXPECT_TRUE(e1.data == e2.data);
@@ -948,7 +947,7 @@ UTEST(views, stringstore_large)
     memset(big, 'a', 200);
     big[200] = 0;
 
-    StrView v = StringStore_cstr(&ss, big, 200);
+    StrView v = StringStore_cstr(&ss, big);
     EXPECT_EQ(v.len, 200u);
     EXPECT_TRUE(memcmp(v.data, big, 200) == 0);
     EXPECT_EQ(v.data[v.len], (char)0);
@@ -964,15 +963,15 @@ UTEST(views, invalid_propagation)
 {
     StrView bad = {0};
 
-    EXPECT_FALSE(StrView_is_valid(StrView_trim(bad, NULL, 0)));
-    EXPECT_FALSE(StrView_is_valid(StrView_trim_left(bad, NULL, 0)));
-    EXPECT_FALSE(StrView_is_valid(StrView_trim_right(bad, NULL, 0)));
+    EXPECT_FALSE(StrView_is_valid(StrView_trim(bad, NULL)));
+    EXPECT_FALSE(StrView_is_valid(StrView_trim_left(bad, NULL)));
+    EXPECT_FALSE(StrView_is_valid(StrView_trim_right(bad, NULL)));
     EXPECT_FALSE(StrView_is_valid(StrView_slice(bad, 0, 0)));
     EXPECT_FALSE(StrView_is_valid(StrView_prefix(bad, 0)));
     EXPECT_FALSE(StrView_is_valid(StrView_suffix(bad, 0)));
 
     // Trimming everything away is a valid empty view, not an error.
-    StrView ws = StrView_trim(SV_LIT(" \t"), NULL, 0);
+    StrView ws = StrView_trim(SV_LIT(" \t"), NULL);
     EXPECT_TRUE(StrView_is_valid(ws));
     EXPECT_EQ(ws.len, 0u);
 
@@ -985,7 +984,7 @@ UTEST(views, invalid_propagation)
 
 UTEST(views, over_String_ex_overflow)
 {
-    String s = String_from_cstr(WC_LIBC, "abc", strlen("abc"));
+    String s = String_from_cstr(WC_LIBC, "abc");
 
     EXPECT_FALSE(StrView_is_valid(StrView_over_String_ex(&s, (u64)-1, 0)));
     EXPECT_FALSE(StrView_is_valid(StrView_over_String_ex(&s, 1, (u64)-1)));

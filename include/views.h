@@ -53,9 +53,11 @@ wc_nodiscard wc_nonull(1) static wc_always_inline StrView StrView_over_String_ex
     return (StrView){.data = (data ? data : "") + off, .len = len};
 }
 
-wc_nodiscard wc_nonull(1) static wc_always_inline StrView StrView_over_cstr(const char* cstr, u64 clen)
+// Non-owning view over a NUL-terminated C string. The length is computed
+// internally with strlen.
+wc_nodiscard wc_nonull(1) static wc_always_inline StrView StrView_over_cstr(const char* cstr)
 {
-    return (StrView){.data = cstr, .len = clen};
+    return (StrView){.data = cstr, .len = strlen(cstr)};
 }
 
 // conversion
@@ -95,12 +97,15 @@ wc_nodiscard static wc_always_inline StrView StrView_suffix(StrView sv, u64 star
 
 // trim
 
-// trim all chars from `set` from left and right of `sv`. leave `set = NUL` to trim whitespaces
-wc_nodiscard StrView StrView_trim(StrView sv, const char* set, u64 len);
-// trim all chars from `set` from the left of `sv`. leave `set = NUL` to trim whitespaces
-wc_nodiscard StrView StrView_trim_left(StrView sv, const char* set, u64 len);
-// trim all chars from `set` from the right of `sv`. leave `set = NUL` to trim whitespaces
-wc_nodiscard StrView StrView_trim_right(StrView sv, const char* set, u64 len);
+// trim all chars from the NUL-terminated `set` from left and right of `sv`.
+// leave `set = NULL` to trim whitespaces.
+wc_nodiscard StrView StrView_trim(StrView sv, const char* set);
+// trim all chars from the NUL-terminated `set` from the left of `sv`.
+// leave `set = NULL` to trim whitespaces.
+wc_nodiscard StrView StrView_trim_left(StrView sv, const char* set);
+// trim all chars from the NUL-terminated `set` from the right of `sv`.
+// leave `set = NULL` to trim whitespaces.
+wc_nodiscard StrView StrView_trim_right(StrView sv, const char* set);
 
 // search
 
@@ -154,15 +159,25 @@ wc_nodiscard static wc_always_inline bool StrView_equals(StrView a, StrView b)
 }
 
 // C-string convenience
-wc_nodiscard wc_nonull(2) static wc_always_inline bool StrView_equals_cstr(StrView sv, const char* cstr, u64 clen)
+wc_nodiscard wc_nonull(2) static wc_always_inline bool StrView_equals_cstr(StrView sv, const char* cstr)
 {
-    return StrView_equals(sv, StrView_over_cstr(cstr, clen));
+    return StrView_equals(sv, StrView_over_cstr(cstr));
+}
+
+// Hash/compare wrappers for StrView-keyed maps and sets. The map stores the
+// 16-byte view; these functions hash and compare the bytes it points at.
+static inline u64 wc_strview_hash(const void* key, u64 size)
+{
+    (void)size;
+    StrView v;
+    memcpy(&v, key, sizeof(v));
+    return StrView_hash(v);
 }
 
 static inline int wc_strview_cmp(const void* a, const void* b, u64 size)
 {
     (void)size;
-    return StrView_compare(*(StrView*)a, *(StrView*)b);
+    return StrView_compare(*(const StrView*)a, *(const StrView*)b);
 }
 
 
@@ -174,16 +189,16 @@ typedef struct {
     HashMap    interned;         // StrView -> {} (a set)
     bool       interning_active; // optional
     // probe the interned set: return the existing view if found, else alloc + insert. A deduped store must be append-only
-    // This makes interning O(1) amortized and idempotent: repeated StringStore_cstr(&ss, "x", 1) return the same view every time
+    // This makes interning O(1) amortized and idempotent: repeated StringStore_cstr(&ss, "x") return the same view every time
 } StringStore;
 
 wc_nonull(1, 2) void StringStore_create(StringStore* ss, const wc_allocator* alloc, u64 block_size, bool intern);
 wc_nonull(1) void StringStore_destroy(StringStore* ss);
 
-// Copy `clen` bytes into the store; return a view. NUL-terminate too (1 extra byte),
+// Copy the bytes into the store; return a view. NUL-terminate too (1 extra byte),
 // so sv.data works as a C string, makes StringStore a drop-in for argv-style APIs.
 wc_nodiscard wc_nonull(1, 2) StrView StringStore_str(StringStore* ss, const String* s);
-wc_nodiscard wc_nonull(1, 2) StrView StringStore_cstr(StringStore* ss, const char* cstr, u64 clen);
+wc_nodiscard wc_nonull(1, 2) StrView StringStore_cstr(StringStore* ss, const char* cstr);
 wc_nodiscard wc_nonull(1) StrView StringStore_sv(StringStore* ss, StrView sv);
 
 // TODO: extensive testing needed

@@ -68,16 +68,17 @@ String String_with_cap(const wc_allocator* a, u64 cap)
     return s;
 }
 
-String String_from_cstr(const wc_allocator* a, const char* cstr, u64 clen)
+String String_from_cstr(const wc_allocator* a, const char* cstr)
 {
     String s;
     str_init_sso(&s, a);
 
+    WC_ASSERT(cstr != NULL, "String_from_cstr: NULL cstr");
+    u64 clen = strlen(cstr);
     if (clen == 0) {
         return s;
     }
 
-    WC_ASSERT(cstr != NULL, "String_from_cstr: NULL cstr with non-zero length");
     ensure_capacity(&s, clen);
     memcpy(GET_STR(&s), cstr, clen);
     s.size = clen;
@@ -240,9 +241,9 @@ void String_append_multi(String* str, const char* data, u64 len)
     str->size += len;
 }
 
-void String_append_cstr(String* s, const char* cstr, u64 clen)
+void String_append_cstr(String* s, const char* cstr)
 {
-    String_append_multi(s, cstr, clen);
+    String_append_multi(s, cstr, strlen(cstr));
 }
 
 void String_append_String(String* s, const String* other)
@@ -302,11 +303,12 @@ void String_insert_char(String* s, u64 i, char c)
     s->size++;
 }
 
-void String_insert_cstr(String* s, u64 i, const char* cstr, u64 clen)
+void String_insert_cstr(String* s, u64 i, const char* cstr)
 {
     WC_ASSERT(s->capacity != 0, "String_insert_cstr on zeroed/moved-from String");
     WC_ASSERT(i <= s->size, "index out of bounds");
 
+    u64 clen = strlen(cstr);
     if (clen == 0) {
         return;
     }
@@ -404,8 +406,9 @@ int String_compare(const String* s1, const String* s2)
     return 0;
 }
 
-bool String_equals_cstr(const String* s, const char* cstr, u64 clen)
+bool String_equals_cstr(const String* s, const char* cstr)
 {
+    u64 clen = strlen(cstr);
     if (s->size != clen) {
         return false;
     }
@@ -429,8 +432,9 @@ u64 String_find_char(const String* s, char c)
     return p ? (u64)(p - buf) : WC_NOT_FOUND;
 }
 
-u64 String_find_cstr(const String* s, const char* substr, u64 clen)
+u64 String_find_cstr(const String* s, const char* substr)
 {
+    u64 clen = strlen(substr);
     if (clen == 0) {
         return 0;
     }

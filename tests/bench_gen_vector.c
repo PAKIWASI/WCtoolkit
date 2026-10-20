@@ -26,7 +26,7 @@ UBENCH(gen_vector, push_string)
 {
     GenVec v = VEC_OF(String, 0);
     for (int i = 0; i < N; i++) {
-        VEC_PUSH_CSTR(&v, LONG_STR, strlen(LONG_STR));
+        VEC_PUSH_CSTR(&v, LONG_STR);
     }
     UBENCH_DO_NOTHING(v.data);
     GenVec_destroy(&v);
@@ -51,7 +51,7 @@ UBENCH_EX(gen_vector, copy_string)
 {
     GenVec src = VEC_OF(String, N);
     for (int i = 0; i < N; i++) {
-        VEC_PUSH_CSTR(&src, LONG_STR, strlen(LONG_STR));
+        VEC_PUSH_CSTR(&src, LONG_STR);
     }
     UBENCH_DO_BENCHMARK()
     {
@@ -81,7 +81,7 @@ UBENCH(gen_vector, remove_range_string)
 {
     GenVec v = VEC_OF(String, N);
     for (int i = 0; i < N; i++) {
-        VEC_PUSH_CSTR(&v, LONG_STR, strlen(LONG_STR));
+        VEC_PUSH_CSTR(&v, LONG_STR);
     }
     GenVec_remove_range(&v, N / 4, N / 2); // del_fn on the middle half
     UBENCH_DO_NOTHING(v.data);
@@ -124,7 +124,7 @@ static const wc_container_ops person_ops = {.copy_fn = person_copy, .del_fn = pe
 
 static Person person_make(int i)
 {
-    Person p = {String_from_cstr(WC_LIBC, LONG_STR, strlen(LONG_STR)), VEC(int, 64)};
+    Person p = {String_from_cstr(WC_LIBC, LONG_STR), VEC(int, 64)};
     for (int j = 0; j < 64; j++) {
         VEC_PUSH(&p.scores, i + j);
     }

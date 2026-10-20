@@ -157,7 +157,9 @@ int main(void)
 }
 ```
 
-`HashMap_create(a, key_size, val_size, hash, cmp, key_ops, val_ops)`. `hash` and `cmp` default to `wc_hash` (rapidhash) and byte equality when `NULL`. That's only correct for keys without pointers. For `String` keys pass `wc_hash_str` and `str_cmp`, or use `MAP_OF(String, V)`, which picks them for you.
+`HashMap_create(a, key_size, val_size, hash, cmp, key_ops, val_ops)`. `hash` and `cmp` default to `wc_hash` (rapidhash) and byte equality when `NULL`. That is correct for plain-data keys without pointers. For string keys use a `StrView` key: `MAP_OF(StrView, V)` wires `wc_strview_hash` and `wc_strview_cmp`, which hash and compare the bytes the view points at.
+
+A `StrView` key is non-owning: the bytes must outlive the map, usually by living in a `StringStore`. A C-string lookup such as `MAP_GET_PTR_CSTR` builds a transient view and allocates nothing. `String` keys are rejected at compile time (`MAP_OF(String, V)` / `SET_OF(String)`); a mutable 48-byte owning type is the wrong shape for a key.
 
 The bucket comes from the top bits of the hash after a Fibonacci multiply, so a weak custom hash (even identity on integers) still spreads. A hash whose probe lengths pass 250 aborts instead of corrupting the table.
 
@@ -216,15 +218,21 @@ int main(void)
     HashMap_has(&seen, &k);                  // 1
     HashMap_del(&seen, &k, NULL);            // 1: removed
 
-    HashMap words = SET_OF(String);          // String elements, wc_str_ops
-    SET_INSERT_CSTR(&words, "ada", 3);
-    SET_FOREACH(&words, String, w) { String_print(w); }
+    StringStore ss;
+    StringStore_create(&ss, WC_LIBC, nKB(4), true);
+    HashMap words = SET_OF(StrView);         // StrView keys; bytes live in the store
+    SET_INSERT(&words, StringStore_cstr(&ss, "ada"));
+    SET_INSERT_CSTR(&words, "literal");      // literals are stable; no store needed
+    SET_FOREACH(&words, StrView, w) { StrView_print(*w); }
 
-    HashMap_destroy(&words);
+    HashMap_destroy(&words);                 // destroy the set before its store
+    StringStore_destroy(&ss);
     HashMap_destroy(&seen);
     return 0;
 }
 ```
+
+String sets use `StrView` keys, exactly like string maps. The bytes must outlive the set: use a literal, or intern dynamic strings in a `StringStore` (as above). `SET_INSERT_CSTR` is only safe when the C string has static or otherwise stable storage.
 
 Rules for a set:
 

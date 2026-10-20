@@ -188,8 +188,8 @@ UTEST(macros, create_of_String_by_value)
     GenVec v = VEC_OF(String, 4);
     EXPECT_EQ(v.data_size, sizeof(String));
 
-    VEC_PUSH_CSTR(&v, "hello", strlen("hello"));
-    VEC_PUSH_CSTR(&v, "world", strlen("world"));
+    VEC_PUSH_CSTR(&v, "hello");
+    VEC_PUSH_CSTR(&v, "world");
     EXPECT_EQ(v.size, 2u);
 
     GenVec_destroy(&v);
@@ -215,33 +215,31 @@ UTEST(macros, create_of_String_by_pointer)
     GenVec_destroy(&v);
 }
 
-UTEST(macros, map_of_string_keys_hash_content)
+UTEST(macros, map_of_sv_keys_hash_content)
 {
-    // Regression: MAP_OF(String, V) used NULL hash/cmp, so it hashed the raw
-    // String struct and every lookup with an equal-but-distinct key missed.
-    HashMap m = MAP_OF(String, int);
+    // StrView keys hash and compare their CONTENT, not the view's pointer.
+    // Equal bytes in different buffers must find the same entry.
+    HashMap m = MAP_OF(StrView, int);
 
-    String k1 = String_from_cstr(WC_LIBC, "key", strlen("key"));
-    int    v  = 1;
-    HashMap_put_move(&m, &k1, &v);
-    String big = String_from_cstr(WC_LIBC, "a key longer than the inline buffer!!", strlen("a key longer than the inline buffer!!"));
-    v          = 2;
-    HashMap_put_move(&m, &big, &v);
+    StrView k1 = StrView_over_cstr("key");
+    MAP_PUT(&m, k1, 1);
 
-    String q1 = String_create(WC_LIBC); // built differently, same content
-    String_append_cstr(&q1, "k", strlen("k"));
-    String_append_cstr(&q1, "ey", strlen("ey"));
-    String q2 = String_from_cstr(WC_LIBC, "a key longer than the inline buffer!!", strlen("a key longer than the inline buffer!!"));
+    char    big_buf[] = "a key longer than the inline buffer!!";
+    StrView big       = {.data = big_buf, .len = sizeof(big_buf) - 1};
+    MAP_PUT(&m, big, 2);
 
-    const int* r1 = HashMap_get_ptr(&m, &q1);
-    const int* r2 = HashMap_get_ptr(&m, &q2);
-    EXPECT_TRUE((r1) != NULL);
-    EXPECT_TRUE((r2) != NULL);
+    char    q1_buf[] = "key"; // same content, different pointer
+    StrView q1       = {.data = q1_buf, .len = 3};
+    char    q2_buf[] = "a key longer than the inline buffer!!";
+    StrView q2       = {.data = q2_buf, .len = sizeof(q2_buf) - 1};
+
+    const int* r1 = (const int*)HashMap_get_ptr(&m, &q1);
+    const int* r2 = (const int*)HashMap_get_ptr(&m, &q2);
+    EXPECT_TRUE(r1 != NULL);
+    EXPECT_TRUE(r2 != NULL);
     EXPECT_EQ(*r1, 1);
     EXPECT_EQ(*r2, 2);
 
-    String_destroy(&q1);
-    String_destroy(&q2);
     HashMap_destroy(&m);
 }
 

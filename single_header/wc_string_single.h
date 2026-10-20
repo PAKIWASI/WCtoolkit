@@ -980,8 +980,9 @@ wc_nodiscard wc_nonull(1) String String_create(const wc_allocator* a);
 
 wc_nodiscard wc_nonull(1) String String_with_cap(const wc_allocator* a, u64 cap);
 
-// Create a String from `clen` bytes of a C string using allocator `a`.
-wc_nodiscard wc_nonull(1) String String_from_cstr(const wc_allocator* a, const char* cstr, u64 clen);
+// Create a String from a NUL-terminated C string using allocator `a`.
+// The length is computed internally with strlen.
+wc_nodiscard wc_nonull(1, 2) String String_from_cstr(const wc_allocator* a, const char* cstr);
 
 // Destroy the String's internal buffer
 // Safe on a zeroed/moved-from String.
@@ -993,23 +994,6 @@ wc_nodiscard wc_nonull(1, 2) String String_copy(const wc_allocator* a, const Str
 
 // Transfer ownership: dest gets src's contents, src is zeroed.
 wc_nonull(1, 2) void String_move(String* dest, String* src);
-
-// TODO: just use a StrView for this? can we for hashmap lookup?
-// Non-owning, READ-ONLY String over `len` existing bytes: no allocation.
-// For lookups only: a String-keyed map or set hashes and compares it like an
-// owning String with the same bytes. Never store it in a container.
-// Any mutation is fatal (WC_BORROWED cannot allocate); destroy is a no-op.
-wc_nodiscard wc_nonull(1) static wc_always_inline String String_borrow(const char* p, u64 len)
-{
-    String s;
-    memset(&s, 0, sizeof(s)); // stk[STR_SSO_SIZE - 1] == 0: heap mode
-    s.heap     = (char*)(uintptr_t)p;
-    s.size     = len;
-    s.capacity = len ? len : 1; // capacity 0 is the zero state
-    s.alloc    = WC_BORROWED;
-    return s;
-}
-
 
 //  Capacity
 
@@ -1044,7 +1028,7 @@ wc_nonull(1) void String_ensure_null_term(String* str);
 wc_nonull(1) void String_append_char(String* str, char c);
 // TODO:
 wc_nonull(1, 2) void String_append_multi(String* str, const char* data, u64 len);
-wc_nonull(1, 2) void String_append_cstr(String* str, const char* cstr, u64 clen);
+wc_nonull(1, 2) void String_append_cstr(String* str, const char* cstr);
 wc_nonull(1, 2) void String_append_String(String* str, const String* other);
 // Append other then destroy it (leaves other zeroed). When str is empty and
 // both share an allocator, str takes over other's buffer: no copy.
@@ -1053,7 +1037,7 @@ wc_nonull(1, 2) void String_append_String_move(String* str, String* other);
 wc_nodiscard wc_nonull(1) char String_pop_char(String* str);
 
 wc_nonull(1) void String_insert_char(String* str, u64 i, char c);
-wc_nonull(1, 3) void String_insert_cstr(String* str, u64 i, const char* cstr, u64 clen);
+wc_nonull(1, 3) void String_insert_cstr(String* str, u64 i, const char* cstr);
 // TODO:
 wc_nonull(1, 3) void String_insert_multi(String* str, u64 i, const char* data, u64 len);
 wc_nonull(1, 3) void String_insert_String(String* str, u64 i, const String* other);
@@ -1101,14 +1085,14 @@ wc_nodiscard wc_nonull(1, 2) static wc_always_inline bool String_equals(const St
     return String_compare(s1, s2) == 0;
 }
 
-wc_nodiscard wc_nonull(1, 2) bool String_equals_cstr(const String* str, const char* cstr, u64 clen);
+wc_nodiscard wc_nonull(1, 2) bool String_equals_cstr(const String* str, const char* cstr);
 
 
 //  Search
 
 // Returns index, or WC_NOT_FOUND if not found.
 wc_nodiscard wc_nonull(1) u64 String_find_char(const String* str, char c);
-wc_nodiscard wc_nonull(1, 2) u64 String_find_cstr(const String* str, const char* substr, u64 clen);
+wc_nodiscard wc_nonull(1, 2) u64 String_find_cstr(const String* str, const char* substr);
 
 // Return a String (in allocator `a`) holding `length` chars starting at `start`.
 wc_nodiscard wc_nonull(1, 2) String String_substr(const wc_allocator* a, const String* str, u64 start, u64 length);
@@ -1207,44 +1191,10 @@ static inline void str_print_ptr(const void* elm)
     String_print(*(const String**)elm);
 }
 
-static inline int wc_str_cmp(const void* a, const void* b, u64 size)
-{
-    (void)size;
-    return String_compare((const String*)a, (const String*)b);
-}
-
-static inline int wc_str_ptr_cmp(const void* a, const void* b, u64 size)
-{
-    (void)size;
-    return String_compare(*(const String**)a, *(const String**)b);
-}
-
-// SHARED OPS INSTANCES
+// SHARED OPS INSTANCES (for String VALUES and vectors; String is not a map key)
 
 static const wc_container_ops wc_str_ops     = {.copy_fn = str_copy, .del_fn = str_del};
 static const wc_container_ops wc_str_ptr_ops = {.copy_fn = str_copy_ptr, .del_fn = str_del_ptr};
-
-
-/*
-    Hash functions for string ops
-*/
-
-
-// String keys: hash the characters, not the struct (which holds a pointer).
-// Pair with str_cmp / str_cmp_ptr from wc_helpers.h. MAP_OF picks both for you.
-static inline u64 wc_str_hash(const void* key, u64 size)
-{
-    (void)size;
-    const String* str = key;
-    return wc_hash(String_data_ptr(str), String_len(str));
-}
-
-static inline u64 wc_str_ptr_hash(const void* key, u64 size)
-{
-    (void)size;
-    const String* str = *(String* const*)key;
-    return wc_hash(String_data_ptr(str), String_len(str));
-}
 
 
 #endif // STRING_H
@@ -1612,16 +1562,17 @@ String String_with_cap(const wc_allocator* a, u64 cap)
     return s;
 }
 
-String String_from_cstr(const wc_allocator* a, const char* cstr, u64 clen)
+String String_from_cstr(const wc_allocator* a, const char* cstr)
 {
     String s;
     str_init_sso(&s, a);
 
+    WC_ASSERT(cstr != NULL, "String_from_cstr: NULL cstr");
+    u64 clen = strlen(cstr);
     if (clen == 0) {
         return s;
     }
 
-    WC_ASSERT(cstr != NULL, "String_from_cstr: NULL cstr with non-zero length");
     ensure_capacity(&s, clen);
     memcpy(GET_STR(&s), cstr, clen);
     s.size = clen;
@@ -1784,9 +1735,9 @@ void String_append_multi(String* str, const char* data, u64 len)
     str->size += len;
 }
 
-void String_append_cstr(String* s, const char* cstr, u64 clen)
+void String_append_cstr(String* s, const char* cstr)
 {
-    String_append_multi(s, cstr, clen);
+    String_append_multi(s, cstr, strlen(cstr));
 }
 
 void String_append_String(String* s, const String* other)
@@ -1846,11 +1797,12 @@ void String_insert_char(String* s, u64 i, char c)
     s->size++;
 }
 
-void String_insert_cstr(String* s, u64 i, const char* cstr, u64 clen)
+void String_insert_cstr(String* s, u64 i, const char* cstr)
 {
     WC_ASSERT(s->capacity != 0, "String_insert_cstr on zeroed/moved-from String");
     WC_ASSERT(i <= s->size, "index out of bounds");
 
+    u64 clen = strlen(cstr);
     if (clen == 0) {
         return;
     }
@@ -1948,8 +1900,9 @@ int String_compare(const String* s1, const String* s2)
     return 0;
 }
 
-bool String_equals_cstr(const String* s, const char* cstr, u64 clen)
+bool String_equals_cstr(const String* s, const char* cstr)
 {
+    u64 clen = strlen(cstr);
     if (s->size != clen) {
         return false;
     }
@@ -1973,8 +1926,9 @@ u64 String_find_char(const String* s, char c)
     return p ? (u64)(p - buf) : WC_NOT_FOUND;
 }
 
-u64 String_find_cstr(const String* s, const char* substr, u64 clen)
+u64 String_find_cstr(const String* s, const char* substr)
 {
+    u64 clen = strlen(substr);
     if (clen == 0) {
         return 0;
     }

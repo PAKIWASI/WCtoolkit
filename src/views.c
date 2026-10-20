@@ -47,8 +47,8 @@ bool StrView_to_buf(StrView sv, char* buf, u64 cap)
 static const char trimmable_ascii[] = {9, 10, 11, 12, 13, 32};
 
 // The default chars are always active. Every char of `set` is then made active on top of them.
-// A NULL set or len 0 adds nothing, leaving just the defaults
-static void trim_table_fill(bool active[256], const char* set, u64 len)
+// A NULL set adds nothing, leaving just the defaults. `set` is NUL-terminated.
+static void trim_table_fill(bool active[256], const char* set)
 {
     for (u64 i = 0; i < sizeof(trimmable_ascii); i++) {
         active[(u8)trimmable_ascii[i]] = true;
@@ -56,6 +56,7 @@ static void trim_table_fill(bool active[256], const char* set, u64 len)
     if (set == NULL) {
         return;
     }
+    u64 len = strlen(set);
     for (u64 i = 0; i < len; i++) {
         active[(u8)set[i]] = true;
     }
@@ -82,24 +83,24 @@ static StrView trim_right_table(StrView sv, const bool active[256])
     return (StrView){.data = sv.data, .len = len_reduced};
 }
 
-StrView StrView_trim(StrView sv, const char* set, u64 len)
+StrView StrView_trim(StrView sv, const char* set)
 {
     bool active_trim[256] = {false};
-    trim_table_fill(active_trim, set, len); // built once, shared by both sides
+    trim_table_fill(active_trim, set); // built once, shared by both sides
     return trim_right_table(trim_left_table(sv, active_trim), active_trim);
 }
 
-StrView StrView_trim_left(StrView sv, const char* set, u64 len)
+StrView StrView_trim_left(StrView sv, const char* set)
 {
     bool active_trim[256] = {false};
-    trim_table_fill(active_trim, set, len);
+    trim_table_fill(active_trim, set);
     return trim_left_table(sv, active_trim);
 }
 
-StrView StrView_trim_right(StrView sv, const char* set, u64 len)
+StrView StrView_trim_right(StrView sv, const char* set)
 {
     bool active_trim[256] = {false};
-    trim_table_fill(active_trim, set, len);
+    trim_table_fill(active_trim, set);
     return trim_right_table(sv, active_trim);
 }
 
@@ -174,15 +175,6 @@ bool StrView_contains(StrView sv, StrView n)
 
 // String Store
 
-// TODO: make this hash fn visible
-// HashMap hashes the raw key bytes by default; StrView keys must hash their contents.
-static u64 sv_hash_fn(const void* key, u64 size)
-{
-    (void)size;
-    StrView k = *(StrView*)key;
-    return wc_hash(k.data, k.len);
-}
-
 // Copy `sv` into the store and NUL-terminate it. With interning on, return the
 // already-stored view for equal contents instead of allocating a duplicate.
 static StrView stringstore_copy(StringStore* ss, StrView sv)
@@ -218,7 +210,7 @@ void StringStore_create(StringStore* ss, const wc_allocator* alloc, u64 block_si
     ss->interning_active = intern;
     if (intern) {
         // A set of StrViews. The keys are non-owning; the chain arena owns the bytes.
-        ss->interned = HashMap_create(alloc, sizeof(StrView), 0, sv_hash_fn, wc_strview_cmp, NULL, NULL);
+        ss->interned = HashMap_create(alloc, sizeof(StrView), 0, wc_strview_hash, wc_strview_cmp, NULL, NULL);
     }
 }
 
@@ -235,9 +227,9 @@ StrView StringStore_str(StringStore* ss, const String* s)
     return stringstore_copy(ss, StrView_over_String(s));
 }
 
-StrView StringStore_cstr(StringStore* ss, const char* cstr, u64 clen)
+StrView StringStore_cstr(StringStore* ss, const char* cstr)
 {
-    return stringstore_copy(ss, StrView_over_cstr(cstr, clen));
+    return stringstore_copy(ss, StrView_over_cstr(cstr));
 }
 
 StrView StringStore_sv(StringStore* ss, StrView sv)
@@ -495,11 +487,11 @@ StrView WCPath_normalize(StringStore* ss, StrView p)
 
     WCPathIter it = WCpath_components(p);
     for (StrView c = WCpathIter_next(&it); StrView_is_valid(c); c = WCpathIter_next(&it)) {
-        if (StrView_equals_cstr(c, ".", 1)) {
+        if (StrView_equals_cstr(c, ".")) {
             continue;
         }
 
-        if (StrView_equals_cstr(c, "..", 2)) {
+        if (StrView_equals_cstr(c, "..")) {
             if (n > keep) { // pop the last component
                 while (n > keep && dst[n - 1] != '/') {
                     n--;

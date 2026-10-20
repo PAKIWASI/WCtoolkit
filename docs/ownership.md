@@ -105,7 +105,7 @@ int main(void)
 {
     GenVec team = VEC_CX(Player, 4, &player_ops);
 
-    Player p = { String_from_cstr(WC_LIBC, "ada", 3), VEC(int, 4), 1 };
+    Player p = { String_from_cstr(WC_LIBC, "ada"), VEC(int, 4), 1 };
     VEC_PUSH(&p.scores, 90);
     VEC_PUSH_MOVE(&team, p);         // p is zeroed: the vector owns it now
 
@@ -138,8 +138,8 @@ int main(void)
 {
     GenVec v = VEC_OF(String*, 4);
 
-    String* s = WC_BOX(WC_LIBC, String, String_from_cstr, "hello", 5);
-    // a shell from WC_LIBC holding String_from_cstr(WC_LIBC, "hello", 5)
+    String* s = WC_BOX(WC_LIBC, String, String_from_cstr, "hello");
+    // a shell from WC_LIBC holding String_from_cstr(WC_LIBC, "hello")
     VEC_PUSH_MOVE(&v, s);            // the slot owns the pointer; s is NULL now
 
     GenVec_destroy(&v);              // destroys the String, then frees the shell
@@ -155,7 +155,7 @@ int main(void)
 
 Copy callbacks receive the destination container's allocator. A deep copy of an arena-backed `GenVec<GenVec<String>>` into `WC_LIBC` therefore produces a tree with no pointers left into the arena. That's how a result escapes a scratch arena; see [Allocators](allocators.md#lifetimes).
 
-Macros that build elements also use the container's allocator: `VEC_PUSH_CSTR`, `MAP_PUT_STR_*`, `SET_INSERT_CSTR` and `QUEUE_PUSH_CSTR`. Every C-string argument is paired with its `u64` byte length.
+Macros that build `String` elements use the container's allocator: `VEC_PUSH_CSTR`, `MAP_PUT_SV_STR`, `MAP_PUT_INT_STR` and `QUEUE_PUSH_CSTR`. C-string arguments are NUL-terminated; their length comes from `strlen`. `SET_INSERT_CSTR` stores only a `StrView`: the bytes must outlive the set. A `StrView` key never owns its bytes.
 
 ## Don't pass an element of the container to itself
 

@@ -27,9 +27,9 @@ UTEST(zero_state, live_containers_pass)
     EXPECT_EQ(*(const int*)PriorityQueue_get(&pq, 0), 3);
     PriorityQueue_destroy(&pq);
 
-    String s = String_from_cstr(WC_LIBC, "ac", strlen("ac"));
-    String_insert_cstr(&s, 1, "b", strlen("b"));
-    String_insert_cstr(&s, 0, "", strlen(""));
+    String s = String_from_cstr(WC_LIBC, "ac");
+    String_insert_cstr(&s, 1, "b");
+    String_insert_cstr(&s, 0, "");
     String_destroy(&s);
 }
 
@@ -40,7 +40,7 @@ UTEST(zero_state, move_into_zeroed_dest_passes)
     GenVec_move(&gdst, &gsrc);
     GenVec_destroy(&gdst);
 
-    String ssrc = String_from_cstr(WC_LIBC, "a", strlen("a"));
+    String ssrc = String_from_cstr(WC_LIBC, "a");
     String sdst = {0};
     String_move(&sdst, &ssrc);
     String_destroy(&sdst);

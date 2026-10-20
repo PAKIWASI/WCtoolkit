@@ -33,7 +33,7 @@ GenVec_destroy(&v);
 
 ## C strings
 
-Every function and macro that accepts a C string also takes a `u64 clen` immediately after it. Exactly `clen` bytes are used, so the input does not need to be NUL-terminated.
+A parameter named `cstr` is always a NUL-terminated C string. Functions and macros compute its length internally with `strlen`; callers do not pass a length. APIs that work on arbitrary bytes take `data, len` (or `ptr, len`) instead.
 
 ## Create and destroy
 

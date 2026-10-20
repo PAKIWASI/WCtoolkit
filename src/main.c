@@ -2,7 +2,6 @@
 #include "views.h"
 #include "wc_allocator.h"
 #include <stdio.h>
-#include <string.h>
 
 
 
@@ -18,8 +17,7 @@ int main(void)
     StringStore_create(&ss, WC_LIBC, nKB(4), false);
 
     const char* c1 = "/a/b/c.txt";
-    u64 len1 = strlen(c1);
-    StrView p1 = StringStore_cstr(&ss, c1, len1);
+    StrView p1 = StringStore_cstr(&ss, c1);
     WC_ASSERT(WCpath_valid(p1), "path not valid");
     WC_ASSERT(WCpath_is_absolute(p1), "path not absolute");
 

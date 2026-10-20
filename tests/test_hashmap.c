@@ -26,9 +26,12 @@ static HashMap int_str_map(void)
     return HashMap_create(WC_LIBC, sizeof(int), sizeof(String), NULL, NULL, NULL, &wc_str_ops);
 }
 
-static HashMap str_str_map(void)
+static HashMap sv_str_map(void)
 {
-    return HashMap_create(WC_LIBC, sizeof(String), sizeof(String), wc_str_hash, wc_str_cmp, &wc_str_ops, &wc_str_ops);
+    // StrView keys are views into storage that must outlive the map. Values are
+    // owned Strings. Literal keys are stable for the whole program.
+    return HashMap_create(WC_LIBC, sizeof(StrView), sizeof(String), wc_strview_hash, wc_strview_cmp, NULL,
+                          &wc_str_ops);
 }
 
 
@@ -359,7 +362,7 @@ UTEST(hashmap, clear_frees_String_vals)
     // clear must properly call del on owned String resources
     HashMap m = int_str_map();
     for (int i = 0; i < 5; i++) {
-        String v = String_from_cstr(WC_LIBC, "owned", strlen("owned"));
+        String v = String_from_cstr(WC_LIBC, "owned");
         HashMap_put_val_move(&m, &i, &v);
         String_destroy(&v); // safe on zeroed
     }
@@ -368,7 +371,7 @@ UTEST(hashmap, clear_frees_String_vals)
 
     // Map must still be usable after clearing owned-resource entries
     int    k = 99;
-    String v = String_from_cstr(WC_LIBC, "after_clear", strlen("after_clear"));
+    String v = String_from_cstr(WC_LIBC, "after_clear");
     HashMap_put_val_move(&m, &k, &v);
     String_destroy(&v); // safe on zeroed
     EXPECT_TRUE(HashMap_has(&m, &k));
@@ -432,24 +435,23 @@ UTEST(hashmap, copy_independence)
     HashMap_destroy(&dest);
 }
 
-UTEST(hashmap, copy_str_str_map)
+UTEST(hashmap, copy_sv_str_map)
 {
-    // Deep copy: destroying src must not corrupt dest's String data
-    HashMap src = str_str_map();
-    MAP_PUT_STR_STR(&src, "name", strlen("name"), "Alice", strlen("Alice"));
-    MAP_PUT_STR_STR(&src, "city", strlen("city"), "London", strlen("London"));
-    MAP_PUT_STR_STR(&src, "color", strlen("color"), "blue", strlen("blue"));
+    // HashMap_copy copies the views; values are deep-copied. Literal key bytes
+    // outlive both maps, so destroying src leaves dest intact.
+    HashMap src = sv_str_map();
+    MAP_PUT_SV_STR(&src, StrView_over_cstr("name"), "Alice");
+    MAP_PUT_SV_STR(&src, StrView_over_cstr("city"), "London");
+    MAP_PUT_SV_STR(&src, StrView_over_cstr("color"), "blue");
 
     HashMap dest = HashMap_copy(WC_LIBC, &src);
     EXPECT_EQ(HashMap_size(&dest), 3u);
 
-    HashMap_destroy(&src); // src gone — dest must still be intact
+    HashMap_destroy(&src); // src gone — dest still points at the literals
 
-    String  k     = String_from_cstr(WC_LIBC, "city", strlen("city"));
-    String* found = (String*)HashMap_get_ptr(&dest, &k);
-    EXPECT_TRUE((found) != NULL);
-    EXPECT_TRUE(String_equals_cstr(found, "London", strlen("London")));
-    String_destroy(&k);
+    const String* found = MAP_GET_PTR_CSTR(&dest, String, "city");
+    EXPECT_TRUE(found != NULL);
+    EXPECT_TRUE(String_equals_cstr(found, "London"));
 
     HashMap_destroy(&dest);
 }
@@ -490,12 +492,12 @@ UTEST(hashmap, str_val_put_copy)
 {
     HashMap m  = int_str_map();
     int     k  = 1;
-    String  sv = String_from_cstr(WC_LIBC, "hello", strlen("hello"));
+    String  sv = String_from_cstr(WC_LIBC, "hello");
     HashMap_put(&m, &k, &sv);
 
     String* got = (String*)HashMap_get_ptr(&m, &k);
     EXPECT_TRUE((got) != NULL);
-    EXPECT_TRUE(String_equals_cstr(got, "hello", strlen("hello")));
+    EXPECT_TRUE(String_equals_cstr(got, "hello"));
 
     String_destroy(&sv);
     HashMap_destroy(&m);
@@ -506,12 +508,12 @@ UTEST(hashmap, str_val_independence)
     // Mutating source after put must not affect stored copy
     HashMap m  = int_str_map();
     int     k  = 1;
-    String  sv = String_from_cstr(WC_LIBC, "original", strlen("original"));
+    String  sv = String_from_cstr(WC_LIBC, "original");
     HashMap_put(&m, &k, &sv);
-    String_append_cstr(&sv, "_mutated", strlen("_mutated"));
+    String_append_cstr(&sv, "_mutated");
 
     String* stored = (String*)HashMap_get_ptr(&m, &k);
-    EXPECT_TRUE(String_equals_cstr(stored, "original", strlen("original")));
+    EXPECT_TRUE(String_equals_cstr(stored, "original"));
 
     String_destroy(&sv);
     HashMap_destroy(&m);
@@ -521,12 +523,12 @@ UTEST(hashmap, str_val_move)
 {
     HashMap m   = int_str_map();
     int     k   = 2;
-    String  src = String_from_cstr(WC_LIBC, "moved", strlen("moved"));
+    String  src = String_from_cstr(WC_LIBC, "moved");
     HashMap_put_val_move(&m, &k, &src);
     String_destroy(&src); // moved-from: zeroed, safe destroy
 
     String* stored = (String*)HashMap_get_ptr(&m, &k);
-    EXPECT_TRUE(String_equals_cstr(stored, "moved", strlen("moved")));
+    EXPECT_TRUE(String_equals_cstr(stored, "moved"));
     HashMap_destroy(&m);
 }
 
@@ -535,12 +537,12 @@ UTEST(hashmap, str_val_update_frees_old)
     // Updating a String val must not leak the old heap buffer
     HashMap m = int_str_map();
     int     k = 1;
-    MAP_PUT_INT_STR(&m, k, "first", strlen("first"));
-    MAP_PUT_INT_STR(&m, k, "second", strlen("second"));
+    MAP_PUT_INT_STR(&m, k, "first");
+    MAP_PUT_INT_STR(&m, k, "second");
 
     EXPECT_EQ(HashMap_size(&m), 1u);
     String* stored = (String*)HashMap_get_ptr(&m, &k);
-    EXPECT_TRUE(String_equals_cstr(stored, "second", strlen("second")));
+    EXPECT_TRUE(String_equals_cstr(stored, "second"));
     HashMap_destroy(&m);
 }
 
@@ -549,14 +551,14 @@ UTEST(hashmap, str_val_move_updates_existing)
     // put_val_move on an existing key must free old val and store new one
     HashMap m = int_str_map();
     int     k = 5;
-    MAP_PUT_INT_STR(&m, k, "old", strlen("old"));
+    MAP_PUT_INT_STR(&m, k, "old");
 
-    String v = String_from_cstr(WC_LIBC, "new", strlen("new"));
+    String v = String_from_cstr(WC_LIBC, "new");
     HashMap_put_val_move(&m, &k, &v);
     String_destroy(&v); // moved-from: zeroed, safe destroy
 
     String* stored = (String*)HashMap_get_ptr(&m, &k);
-    EXPECT_TRUE(String_equals_cstr(stored, "new", strlen("new")));
+    EXPECT_TRUE(String_equals_cstr(stored, "new"));
     EXPECT_EQ(HashMap_size(&m), 1u);
     HashMap_destroy(&m);
 }
@@ -566,11 +568,11 @@ UTEST(hashmap, str_val_del_with_out)
     // del with non-null out must copy the String before destroying it
     HashMap m = int_str_map();
     int     k = 3;
-    MAP_PUT_INT_STR(&m, k, "goodbye", strlen("goodbye"));
+    MAP_PUT_INT_STR(&m, k, "goodbye");
 
     String out = String_create(WC_LIBC);
     HashMap_del(&m, &k, &out);
-    EXPECT_TRUE(String_equals_cstr(&out, "goodbye", strlen("goodbye")));
+    EXPECT_TRUE(String_equals_cstr(&out, "goodbye"));
 
     String_destroy(&out);
     HashMap_destroy(&m);
@@ -583,7 +585,7 @@ UTEST(hashmap, str_val_many_inserts_and_gets)
     char    buf[32];
     for (int i = 0; i < 60; i++) {
         snprintf(buf, sizeof(buf), "value_%d", i);
-        String v = String_from_cstr(WC_LIBC, buf, strlen(buf));
+        String v = String_from_cstr(WC_LIBC, buf);
         HashMap_put_val_move(&m, &i, &v);
         String_destroy(&v); // moved-from: zeroed, safe destroy
     }
@@ -592,160 +594,130 @@ UTEST(hashmap, str_val_many_inserts_and_gets)
         snprintf(buf, sizeof(buf), "value_%d", i);
         String* stored = (String*)HashMap_get_ptr(&m, &i);
         EXPECT_TRUE((stored) != NULL);
-        EXPECT_TRUE(String_equals_cstr(stored, buf, strlen(buf)));
+        EXPECT_TRUE(String_equals_cstr(stored, buf));
     }
     HashMap_destroy(&m);
 }
 
 
 /* ════════════════════════════════════════════════════════════════════════════
- * String -> String  (owned key + val)
+ * StrView -> String  (view key + owned val)
  * ════════════════════════════════════════════════════════════════════════════ */
 
-UTEST(hashmap, str_key_lookup)
+UTEST(hashmap, sv_key_lookup)
 {
-    HashMap m  = str_str_map();
-    String  k1 = String_from_cstr(WC_LIBC, "name", strlen("name"));
-    String  v1 = String_from_cstr(WC_LIBC, "Alice", strlen("Alice"));
-    HashMap_put_move(&m, &k1, &v1);
-    String_destroy(&k1); // moved-from: zeroed, safe destroy
-    String_destroy(&v1); // moved-from: zeroed, safe destroy
+    HashMap m = sv_str_map();
+    MAP_PUT_SV_STR(&m, StrView_over_cstr("name"), "Alice");
 
-    String  key   = String_from_cstr(WC_LIBC, "name", strlen("name"));
-    String* found = (String*)HashMap_get_ptr(&m, &key);
-    EXPECT_TRUE((found) != NULL);
-    EXPECT_TRUE(String_equals_cstr(found, "Alice", strlen("Alice")));
+    const String* found = MAP_GET_PTR_CSTR(&m, String, "name");
+    EXPECT_TRUE(found != NULL);
+    EXPECT_TRUE(String_equals_cstr(found, "Alice"));
 
-    String_destroy(&key);
     HashMap_destroy(&m);
 }
 
-UTEST(hashmap, str_key_miss)
+UTEST(hashmap, sv_key_miss)
 {
-    HashMap m = str_str_map();
-    String  k = String_from_cstr(WC_LIBC, "missing", strlen("missing"));
-    EXPECT_FALSE(HashMap_has(&m, &k));
-    String_destroy(&k);
+    HashMap m = sv_str_map();
+    EXPECT_FALSE(MAP_HAS_CSTR(&m, "missing"));
     HashMap_destroy(&m);
 }
 
-UTEST(hashmap, str_key_update_discards_dup_key)
+UTEST(hashmap, sv_key_update_replaces_value)
 {
-    // put_move on an existing key: incoming key freed, new val stored
-    HashMap m = str_str_map();
-    MAP_PUT_STR_STR(&m, "lang", strlen("lang"), "C", strlen("C"));
-    MAP_PUT_STR_STR(&m, "lang", strlen("lang"), "C11", strlen("C11"));
+    HashMap m = sv_str_map();
+    MAP_PUT_SV_STR(&m, StrView_over_cstr("lang"), "C");
+    MAP_PUT_SV_STR(&m, StrView_over_cstr("lang"), "C11");
 
     EXPECT_EQ(HashMap_size(&m), 1u);
-    String  k = String_from_cstr(WC_LIBC, "lang", strlen("lang"));
-    String* v = (String*)HashMap_get_ptr(&m, &k);
-    EXPECT_TRUE(String_equals_cstr(v, "C11", strlen("C11")));
-    String_destroy(&k);
+    const String* v = MAP_GET_PTR_CSTR(&m, String, "lang");
+    EXPECT_TRUE(String_equals_cstr(v, "C11"));
     HashMap_destroy(&m);
 }
 
-UTEST(hashmap, cstr_macro_lengths_are_authoritative)
+UTEST(hashmap, cstr_macros_use_strlen)
 {
-    HashMap m = str_str_map();
-    MAP_PUT_STR_STR(&m, "abcdef", 3, "uvwxyz", 3); // "abc" -> "uvw"
+    HashMap m = sv_str_map();
+    MAP_PUT_SV_STR(&m, StrView_over_cstr("abcdef"), "uvwxyz");
 
-    EXPECT_TRUE(MAP_HAS_CSTR(&m, "abcdef", 3));
-    EXPECT_FALSE(MAP_HAS_CSTR(&m, "abcdef", 6));
+    EXPECT_TRUE(MAP_HAS_CSTR(&m, "abcdef"));
 
-    const String* v = MAP_GET_PTR_CSTR(&m, String, "abcdef", 3);
+    const String* v = MAP_GET_PTR_CSTR(&m, String, "abcdef");
     EXPECT_TRUE(v != NULL);
-    EXPECT_TRUE(String_equals_cstr(v, "uvwxyz", 3));
-    EXPECT_FALSE(String_equals_cstr(v, "uvwxyz", 6));
+    EXPECT_TRUE(String_equals_cstr(v, "uvwxyz"));
 
     HashMap_destroy(&m);
 }
 
-UTEST(hashmap, str_key_del)
+UTEST(hashmap, sv_key_del)
 {
-    HashMap m = str_str_map();
-    MAP_PUT_STR_STR(&m, "fruit", strlen("fruit"), "apple", strlen("apple"));
+    HashMap m = sv_str_map();
+    MAP_PUT_SV_STR(&m, StrView_over_cstr("fruit"), "apple");
 
-    String k = String_from_cstr(WC_LIBC, "fruit", strlen("fruit"));
+    StrView k = StrView_over_cstr("fruit");
     EXPECT_TRUE(HashMap_del(&m, &k, NULL));
-    EXPECT_FALSE(HashMap_has(&m, &k));
+    EXPECT_FALSE(MAP_HAS_CSTR(&m, "fruit"));
     EXPECT_EQ(HashMap_size(&m), 0u);
-    String_destroy(&k);
     HashMap_destroy(&m);
 }
 
-UTEST(hashmap, str_key_put_key_move)
+UTEST(hashmap, sv_str_resize_preserves_data)
 {
-    // put_key_move: key is moved in (nulled), val is copied
-    HashMap m = str_str_map();
-    String  k = String_from_cstr(WC_LIBC, "animal", strlen("animal"));
-    String  v = String_from_cstr(WC_LIBC, "cat", strlen("cat"));
+    // Dynamic keys must be interned: the map only stores a view.
+    StringStore ss;
+    StringStore_create(&ss, WC_LIBC, nKB(4), true);
+    HashMap m = sv_str_map();
 
-    HashMap_put_key_move(&m, &k, &v);
-    String_destroy(&k); // moved-from: zeroed, safe destroy
-
-    String  lookup = String_from_cstr(WC_LIBC, "animal", strlen("animal"));
-    String* stored = (String*)HashMap_get_ptr(&m, &lookup);
-    EXPECT_TRUE((stored) != NULL);
-    EXPECT_TRUE(String_equals_cstr(stored, "cat", strlen("cat")));
-
-    String_destroy(&v);
-    String_destroy(&lookup);
-    HashMap_destroy(&m);
-}
-
-UTEST(hashmap, str_str_resize_preserves_data)
-{
-    HashMap m = str_str_map();
-    char    key_buf[16], val_buf[16];
+    char key_buf[16], val_buf[16];
     for (int i = 0; i < 40; i++) {
         snprintf(key_buf, sizeof(key_buf), "key%d", i);
         snprintf(val_buf, sizeof(val_buf), "val%d", i);
-        MAP_PUT_STR_STR(&m, key_buf, strlen(key_buf), val_buf, strlen(val_buf));
+        MAP_PUT_SV_STR(&m, StringStore_cstr(&ss, key_buf), val_buf);
     }
     EXPECT_EQ(HashMap_size(&m), 40u);
 
     for (int i = 0; i < 40; i++) {
         snprintf(key_buf, sizeof(key_buf), "key%d", i);
         snprintf(val_buf, sizeof(val_buf), "val%d", i);
-        String  k = String_from_cstr(WC_LIBC, key_buf, strlen(key_buf));
-        String* v = (String*)HashMap_get_ptr(&m, &k);
+        StrView k     = StringStore_cstr(&ss, key_buf);
+        String* v     = (String*)HashMap_get_ptr(&m, &k);
         EXPECT_TRUE((v) != NULL);
-        EXPECT_TRUE(String_equals_cstr(v, val_buf, strlen(val_buf)));
-        String_destroy(&k);
+        EXPECT_TRUE(String_equals_cstr(v, val_buf));
     }
     HashMap_destroy(&m);
+    StringStore_destroy(&ss);
 }
 
-UTEST(hashmap, str_str_del_frees_both)
+UTEST(hashmap, sv_str_del_frees_value)
 {
-    // del on a str->str entry must free both key and val heap buffers
-    HashMap m = str_str_map();
-    MAP_PUT_STR_STR(&m, "x", strlen("x"), "y", strlen("y"));
+    // Keys are views (not owned); del frees only the String value.
+    HashMap m = sv_str_map();
+    MAP_PUT_SV_STR(&m, StrView_over_cstr("x"), "y");
 
-    String k = String_from_cstr(WC_LIBC, "x", strlen("x"));
+    StrView k = StrView_over_cstr("x");
     EXPECT_TRUE(HashMap_del(&m, &k, NULL));
     EXPECT_EQ(HashMap_size(&m), 0u);
-    String_destroy(&k);
     HashMap_destroy(&m);
 }
 
-UTEST(hashmap, str_str_clear_frees_all)
+UTEST(hashmap, sv_str_clear_frees_values)
 {
-    HashMap m = str_str_map();
+    StringStore ss;
+    StringStore_create(&ss, WC_LIBC, nKB(4), true);
+    HashMap m = sv_str_map();
     for (int i = 0; i < 10; i++) {
         char buf[16];
         snprintf(buf, sizeof(buf), "k%d", i);
-        MAP_PUT_STR_STR(&m, buf, strlen(buf), "v", strlen("v"));
+        MAP_PUT_SV_STR(&m, StringStore_cstr(&ss, buf), "v");
     }
     HashMap_clear(&m);
     EXPECT_EQ(HashMap_size(&m), 0u);
 
     // Usable after clear
-    MAP_PUT_STR_STR(&m, "after", strlen("after"), "clear", strlen("clear"));
-    String k = String_from_cstr(WC_LIBC, "after", strlen("after"));
-    EXPECT_TRUE(HashMap_has(&m, &k));
-    String_destroy(&k);
+    MAP_PUT_SV_STR(&m, StrView_over_cstr("after"), "clear");
+    EXPECT_TRUE(MAP_HAS_CSTR(&m, "after"));
     HashMap_destroy(&m);
+    StringStore_destroy(&ss);
 }
 
 
@@ -1126,20 +1098,20 @@ UTEST(hashmap, set_takes_no_value_memory)
 
 UTEST(hashmap, get_key_ptr_returns_stored_key)
 {
-    HashMap m = MAP_OF(String, int);
-    MAP_PUT_STR_INT(&m, "interned", strlen("interned"), 1);
+    HashMap m = MAP_OF(StrView, int);
+    StrView k = StrView_over_cstr("interned");
+    MAP_PUT(&m, k, 1);
 
-    String probe = String_from_cstr(WC_LIBC, "interned", strlen("interned"));
-    const String* stored = HashMap_get_key_ptr(&m, &probe);
+    StrView        probe  = StrView_over_cstr("interned");
+    const StrView* stored = (const StrView*)HashMap_get_key_ptr(&m, &probe);
     EXPECT_TRUE(stored != NULL);
     EXPECT_TRUE(stored != &probe);
-    EXPECT_TRUE(String_equals(stored, &probe));
-    EXPECT_TRUE(stored == HashMap_bucket_key_ptr(&m, (u64)((const u8*)stored - m.keys) / sizeof(String)));
+    EXPECT_TRUE(StrView_equals(*stored, probe));
+    EXPECT_TRUE(stored == (const StrView*)HashMap_bucket_key_ptr(
+                              &m, (u64)((const u8*)stored - m.keys) / sizeof(StrView)));
 
-    String absent = String_from_cstr(WC_LIBC, "absent", strlen("absent"));
+    StrView absent = StrView_over_cstr("absent");
     EXPECT_TRUE(HashMap_get_key_ptr(&m, &absent) == NULL);
 
-    String_destroy(&absent);
-    String_destroy(&probe);
     HashMap_destroy(&m);
 }
