@@ -214,19 +214,19 @@ endif()
 if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
   target_link_options(tests PRIVATE -Wno-free-nonheap-object)
 endif()
-#
-#
-# # Benchmarks: one tests/bench_*.c per component, registered through ubench.h.
-# # Meaningful only in a Release build (Debug runs them under the sanitizers).
-# file(GLOB BENCH_SOURCES CONFIGURE_DEPENDS tests/bench_*.c)
-# add_executable(bench
-#     ${BENCH_SOURCES}
-#     ${LIB_SOURCES}
-# )
-# target_include_directories(bench PRIVATE include tests)
-# target_compile_options(bench PRIVATE ${WC_WARN_FLAGS})
-# target_compile_definitions(bench PRIVATE BENCH_N=${WC_BENCH_N})
-# target_link_libraries(bench m)
+
+
+# Benchmarks: one tests/bench_*.c per component, registered through ubench.h.
+# Meaningful only in a Release build (Debug runs them under the sanitizers).
+file(GLOB BENCH_SOURCES CONFIGURE_DEPENDS tests/bench_*.c)
+add_executable(bench
+    ${BENCH_SOURCES}
+    ${LIB_SOURCES}
+)
+target_include_directories(bench PRIVATE include tests)
+target_compile_options(bench PRIVATE ${WC_WARN_FLAGS})
+target_compile_definitions(bench PRIVATE BENCH_N=${WC_BENCH_N})
+target_link_libraries(bench m)
 
 
 # Example projects

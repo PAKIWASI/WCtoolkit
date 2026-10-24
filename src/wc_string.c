@@ -208,6 +208,11 @@ char* String_data_ptr(const String* s)
     return (char*)(IS_SSO(s) ? s->stk : s->heap);
 }
 
+char* String_data_ptr_unsafe(const String* s)
+{
+    return (char*)(IS_SSO(s) ? s->stk : s->heap);
+}
+
 // Same growth path as String_append_char, minus the size++: writes '\0'
 // at index s->size and leaves size untouched. Safe against the SSO
 // mode-flag byte because MAYBE_GROW_STR converts to heap (or reallocs

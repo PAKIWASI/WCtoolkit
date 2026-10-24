@@ -77,6 +77,8 @@ wc_nonull(1, 2) void String_to_cstr_buf(const String* str, char* buff, u64 n);
 // Return a raw pointer into the internal buffer (no NUL terminator).
 wc_nodiscard wc_nonull(1) char* String_data_ptr(const String* str);
 
+wc_nodiscard wc_nonull(1) char* String_data_ptr_unsafe(const String* str);
+
 // Guarantee a '\0' sits one byte past the last real character, WITHOUT
 // touching str->size. Grows exactly like String_append_char would.
 wc_nonull(1) void String_ensure_null_term(String* str);
