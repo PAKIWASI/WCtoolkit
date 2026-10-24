@@ -808,7 +808,7 @@ static inline void wc_perror(const char* prefix)
 
 /* ChainArena: an arena that never runs out.
  *
- * It is a linked list of blocks. Allocation is a bump pointer in the current block; when
+ * It is a linked list of blocks. Allocation is a bump pointer in the current block, when
  * the block is full, another one is taken from the backing allocator and becomes current.
  *
  * Requests that are large relative to a block get their own dedicated block, kept on a
@@ -836,7 +836,7 @@ typedef struct {
 } ChainArena;
 
 // Initialises `ca` in place, it must not be moved or copied afterwards.
-wc_nonull(1, 2) void ChainArena_create(ChainArena* ca, const wc_allocator* backing, u64 block_cap);
+wc_nonull(1, 2) void ChainArena_create(ChainArena* ca, const wc_allocator* alloc, u64 block_size);
 
 // Gives every block back to the backing allocator and zeroes the arena. Safe on a zeroed
 // arena and safe to call twice.
@@ -1321,7 +1321,7 @@ void* ChainArena_alloc_aligned(ChainArena* ca, u64 size, u64 align)
         return node_bump(n, size, align); // fits need <= node capacity
     }
 
-    // any allocation needing more than BIG_THRESHOLD get's it's own block. It's sized to fit
+    // any allocation needing more than BIG_THRESHOLD gets it's own block. It's sized to fit
     // The current regular block is untouched, so its remaining space is still available to later small requests.
     ChainArenaNodeHDR* n = new_node(ca, need);
     if (!n) {

@@ -1721,7 +1721,7 @@ wc_nonull(1, 2) void Stack_print(Stack* stk, wc_print_fn print_fn);
 
 /* ChainArena: an arena that never runs out.
  *
- * It is a linked list of blocks. Allocation is a bump pointer in the current block; when
+ * It is a linked list of blocks. Allocation is a bump pointer in the current block, when
  * the block is full, another one is taken from the backing allocator and becomes current.
  *
  * Requests that are large relative to a block get their own dedicated block, kept on a
@@ -1749,7 +1749,7 @@ typedef struct {
 } ChainArena;
 
 // Initialises `ca` in place, it must not be moved or copied afterwards.
-wc_nonull(1, 2) void ChainArena_create(ChainArena* ca, const wc_allocator* backing, u64 block_cap);
+wc_nonull(1, 2) void ChainArena_create(ChainArena* ca, const wc_allocator* alloc, u64 block_size);
 
 // Gives every block back to the backing allocator and zeroes the arena. Safe on a zeroed
 // arena and safe to call twice.
@@ -1812,10 +1812,7 @@ void ChainArenaScratch_to_mark(ChainArenaScratch scratch);
 
 
 
-
 #include <stdalign.h>
-#include <stdint.h>
-#include <string.h>
 
 
 #ifndef STRING_GROWTH
@@ -1886,6 +1883,8 @@ wc_nonull(1, 2) void String_to_cstr_buf(const String* str, char* buff, u64 n);
 
 // Return a raw pointer into the internal buffer (no NUL terminator).
 wc_nodiscard wc_nonull(1) char* String_data_ptr(const String* str);
+
+wc_nodiscard wc_nonull(1) char* String_data_ptr_unsafe(const String* str);
 
 // Guarantee a '\0' sits one byte past the last real character, WITHOUT
 // touching str->size. Grows exactly like String_append_char would.
@@ -2085,14 +2084,11 @@ static const wc_container_ops wc_str_ptr_ops = {.copy_fn = str_copy_ptr, .del_fn
 #include <string.h>
 
 
-// TODO: expand views
+#define SV_NULL (StrView){0}
 
 
 // non-owning view into any memory that stores a string
-//
-// `.data == NULL` means invalid: functions that can fail return (StrView){0}.
-// A successful view may still be empty (`len == 0`); in that case `data` stays
-// non-NULL, so StrView_is_valid separates "empty" from "error".
+// `.data == NULL` means invalid: functions that can fail return SV_NULL
 typedef struct {
     const char* data;
     u64         len;
@@ -2114,13 +2110,13 @@ wc_nodiscard wc_nonull(1) static wc_always_inline StrView StrView_over_String(co
     return (StrView){.data = data ? data : "", .len = String_len(str)};
 }
 
-// Sub-range of a String. Returns (StrView){0} if the range is out of bounds.
+// Sub-range of a String. Returns SV_NULL if the range is out of bounds.
 wc_nodiscard wc_nonull(1) static wc_always_inline StrView StrView_over_String_ex(const String* str, u64 off, u64 len)
 {
     u64         slen = String_len(str);
     const char* data = String_data_ptr(str);
     if (off > slen || len > slen - off) {
-        return (StrView){0};
+        return SV_NULL;
     }
     return (StrView){.data = (data ? data : "") + off, .len = len};
 }
@@ -2148,26 +2144,29 @@ wc_nodiscard wc_nonull(2) bool StrView_to_buf(StrView sv, char* buf, u64 cap);
 
 // slicing
 
-// Get a sub-view over another view. Returns (StrView){0} if the range is out of
+// Get a sub-view over another view. Returns SV_NULL if the range is out of
 // bounds (overflow-safe). Slicing an invalid view stays invalid.
 wc_nodiscard static wc_always_inline StrView StrView_slice(StrView sv, u64 start, u64 len)
 {
     if (!sv.data || start > sv.len || len > sv.len - start) {
-        return (StrView){0};
+        return SV_NULL;
     }
     return (StrView){.data = sv.data + start, .len = len};
 }
-// Get the first n chars from `sv`. Returns (StrView){0} if n > sv.len.
+// Get the first n chars from `sv`. Returns SV_NULL if n > sv.len.
 wc_nodiscard static wc_always_inline StrView StrView_prefix(StrView sv, u64 n)
 {
     return StrView_slice(sv, 0, n);
 }
+
+// TODO: should suffix be getting n chars from the end
+//
 // Get all the chars starting from index `start` till the end.
-// Returns (StrView){0} if start > sv.len.
+// Returns SV_NULL if start > sv.len.
 wc_nodiscard static wc_always_inline StrView StrView_suffix(StrView sv, u64 start)
 {
     if (start > sv.len) {
-        return (StrView){0};
+        return SV_NULL;
     }
     return StrView_slice(sv, start, sv.len - start);
 }
@@ -2199,7 +2198,7 @@ wc_nodiscard bool StrView_contains(StrView sv, StrView n);
 // Splitting a view is just prefix/suffix on a value: nothing is mutated.
 //   StrView head = StrView_prefix(sv, n);
 //   sv           = StrView_suffix(sv, n);
-// Both return (StrView){0} when n/start is past the end.
+// Both return SV_NULL when n/start is past the end.
 
 
 // output
@@ -2232,7 +2231,7 @@ wc_nodiscard static wc_always_inline int StrView_compare(StrView a, StrView b)
 
 wc_nodiscard static wc_always_inline bool StrView_equals(StrView a, StrView b)
 {
-    return (a.len == b.len && (a.len == 0 || memcmp(a.data, b.data, a.len) == 0)) != 0;
+    return StrView_compare(a, b) == 0;
 }
 
 // C-string convenience
@@ -2246,9 +2245,7 @@ wc_nodiscard wc_nonull(2) static wc_always_inline bool StrView_equals_cstr(StrVi
 static inline u64 wc_strview_hash(const void* key, u64 size)
 {
     (void)size;
-    StrView v;
-    memcpy(&v, key, sizeof(v));
-    return StrView_hash(v);
+    return StrView_hash(*(const StrView*)key);
 }
 
 static inline int wc_strview_cmp(const void* a, const void* b, u64 size)
@@ -2266,7 +2263,7 @@ typedef struct {
     HashMap    interned;         // StrView -> {} (a set)
     bool       interning_active; // optional
     // probe the interned set: return the existing view if found, else alloc + insert. A deduped store must be append-only
-    // This makes interning O(1) amortized and idempotent: repeated StringStore_cstr(&ss, "x") return the same view every time
+    // This makes interning O(1) amortized and idempotent: repeated stores return the same view every time
 } StringStore;
 
 wc_nonull(1, 2) void StringStore_create(StringStore* ss, const wc_allocator* alloc, u64 block_size, bool intern);
@@ -2279,6 +2276,7 @@ wc_nodiscard wc_nonull(1, 2) StrView StringStore_cstr(StringStore* ss, const cha
 wc_nodiscard wc_nonull(1) StrView StringStore_sv(StringStore* ss, StrView sv);
 
 // TODO: extensive testing needed
+//
 // filepath storage/handling (currently linux only)
 // store paths normally as strings in the stringstore (or wherever) and use these operations to work on them
 // We assume actual filepaths are passed to these functions, we are not asserting filepath validity. Check WCpath_valid to assert path validity.
@@ -2301,7 +2299,7 @@ typedef struct {
 } WCPathIter;
 
 wc_nodiscard WCPathIter WCpath_components(StrView p);
-// Return the next component, or (StrView){0} when the path is exhausted.
+// Return the next component, or SV_NULL when the path is exhausted.
 // Components are never empty: runs of '/' (and leading/trailing ones) are skipped.
 wc_nodiscard wc_nonull(1) StrView WCpathIter_next(WCPathIter* it);
 
@@ -5606,7 +5604,7 @@ void* ChainArena_alloc_aligned(ChainArena* ca, u64 size, u64 align)
         return node_bump(n, size, align); // fits need <= node capacity
     }
 
-    // any allocation needing more than BIG_THRESHOLD get's it's own block. It's sized to fit
+    // any allocation needing more than BIG_THRESHOLD gets it's own block. It's sized to fit
     // The current regular block is untouched, so its remaining space is still available to later small requests.
     ChainArenaNodeHDR* n = new_node(ca, need);
     if (!n) {
@@ -5844,6 +5842,11 @@ char* String_data_ptr(const String* s)
         return NULL;
     }
     // Cast away const intentionally: caller may mutate via this pointer.
+    return (char*)(IS_SSO(s) ? s->stk : s->heap);
+}
+
+char* String_data_ptr_unsafe(const String* s)
+{
     return (char*)(IS_SSO(s) ? s->stk : s->heap);
 }
 
@@ -6243,6 +6246,7 @@ static inline void ensure_capacity(String* s, u64 needed)
 
 
 
+
 String StrView_to_String(const wc_allocator* a, StrView sv)
 {
     String s = String_with_cap(a, sv.len);
@@ -6298,7 +6302,7 @@ static void trim_table_fill(bool active[256], const char* set)
 static StrView trim_left_table(StrView sv, const bool active[256])
 {
     if (!sv.data) {
-        return (StrView){0};
+        return SV_NULL;
     }
     u64 to_skip = 0;
     while (to_skip < sv.len && active[(u8)sv.data[to_skip]]) {
@@ -6375,7 +6379,7 @@ u64 StrView_find_char(StrView sv, char c)
 
 u64 StrView_findr_char(StrView sv, char c)
 {
-    // memrchr not working?
+    // BUG: memrchr not working?
     for (u64 i = sv.len; i-- > 0;) {
         if (sv.data[i] == c) {
             return i;
@@ -6413,7 +6417,7 @@ bool StrView_contains(StrView sv, StrView n)
 static StrView stringstore_copy(StringStore* ss, StrView sv)
 {
     if (!sv.data) {
-        return (StrView){0};
+        return SV_NULL;
     }
     if (ss->interning_active) {
         const StrView* found = (const StrView*)HashMap_get_key_ptr(&ss->interned, &sv);
@@ -6510,7 +6514,7 @@ bool WCpath_is_absolute(StrView p)
 StrView WCpath_basename(StrView p)
 {
     if (p.len == 0) {
-        return (StrView){0};
+        return SV_NULL;
     }
     u64 n = path_trimmed_len(p);
     if (n == 1 && p.data[0] == '/') {
@@ -6526,7 +6530,7 @@ StrView WCpath_basename(StrView p)
 StrView WCpath_dirname(StrView p)
 {
     if (!p.data || p.len == 0) {
-        return (StrView){0};
+        return SV_NULL;
     }
 
     u64 n = path_trimmed_len(p);
@@ -6572,7 +6576,7 @@ StrView WCpath_extension(StrView p)
     StrView b   = WCpath_basename(p);
     u64     dot = ext_dot(b);
     if (dot == WC_NOT_FOUND) {
-        return (StrView){0};
+        return SV_NULL;
     }
     return StrView_suffix(b, dot + 1);
 }
@@ -6614,7 +6618,7 @@ StrView WCpathIter_next(WCPathIter* it)
     }
     if (i >= s.len) {
         it->pos = s.len;
-        return (StrView){0};
+        return SV_NULL;
     }
 
     u64 start = i;
