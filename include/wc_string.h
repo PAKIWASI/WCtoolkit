@@ -4,11 +4,8 @@
 #include "common.h"
 #include "wc_allocator.h"
 #include "wc_comp.h"
-#include "wc_hash.h"
 
 #include <stdalign.h>
-#include <stdint.h>
-#include <string.h>
 
 
 #ifndef STRING_GROWTH

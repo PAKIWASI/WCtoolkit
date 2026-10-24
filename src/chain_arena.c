@@ -136,7 +136,7 @@ void* ChainArena_alloc_aligned(ChainArena* ca, u64 size, u64 align)
         return node_bump(n, size, align); // fits need <= node capacity
     }
 
-    // any allocation needing more than BIG_THRESHOLD get's it's own block. It's sized to fit
+    // any allocation needing more than BIG_THRESHOLD gets it's own block. It's sized to fit
     // The current regular block is untouched, so its remaining space is still available to later small requests.
     ChainArenaNodeHDR* n = new_node(ca, need);
     if (!n) {

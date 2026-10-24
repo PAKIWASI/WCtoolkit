@@ -13,14 +13,11 @@
 #include <string.h>
 
 
-// TODO: expand views
+#define SV_NULL (StrView){0}
 
 
 // non-owning view into any memory that stores a string
-//
-// `.data == NULL` means invalid: functions that can fail return (StrView){0}.
-// A successful view may still be empty (`len == 0`); in that case `data` stays
-// non-NULL, so StrView_is_valid separates "empty" from "error".
+// `.data == NULL` means invalid: functions that can fail return SV_NULL
 typedef struct {
     const char* data;
     u64         len;
@@ -42,13 +39,13 @@ wc_nodiscard wc_nonull(1) static wc_always_inline StrView StrView_over_String(co
     return (StrView){.data = data ? data : "", .len = String_len(str)};
 }
 
-// Sub-range of a String. Returns (StrView){0} if the range is out of bounds.
+// Sub-range of a String. Returns SV_NULL if the range is out of bounds.
 wc_nodiscard wc_nonull(1) static wc_always_inline StrView StrView_over_String_ex(const String* str, u64 off, u64 len)
 {
     u64         slen = String_len(str);
     const char* data = String_data_ptr(str);
     if (off > slen || len > slen - off) {
-        return (StrView){0};
+        return SV_NULL;
     }
     return (StrView){.data = (data ? data : "") + off, .len = len};
 }
@@ -58,6 +55,11 @@ wc_nodiscard wc_nonull(1) static wc_always_inline StrView StrView_over_String_ex
 wc_nodiscard wc_nonull(1) static wc_always_inline StrView StrView_over_cstr(const char* cstr)
 {
     return (StrView){.data = cstr, .len = strlen(cstr)};
+}
+
+wc_nodiscard wc_nonull(1) static wc_always_inline StrView StrView_over_buf(const char* data, u64 len)
+{
+    return (StrView){.data = data, .len = len};
 }
 
 // conversion
@@ -71,26 +73,29 @@ wc_nodiscard wc_nonull(2) bool StrView_to_buf(StrView sv, char* buf, u64 cap);
 
 // slicing
 
-// Get a sub-view over another view. Returns (StrView){0} if the range is out of
+// Get a sub-view over another view. Returns SV_NULL if the range is out of
 // bounds (overflow-safe). Slicing an invalid view stays invalid.
 wc_nodiscard static wc_always_inline StrView StrView_slice(StrView sv, u64 start, u64 len)
 {
     if (!sv.data || start > sv.len || len > sv.len - start) {
-        return (StrView){0};
+        return SV_NULL;
     }
     return (StrView){.data = sv.data + start, .len = len};
 }
-// Get the first n chars from `sv`. Returns (StrView){0} if n > sv.len.
+// Get the first n chars from `sv`. Returns SV_NULL if n > sv.len.
 wc_nodiscard static wc_always_inline StrView StrView_prefix(StrView sv, u64 n)
 {
     return StrView_slice(sv, 0, n);
 }
+
+// TODO: should suffix be getting n chars from the end
+//
 // Get all the chars starting from index `start` till the end.
-// Returns (StrView){0} if start > sv.len.
+// Returns SV_NULL if start > sv.len.
 wc_nodiscard static wc_always_inline StrView StrView_suffix(StrView sv, u64 start)
 {
     if (start > sv.len) {
-        return (StrView){0};
+        return SV_NULL;
     }
     return StrView_slice(sv, start, sv.len - start);
 }
@@ -122,7 +127,7 @@ wc_nodiscard bool StrView_contains(StrView sv, StrView n);
 // Splitting a view is just prefix/suffix on a value: nothing is mutated.
 //   StrView head = StrView_prefix(sv, n);
 //   sv           = StrView_suffix(sv, n);
-// Both return (StrView){0} when n/start is past the end.
+// Both return SV_NULL when n/start is past the end.
 
 
 // output
@@ -155,7 +160,7 @@ wc_nodiscard static wc_always_inline int StrView_compare(StrView a, StrView b)
 
 wc_nodiscard static wc_always_inline bool StrView_equals(StrView a, StrView b)
 {
-    return (a.len == b.len && (a.len == 0 || memcmp(a.data, b.data, a.len) == 0)) != 0;
+    return StrView_compare(a, b) == 0;
 }
 
 // C-string convenience
@@ -169,9 +174,7 @@ wc_nodiscard wc_nonull(2) static wc_always_inline bool StrView_equals_cstr(StrVi
 static inline u64 wc_strview_hash(const void* key, u64 size)
 {
     (void)size;
-    StrView v;
-    memcpy(&v, key, sizeof(v));
-    return StrView_hash(v);
+    return StrView_hash(*(const StrView*)key);
 }
 
 static inline int wc_strview_cmp(const void* a, const void* b, u64 size)
@@ -189,7 +192,7 @@ typedef struct {
     HashMap    interned;         // StrView -> {} (a set)
     bool       interning_active; // optional
     // probe the interned set: return the existing view if found, else alloc + insert. A deduped store must be append-only
-    // This makes interning O(1) amortized and idempotent: repeated StringStore_cstr(&ss, "x") return the same view every time
+    // This makes interning O(1) amortized and idempotent: repeated stores return the same view every time
 } StringStore;
 
 wc_nonull(1, 2) void StringStore_create(StringStore* ss, const wc_allocator* alloc, u64 block_size, bool intern);
@@ -202,6 +205,7 @@ wc_nodiscard wc_nonull(1, 2) StrView StringStore_cstr(StringStore* ss, const cha
 wc_nodiscard wc_nonull(1) StrView StringStore_sv(StringStore* ss, StrView sv);
 
 // TODO: extensive testing needed
+//
 // filepath storage/handling (currently linux only)
 // store paths normally as strings in the stringstore (or wherever) and use these operations to work on them
 // We assume actual filepaths are passed to these functions, we are not asserting filepath validity. Check WCpath_valid to assert path validity.
@@ -224,7 +228,7 @@ typedef struct {
 } WCPathIter;
 
 wc_nodiscard WCPathIter WCpath_components(StrView p);
-// Return the next component, or (StrView){0} when the path is exhausted.
+// Return the next component, or SV_NULL when the path is exhausted.
 // Components are never empty: runs of '/' (and leading/trailing ones) are skipped.
 wc_nodiscard wc_nonull(1) StrView WCpathIter_next(WCPathIter* it);
 

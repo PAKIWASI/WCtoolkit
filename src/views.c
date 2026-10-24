@@ -10,6 +10,7 @@
 
 
 
+
 String StrView_to_String(const wc_allocator* a, StrView sv)
 {
     String s = String_with_cap(a, sv.len);
@@ -65,7 +66,7 @@ static void trim_table_fill(bool active[256], const char* set)
 static StrView trim_left_table(StrView sv, const bool active[256])
 {
     if (!sv.data) {
-        return (StrView){0};
+        return SV_NULL;
     }
     u64 to_skip = 0;
     while (to_skip < sv.len && active[(u8)sv.data[to_skip]]) {
@@ -142,7 +143,7 @@ u64 StrView_find_char(StrView sv, char c)
 
 u64 StrView_findr_char(StrView sv, char c)
 {
-    // memrchr not working?
+    // BUG: memrchr not working?
     for (u64 i = sv.len; i-- > 0;) {
         if (sv.data[i] == c) {
             return i;
@@ -180,7 +181,7 @@ bool StrView_contains(StrView sv, StrView n)
 static StrView stringstore_copy(StringStore* ss, StrView sv)
 {
     if (!sv.data) {
-        return (StrView){0};
+        return SV_NULL;
     }
     if (ss->interning_active) {
         const StrView* found = (const StrView*)HashMap_get_key_ptr(&ss->interned, &sv);
@@ -277,7 +278,7 @@ bool WCpath_is_absolute(StrView p)
 StrView WCpath_basename(StrView p)
 {
     if (p.len == 0) {
-        return (StrView){0};
+        return SV_NULL;
     }
     u64 n = path_trimmed_len(p);
     if (n == 1 && p.data[0] == '/') {
@@ -293,7 +294,7 @@ StrView WCpath_basename(StrView p)
 StrView WCpath_dirname(StrView p)
 {
     if (!p.data || p.len == 0) {
-        return (StrView){0};
+        return SV_NULL;
     }
 
     u64 n = path_trimmed_len(p);
@@ -339,7 +340,7 @@ StrView WCpath_extension(StrView p)
     StrView b   = WCpath_basename(p);
     u64     dot = ext_dot(b);
     if (dot == WC_NOT_FOUND) {
-        return (StrView){0};
+        return SV_NULL;
     }
     return StrView_suffix(b, dot + 1);
 }
@@ -381,7 +382,7 @@ StrView WCpathIter_next(WCPathIter* it)
     }
     if (i >= s.len) {
         it->pos = s.len;
-        return (StrView){0};
+        return SV_NULL;
     }
 
     u64 start = i;
@@ -527,6 +528,3 @@ StrView WCPath_normalize(StringStore* ss, StrView p)
     dst[n] = 0;
     return (StrView){.data = dst, .len = n};
 }
-
-
-

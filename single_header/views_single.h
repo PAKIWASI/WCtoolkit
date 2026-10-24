@@ -1536,6 +1536,11 @@ wc_nodiscard wc_nonull(1) static wc_always_inline StrView StrView_over_cstr(cons
     return (StrView){.data = cstr, .len = strlen(cstr)};
 }
 
+wc_nodiscard wc_nonull(1) static wc_always_inline StrView StrView_over_buf(const char* data, u64 len)
+{
+    return (StrView){.data = data, .len = len};
+}
+
 // conversion
 
 // Allocate a new String using `a` with content from `sv`.
