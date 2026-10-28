@@ -83,6 +83,11 @@ u32 pcg32_rand_bounded(WC_Pcg32* rng, u32 bound)
     }
 }
 
+u32 pcg32_rand_range(WC_Pcg32* rng, u32 min, u32 max)
+{
+    WC_ASSERT(min < max, "max-min must be positive");
+    return min + (pcg32_rand(rng) % (max - min));
+}
 
 
 void pcg32_rand_seed_time(WC_Pcg32* rng)
@@ -126,6 +131,7 @@ double pcg32_rand_double(WC_Pcg32* rng)
 // Generate a float in range [min, max)
 float pcg32_rand_float_range(WC_Pcg32* rng, float min, float max)
 {
+    WC_ASSERT(min < max, "max-min must be positive");
     // Scale [0, 1) to [min, max)
     return min + (pcg32_rand_float(rng) * (max - min));
 }
@@ -133,6 +139,7 @@ float pcg32_rand_float_range(WC_Pcg32* rng, float min, float max)
 // Generate a double in range [min, max)
 double pcg32_rand_double_range(WC_Pcg32* rng, double min, double max)
 {
+    WC_ASSERT(min < max, "max-min must be positive");
     // Scale [0, 1) to [min, max)
     return min + (pcg32_rand_double(rng) * (max - min));
 }
@@ -191,6 +198,3 @@ float pcg32_rand_gaussian_custom(WC_Pcg32* rng, float mean, float stddev)
     // Standard normal * stddev + mean
     return (pcg32_rand_gaussian(rng) * stddev) + mean;
 }
-
-
-// Private Math Fuctions

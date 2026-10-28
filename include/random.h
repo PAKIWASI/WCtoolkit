@@ -116,6 +116,22 @@ wc_nodiscard wc_nonull(1) u32 pcg32_rand(WC_Pcg32* rng);
 wc_nodiscard wc_nonull(1) u32 pcg32_rand_bounded(WC_Pcg32* rng, u32 bound);
 
 
+/*
+   Generate a random u32 in range [min, max)
+
+   Scales the [0, 1) uniform distribution to [min, max).
+
+   Formula: min + rand() % (max - min)
+
+   Parameters:
+     min - Minimum value (inclusive)
+     max - Maximum value (exclusive)
+
+   Returns: Random u32 in [min, max)
+*/
+wc_nodiscard wc_nonull(1) u32 pcg32_rand_range(WC_Pcg32* rng, u32 min, u32 max);
+
+
 // FLOATING POINT UNIFORM DISTRIBUTION
 // ============================================================================
 
