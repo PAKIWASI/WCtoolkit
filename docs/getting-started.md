@@ -6,9 +6,9 @@
 
 - A C11 compiler with GNU extensions: GCC or Clang. The library uses statement expressions `({ ... })`, `typeof`, `__attribute__((cleanup))` and `__builtin_expect`.
 - Linux/macOS: any recent Clang or GCC.
-- Windows: MinGW-w64 Clang or GCC only — MSYS2's UCRT64 environment, or an `x86_64-w64-mingw32` cross toolchain. MSVC and clang-cl are not supported.
+- Windows: MinGW-w64 Clang or GCC only — MSYS2's UCRT64 environment, or an `x86_64-w64-mingw32` cross toolchain.
 - CMake 3.20+ and Ninja or Make.
-- libc. Nothing else.
+- libc
 
 ## Build
 

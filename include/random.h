@@ -142,15 +142,15 @@ wc_nodiscard wc_nonull(1) double pcg32_rand_double(WC_Pcg32* rng);
 
 /*
    Generate a random float in range [min, max)
-   
+
    Scales the [0, 1) uniform distribution to [min, max).
-   
+
    Formula: min + rand_float() * (max - min)
-   
+
    Parameters:
      min - Minimum value (inclusive)
      max - Maximum value (exclusive)
-   
+
    Returns: Random float in [min, max)
 */
 wc_nodiscard wc_nonull(1) float pcg32_rand_float_range(WC_Pcg32* rng, float min, float max);
@@ -158,13 +158,13 @@ wc_nodiscard wc_nonull(1) float pcg32_rand_float_range(WC_Pcg32* rng, float min,
 
 /*
    Generate a random double in range [min, max)
-   
+
    Like pcg32_rand_float_range() but with double precision.
-   
+ 
    Parameters:
      min - Minimum value (inclusive)
      max - Maximum value (exclusive)
-   
+
    Returns: Random double in [min, max)
 */
 wc_nodiscard wc_nonull(1) double pcg32_rand_double_range(WC_Pcg32* rng, double min, double max);
@@ -175,20 +175,20 @@ wc_nodiscard wc_nonull(1) double pcg32_rand_double_range(WC_Pcg32* rng, double m
 
 /*
    Generate a random float from standard normal distribution
-   
+
    Returns a value from the Gaussian (bell curve) distribution with:
      - Mean (μ) = 0
      - Standard deviation (σ) = 1
-   
+
    Distribution properties:
      - Range: Theoretically [-∞, +∞], but extreme values are rare
      - ~68% of values fall in [-1, +1]
      - ~95% of values fall in [-2, +2]
      - ~99.7% of values fall in [-3, +3]
      - Values near 0 are most common (peak of bell curve)
-   
+
    Algorithm: Box-Muller Transform
-   
+
    Implementation notes:
      - Uses fast approximations: fast_sqrt(), fast_log(), fast_sin(), fast_cos()
      - Avoids U1 = 0 since ln(0) is undefined
