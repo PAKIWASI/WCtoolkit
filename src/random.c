@@ -111,7 +111,7 @@ u32 pcg32_rand_range(WC_Pcg32* rng, u32 min, u32 max)
  * @param len The number of bytes to read.
  * @return 0 on success, non-zero on failure.
  */
-int wc_get_os_entropy(u8* buf, u64 len)
+int wc_get_os_entropy(void* buf, u64 len)
 {
 #ifdef _WIN32
     // Use BCryptGenRandom on Windows
