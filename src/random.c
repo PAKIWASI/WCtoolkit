@@ -111,7 +111,7 @@ u32 pcg32_rand_range(WC_Pcg32* rng, u32 min, u32 max)
  * @param len The number of bytes to read.
  * @return 0 on success, non-zero on failure.
  */
-static int get_os_entropy(u8* buf, u64 len)
+int wc_get_os_entropy(u8* buf, u64 len)
 {
 #ifdef _WIN32
     // Use BCryptGenRandom on Windows
@@ -146,7 +146,7 @@ static int get_os_entropy(u8* buf, u64 len)
 void pcg32_rand_seed_os(WC_Pcg32* rng)
 {
     u8 buf[16];
-    FATAL_IF(get_os_entropy(buf, sizeof buf) != 0, "CSPRNG failed");
+    FATAL_IF(wc_get_os_entropy(buf, sizeof buf) != 0, "CSPRNG failed");
 
     u64 seed, seq;
     memcpy(&seed, buf, 8);

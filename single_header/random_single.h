@@ -939,6 +939,19 @@ typedef struct {
 */
 wc_nonull(1) void pcg32_rand_seed(WC_Pcg32* rng, u64 seed, u64 seq);
 
+/*
+   Fill buf with len bytes from the OS cryptographically secure RNG.
+
+   - Thread-safe.
+   - May block on first use (Linux: until the kernel pool has ~256 bits
+     of entropy; Windows: pool is initialized at boot).
+   - Prefer this over pcg32_* for any value an attacker must not predict:
+     keys, IVs, nonces, salts. Use pcg32_* only for reproducible or
+     non-security randomness (oracle packaging, tests, simulations).
+
+   Returns 0 on success, nonzero on failure (buffer contents undefined).
+*/
+wc_nonull(1) int wc_get_os_entropy(void* buf, u64 len);
 
 /*
    Seed the RNG from the OS CSPRNG (non-deterministic).
@@ -1839,7 +1852,7 @@ u32 pcg32_rand_range(WC_Pcg32* rng, u32 min, u32 max)
  * @param len The number of bytes to read.
  * @return 0 on success, non-zero on failure.
  */
-static int get_os_entropy(u8* buf, u64 len)
+int wc_get_os_entropy(u8* buf, u64 len)
 {
 #ifdef _WIN32
     // Use BCryptGenRandom on Windows
@@ -1874,7 +1887,7 @@ static int get_os_entropy(u8* buf, u64 len)
 void pcg32_rand_seed_os(WC_Pcg32* rng)
 {
     u8 buf[16];
-    FATAL_IF(get_os_entropy(buf, sizeof buf) != 0, "CSPRNG failed");
+    FATAL_IF(wc_get_os_entropy(buf, sizeof buf) != 0, "CSPRNG failed");
 
     u64 seed, seq;
     memcpy(&seed, buf, 8);

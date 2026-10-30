@@ -74,6 +74,19 @@ typedef struct {
 */
 wc_nonull(1) void pcg32_rand_seed(WC_Pcg32* rng, u64 seed, u64 seq);
 
+/*
+   Fill buf with len bytes from the OS cryptographically secure RNG.
+
+   - Thread-safe.
+   - May block on first use (Linux: until the kernel pool has ~256 bits
+     of entropy; Windows: pool is initialized at boot).
+   - Prefer this over pcg32_* for any value an attacker must not predict:
+     keys, IVs, nonces, salts. Use pcg32_* only for reproducible or
+     non-security randomness (oracle packaging, tests, simulations).
+
+   Returns 0 on success, nonzero on failure (buffer contents undefined).
+*/
+wc_nonull(1) int wc_get_os_entropy(void* buf, u64 len);
 
 /*
    Seed the RNG from the OS CSPRNG (non-deterministic).
