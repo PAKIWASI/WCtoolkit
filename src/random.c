@@ -2,8 +2,8 @@
 #include "common.h"
 #include "fast_math.h"
 
-#include <stdint.h>
-#include <time.h>
+#include <stdio.h>
+#include <string.h>
 
 
 
@@ -66,7 +66,7 @@ u32 pcg32_rand_bounded(WC_Pcg32* rng, u32 bound)
     // because this version will calculate the same modulus, but the LHS
     // value is less than 2^32.
 
-    uint32_t threshold = -bound % bound;
+    u32 threshold = -bound % bound;
 
     // Uniformity guarantees that this loop will terminate.  In practice, it
     // should usually terminate quickly; on average (assuming all bounds are
@@ -76,7 +76,7 @@ u32 pcg32_rand_bounded(WC_Pcg32* rng, u32 bound)
     // practice, bounds are typically small and only a tiny amount of the range
     // is eliminated.
     for (;;) {
-        uint32_t r = pcg32_rand(rng);
+        u32 r = pcg32_rand(rng);
         if (r >= threshold) {
             return r % bound;
         }
@@ -90,17 +90,69 @@ u32 pcg32_rand_range(WC_Pcg32* rng, u32 min, u32 max)
 }
 
 
-void pcg32_rand_seed_time(WC_Pcg32* rng)
+// OS provided Cryptographically Secure Pseudo-Random Number Generator (CSPRNG)
+
+#ifdef _WIN32
+#include <bcrypt.h>
+#include <windows.h>
+#pragma comment(lib, "bcrypt.lib")
+#elif defined(__linux__)
+#include <sys/random.h> // For getrandom
+// Fallback to /dev/urandom if getrandom is unavailable
+#include <fcntl.h>
+#include <unistd.h>
+#elif defined(__APPLE__)
+#include <stdlib.h> // For arc4random_buf
+#endif
+
+/**
+ * @brief Fills a buffer with cryptographically secure random bytes from the OS.
+ * @param buf The buffer to fill.
+ * @param len The number of bytes to read.
+ * @return 0 on success, non-zero on failure.
+ */
+static int get_os_entropy(u8* buf, u64 len)
 {
-    // Get current time in seconds since epoch
-    time_t t = time(NULL);
+#ifdef _WIN32
+    // Use BCryptGenRandom on Windows
+    NTSTATUS status = BCryptGenRandom(NULL, buf, (ULONG)len, BCRYPT_USE_SYSTEM_PREFERRED_RNG);
+    if (!BCRYPT_SUCCESS(status)) {
+        return -1;
+    }
+#elif defined(__linux__)
+    // Use getrandom on Linux
+    ssize_t result = getrandom(buf, len, 0);
+    if (result < 0 || (u64)result != len) {
+        // Fallback to /dev/urandom if getrandom fails
+        int fd = open("/dev/urandom", O_RDONLY);
+        if (fd < 0) {
+            return -2;
+        }
+        ssize_t bytes_read = read(fd, buf, len);
+        close(fd);
+        if (bytes_read < 0 || (u64)bytes_read != len) {
+            return -3;
+        }
+    }
+#elif defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__)
+    // Use arc4random_buf on BSD-like systems
+    arc4random_buf(buf, len);
+#else
+#error "Unsupported platform for OS entropy source"
+#endif
+    return 0;
+}
 
-    // Use time as seed
-    // For sequence, we could use a constant or derive from time
-    // Using a shifted version of time for sequence provides variation
-    u64 seed = (u64)t;
-    u64 seq  = (u64)t ^ 0xda3e39cb94b95bdbULL; // XOR with a constant for variation
+void pcg32_rand_seed_os(WC_Pcg32* rng)
+{
+    u8 buf[16];
+    FATAL_IF(get_os_entropy(buf, sizeof buf) != 0, "CSPRNG failed");
 
+    u64 seed, seq;
+    memcpy(&seed, buf, 8);
+    memcpy(&seq, buf + 8, 8);
+
+    // seq is reduced to 63 bits inside pcg32_rand_seed; that's fine.
     pcg32_rand_seed(rng, seed, seq);
 }
 

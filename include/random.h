@@ -76,15 +76,17 @@ wc_nonull(1) void pcg32_rand_seed(WC_Pcg32* rng, u64 seed, u64 seq);
 
 
 /*
-   Seed using current system time (second precision)
-   
-   Uses time(NULL) to get seconds since Unix epoch.
-   Good for general use when you want "random" behavior.
-   
-   Note: If called multiple times in the same second, will produce the
-         same sequence. Use pcg32_rand_seed_time_hp() for finer precision.
+   Seed the RNG from the OS CSPRNG (non-deterministic).
+
+   Uses getrandom / BCryptGenRandom / arc4random_buf as available. Prefer
+   this over pcg32_rand_seed() whenever reproducibility is not required.
+   Aborts if the OS entropy source fails.
+
+   Parameters:
+     rng - the generator to seed
 */
-wc_nonull(1) void pcg32_rand_seed_time(WC_Pcg32* rng);
+wc_nonull(1) void pcg32_rand_seed_os(WC_Pcg32* rng);
+
 
 
 // INTEGER RANDOM GENERATION
