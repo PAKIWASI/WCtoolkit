@@ -1205,6 +1205,10 @@ wc_nodiscard wc_nonull(1) static wc_always_inline bool HashMap_empty(const HashM
  * owns an allocation, all wasted on a key. See docs/containers.md.
  */
 
+// TODO: what if we allow string keys but with an allocator that can't reallocate, and we always
+// use the entire capacity for the hash, not just string len (would require zeroing out the entire capacity after string len
+
+
 #endif // HASHMAP_H
 
 /* ===== wc_string.h ===== */
@@ -1656,6 +1660,11 @@ static inline int wc_strview_cmp(const void* a, const void* b, u64 size)
 {
     (void)size;
     return StrView_compare(*(const StrView*)a, *(const StrView*)b);
+}
+
+static inline void wc_strview_print(const void* elm)
+{
+    StrView_print(*(StrView*)elm);
 }
 
 

@@ -1111,6 +1111,10 @@ wc_nodiscard wc_nonull(1) static wc_always_inline bool HashMap_empty(const HashM
  * owns an allocation, all wasted on a key. See docs/containers.md.
  */
 
+// TODO: what if we allow string keys but with an allocator that can't reallocate, and we always
+// use the entire capacity for the hash, not just string len (would require zeroing out the entire capacity after string len
+
+
 #endif // HASHMAP_H
 
 #ifdef WC_IMPLEMENTATION

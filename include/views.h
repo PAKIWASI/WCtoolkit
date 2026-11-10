@@ -183,6 +183,11 @@ static inline int wc_strview_cmp(const void* a, const void* b, u64 size)
     return StrView_compare(*(const StrView*)a, *(const StrView*)b);
 }
 
+static inline void wc_strview_print(const void* elm)
+{
+    StrView_print(*(StrView*)elm);
+}
+
 
 // A stringstore is a chain arena that provides immutable string storage and operations on them,
 // filepath storage and operations etc. it gives out StrViews, optional String wrappers for read, find operations.
