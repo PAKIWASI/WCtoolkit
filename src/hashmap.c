@@ -82,11 +82,11 @@ static wc_always_inline map_layout map_layout_for(u64 cap, u32 key_size, u32 val
 {
     u64        al = map_align(key_size, val_size); // get max align for key/val size
     map_layout l  = {0};
-    l.vals        = map_align_up(cap * key_size, al); // align the region up till the max align
-    l.scratch     = map_align_up(l.vals + (cap * val_size), al); // offset  keys
+    l.vals        = map_align_up(cap * key_size, al);                 // align the region up till the max align
+    l.scratch     = map_align_up(l.vals + (cap * val_size), al);      // offset  keys
     l.psls        = l.scratch + map_scratch_size(key_size, val_size); // offset key/val and scratch, align
-    l.total       = l.psls + cap; // the TOTAL size in bytes to allocate
-    return l;
+    l.total       = l.psls + cap; // the TOTAL size in bytes to allocate. + cap for size of of psls array
+    return l;                     // TODO: returning a fat struct
 }
 
 // One allocation for the whole table; psls zeroed (all buckets empty).
@@ -101,12 +101,11 @@ static void map_alloc_block(HashMap* map, u64 cap)
     map->scratch  = b + l.scratch;
     map->psls     = b + l.psls;
     map->capacity = cap;
-    memset(map->psls, 0, cap);
+    memset(map->psls, 0, cap); // psl = 0 means not occupied
 }
 
 static void map_free_block(const HashMap* map, u8* block, u64 cap)
 {
-    // BUG: redundent calculation
     wc_free(map->alloc, block, map_layout_for(cap, map->key_size, map->val_size).total, MAP_ALIGN(map));
 }
 
@@ -123,7 +122,8 @@ static wc_always_inline void map_move_into(u8* dest, u8* src, u32 size)
 
 // Copy one element into raw `dest`: copy_fn if any, else memcpy.
 // size 0 (a set's value): nothing to copy, and src may be NULL.
-static wc_always_inline void map_copy_into(const HashMap* map, const wc_container_ops* ops, u32 size, u8* dest, const void* src)
+static wc_always_inline void map_copy_into(const HashMap* map, const wc_container_ops* ops, u32 size, u8* dest,
+                                           const void* src)
 {
     if (size == 0) {
         return;
@@ -268,7 +268,6 @@ static wc_always_inline void map_commit(HashMap* map, u8 psl, u64 slot)
 // Returns true (found) if key existed (updated),  false (not found) if new key inserted.
 bool HashMap_put(HashMap* map, const void* key, const void* val)
 {
-    WC_ASSERT(map->capacity != 0, "HashMap mutation on zeroed/moved-from table");
     WC_ASSERT(val || map->val_size == 0, "val is NULL on a map with values");
 
     LOOKUP_RES res;
@@ -281,8 +280,8 @@ bool HashMap_put(HashMap* map, const void* key, const void* val)
         return true;
     }
 
-    // BUG: unnecisarry copy?
-    
+    // first own the values and place them in the staging area
+
     map_copy_into(map, map->key_ops, map->key_size, STAGE_KEY(map), key);
     map_copy_into(map, map->val_ops, map->val_size, STAGE_VAL(map), val);
     map_commit(map, out_psl, slot);
@@ -648,7 +647,7 @@ static u64 map_lookup(const HashMap* map, const u8* key, LOOKUP_RES* res, u8* ou
 
 
 // Place key/val (already owned by the map) starting at bucket idx with probe
-// length psl. Only relocates raw bytes: never calls copy/del (B5).
+// length psl. Only relocates raw bytes: never calls copy/del
 //
 // Walk to the first empty slot or the first resident we out-rank, copying
 // nothing. An empty slot is filled straight from key/val. Only when a resident
@@ -720,9 +719,11 @@ static void map_insert(HashMap* map, u8* key, u8* val, u8 psl0, u64 idx)
             u8* tmp = cur_key;
             cur_key = swp_key;
             swp_key = tmp;
+
             tmp     = cur_val;
             cur_val = swp_val;
             swp_val = tmp;
+
             psl     = slot_psl;
         }
 
@@ -767,3 +768,5 @@ static void map_resize(HashMap* map, u64 new_capacity)
 
     map_free_block(map, old_keys, old_cap);
 }
+
+
