@@ -990,8 +990,6 @@ typedef struct {
     const wc_allocator*     alloc;
 } HashMap;
 
-_Static_assert(sizeof(HashMap) == 96, "HashMap must be 96 bytes");
-
 
 // Safely extract callbacks, always NULL-safe on ops itself.
 #define MAP_COPY(ops) ((ops) ? (ops)->copy_fn : NULL)
@@ -1002,9 +1000,9 @@ _Static_assert(sizeof(HashMap) == 96, "HashMap must be 96 bytes");
 // hash_fn NULL: wc_hash over the key bytes. cmp_fn NULL: byte equality.
 // Both defaults are only correct for keys without pointers.
 // key_ops / val_ops: pass NULL for POD types. val_size 0 makes a set.
-wc_nodiscard wc_nonull(1) HashMap HashMap_create(const wc_allocator* a, u32 key_size, u32 val_size, wc_hash_fn hash_fn,
-                                    wc_compare_fn cmp_fn, const wc_container_ops* key_ops,
-                                    const wc_container_ops* val_ops);
+wc_nodiscard wc_nonull(1) HashMap
+    HashMap_create(const wc_allocator* a, u32 key_size, u32 val_size, wc_hash_fn hash_fn, wc_compare_fn cmp_fn,
+                   const wc_container_ops* key_ops, const wc_container_ops* val_ops);
 
 // Destroy all elements and free internal buffers via map->alloc.
 // Safe on zeroed/moved-from maps. Leaves struct zeroed.
@@ -1056,7 +1054,7 @@ wc_nodiscard wc_nonull(1) static wc_always_inline u64 HashMap_bucket_count(const
 
 wc_nodiscard wc_nonull(1) bool HashMap_bucket_occupied(const HashMap* map, u64 i);
 wc_nodiscard wc_nonull(1) const void* HashMap_bucket_key_ptr(const HashMap* map, u64 i);
-wc_nodiscard wc_nonull(1) void*       HashMap_bucket_val_ptr(HashMap* map, u64 i);
+wc_nodiscard wc_nonull(1) void* HashMap_bucket_val_ptr(HashMap* map, u64 i);
 
 // Delete key. out != NULL: the value is MOVED into it (caller owns it, B7).
 // out == NULL: the value is deleted. The key is always deleted.
@@ -1091,28 +1089,6 @@ wc_nodiscard wc_nonull(1) static wc_always_inline bool HashMap_empty(const HashM
     return map->size == 0;
 }
 
-/* String-keyed maps: use StrView keys
- *
- * A StrView key is a 16-byte view whose bytes live in a StringStore (or any
- * storage) that outlives the map. MAP_OF(StrView, V) wires the content hash and
- * compare; insert a view returned by StringStore_cstr, and look up with a
- * transient StrView_over_cstr (zero allocation).
- *
- *   StringStore ss;
- *   StringStore_create(&ss, WC_LIBC, nKB(64), true);
- *   HashMap m = MAP_OF(StrView, int);
- *   MAP_PUT(&m, StringStore_cstr(&ss, "hello"), 42);
- *   const int* got = MAP_GET_PTR_CSTR(&m, int, "hello");
- *
- * The map does not own key bytes: destroy it before the store. HashMap_copy
- * shallow-copies views, so both maps must use the same live store.
- *
- * String keys are rejected at compile time: a String is mutable, 48 bytes, and
- * owns an allocation, all wasted on a key. See docs/containers.md.
- */
-
-// TODO: what if we allow string keys but with an allocator that can't reallocate, and we always
-// use the entire capacity for the hash, not just string len (would require zeroing out the entire capacity after string len
 
 
 #endif // HASHMAP_H
@@ -1494,11 +1470,11 @@ static wc_always_inline map_layout map_layout_for(u64 cap, u32 key_size, u32 val
 {
     u64        al = map_align(key_size, val_size); // get max align for key/val size
     map_layout l  = {0};
-    l.vals        = map_align_up(cap * key_size, al); // align the region up till the max align
-    l.scratch     = map_align_up(l.vals + (cap * val_size), al); // offset  keys
+    l.vals        = map_align_up(cap * key_size, al);                 // align the region up till the max align
+    l.scratch     = map_align_up(l.vals + (cap * val_size), al);      // offset  keys
     l.psls        = l.scratch + map_scratch_size(key_size, val_size); // offset key/val and scratch, align
-    l.total       = l.psls + cap; // the TOTAL size in bytes to allocate
-    return l;
+    l.total       = l.psls + cap; // the TOTAL size in bytes to allocate. + cap for size of of psls array
+    return l;                     // TODO: returning a fat struct
 }
 
 // One allocation for the whole table; psls zeroed (all buckets empty).
@@ -1513,12 +1489,11 @@ static void map_alloc_block(HashMap* map, u64 cap)
     map->scratch  = b + l.scratch;
     map->psls     = b + l.psls;
     map->capacity = cap;
-    memset(map->psls, 0, cap);
+    memset(map->psls, 0, cap); // psl = 0 means not occupied
 }
 
 static void map_free_block(const HashMap* map, u8* block, u64 cap)
 {
-    // BUG: redundent calculation
     wc_free(map->alloc, block, map_layout_for(cap, map->key_size, map->val_size).total, MAP_ALIGN(map));
 }
 
@@ -1535,7 +1510,8 @@ static wc_always_inline void map_move_into(u8* dest, u8* src, u32 size)
 
 // Copy one element into raw `dest`: copy_fn if any, else memcpy.
 // size 0 (a set's value): nothing to copy, and src may be NULL.
-static wc_always_inline void map_copy_into(const HashMap* map, const wc_container_ops* ops, u32 size, u8* dest, const void* src)
+static wc_always_inline void map_copy_into(const HashMap* map, const wc_container_ops* ops, u32 size, u8* dest,
+                                           const void* src)
 {
     if (size == 0) {
         return;
@@ -1680,7 +1656,6 @@ static wc_always_inline void map_commit(HashMap* map, u8 psl, u64 slot)
 // Returns true (found) if key existed (updated),  false (not found) if new key inserted.
 bool HashMap_put(HashMap* map, const void* key, const void* val)
 {
-    WC_ASSERT(map->capacity != 0, "HashMap mutation on zeroed/moved-from table");
     WC_ASSERT(val || map->val_size == 0, "val is NULL on a map with values");
 
     LOOKUP_RES res;
@@ -1693,8 +1668,8 @@ bool HashMap_put(HashMap* map, const void* key, const void* val)
         return true;
     }
 
-    // BUG: unnecisarry copy?
-    
+    // first own the values and place them in the staging area
+
     map_copy_into(map, map->key_ops, map->key_size, STAGE_KEY(map), key);
     map_copy_into(map, map->val_ops, map->val_size, STAGE_VAL(map), val);
     map_commit(map, out_psl, slot);
@@ -1706,7 +1681,6 @@ bool HashMap_put(HashMap* map, const void* key, const void* val)
 // A duplicate key is destroyed (the map keeps its own, B10).
 bool HashMap_put_move(HashMap* map, void* key, void* val)
 {
-    WC_ASSERT(map->capacity != 0, "HashMap mutation on zeroed/moved-from table");
     WC_ASSERT(val || map->val_size == 0, "val is NULL on a map with values");
 
     LOOKUP_RES res;
@@ -1730,7 +1704,6 @@ bool HashMap_put_move(HashMap* map, void* key, void* val)
 // Mixed: key is COPIED, val is MOVED (*val zeroed).
 bool HashMap_put_val_move(HashMap* map, const void* key, void* val)
 {
-    WC_ASSERT(map->capacity != 0, "HashMap mutation on zeroed/moved-from table");
     WC_ASSERT(val || map->val_size == 0, "val is NULL on a map with values");
 
     LOOKUP_RES res;
@@ -1753,7 +1726,6 @@ bool HashMap_put_val_move(HashMap* map, const void* key, void* val)
 // Mixed: key is MOVED (*key zeroed, or destroyed if already present), val is COPIED.
 bool HashMap_put_key_move(HashMap* map, void* key, const void* val)
 {
-    WC_ASSERT(map->capacity != 0, "HashMap mutation on zeroed/moved-from table");
     WC_ASSERT(val || map->val_size == 0, "val is NULL on a map with values");
 
     LOOKUP_RES res;
@@ -1853,8 +1825,6 @@ void* HashMap_bucket_val_ptr(HashMap* map, u64 i)
 // position as long as they have PSL > 1 (i.e. they are not sitting at their home slot).
 bool HashMap_del(HashMap* map, const void* key, void* out)
 {
-    WC_ASSERT(map->capacity != 0, "HashMap mutation on zeroed/moved-from table");
-
     LOOKUP_RES res;
     u8         out_psl;
     u64        slot = map_lookup(map, key, &res, &out_psl);
@@ -1863,7 +1833,7 @@ bool HashMap_del(HashMap* map, const void* key, void* out)
         return false;
     }
 
-    // B7: the value is MOVED into out (caller owns it), or deleted.
+    // the value is MOVED into out (caller owns it), or deleted.
     if (out) {
         wc_copy_n(out, GET_VAL(map, slot), map->val_size);
     } else {
@@ -1940,8 +1910,6 @@ void HashMap_print(const HashMap* map, wc_print_fn key_print, wc_print_fn val_pr
 // Destroys all keys and values via their del_fn callbacks, then zeroes the arrays.
 void HashMap_clear(HashMap* map)
 {
-    WC_ASSERT(map->capacity != 0, "HashMap_clear on zeroed/moved-from table");
-
     wc_delete_fn k_del = MAP_DEL(map->key_ops);
     wc_delete_fn v_del = MAP_DEL(map->val_ops);
     if (k_del || v_del) {
@@ -1966,7 +1934,6 @@ void HashMap_clear(HashMap* map)
 // Make room for n elements total without any further resize.
 void HashMap_reserve(HashMap* map, u64 n)
 {
-    WC_ASSERT(map->capacity != 0, "HashMap_reserve on zeroed/moved-from table");
     FATAL_IF(n > ((u64)1 << 56), "HashMap_reserve: n too large");
 
     u64 need = map->capacity;
@@ -2060,7 +2027,7 @@ static u64 map_lookup(const HashMap* map, const u8* key, LOOKUP_RES* res, u8* ou
 
 
 // Place key/val (already owned by the map) starting at bucket idx with probe
-// length psl. Only relocates raw bytes: never calls copy/del (B5).
+// length psl. Only relocates raw bytes: never calls copy/del
 //
 // Walk to the first empty slot or the first resident we out-rank, copying
 // nothing. An empty slot is filled straight from key/val. Only when a resident
@@ -2080,6 +2047,7 @@ static void map_insert(HashMap* map, u8* key, u8* val, u8 psl0, u64 idx)
     for (;; i = MAP_NEXT(map, i)) {
         u8 slot_psl = *GET_PSL(map, i);
 
+        // easy path: the desired slot was already empty
         if (slot_psl == BUCKET_EMPTY) {
             *GET_PSL(map, i) = (u8)psl;
             wc_copy_n(KEY_AT(i), key, ks);
@@ -2087,7 +2055,7 @@ static void map_insert(HashMap* map, u8* key, u8* val, u8 psl0, u64 idx)
             map->size++;
             return;
         }
-        if (slot_psl < psl) {
+        if (slot_psl < psl) { // desired
             break;
         }
         if (++psl > PSL_LIMIT) {
@@ -2132,10 +2100,12 @@ static void map_insert(HashMap* map, u8* key, u8* val, u8 psl0, u64 idx)
             u8* tmp = cur_key;
             cur_key = swp_key;
             swp_key = tmp;
+
             tmp     = cur_val;
             cur_val = swp_val;
             swp_val = tmp;
-            psl     = slot_psl;
+
+            psl = slot_psl;
         }
 
         if (++psl > PSL_LIMIT) {

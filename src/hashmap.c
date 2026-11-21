@@ -638,8 +638,6 @@ static u64 map_lookup(const HashMap* map, const u8* key, LOOKUP_RES* res, u8* ou
 }
 
 
-// BUG: this function has 2 identical loops, wonder if i can combine them into one?
-//
 // Place key/val (already owned by the map) starting at bucket idx with probe
 // length psl. Only relocates raw bytes: never calls copy/del
 //
