@@ -1,4 +1,6 @@
+#include "common.h"
 #include "hashmap.h"
+#include "wc_allocator.h"
 #include "wc_macros.h"
 #include "wc_string.h"
 
@@ -15,6 +17,11 @@ int main(void)
 
     HashMap_print(&m, wc_str_print, wc_str_print);
 
+    String s = String_from_cstr(WC_LIBC, "hello");
+    WC_ASSERT(HashMap_has(&m, &s), );
+
+
+    String_destroy(&s);
     HashMap_destroy(&m);
     return 0;
 }

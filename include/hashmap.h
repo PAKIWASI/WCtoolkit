@@ -155,29 +155,6 @@ wc_nodiscard wc_nonull(1) static wc_always_inline bool HashMap_empty(const HashM
     return map->size == 0;
 }
 
-/* String-keyed maps: use StrView keys
- *
- * A StrView key is a 16-byte view whose bytes live in a StringStore (or any
- * storage) that outlives the map. MAP_OF(StrView, V) wires the content hash and
- * compare; insert a view returned by StringStore_cstr, and look up with a
- * transient StrView_over_cstr (zero allocation).
- *
- *   StringStore ss;
- *   StringStore_create(&ss, WC_LIBC, nKB(64), true);
- *   HashMap m = MAP_OF(StrView, int);
- *   MAP_PUT(&m, StringStore_cstr(&ss, "hello"), 42);
- *   const int* got = MAP_GET_PTR_CSTR(&m, int, "hello");
- *
- * The map does not own key bytes: destroy it before the store. HashMap_copy
- * shallow-copies views, so both maps must use the same live store.
- *
- * String keys are rejected at compile time: a String is mutable, 48 bytes, and
- * owns an allocation, all wasted on a key. See docs/containers.md.
- */
-
-// BUG: this is too strict
-// in order to mutate a key, the user has to get a pointer to it and cast away the const
-// at that point the user might as well throw their pc out the window
 
 
 #endif // HASHMAP_H

@@ -68,22 +68,40 @@ String String_with_cap(const wc_allocator* a, u64 cap)
     return s;
 }
 
-String String_from_cstr(const wc_allocator* a, const char* cstr)
+String String_from_buf(const wc_allocator* a, const char* buf, u64 size)
 {
+    WC_ASSERT(buf != NULL, "String_from_cstr: NULL cstr");
+
     String s;
     str_init_sso(&s, a);
 
-    WC_ASSERT(cstr != NULL, "String_from_cstr: NULL cstr");
-    u64 clen = strlen(cstr);
-    if (clen == 0) {
+    if (size == 0) {
         return s;
     }
 
-    ensure_capacity(&s, clen);
-    memcpy(GET_STR(&s), cstr, clen);
-    s.size = clen;
+    ensure_capacity(&s, size);
+    memcpy(GET_STR(&s), buf, size);
+    s.size = size;
     return s;
 }
+
+String String_from_buf_borrow(const char* buf, u64 size)
+{
+    WC_ASSERT(buf != NULL, "NULL buf");
+
+    String s;
+    str_init_sso(&s, WC_BORROWED);
+
+    // turn off sso
+    s.stk[STR_SSO_SIZE - 1] = 0;
+    // point heap to the buf
+    s.heap     = (char*)buf;
+    s.size     = size;
+    s.capacity = size;
+
+    return s;
+}
+
 
 void String_destroy(String* s)
 {
@@ -348,7 +366,6 @@ void String_insert_multi(String* s, u64 i, const char* data, u64 len)
     }
     memcpy(buf + i, data, len);
     s->size += len;
-
 }
 
 void String_insert_String(String* s, u64 i, const String* other)

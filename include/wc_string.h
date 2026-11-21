@@ -7,6 +7,7 @@
 #include "wc_hash.h"
 
 #include <stdalign.h>
+#include <string.h>
 
 
 #ifndef STRING_GROWTH
@@ -40,9 +41,25 @@ wc_nodiscard wc_nonull(1) String String_create(const wc_allocator* a);
 
 wc_nodiscard wc_nonull(1) String String_with_cap(const wc_allocator* a, u64 cap);
 
+wc_nodiscard wc_nonull(1, 2) String String_from_buf(const wc_allocator* a, const char* buf, u64 size);
+
 // Create a String from a NUL-terminated C string using allocator `a`.
 // The length is computed internally with strlen.
-wc_nodiscard wc_nonull(1, 2) String String_from_cstr(const wc_allocator* a, const char* cstr);
+wc_nodiscard wc_nonull(1) static wc_always_inline String String_from_cstr(const wc_allocator* a, const char* cstr)
+{
+    return String_from_buf(a, cstr, strlen(cstr));
+}
+
+// create a string from a non-owning buffer. the allocator is set to WC_BORROWED,
+// it fails if you try any operation that may result in a growth
+wc_nodiscard wc_nonull(1) String String_from_buf_borrow(const char* buf, u64 size);
+
+// you can do shit like
+//      String s = String_from_cstr_borrow("hello");
+wc_nodiscard wc_nonull(1) static wc_always_inline String String_from_cstr_borrow(const char* cstr)
+{
+    return String_from_buf_borrow(cstr, strlen(cstr));
+}
 
 // Destroy the String's internal buffer
 // Safe on a zeroed/moved-from String.
