@@ -1,31 +1,20 @@
-#include "common.h"
-#include "views.h"
-#include "wc_allocator.h"
-#include <stdio.h>
+#include "hashmap.h"
+#include "wc_macros.h"
+#include "wc_string.h"
 
-
-
-// TODO:
-// iterators?
-// msvc compatibility? or do we just use clang cl for compiling projects that use WCtoolkit
-// we should not use raw attributes but use the WC_MACRO equivilants
 
 
 int main(void)
 {
-    StringStore ss;
-    StringStore_create(&ss, WC_LIBC, nKB(4), false);
+    HashMap m = MAP_OF(String, String);
 
-    const char* c1 = "/a/b/c.txt";
-    StrView p1 = StringStore_cstr(&ss, c1);
-    WC_ASSERT(WCpath_valid(p1), "path not valid");
-    WC_ASSERT(WCpath_is_absolute(p1), "path not absolute");
+    MAP_PUT_STR_STR(&m, "hello", "World");
+    MAP_PUT_STR_STR(&m, "hello", "world");
+    MAP_PUT_STR_STR(&m, "hlo", "World");
+    MAP_PUT_STR_STR(&m, "ho", "World");
 
-    StrView_print(WCpath_basename(p1)); putchar('\n');
-    StrView_print(WCpath_dirname(p1)); putchar('\n');
-    StrView_print(WCpath_extension(p1)); putchar('\n');
-    StrView_print(WCpath_stem(p1)); putchar('\n');
+    HashMap_print(&m, wc_str_print, wc_str_print);
 
-    // StringStore_destroy(&ss); // BUG: hangs when commented out when alloc is WC_LIBC
+    HashMap_destroy(&m);
     return 0;
 }

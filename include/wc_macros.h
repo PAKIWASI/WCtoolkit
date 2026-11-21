@@ -161,39 +161,29 @@
  *   NULL = wc_hash / byte equality over the key bytes (POD keys).
  * String keys are deliberately unsupported: use StrView keys whose bytes live
  * in a StringStore (or other storage) that outlives the map. */
-#define WC_HASH_FN(K)                          \
-    _Generic((K*)0,                            \
-        StrView*: (wc_hash_fn)wc_strview_hash, \
+#define WC_HASH_FN(K)                            \
+    _Generic((K*)0,                              \
+        String*: (wc_hash_fn)wc_str_hash,        \
+        String * *: (wc_hash_fn)wc_str_ptr_hash, \
+        StrView*: (wc_hash_fn)wc_strview_hash,   \
         default: (wc_hash_fn)NULL)
 
-#define WC_CMP_FN(K)                           \
-    _Generic((K*)0,                            \
-        StrView*: (wc_compare_fn)wc_strview_cmp, \
+
+#define WC_CMP_FN(K)                               \
+    _Generic((K*)0,                                \
+        String*: (wc_compare_fn)wc_str_cmp,        \
+        String * *: (wc_compare_fn)wc_str_ptr_cmp, \
+        StrView*: (wc_compare_fn)wc_strview_cmp,   \
         default: (wc_compare_fn)NULL)
 
-#define WC_IS_STRING_KEY(K) _Generic((K*)0, String*: 1, String * *: 1, default: 0)
 
-#define WC_REQUIRE_STRVIEW_KEY(K, what)                                           \
-    _Static_assert(!WC_IS_STRING_KEY(K),                                          \
-                   what ": String keys are not supported; use StrView keys "      \
-                        "backed by a StringStore")
-
-#define MAP_OF_IN(A, K, V)                                                  \
-    ({                                                                      \
-        WC_REQUIRE_STRVIEW_KEY(K, "MAP_OF");                                \
-        HashMap_create((A), sizeof(K), sizeof(V), WC_HASH_FN(K),            \
-                       WC_CMP_FN(K), WC_OPS(K), WC_OPS(V));                 \
-    })
-#define MAP_OF(K, V)       MAP_OF_IN(WC_LIBC, K, V)
+#define MAP_OF_IN(A, K, V) \
+    ({ HashMap_create((A), sizeof(K), sizeof(V), WC_HASH_FN(K), WC_CMP_FN(K), WC_OPS(K), WC_OPS(V)); })
+#define MAP_OF(K, V) MAP_OF_IN(WC_LIBC, K, V)
 
 // A set of K: a HashMap with no values (val_size 0). Use HashMap_has / _del /
 // _get_key_ptr on it directly, and the SET_* macros below to insert and iterate.
-#define SET_OF_IN(A, K)                                                     \
-    ({                                                                      \
-        WC_REQUIRE_STRVIEW_KEY(K, "SET_OF");                                \
-        HashMap_create((A), sizeof(K), 0, WC_HASH_FN(K), WC_CMP_FN(K),      \
-                       WC_OPS(K), NULL);                                    \
-    })
+#define SET_OF_IN(A, K) ({ HashMap_create((A), sizeof(K), 0, WC_HASH_FN(K), WC_CMP_FN(K), WC_OPS(K), NULL); })
 #define SET_OF(K)       SET_OF_IN(WC_LIBC, K)
 
 #define VEC_MAKE_OPS(copy, del) \
@@ -261,18 +251,18 @@ Usage:
 // VEC_PUSH_CSTR — build a String from a C string and move it into a String
 // vector, by value (wc_str_ops) or by pointer (wc_str_ptr_ops).
 // Uses the container's own allocator so strings follow their vector.
-#define VEC_PUSH_CSTR(vec, cstr)                                                 \
-    ({                                                                           \
-        if ((vec)->data_size == sizeof(String)) {                                \
-            /* by value: build on the vec's allocator, move the struct in */     \
-            String _wpc_s = String_from_cstr((vec)->alloc, (cstr));              \
-            GenVec_push_move((vec), (void*)&_wpc_s); /* _wpc_s zeroed by move */ \
-        } else {                                                                 \
-            /* by pointer: box the String in the vec's allocator */              \
-            WC_ASSERT_ELEM_SIZE((vec), String*);                                 \
+#define VEC_PUSH_CSTR(vec, cstr)                                                     \
+    ({                                                                               \
+        if ((vec)->data_size == sizeof(String)) {                                    \
+            /* by value: build on the vec's allocator, move the struct in */         \
+            String _wpc_s = String_from_cstr((vec)->alloc, (cstr));                  \
+            GenVec_push_move((vec), (void*)&_wpc_s); /* _wpc_s zeroed by move */     \
+        } else {                                                                     \
+            /* by pointer: box the String in the vec's allocator */                  \
+            WC_ASSERT_ELEM_SIZE((vec), String*);                                     \
             String* _wpc_p = WC_BOX((vec)->alloc, String, String_from_cstr, (cstr)); \
-            GenVec_push_move((vec), (void*)&_wpc_p); /* slot owns the pointer */ \
-        }                                                                        \
+            GenVec_push_move((vec), (void*)&_wpc_p); /* slot owns the pointer */     \
+        }                                                                            \
     })
 
 
@@ -406,12 +396,6 @@ Usage:
 
 
 // Hashmap: StrView keys and C-string lookups (rule E1)
-/* String keys are not supported. A StrView key is a 16-byte view; the bytes it
- * points at must outlive the map (usually they live in a StringStore).
- * A lookup by C string builds a transient view, so it needs no storage. */
-
-#define WC_ASSERT_STRVIEW_KEYS(map, what) \
-    WC_ASSERT((map)->key_size == sizeof(StrView), what ": map keys must be StrView")
 
 /*
  * MAP_PUT_INT_STR(map, int_key, cstr_val)
@@ -420,9 +404,19 @@ Usage:
  */
 #define MAP_PUT_INT_STR(map, k, cstr_val)                                              \
     ({                                                                                 \
-        String _v = String_from_cstr((map)->alloc, (cstr_val));                         \
+        String _v = String_from_cstr((map)->alloc, (cstr_val));                        \
         bool   _r = HashMap_put_val_move((map), (const void*)&(int){(k)}, (void*)&_v); \
         _r;                                                                            \
+    })
+
+// TODO: we are allowing string keys again. modify accoringly
+
+#define MAP_PUT_STR_STR(map, cstr_key, cstr_val)                         \
+    ({                                                                   \
+        String _k = String_from_cstr((map)->alloc, (cstr_key));          \
+        String _v = String_from_cstr((map)->alloc, (cstr_val));          \
+        bool   _r = HashMap_put_val_move((map), (void*)&_k, (void*)&_v); \
+        _r;                                                              \
     })
 
 /*
@@ -431,37 +425,30 @@ Usage:
  * The view is copied as-is; its bytes must outlive the map.
  * The value String is built in the map's allocator and moved in.
  */
-#define MAP_PUT_SV_STR(map, key_sv, cstr_val)                                        \
-    ({                                                                               \
-        WC_ASSERT_STRVIEW_KEYS((map), "MAP_PUT_SV_STR");                             \
-        WC_ASSERT_SIZE(sizeof(String), (map)->val_size, "MAP_PUT_SV_STR value type");\
-        StrView _k = (key_sv);                                                       \
-        String  _v = String_from_cstr((map)->alloc, (cstr_val));                     \
-        bool    _r = HashMap_put_val_move((map), (const void*)&_k, (void*)&_v);      \
-        _r;                                                                          \
+#define MAP_PUT_SV_STR(map, key_sv, cstr_val)                                         \
+    ({                                                                                \
+        WC_ASSERT_SIZE(sizeof(StrView), (map)->key_size, "MAP_PUT_SV_STR key type");  \
+        WC_ASSERT_SIZE(sizeof(String), (map)->val_size, "MAP_PUT_SV_STR value type"); \
+        StrView _k = (key_sv);                                                        \
+        String  _v = String_from_cstr((map)->alloc, (cstr_val));                      \
+        bool    _r = HashMap_put_val_move((map), (const void*)&_k, (void*)&_v);       \
+        _r;                                                                           \
     })
 
+// TODO: maybe we should check if map has a strview key
 // bool: is the C string a key? A transient view; no storage needed.
-#define MAP_HAS_CSTR(map, cstr)                        \
-    ({                                                 \
-        WC_ASSERT_STRVIEW_KEYS((map), "MAP_HAS_CSTR"); \
-        StrView _k = StrView_over_cstr(cstr);           \
-        HashMap_has((map), (const void*)&_k);          \
+#define MAP_HAS_CSTR(map, cstr)                                                    \
+    ({                                                                             \
+        WC_ASSERT_SIZE(sizeof(StrView), (map)->key_size, "MAP_HAS_CSTR key type"); \
+        StrView _k = StrView_over_cstr(cstr);                                      \
+        HashMap_has((map), (const void*)&_k);                                      \
     })
 
 // const V*: the value under the C string key, or NULL. Any V.
-#define MAP_GET_PTR_CSTR(map, V, cstr)                                                  \
-    ({                                                                                  \
-        WC_ASSERT_STRVIEW_KEYS((map), "MAP_GET_PTR_CSTR");                              \
-        MAP_GET_PTR((map), V, StrView_over_cstr(cstr));                                 \
-    })
+#define MAP_GET_PTR_CSTR(map, V, cstr) ({ MAP_GET_PTR((map), V, StrView_over_cstr(cstr)); })
 
 // V by value (plain data only, E3). A missing key aborts in Debug, zero V in Release.
-#define MAP_GET_CSTR(map, V, cstr)                                                      \
-    ({                                                                                  \
-        WC_ASSERT_STRVIEW_KEYS((map), "MAP_GET_CSTR");                                  \
-        MAP_GET((map), V, StrView_over_cstr(cstr));                                     \
-    })
+#define MAP_GET_CSTR(map, V, cstr) ({ MAP_GET((map), V, StrView_over_cstr(cstr)); })
 
 
 // Put (COPY semantics): plain-data key and value (E2)
@@ -631,25 +618,22 @@ Usage:
         HashMap_put_key_move((set), (void*)&(lval), NULL);                \
     })
 
-#define WC_ASSERT_STRVIEW_SET(set, what)                                                \
-    WC_ASSERT((set)->val_size == 0 && (set)->key_size == sizeof(StrView),               \
-              what ": must be a set of StrView")
 
 // Insert a C string into a StrView set. The bytes must outlive the set: use a
 // literal, or intern dynamic strings in a StringStore first.
-#define SET_INSERT_CSTR(set, cstr)                    \
-    ({                                                \
-        WC_ASSERT_STRVIEW_SET((set), "SET_INSERT_CSTR"); \
-        StrView _s = StrView_over_cstr(cstr);          \
-        HashMap_put((set), (const void*)&_s, NULL);   \
+#define SET_INSERT_CSTR(set, cstr)                                                    \
+    ({                                                                                \
+        WC_ASSERT_SIZE(sizeof(StrView), (set)->key_size, "SET_INSERT_CSTR key type"); \
+        StrView _s = StrView_over_cstr(cstr);                                         \
+        HashMap_put((set), (const void*)&_s, NULL);                                   \
     })
 
 // bool: is the C string in a StrView set? A transient view; no allocation.
-#define SET_HAS_CSTR(set, cstr)                     \
-    ({                                              \
-        WC_ASSERT_STRVIEW_SET((set), "SET_HAS_CSTR"); \
-        StrView _s = StrView_over_cstr(cstr);        \
-        HashMap_has((set), (const void*)&_s);       \
+#define SET_HAS_CSTR(set, cstr)                                                    \
+    ({                                                                             \
+        WC_ASSERT_SIZE(sizeof(StrView), (set)->key_size, "SET_HAS_CSTR key type"); \
+        StrView _s = StrView_over_cstr(cstr);                                      \
+        HashMap_has((set), (const void*)&_s);                                      \
     })
 
 
@@ -712,10 +696,10 @@ Usage:
         Queue_push((q), (const void*)&(lval));           \
     })
 
-#define QUEUE_PUSH_CSTR(q, cstr)                                     \
-    ({                                                               \
-        String _qp_s = String_from_cstr((q)->arr.alloc, (cstr));     \
-        Queue_push_move((q), (void*)&_qp_s);                         \
+#define QUEUE_PUSH_CSTR(q, cstr)                                 \
+    ({                                                           \
+        String _qp_s = String_from_cstr((q)->arr.alloc, (cstr)); \
+        Queue_push_move((q), (void*)&_qp_s);                     \
     })
 
 // Front element MOVED out (B7): yours, for every T.

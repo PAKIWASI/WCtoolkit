@@ -56,8 +56,6 @@ typedef struct {
     const wc_allocator*     alloc;
 } HashMap;
 
-_Static_assert(sizeof(HashMap) == 96, "HashMap must be 96 bytes");
-
 
 // Safely extract callbacks, always NULL-safe on ops itself.
 #define MAP_COPY(ops) ((ops) ? (ops)->copy_fn : NULL)
@@ -68,9 +66,9 @@ _Static_assert(sizeof(HashMap) == 96, "HashMap must be 96 bytes");
 // hash_fn NULL: wc_hash over the key bytes. cmp_fn NULL: byte equality.
 // Both defaults are only correct for keys without pointers.
 // key_ops / val_ops: pass NULL for POD types. val_size 0 makes a set.
-wc_nodiscard wc_nonull(1) HashMap HashMap_create(const wc_allocator* a, u32 key_size, u32 val_size, wc_hash_fn hash_fn,
-                                    wc_compare_fn cmp_fn, const wc_container_ops* key_ops,
-                                    const wc_container_ops* val_ops);
+wc_nodiscard wc_nonull(1) HashMap
+    HashMap_create(const wc_allocator* a, u32 key_size, u32 val_size, wc_hash_fn hash_fn, wc_compare_fn cmp_fn,
+                   const wc_container_ops* key_ops, const wc_container_ops* val_ops);
 
 // Destroy all elements and free internal buffers via map->alloc.
 // Safe on zeroed/moved-from maps. Leaves struct zeroed.
@@ -122,7 +120,7 @@ wc_nodiscard wc_nonull(1) static wc_always_inline u64 HashMap_bucket_count(const
 
 wc_nodiscard wc_nonull(1) bool HashMap_bucket_occupied(const HashMap* map, u64 i);
 wc_nodiscard wc_nonull(1) const void* HashMap_bucket_key_ptr(const HashMap* map, u64 i);
-wc_nodiscard wc_nonull(1) void*       HashMap_bucket_val_ptr(HashMap* map, u64 i);
+wc_nodiscard wc_nonull(1) void* HashMap_bucket_val_ptr(HashMap* map, u64 i);
 
 // Delete key. out != NULL: the value is MOVED into it (caller owns it, B7).
 // out == NULL: the value is deleted. The key is always deleted.
@@ -177,8 +175,9 @@ wc_nodiscard wc_nonull(1) static wc_always_inline bool HashMap_empty(const HashM
  * owns an allocation, all wasted on a key. See docs/containers.md.
  */
 
-// TODO: what if we allow string keys but with an allocator that can't reallocate, and we always
-// use the entire capacity for the hash, not just string len (would require zeroing out the entire capacity after string len
+// BUG: this is too strict
+// in order to mutate a key, the user has to get a pointer to it and cast away the const
+// at that point the user might as well throw their pc out the window
 
 
 #endif // HASHMAP_H

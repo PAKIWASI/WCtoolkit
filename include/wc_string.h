@@ -4,6 +4,7 @@
 #include "common.h"
 #include "wc_allocator.h"
 #include "wc_comp.h"
+#include "wc_hash.h"
 
 #include <stdalign.h>
 
@@ -206,19 +207,32 @@ wc_nodiscard wc_nonull(1) static wc_always_inline const char* String_cstr_view(S
  * str_del   — delegates to String_destroy() (frees heap buf via str->alloc, NOT the slot)
 */
 
-static inline void str_copy(const wc_allocator* dst, void* dest, const void* src)
+static inline void wc_str_copy(const wc_allocator* dst, void* dest, const void* src)
 {
     *(String*)dest = String_copy(dst, (const String*)src);
 }
 
-static inline void str_del(void* elm)
+static inline void wc_str_del(void* elm)
 {
     String_destroy((String*)elm); // free data buffer via str->alloc, NOT the slot
 }
 
-static inline void str_print(const void* elm)
+static inline void wc_str_print(const void* elm)
 {
     String_print((const String*)elm);
+}
+
+static inline u64 wc_str_hash(const void* key, u64 size)
+{
+    (void)size;
+    const String* k = (const String*)key;
+    return wc_hash(String_data_ptr(k), String_len(k));
+}
+
+static inline int wc_str_cmp(const void* a, const void* b, u64 size)
+{
+    (void)size;
+    return String_compare((const String*)a, (const String*)b);
 }
 
 
@@ -229,13 +243,13 @@ static inline void str_print(const void* elm)
  * str_del_ptr  — destroy pointee via its own allocator, then free shell
 */
 
-static inline void str_copy_ptr(const wc_allocator* dst, void* dest, const void* src)
+static inline void wc_str_copy_ptr(const wc_allocator* dst, void* dest, const void* src)
 {
     // Box a deep copy: shell and contents both from dst
     *(String**)dest = (String*)WC_BOX(dst, String, String_copy, *(const String* const*)src);
 }
 
-static inline void str_del_ptr(void* elm)
+static inline void wc_str_del_ptr(void* elm)
 {
     String* s = *(String**)elm;
     if (!s) {
@@ -247,15 +261,30 @@ static inline void str_del_ptr(void* elm)
     wc_free(a, s, sizeof(String), alignof(String)); // free the shell
 }
 
-static inline void str_print_ptr(const void* elm)
+static inline void wc_str_print_ptr(const void* elm)
 {
     String_print(*(const String**)elm);
 }
 
+static inline u64 wc_str_ptr_hash(const void* key, u64 size)
+{
+    (void)size;
+    const String* k = *(const String**)key;
+    return wc_hash(String_data_ptr(k), String_len(k));
+}
+
+static inline int wc_str_ptr_cmp(const void* a, const void* b, u64 size)
+{
+    (void)size;
+    return String_compare(*(const String**)a, *(const String**)b);
+}
+
+
 // SHARED OPS INSTANCES (for String VALUES and vectors; String is not a map key)
 
-static const wc_container_ops wc_str_ops     = {.copy_fn = str_copy, .del_fn = str_del};
-static const wc_container_ops wc_str_ptr_ops = {.copy_fn = str_copy_ptr, .del_fn = str_del_ptr};
+static const wc_container_ops wc_str_ops     = {.copy_fn = wc_str_copy, .del_fn = wc_str_del};
+static const wc_container_ops wc_str_ptr_ops = {.copy_fn = wc_str_copy_ptr, .del_fn = wc_str_del_ptr};
+
 
 
 #endif // STRING_H
